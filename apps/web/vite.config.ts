@@ -74,7 +74,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   server: {
-    host,
+    host: true,
     port,
     strictPort: true,
     ...(devProxyTarget
