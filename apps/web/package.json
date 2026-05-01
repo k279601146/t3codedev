@@ -1,5 +1,6 @@
 {
   "name": "@t3tools/web",
+    "trustedDependencies": ["@t3tools/web", "@effect/language-service"],
   "version": "0.0.21",
   "private": true,
   "type": "module",

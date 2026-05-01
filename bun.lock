@@ -216,8 +216,10 @@
     },
   },
   "trustedDependencies": [
+    "@t3tools/web",
     "electron",
     "node-pty",
+    "@effect/language-service",
   ],
   "overrides": {
     "@effect/atom-react": "catalog:",
