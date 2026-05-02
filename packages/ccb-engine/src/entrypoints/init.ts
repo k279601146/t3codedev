@@ -1,0 +1,369 @@
+import { profileCheckpoint } from "../utils/startupProfiler.ts"
+import '../bootstrap/state.ts'
+import '../utils/config.ts'
+import type { Attributes, MetricOptions } from '@opentelemetry/api'
+import memoize from "lodash-es/memoize.js"
+import { getIsNonInteractiveSession } from "../bootstrap/state.ts"
+import type { AttributedCounter } from "../bootstrap/state.ts"
+import { getSessionCounter, setMeter } from "../bootstrap/state.ts"
+import { shutdownLspServerManager } from "../services/lsp/manager.ts"
+import { populateOAuthAccountInfoIfNeeded } from "../services/oauth/client.ts"
+import {
+  initializePolicyLimitsLoadingPromise,
+  isPolicyLimitsEligible,
+} from "../services/policyLimits/index.ts"
+import {
+  initializeRemoteManagedSettingsLoadingPromise,
+  isEligibleForRemoteManagedSettings,
+  waitForRemoteManagedSettingsToLoad,
+} from "../services/remoteManagedSettings/index.ts"
+import { preconnectAnthropicApi } from "../utils/apiPreconnect.ts"
+import { applyExtraCACertsFromConfig } from "../utils/caCertsConfig.ts"
+import { registerCleanup } from "../utils/cleanupRegistry.ts"
+import {
+  enableConfigs,
+  getGlobalConfig,
+  recordFirstStartTime,
+  saveGlobalConfig,
+} from "../utils/config.ts"
+import { logForDebugging } from "../utils/debug.ts"
+import { detectCurrentRepository } from "../utils/detectRepository.ts"
+import { logForDiagnosticsNoPII } from "../utils/diagLogs.ts"
+import { initJetBrainsDetection } from "../utils/envDynamic.ts"
+import { isEnvTruthy } from "../utils/envUtils.ts"
+import { ConfigParseError, errorMessage } from "../utils/errors.ts"
+// showInvalidConfigDialog is dynamically imported in the error path to avoid loading React at init
+import {
+  gracefulShutdownSync,
+  setupGracefulShutdown,
+} from "../utils/gracefulShutdown.ts"
+import {
+  applyConfigEnvironmentVariables,
+  applySafeConfigEnvironmentVariables,
+} from "../utils/managedEnv.ts"
+import { configureGlobalMTLS } from "../utils/mtls.ts"
+import {
+  ensureScratchpadDir,
+  isScratchpadEnabled,
+} from "../utils/permissions/filesystem.ts"
+// initializeTelemetry is loaded lazily via import() in setMeterState() to defer
+// ~400KB of OpenTelemetry + protobuf modules until telemetry is actually initialized.
+// gRPC exporters (~700KB via @grpc/grpc-js) are further lazy-loaded within instrumentation.ts.
+import { configureGlobalAgents } from "../utils/proxy.ts"
+import { isBetaTracingEnabled } from "../utils/telemetry/betaSessionTracing.ts"
+import { getTelemetryAttributes } from "../utils/telemetryAttributes.ts"
+import { setShellIfWindows } from "../utils/windowsPaths.ts"
+import { initSentry } from "../utils/sentry.ts"
+import { initUser } from "../utils/user.ts"
+import { initLangfuse, shutdownLangfuse } from "../services/langfuse/index.ts"
+import { setThemeConfigCallbacks } from '@anthropic/ink'
+
+// initialize1PEventLogging is dynamically imported to defer OpenTelemetry sdk-logs/resources
+
+// Track if telemetry has been initialized to prevent double initialization
+let telemetryInitialized = false
+
+export const init = memoize(async (): Promise<void> => {
+  const initStartTime = Date.now()
+  logForDiagnosticsNoPII('info', 'init_started')
+  profileCheckpoint('init_function_start')
+
+  // Validate configs are valid and enable configuration system
+  try {
+    const configsStart = Date.now()
+    enableConfigs()
+    setThemeConfigCallbacks({
+      loadTheme: () => getGlobalConfig().theme,
+      saveTheme: setting =>
+        saveGlobalConfig(current => ({ ...current, theme: setting })),
+    })
+    logForDiagnosticsNoPII('info', 'init_configs_enabled', {
+      duration_ms: Date.now() - configsStart,
+    })
+    profileCheckpoint('init_configs_enabled')
+
+    // Apply only safe environment variables before trust dialog
+    // Full environment variables are applied after trust is established
+    const envVarsStart = Date.now()
+    applySafeConfigEnvironmentVariables()
+
+    // Apply NODE_EXTRA_CA_CERTS from settings.json to process.env early,
+    // before any TLS connections. Bun caches the TLS cert store at boot
+    // via BoringSSL, so this must happen before the first TLS handshake.
+    applyExtraCACertsFromConfig()
+
+    logForDiagnosticsNoPII('info', 'init_safe_env_vars_applied', {
+      duration_ms: Date.now() - envVarsStart,
+    })
+    profileCheckpoint('init_safe_env_vars_applied')
+
+    // Make sure things get flushed on exit
+    setupGracefulShutdown()
+    profileCheckpoint('init_after_graceful_shutdown')
+
+    // Initialize 1P event logging (no security concerns, but deferred to avoid
+    // loading OpenTelemetry sdk-logs at startup). growthbook.js is already in
+    // the module cache by this point (firstPartyEventLogger imports it), so the
+    // second dynamic import adds no load cost.
+    void Promise.all([
+      import('../services/analytics/firstPartyEventLogger.ts'),
+      import('../services/analytics/growthbook.ts'),
+    ]).then(([fp, gb]) => {
+      fp.initialize1PEventLogging()
+      // Rebuild the logger provider if tengu_1p_event_batch_config changes
+      // mid-session. Change detection (isEqual) is inside the handler so
+      // unchanged refreshes are no-ops.
+      gb.onGrowthBookRefresh(() => {
+        void fp.reinitialize1PEventLoggingIfConfigChanged()
+      })
+    })
+    profileCheckpoint('init_after_1p_event_logging')
+
+    // Start balance polling (no-op unless a provider is configured via env).
+    void import('../services/providerUsage/balance/poller.ts').then(m =>
+      m.startBalancePolling(),
+    )
+    profileCheckpoint('init_after_balance_polling')
+
+    // Populate OAuth account info if it is not already cached in config. This is needed since the
+    // OAuth account info may not be populated when logging in through the VSCode extension.
+    void populateOAuthAccountInfoIfNeeded()
+    profileCheckpoint('init_after_oauth_populate')
+
+    // Initialize JetBrains IDE detection asynchronously (populates cache for later sync access)
+    void initJetBrainsDetection()
+    profileCheckpoint('init_after_jetbrains_detection')
+
+    // Detect GitHub repository asynchronously (populates cache for gitDiff PR linking)
+    void detectCurrentRepository()
+
+    // Initialize the loading promise early so that other systems (like plugin hooks)
+    // can await remote settings loading. The promise includes a timeout to prevent
+    // deadlocks if loadRemoteManagedSettings() is never called (e.g., Agent SDK tests).
+    if (isEligibleForRemoteManagedSettings()) {
+      initializeRemoteManagedSettingsLoadingPromise()
+    }
+    if (isPolicyLimitsEligible()) {
+      initializePolicyLimitsLoadingPromise()
+    }
+    profileCheckpoint('init_after_remote_settings_check')
+
+    // Record the first start time
+    recordFirstStartTime()
+
+    // Configure global mTLS settings
+    const mtlsStart = Date.now()
+    logForDebugging('[init] configureGlobalMTLS starting')
+    configureGlobalMTLS()
+    logForDiagnosticsNoPII('info', 'init_mtls_configured', {
+      duration_ms: Date.now() - mtlsStart,
+    })
+    logForDebugging('[init] configureGlobalMTLS complete')
+
+    // Configure global HTTP agents (proxy and/or mTLS)
+    const proxyStart = Date.now()
+    logForDebugging('[init] configureGlobalAgents starting')
+    configureGlobalAgents()
+    logForDiagnosticsNoPII('info', 'init_proxy_configured', {
+      duration_ms: Date.now() - proxyStart,
+    })
+    logForDebugging('[init] configureGlobalAgents complete')
+    profileCheckpoint('init_network_configured')
+
+    // Initialize Sentry for error reporting (no-op if SENTRY_DSN not set)
+    initSentry()
+
+    // Initialize Langfuse tracing (no-op if keys not configured)
+    // Pre-warm user email cache so Langfuse traces include userId
+    await initUser()
+    initLangfuse()
+    registerCleanup(shutdownLangfuse)
+
+    // Preconnect to the Anthropic API �?overlap TCP+TLS handshake
+    // (~100-200ms) with the ~100ms of action-handler work before the API
+    // request. After CA certs + proxy agents are configured so the warmed
+    // connection uses the right transport. Fire-and-forget; skipped for
+    // proxy/mTLS/unix/cloud-provider where the SDK's dispatcher wouldn't
+    // reuse the global pool.
+    preconnectAnthropicApi()
+
+    // CCR upstreamproxy: start the local CONNECT relay so agent subprocesses
+    // can reach org-configured upstreams with credential injection. Gated on
+    // CLAUDE_CODE_REMOTE + GrowthBook; fail-open on any error. Lazy import so
+    // non-CCR startups don't pay the module load. The getUpstreamProxyEnv
+    // function is registered with subprocessEnv.ts so subprocess spawning can
+    // inject proxy vars without a static import of the upstreamproxy module.
+    if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
+      try {
+        const { initUpstreamProxy, getUpstreamProxyEnv } = await import(
+          '../upstreamproxy/upstreamproxy.ts'
+        )
+        const { registerUpstreamProxyEnvFn } = await import(
+          '../utils/subprocessEnv.ts'
+        )
+        registerUpstreamProxyEnvFn(getUpstreamProxyEnv)
+        await initUpstreamProxy()
+      } catch (err) {
+        logForDebugging(
+          `[init] upstreamproxy init failed: ${err instanceof Error ? err.message : String(err)}; continuing without proxy`,
+          { level: 'warn' },
+        )
+      }
+    }
+
+    // Set up git-bash if relevant
+    setShellIfWindows()
+
+    // Register LSP manager cleanup (initialization happens in main.tsx after --plugin-dir is processed)
+    registerCleanup(shutdownLspServerManager)
+
+    // gh-32730: teams created by subagents (or main agent without
+    // explicit TeamDelete) were left on disk forever. Register cleanup
+    // for all teams created this session. Lazy import: swarm code is
+    // behind feature gate and most sessions never create teams.
+    registerCleanup(async () => {
+      const { cleanupSessionTeams } = await import(
+        '../utils/swarm/teamHelpers.ts'
+      )
+      await cleanupSessionTeams()
+    })
+
+    // Initialize scratchpad directory if enabled
+    if (isScratchpadEnabled()) {
+      const scratchpadStart = Date.now()
+      await ensureScratchpadDir()
+      logForDiagnosticsNoPII('info', 'init_scratchpad_created', {
+        duration_ms: Date.now() - scratchpadStart,
+      })
+    }
+
+    logForDiagnosticsNoPII('info', 'init_completed', {
+      duration_ms: Date.now() - initStartTime,
+    })
+    profileCheckpoint('init_function_end')
+  } catch (error) {
+    if (error instanceof ConfigParseError) {
+      // Skip the interactive Ink dialog when we can't safely render it.
+      // The dialog breaks JSON consumers (e.g. desktop marketplace plugin
+      // manager running `plugin marketplace list --json` in a VM sandbox).
+      if (getIsNonInteractiveSession()) {
+        process.stderr.write(
+          `Configuration error in ${error.filePath}: ${error.message}\n`,
+        )
+        gracefulShutdownSync(1)
+        return
+      }
+
+      // Show the invalid config dialog with the error object and wait for it to complete
+      return import('../components/InvalidConfigDialog.js').then(m =>
+        m.showInvalidConfigDialog({ error }),
+      )
+      // Dialog itself handles process.exit, so we don't need additional cleanup here
+    } else {
+      // For non-config errors, rethrow them
+      throw error
+    }
+  }
+})
+
+/**
+ * Initialize telemetry after trust has been granted.
+ * For remote-settings-eligible users, waits for settings to load (non-blocking),
+ * then re-applies env vars (to include remote settings) before initializing telemetry.
+ * For non-eligible users, initializes telemetry immediately.
+ * This should only be called once, after the trust dialog has been accepted.
+ */
+export function initializeTelemetryAfterTrust(): void {
+  if (isEligibleForRemoteManagedSettings()) {
+    // For SDK/headless mode with beta tracing, initialize eagerly first
+    // to ensure the tracer is ready before the first query runs.
+    // The async path below will still run but doInitializeTelemetry() guards against double init.
+    if (getIsNonInteractiveSession() && isBetaTracingEnabled()) {
+      void doInitializeTelemetry().catch(error => {
+        logForDebugging(
+          `[3P telemetry] Eager telemetry init failed (beta tracing): ${errorMessage(error)}`,
+          { level: 'error' },
+        )
+      })
+    }
+    logForDebugging(
+      '[3P telemetry] Waiting for remote managed settings before telemetry init',
+    )
+    void waitForRemoteManagedSettingsToLoad()
+      .then(async () => {
+        logForDebugging(
+          '[3P telemetry] Remote managed settings loaded, initializing telemetry',
+        )
+        // Re-apply env vars to pick up remote settings before initializing telemetry.
+        applyConfigEnvironmentVariables()
+        await doInitializeTelemetry()
+      })
+      .catch(error => {
+        logForDebugging(
+          `[3P telemetry] Telemetry init failed (remote settings path): ${errorMessage(error)}`,
+          { level: 'error' },
+        )
+      })
+  } else {
+    void doInitializeTelemetry().catch(error => {
+      logForDebugging(
+        `[3P telemetry] Telemetry init failed: ${errorMessage(error)}`,
+        { level: 'error' },
+      )
+    })
+  }
+}
+
+async function doInitializeTelemetry(): Promise<void> {
+  if (telemetryInitialized) {
+    // Already initialized, nothing to do
+    return
+  }
+
+  // Set flag before init to prevent double initialization
+  telemetryInitialized = true
+  try {
+    await setMeterState()
+  } catch (error) {
+    // Reset flag on failure so subsequent calls can retry
+    telemetryInitialized = false
+    throw error
+  }
+}
+
+async function setMeterState(): Promise<void> {
+  // Lazy-load instrumentation to defer ~400KB of OpenTelemetry + protobuf
+  const { initializeTelemetry } = await import(
+    '../utils/telemetry/instrumentation.ts'
+  )
+  // Initialize customer OTLP telemetry (metrics, logs, traces)
+  const meter = await initializeTelemetry()
+  if (meter) {
+    // Create factory function for attributed counters
+    const createAttributedCounter = (
+      name: string,
+      options: MetricOptions,
+    ): AttributedCounter => {
+      const counter = meter?.createCounter(name, options)
+
+      return {
+        add(value: number, additionalAttributes: Attributes = {}) {
+          // Always fetch fresh telemetry attributes to ensure they're up to date
+          const currentAttributes = getTelemetryAttributes()
+          const mergedAttributes = {
+            ...currentAttributes,
+            ...additionalAttributes,
+          }
+          counter?.add(value, mergedAttributes)
+        },
+      }
+    }
+
+    setMeter(meter, createAttributedCounter)
+
+    // Increment session counter here because the startup telemetry path
+    // runs before this async initialization completes, so the counter
+    // would be null there.
+    getSessionCounter()?.add(1)
+  }
+}

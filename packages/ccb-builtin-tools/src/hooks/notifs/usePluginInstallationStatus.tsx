@@ -1,0 +1,69 @@
+import * as React from 'react';
+import { useEffect, useMemo } from 'react';
+import { getIsRemoteMode } from "@t3tools/ccb-engine/src/bootstrap/state.ts";
+import { useNotifications } from "../../context/notifications.tsx";
+import { Text } from '@anthropic/ink';
+import { useAppState } from "@t3tools/ccb-engine/src/state/AppState.tsx";
+import { logForDebugging } from "@t3tools/ccb-engine/src/utils/debug.ts";
+import { plural } from "@t3tools/ccb-engine/src/utils/stringUtils.ts";
+
+export function usePluginInstallationStatus(): void {
+  const { addNotification } = useNotifications();
+  const installationStatus = useAppState(s => s.plugins.installationStatus);
+
+  // Memoize the failed counts to prevent unnecessary effect triggers
+  const { totalFailed, failedMarketplacesCount, failedPluginsCount } = useMemo(() => {
+    if (!installationStatus) {
+      return {
+        totalFailed: 0,
+        failedMarketplacesCount: 0,
+        failedPluginsCount: 0,
+      };
+    }
+
+    const failedMarketplaces = installationStatus.marketplaces.filter(m => m.status === 'failed');
+    const failedPlugins = installationStatus.plugins.filter(p => p.status === 'failed');
+
+    return {
+      totalFailed: failedMarketplaces.length + failedPlugins.length,
+      failedMarketplacesCount: failedMarketplaces.length,
+      failedPluginsCount: failedPlugins.length,
+    };
+  }, [installationStatus]);
+
+  useEffect(() => {
+    if (getIsRemoteMode()) return;
+    if (!installationStatus) {
+      logForDebugging('No installation status to monitor');
+      return;
+    }
+
+    if (totalFailed === 0) {
+      return;
+    }
+
+    logForDebugging(
+      `Plugin installation status: ${failedMarketplacesCount} failed marketplaces, ${failedPluginsCount} failed plugins`,
+    );
+
+    if (totalFailed === 0) {
+      return;
+    }
+
+    // Add notification for failures
+    logForDebugging(`Adding notification for ${totalFailed} failed installations`);
+    addNotification({
+      key: 'plugin-install-failed',
+      jsx: (
+        <>
+          <Text color="error">
+            {totalFailed} {plural(totalFailed, 'plugin')} failed to install
+          </Text>
+          <Text dimColor> · /plugin for details</Text>
+        </>
+      ),
+      priority: 'medium',
+    });
+  }, [addNotification, totalFailed, failedMarketplacesCount, failedPluginsCount]);
+}
+

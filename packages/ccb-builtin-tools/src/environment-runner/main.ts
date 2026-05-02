@@ -1,0 +1,5 @@
+// Auto-generated stub â€?replace with real implementation
+export {}
+export const environmentRunnerMain: (args: string[]) => Promise<void> = () =>
+  Promise.resolve()
+

@@ -162,11 +162,9 @@ const fetchText = Effect.fn("fetchText")(function* (url: string) {
       try: () => response.text(),
       catch: () => "",
     });
-    return yield* Effect.fail(
-      new GeneratorError({
-        detail: `Failed to download ${url}: ${response.status} ${detail}`,
-      }),
-    );
+    return yield* new GeneratorError({
+      detail: `Failed to download ${url}: ${response.status} ${detail}`,
+    });
   }
 
   return yield* Effect.tryPromise({

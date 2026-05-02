@@ -1,0 +1,9 @@
+// Auto-generated stub â€?replace with real implementation
+export {}
+export const watchSystemTheme: (
+  querier: unknown,
+  setTheme: React.Dispatch<
+    React.SetStateAction<import('./systemTheme.ts').SystemTheme>
+  >,
+) => () => void = () => () => {}
+

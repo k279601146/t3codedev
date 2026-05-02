@@ -1,0 +1,68 @@
+import * as React from 'react';
+import { getOauthProfileFromApiKey } from "@t3tools/ccb-engine/src/services/oauth/getOauthProfile.ts";
+import { isClaudeAISubscriber } from "@t3tools/ccb-engine/src/utils/auth.ts";
+import { Text } from '@anthropic/ink';
+import { logEvent } from "@t3tools/ccb-engine/src/services/analytics/index.ts";
+import { getGlobalConfig, saveGlobalConfig } from "@t3tools/ccb-engine/src/utils/config.ts";
+import { useStartupNotification } from "./useStartupNotification.ts";
+
+const MAX_SHOW_COUNT = 3;
+
+/**
+ * Hook to check if the user has a subscription on Console but isn't logged into it.
+ */
+export function useCanSwitchToExistingSubscription(): void {
+  useStartupNotification(async () => {
+    if ((getGlobalConfig().subscriptionNoticeCount ?? 0) >= MAX_SHOW_COUNT) {
+      return null;
+    }
+    const subscriptionType = await getExistingClaudeSubscription();
+    if (subscriptionType === null) return null;
+
+    saveGlobalConfig(current => ({
+      ...current,
+      subscriptionNoticeCount: (current.subscriptionNoticeCount ?? 0) + 1,
+    }));
+    logEvent('tengu_switch_to_subscription_notice_shown', {});
+
+    return {
+      key: 'switch-to-subscription',
+      jsx: (
+        <Text color="suggestion">
+          Use your existing Claude {subscriptionType} plan with Claude Code
+          <Text color="text" dimColor>
+            {' '}
+            · /login to activate
+          </Text>
+        </Text>
+      ),
+      priority: 'low',
+    };
+  });
+}
+
+/**
+ * Checks if the user has a subscription but is not currently logged into it.
+ * This helps inform users they should run /login to access their subscription.
+ */
+async function getExistingClaudeSubscription(): Promise<'Max' | 'Pro' | null> {
+  // If already using subscription auth, there is nothing to switch to
+  if (isClaudeAISubscriber()) {
+    return null;
+  }
+  const profile = await getOauthProfileFromApiKey();
+  if (!profile) {
+    return null;
+  }
+
+  if (profile.account.has_claude_max) {
+    return 'Max';
+  }
+
+  if (profile.account.has_claude_pro) {
+    return 'Pro';
+  }
+
+  return null;
+}
+

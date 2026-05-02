@@ -125,6 +125,13 @@ function createBaseServerConfig(): ServerConfig {
           serverPassword: "",
           customModels: [],
         },
+        harness: {
+          enabled: true,
+          apiKey: "",
+          baseUrl: "",
+          model: "gemini-2.5-flash",
+          customModels: [],
+        },
       },
     },
   };

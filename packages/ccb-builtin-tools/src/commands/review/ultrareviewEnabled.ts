@@ -1,0 +1,15 @@
+import { getFeatureValue_CACHED_MAY_BE_STALE } from "@t3tools/ccb-engine/src/services/analytics/growthbook.ts"
+
+/**
+ * Runtime gate for /ultrareview. GB config's `enabled` field controls
+ * visibility â€?isEnabled() on the command filters it from getCommands()
+ * when false, so ungated users don't see the command at all.
+ */
+export function isUltrareviewEnabled(): boolean {
+  const cfg = getFeatureValue_CACHED_MAY_BE_STALE<Record<
+    string,
+    unknown
+  > | null>('tengu_review_bughunter_config', null)
+  return cfg?.enabled === true
+}
+

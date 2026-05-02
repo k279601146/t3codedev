@@ -111,13 +111,14 @@ async function waitForFileContent(filePath: string, attempts = 40) {
 // `ServerSettingsService.getSettings` makes each session read the latest
 // snapshot, matching the old "always read live" behavior that these
 // tests assumed.
-const makeResolveCursorSettings = Effect.gen(function* () {
-  const serverSettings = yield* ServerSettingsService;
-  return serverSettings.getSettings.pipe(
-    Effect.map((snapshot) => snapshot.providers.cursor),
-    Effect.orDie,
-  );
-});
+const makeResolveCursorSettings = Effect.service(ServerSettingsService).pipe(
+  Effect.map((serverSettings) =>
+    serverSettings.getSettings.pipe(
+      Effect.map((snapshot) => snapshot.providers.cursor),
+      Effect.orDie,
+    ),
+  ),
+);
 
 const cursorAdapterTestLayer = it.layer(
   Layer.effect(
