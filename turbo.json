@@ -25,7 +25,7 @@
     "T3CODE_OTLP_EXPORT_INTERVAL_MS",
     "T3CODE_OTLP_SERVICE_NAME"
   ],
-  "globalPassThroughEnv": ["PATHEXT"],
+  "globalPassThroughEnv": ["PATHEXT", "XAI_API_KEY"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

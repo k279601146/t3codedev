@@ -1,0 +1,47 @@
+model_provider = "xai"
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+plan_mode_reasoning_effort = "xhigh"
+model_reasoning_summary = "none"
+model_context_window = 1050000
+model_auto_compact_token_limit = 945000
+stream_idle_timeout_ms = 900000
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+suppress_unstable_features_warning = true
+
+[model_providers.xai]
+name = "OpenAI"
+base_url = "http://127.0.0.1:8317/v1"
+wire_api = "responses"
+requires_openai_auth = false
+env_key = "XAI_API_KEY"
+supports_websockets = true
+
+[features]
+responses_websockets_v2 = true
+remote_connections = true
+
+[projects.'c:\users\administrator']
+trust_level = "trusted"
+
+[projects.'d:\workspace\zhibo']
+trust_level = "trusted"
+
+[projects.'d:\workspace\t3codedev']
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gemini-2.5-flash" = 2
+"gpt-5.5" = 1
+
+[windows]
+sandbox = "elevated"
+
+[marketplaces.openai-bundled]
+last_updated = "2026-05-07T08:18:50Z"
+source_type = "local"
+source = '\\?\C:\Users\Administrator\.codex\.tmp\bundled-marketplaces\openai-bundled'
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
