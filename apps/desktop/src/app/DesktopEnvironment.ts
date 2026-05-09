@@ -73,6 +73,11 @@ export interface DesktopEnvironmentShape {
   readonly resolvePickFolderDefaultPath: (rawOptions: unknown) => Option.Option<string>;
   readonly resolveResourcePathCandidates: (fileName: string) => readonly string[];
   readonly developmentDockIconPath: string;
+
+  /** 捆绑 AI 引擎二进制的绝对路径（可能不存在） */
+  readonly engineBinaryPath: string;
+  /** 捆绑引擎的隔离数据目录（CODEX_HOME 重定向目标） */
+  readonly engineHomePath: string;
 }
 
 export class DesktopEnvironment extends Context.Service<
@@ -242,8 +247,40 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
       path.join(resourcesPath, fileName),
     ],
     developmentDockIconPath: path.join(rootDir, "assets", "dev", "blueprint-macos-1024.png"),
+
+    // ── 捆绑引擎路径 ──────────────────────────────────────
+    engineBinaryPath: resolveEngineBinaryPath({
+      path,
+      isPackaged: input.isPackaged,
+      resourcesPath,
+      rootDir,
+    }),
+    engineHomePath: path.join(baseDir, "agent-data"),
   });
 });
+
+/**
+ * 计算捆绑 AI 引擎二进制的路径。
+ * 生产环境从 resources/ 目录读取，开发环境从 apps/desktop/bin/ 读取。
+ */
+function resolveEngineBinaryPath(input: {
+  readonly path: Path.Path;
+  readonly isPackaged: boolean;
+  readonly resourcesPath: string;
+  readonly rootDir: string;
+}): string {
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const binaryName = `ai-engine${ext}`;
+
+  if (input.isPackaged) {
+    // 生产环境：从安装包 resources/ 目录读取
+    return input.path.join(input.resourcesPath, binaryName);
+  }
+
+  // 开发环境：从项目 apps/desktop/bin/ 目录读取
+  // 文件存在性由 server 层的 BundledEngineConfig.isBundledEngineMode 检测
+  return input.path.join(input.rootDir, "apps", "desktop", "bin", binaryName);
+}
 
 export const layer = (input: MakeDesktopEnvironmentInput) =>
   Layer.effect(DesktopEnvironment, makeDesktopEnvironment(input));

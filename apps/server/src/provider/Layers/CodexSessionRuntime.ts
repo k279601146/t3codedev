@@ -41,6 +41,11 @@ import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
+import {
+  resolveBundledEngineConfig,
+  buildBundledSpawnArgs,
+  buildSystemSpawnArgs,
+} from "../BundledEngineConfig.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
 const PROVIDER = ProviderDriverKind.make("codex");
@@ -712,13 +717,20 @@ export const makeCodexSessionRuntime = (
     // `child_process.spawn`; `expandHomePath` lets a configured
     // `CODEX_HOME=~/.codex_work` reach codex as an absolute path.
     const resolvedHomePath = options.homePath ? expandHomePath(options.homePath) : undefined;
+    const baseEnv = options.environment ?? process.env;
+
+    // 检测捆绑引擎模式：使用内嵌的 codex-app-server 二进制 + 自定义配置
+    const bundledConfig = resolveBundledEngineConfig(baseEnv);
+    const effectiveBinaryPath = bundledConfig?.binaryPath ?? options.binaryPath;
+    const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
     const env = {
-      ...(options.environment ?? process.env),
+      ...baseEnv,
       ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
+      ...(bundledConfig?.spawnEnvPatch ?? {}),
     };
     const child = yield* spawner
       .spawn(
-        ChildProcess.make(options.binaryPath, ["app-server"], {
+        ChildProcess.make(effectiveBinaryPath, [...spawnArgs], {
           cwd: options.cwd,
           env,
           shell: process.platform === "win32",
@@ -729,7 +741,7 @@ export const makeCodexSessionRuntime = (
         Effect.mapError(
           (cause) =>
             new CodexErrors.CodexAppServerSpawnError({
-              command: `${options.binaryPath} app-server`,
+              command: `${effectiveBinaryPath} ${spawnArgs.join(" ")}`,
               cause,
             }),
         ),

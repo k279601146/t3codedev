@@ -117,6 +117,11 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       env: {
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
+        // 捆绑引擎路径注入：server 层通过这些环境变量检测捆绑模式
+        MYIDE_ENGINE_PATH: environment.engineBinaryPath,
+        MYIDE_ENGINE_HOME: environment.engineHomePath,
+        // 显式透传 API KEY，确保即使 extendEnv 出现问题也能到达后端
+        MYIDE_API_KEY: process.env.MYIDE_API_KEY || process.env.myide_api_key,
       },
       bootstrap: {
         mode: "desktop",
@@ -152,6 +157,36 @@ export const layer = Layer.effect(
 
     return DesktopBackendConfiguration.of({
       resolve: Effect.gen(function* () {
+        yield* fileSystem.makeDirectory(environment.engineHomePath, { recursive: true }).pipe(
+          Effect.catch((error) =>
+            logBackendConfigurationWarning(`Failed to create engine home directory: ${error.message ?? error}`)
+          )
+        );
+
+        // 写入 TOML 配置文件到引擎主目录，解决 Figment 解析环境变量导致 requires_openai_auth 嵌套失败的问题
+        const tomlConfig = `
+model_provider = "myservice"
+disable_telemetry = true
+
+[model_providers.myservice]
+name = "MyService"
+base_url = "http://127.0.0.1:8317/v1"
+wire_api = "responses"
+env_key = "MYIDE_API_KEY"
+requires_openai_auth = false
+
+[shell_environment_policy]
+include_only = ["PATH", "HOME", "LANG", "TERM", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "SystemRoot", "HOMEDRIVE", "HOMEPATH"]
+
+${process.platform === "win32" ? '[windows]\nsandbox = "unelevated"' : ""}
+`.trim();
+        const configPath = environment.engineHomePath + (process.platform === "win32" ? "\\" : "/") + "config.toml";
+        yield* fileSystem.writeFileString(configPath, tomlConfig).pipe(
+          Effect.catch((error) =>
+            logBackendConfigurationWarning(`Failed to write engine config.toml: ${error.message ?? error}`)
+          )
+        );
+
         const bootstrapToken = yield* getOrCreateBootstrapToken(tokenRef);
         const observabilitySettings = yield* readPersistedBackendObservabilitySettings.pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),

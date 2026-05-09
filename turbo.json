@@ -28,7 +28,7 @@
     "VITE_HOSTED_APP_URL",
     "VITE_HOSTED_APP_CHANNEL"
   ],
-  "globalPassThroughEnv": ["PATHEXT", "XAI_API_KEY"],
+  "globalPassThroughEnv": ["PATHEXT", "XAI_API_KEY", "MYIDE_API_KEY"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

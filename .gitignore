@@ -25,3 +25,4 @@ squashfs-root/
 .vercel
 dist-electron/
 .electron-runtime/
+apps/desktop/bin/

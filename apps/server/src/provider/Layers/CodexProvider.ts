@@ -26,13 +26,22 @@ import { buildServerProvider, type ServerProviderDraft } from "../providerSnapsh
 import { expandHomePath } from "../../pathExpansion.ts";
 import { scopedSafeTeardown } from "./scopedSafeTeardown.ts";
 import packageJson from "../../../package.json" with { type: "json" };
+import {
+  resolveBundledEngineConfig,
+  buildBundledSpawnArgs,
+  buildSystemSpawnArgs,
+  PROVIDER_DISPLAY_NAME,
+} from "../BundledEngineConfig.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
-const CODEX_PRESENTATION = {
-  displayName: "Codex",
-  showInteractionModeToggle: true,
-} as const;
+function getPresentation(environment: NodeJS.ProcessEnv = process.env) {
+  const isBundled = resolveBundledEngineConfig(environment) !== undefined;
+  return {
+    displayName: isBundled ? PROVIDER_DISPLAY_NAME : "Codex",
+    showInteractionModeToggle: true,
+  } as const;
+}
 
 export interface CodexAppServerProviderSnapshot {
   readonly account: CodexSchema.V2GetAccountResponse;
@@ -263,14 +272,22 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   // "CODEX_HOME points to '~/.codex_work', but that path does not exist".
   // Expand here for parity with `CodexTextGeneration`/`CodexSessionRuntime`.
   const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
+  const baseEnv = input.environment ?? process.env;
+
+  // 检测捆绑引擎模式：使用内嵌的 codex-app-server 二进制 + 自定义配置
+  const bundledConfig = resolveBundledEngineConfig(baseEnv);
+  const effectiveBinaryPath = bundledConfig?.binaryPath ?? input.binaryPath;
+  const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
+
   const clientContext = yield* Layer.build(
     CodexClient.layerCommand({
-      command: input.binaryPath,
-      args: ["app-server"],
+      command: effectiveBinaryPath,
+      args: [...spawnArgs],
       cwd: input.cwd,
       env: {
-        ...(input.environment ?? process.env),
+        ...baseEnv,
         ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
+        ...(bundledConfig?.spawnEnvPatch ?? {}),
       },
     }),
   );
@@ -335,6 +352,7 @@ const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvi
 
 const makePendingCodexProvider = (
   codexSettings: CodexSettings,
+  environment: NodeJS.ProcessEnv = process.env,
 ): Effect.Effect<ServerProviderDraft> =>
   Effect.gen(function* () {
     const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
@@ -342,7 +360,7 @@ const makePendingCodexProvider = (
 
     if (!codexSettings.enabled) {
       return buildServerProvider({
-        presentation: CODEX_PRESENTATION,
+        presentation: getPresentation(environment),
         enabled: false,
         checkedAt,
         models,
@@ -358,7 +376,7 @@ const makePendingCodexProvider = (
     }
 
     return buildServerProvider({
-      presentation: CODEX_PRESENTATION,
+      presentation: getPresentation(environment),
       enabled: true,
       checkedAt,
       models,
@@ -426,7 +444,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 
   if (!codexSettings.enabled) {
     return buildServerProvider({
-      presentation: CODEX_PRESENTATION,
+      presentation: getPresentation(environment),
       enabled: false,
       checkedAt,
       models: emptyModels,
@@ -452,8 +470,9 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   if (Result.isFailure(probeResult)) {
     const error = probeResult.failure;
     const installed = !isCodexAppServerSpawnError(error);
+    const isBundled = resolveBundledEngineConfig(environment) !== undefined;
     return buildServerProvider({
-      presentation: CODEX_PRESENTATION,
+      presentation: getPresentation(environment),
       enabled: codexSettings.enabled,
       checkedAt,
       models: emptyModels,
@@ -465,14 +484,16 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         auth: { status: "unknown" },
         message: installed
           ? `Codex app-server provider probe failed: ${error.message}.`
-          : "Codex CLI (`codex`) is not installed or not on PATH.",
+          : isBundled
+            ? "Bundled AI engine binary is missing or inaccessible."
+            : "Codex CLI (`codex`) is not installed or not on PATH.",
       },
     });
   }
 
   if (Option.isNone(probeResult.success)) {
     return buildServerProvider({
-      presentation: CODEX_PRESENTATION,
+      presentation: getPresentation(environment),
       enabled: codexSettings.enabled,
       checkedAt,
       models: emptyModels,
@@ -491,7 +512,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   const accountStatus = accountProbeStatus(snapshot.account);
 
   return buildServerProvider({
-    presentation: CODEX_PRESENTATION,
+    presentation: getPresentation(environment),
     enabled: codexSettings.enabled,
     checkedAt,
     models: snapshot.models,
