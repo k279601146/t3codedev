@@ -586,6 +586,14 @@ function ChatMarkdown({
           return <pre {...props}>{children}</pre>;
         }
 
+        if (isStreaming) {
+          return (
+            <MarkdownCodeBlock code={codeBlock.code}>
+              <pre {...props}>{children}</pre>
+            </MarkdownCodeBlock>
+          );
+        }
+
         return (
           <MarkdownCodeBlock code={codeBlock.code}>
             <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>

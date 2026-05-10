@@ -1,3 +1,5 @@
+import { sanitizeProviderErrorMessage } from "../friendlyErrors";
+
 const TRANSPORT_ERROR_PATTERNS = [
   /\bSocketCloseError\b/i,
   /\bSocketOpenError\b/i,
@@ -19,5 +21,5 @@ export function isTransportConnectionErrorMessage(message: string | null | undef
 }
 
 export function sanitizeThreadErrorMessage(message: string | null | undefined): string | null {
-  return isTransportConnectionErrorMessage(message) ? null : (message ?? null);
+  return isTransportConnectionErrorMessage(message) ? null : sanitizeProviderErrorMessage(message);
 }

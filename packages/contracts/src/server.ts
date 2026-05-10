@@ -55,6 +55,39 @@ export const ServerProviderAuth = Schema.Struct({
   type: Schema.optional(TrimmedNonEmptyString),
   label: Schema.optional(TrimmedNonEmptyString),
   email: Schema.optional(TrimmedNonEmptyString),
+  rateLimits: Schema.optional(
+    Schema.Struct({
+      credits: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            balance: Schema.optional(Schema.NullOr(Schema.String)),
+            hasCredits: Schema.Boolean,
+            unlimited: Schema.Boolean,
+          }),
+        ),
+      ),
+      primary: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            resetsAt: Schema.optional(Schema.NullOr(Schema.Number)),
+            usedPercent: Schema.Number,
+            windowDurationMins: Schema.optional(Schema.NullOr(Schema.Number)),
+          }),
+        ),
+      ),
+      secondary: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            resetsAt: Schema.optional(Schema.NullOr(Schema.Number)),
+            usedPercent: Schema.Number,
+            windowDurationMins: Schema.optional(Schema.NullOr(Schema.Number)),
+          }),
+        ),
+      ),
+      planType: Schema.optional(Schema.NullOr(Schema.String)),
+      rateLimitReachedType: Schema.optional(Schema.NullOr(Schema.String)),
+    }),
+  ),
 });
 export type ServerProviderAuth = typeof ServerProviderAuth.Type;
 

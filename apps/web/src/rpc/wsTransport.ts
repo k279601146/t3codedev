@@ -180,7 +180,7 @@ export class WsTransport {
           }
 
           if (!this.hasReportedTransportDisconnect) {
-            console.warn("WebSocket RPC subscription disconnected", {
+            console.debug("WebSocket RPC subscription disconnected; retrying", {
               error: formattedError,
             });
           }

@@ -46,6 +46,7 @@ function getPresentation(environment: NodeJS.ProcessEnv = process.env) {
 
 export interface CodexAppServerProviderSnapshot {
   readonly account: CodexSchema.V2GetAccountResponse;
+  readonly rateLimits: CodexSchema.V2GetAccountRateLimitsResponse["rateLimits"] | null;
   readonly version: string | undefined;
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
@@ -288,7 +289,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       env: {
         ...baseEnv,
         ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-        ...(bundledConfig?.spawnEnvPatch ?? {}),
+        ...bundledConfig?.spawnEnvPatch,
       },
     }),
   );
@@ -316,24 +317,27 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
     return {
       account: accountResponse,
+      rateLimits: null,
       version,
       models: appendCustomCodexModels([], input.customModels ?? []),
       skills: [],
     } satisfies CodexAppServerProviderSnapshot;
   }
 
-  const [skillsResponse, models] = yield* Effect.all(
+  const [skillsResponse, models, rateLimits] = yield* Effect.all(
     [
       client.request("skills/list", {
         cwds: [input.cwd],
       }),
       requestAllCodexModels(client),
+      client.request("account/rateLimits/read", undefined).pipe(Effect.option),
     ],
     { concurrency: "unbounded" },
   );
 
   return {
     account: accountResponse,
+    rateLimits: Option.getOrNull(rateLimits)?.rateLimits ?? null,
     version,
     models: appendCustomCodexModels(models, input.customModels ?? []),
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
@@ -394,6 +398,7 @@ const makePendingCodexProvider = (
 
 function accountProbeStatus(
   account: CodexAppServerProviderSnapshot["account"],
+  rateLimits: CodexAppServerProviderSnapshot["rateLimits"],
   options?: {
     readonly bundledEngine: boolean;
     readonly hasCommercialToken: boolean;
@@ -410,6 +415,7 @@ function accountProbeStatus(
         auth: {
           status: "authenticated",
           label: "T3 Code account",
+          ...(rateLimits ? { rateLimits } : {}),
         },
       };
     }
@@ -427,6 +433,7 @@ function accountProbeStatus(
     ...(account.account?.type ? { type: account.account?.type } : {}),
     ...(authLabel ? { label: authLabel } : {}),
     ...(authEmail ? { email: authEmail } : {}),
+    ...(rateLimits ? { rateLimits } : {}),
   } satisfies ServerProvider["auth"];
 
   if (account.account) {
@@ -534,7 +541,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 
   const snapshot = probeResult.success.value;
   const bundledEngine = resolveBundledEngineConfig(environment) !== undefined;
-  const accountStatus = accountProbeStatus(snapshot.account, {
+  const accountStatus = accountProbeStatus(snapshot.account, snapshot.rateLimits, {
     bundledEngine,
     hasCommercialToken: Boolean(resolveCommercialEngineIdeJwt(environment)),
   });

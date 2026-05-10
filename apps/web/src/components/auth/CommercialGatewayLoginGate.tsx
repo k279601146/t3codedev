@@ -5,6 +5,11 @@ import type React from "react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
+import {
+  publishDesktopCommercialAuthState,
+  readDesktopCommercialAuthStateSnapshot,
+  subscribeDesktopCommercialAuthState,
+} from "../../commercialAuthState";
 import { useI18n } from "../../i18n";
 import { OpenAI } from "../Icons";
 import { Button } from "../ui/button";
@@ -69,6 +74,27 @@ export function useDesktopCommercialAuthGate(enabled: boolean): CommercialAuthGa
     };
   }, [bridge, canUseCommercialAuth, enabled]);
 
+  useEffect(() => {
+    if (!enabled || !canUseCommercialAuth) {
+      return;
+    }
+
+    const applyPublishedState = () => {
+      const authState = readDesktopCommercialAuthStateSnapshot();
+      if (!authState) {
+        return;
+      }
+      setState(
+        authState.signedIn
+          ? { status: "signed-in", authState }
+          : { status: "requires-sign-in", authState },
+      );
+    };
+
+    applyPublishedState();
+    return subscribeDesktopCommercialAuthState(applyPublishedState);
+  }, [canUseCommercialAuth, enabled]);
+
   return state;
 }
 
@@ -129,6 +155,7 @@ export function CommercialGatewayLoginGate({
       .signInCommercialAuthWithBrowser({ gatewayBaseUrl: normalizedGateway, requestId })
       .then((nextState) => {
         if (browserSignInRequestIdRef.current !== requestId) return;
+        publishDesktopCommercialAuthState(nextState);
         startTransition(() => onAuthenticated(nextState));
       })
       .catch((error: unknown) => {
@@ -156,6 +183,7 @@ export function CommercialGatewayLoginGate({
         })
         .then((nextState) => {
           setWebAccessToken("");
+          publishDesktopCommercialAuthState(nextState);
           startTransition(() => onAuthenticated(nextState));
         })
         .catch((error: unknown) => {

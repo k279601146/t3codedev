@@ -1,8 +1,11 @@
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  CircleUserRoundIcon,
+  GaugeIcon,
   ChevronRightIcon,
   CloudIcon,
+  ExternalLinkIcon,
   FolderPlusIcon,
   LogOutIcon,
   SearchIcon,
@@ -42,6 +45,7 @@ import {
   type ContextMenuItem,
   type DesktopUpdateState,
   ProjectId,
+  type ServerProvider,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
   type ThreadEnvMode,
@@ -182,7 +186,11 @@ import { CommandDialogTrigger } from "./ui/command";
 import { readEnvironmentApi } from "../environmentApi";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { useI18n } from "../i18n";
-import { useServerKeybindings } from "../rpc/serverState";
+import { useServerKeybindings, useServerProviders } from "../rpc/serverState";
+import {
+  publishDesktopCommercialAuthState,
+  usePublishedDesktopCommercialAuthState,
+} from "../commercialAuthState";
 import {
   derivePhysicalProjectKey,
   deriveProjectGroupingOverrideKey,
@@ -2497,8 +2505,46 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const { t } = useI18n();
   const { isMobile, setOpenMobile } = useSidebar();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const publishedCommercialAuthState = usePublishedDesktopCommercialAuthState();
+  const [commercialAuthState, setCommercialAuthState] = useState(() =>
+    typeof window === "undefined" ? null : publishedCommercialAuthState,
+  );
+  const providerStatuses = useServerProviders();
+  const codexProvider = providerStatuses.find((provider) => provider.driver === "codex") ?? null;
+  const accountLabel =
+    commercialAuthState?.userLabel ??
+    codexProvider?.auth.email ??
+    codexProvider?.auth.label ??
+    "T3 Code account";
+  const rateLimits = codexProvider?.auth.rateLimits ?? null;
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
+
+  useEffect(() => {
+    if (publishedCommercialAuthState) {
+      setCommercialAuthState(publishedCommercialAuthState);
+    }
+  }, [publishedCommercialAuthState]);
+
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    if (!bridge?.getCommercialAuthState) {
+      return;
+    }
+
+    let disposed = false;
+    void bridge
+      .getCommercialAuthState()
+      .then((state) => {
+        if (disposed) return;
+        setCommercialAuthState(state);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   const handleOpenSettings = useCallback(() => {
     if (isMobile) {
@@ -2516,8 +2562,8 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     setIsSigningOut(true);
     void bridge
       .signOutCommercialAuth()
-      .then(() => {
-        window.location.reload();
+      .then((state) => {
+        publishDesktopCommercialAuthState(state);
       })
       .catch((error: unknown) => {
         setIsSigningOut(false);
@@ -2530,6 +2576,16 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
         );
       });
   }, [isSigningOut, t]);
+
+  const handleOpenBilling = useCallback(() => {
+    const url = resolveAccountActionUrl(commercialAuthState?.gatewayBaseUrl, "/billing");
+    void window.desktopBridge?.openExternal?.(url);
+  }, [commercialAuthState?.gatewayBaseUrl]);
+
+  const handleOpenPlans = useCallback(() => {
+    const url = resolveAccountActionUrl(commercialAuthState?.gatewayBaseUrl, "/pricing");
+    void window.desktopBridge?.openExternal?.(url);
+  }, [commercialAuthState?.gatewayBaseUrl]);
 
   return (
     <SidebarFooter className="p-2">
@@ -2549,11 +2605,32 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
               <SettingsIcon className="size-3.5" />
               <span className="text-xs">{t("sidebar.settings")}</span>
             </MenuTrigger>
-            <MenuPopup align="start" side="top" className="w-48">
+            <MenuPopup align="start" side="top" className="w-64">
               <MenuGroup>
+                <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                  <CircleUserRoundIcon className="size-4 shrink-0" />
+                  <span className="truncate" title={accountLabel}>
+                    {accountLabel}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                  <SettingsIcon className="size-4 shrink-0" />
+                  <span>Personal account</span>
+                </div>
+                <MenuSeparator />
                 <MenuItem onClick={handleOpenSettings}>
                   <SlidersHorizontalIcon className="size-4" />
                   <span>{t("sidebar.settings")}</span>
+                </MenuItem>
+                <MenuSeparator />
+                <AccountUsageRows rateLimits={rateLimits} />
+                <MenuItem onClick={handleOpenPlans}>
+                  <span>Upgrade to Pro</span>
+                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
+                </MenuItem>
+                <MenuItem onClick={handleOpenBilling}>
+                  <span>Learn more</span>
+                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
                 </MenuItem>
                 {canSignOut ? (
                   <MenuItem disabled={isSigningOut} onClick={handleSignOut} variant="destructive">
@@ -2569,6 +2646,103 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     </SidebarFooter>
   );
 });
+
+type AccountRateLimits = NonNullable<ServerProvider["auth"]["rateLimits"]>;
+type AccountRateLimitWindow = NonNullable<AccountRateLimits["primary"]>;
+
+function AccountUsageRows({ rateLimits }: { rateLimits: AccountRateLimits | null }) {
+  const primary = rateLimits?.primary ?? null;
+  const secondary = rateLimits?.secondary ?? null;
+  const credits = rateLimits?.credits ?? null;
+  const usedPercent = primary?.usedPercent ?? secondary?.usedPercent ?? 0;
+  const balanceLabel = credits?.unlimited
+    ? "Unlimited"
+    : credits?.balance
+      ? credits.balance
+      : credits?.hasCredits === false
+        ? "0"
+        : `${Math.max(0, Math.min(100, usedPercent))}%`;
+
+  return (
+    <div className="px-2 py-1.5 text-xs">
+      <div className="flex items-center gap-2 text-foreground">
+        <GaugeIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="font-medium">Remaining credits</span>
+        <span className="ml-auto text-muted-foreground">{balanceLabel}</span>
+      </div>
+      <div className="mt-1.5 space-y-1 pl-6 text-muted-foreground">
+        {primary ? (
+          <AccountUsageWindowRow label={formatRateLimitWindowLabel(primary)} window={primary} />
+        ) : null}
+        {secondary ? (
+          <AccountUsageWindowRow label={formatRateLimitWindowLabel(secondary)} window={secondary} />
+        ) : null}
+        {!primary && !secondary ? <div>Usage details unavailable</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function AccountUsageWindowRow({
+  label,
+  window,
+}: {
+  label: string;
+  window: AccountRateLimitWindow;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-medium text-foreground">{label}</span>
+      <span className="ml-auto tabular-nums">
+        {Math.max(0, Math.min(100, window.usedPercent))}% {formatRateLimitReset(window.resetsAt)}
+      </span>
+    </div>
+  );
+}
+
+function formatRateLimitWindowLabel(window: AccountRateLimitWindow): string {
+  const minutes = window.windowDurationMins;
+  if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0) {
+    return "Current";
+  }
+
+  if (minutes < 60) {
+    return `${Math.round(minutes)} min`;
+  }
+
+  if (minutes < 60 * 24) {
+    const hours = minutes / 60;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+  }
+
+  const days = minutes / (60 * 24);
+  return `${Number.isInteger(days) ? days : days.toFixed(1)} days`;
+}
+
+function formatRateLimitReset(resetsAt: number | null | undefined): string {
+  if (typeof resetsAt !== "number" || !Number.isFinite(resetsAt) || resetsAt <= 0) {
+    return "";
+  }
+
+  const timestampMs = resetsAt < 10_000_000_000 ? resetsAt * 1000 : resetsAt;
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestampMs));
+}
+
+function resolveAccountActionUrl(baseUrl: string | null | undefined, path: string): string {
+  const fallback = path === "/pricing" ? "https://chatgpt.com/#pricing" : "https://chatgpt.com/";
+  if (!baseUrl) {
+    return fallback;
+  }
+
+  try {
+    return new URL(path, baseUrl).toString();
+  } catch {
+    return fallback;
+  }
+}
 
 interface SidebarProjectsContentProps {
   showArm64IntelBuildWarning: boolean;

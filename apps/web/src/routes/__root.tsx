@@ -113,6 +113,12 @@ function RootRouteView() {
   );
 
   useEffect(() => {
+    if (commercialAuthGate.status === "requires-sign-in") {
+      setCommercialAuthAccepted(false);
+    }
+  }, [commercialAuthGate.status]);
+
+  useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       syncBrowserChromeTheme();
     });

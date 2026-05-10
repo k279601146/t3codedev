@@ -232,6 +232,7 @@ function makeCodexProbeSnapshot(
       },
       requiresOpenaiAuth: false,
     },
+    rateLimits: null,
     models: [
       {
         slug: "gpt-live-codex",
@@ -317,6 +318,36 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
               shortDescription: "Debug failing GitHub Actions checks",
             },
           ]);
+        }),
+      );
+
+      it.effect("includes app-server rate limits in authenticated Codex provider status", () =>
+        Effect.gen(function* () {
+          const rateLimits = {
+            credits: {
+              balance: null,
+              hasCredits: true,
+              unlimited: false,
+            },
+            primary: {
+              resetsAt: 1_718_000_000,
+              usedPercent: 84,
+              windowDurationMins: 43200,
+            },
+            secondary: {
+              resetsAt: 1_717_900_000,
+              usedPercent: 0,
+              windowDurationMins: 300,
+            },
+            planType: "pro",
+            rateLimitReachedType: null,
+          } as const;
+          const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+            Effect.succeed(makeCodexProbeSnapshot({ rateLimits })),
+          );
+
+          assert.strictEqual(status.auth.status, "authenticated");
+          assert.deepStrictEqual(status.auth.rateLimits, rateLimits);
         }),
       );
 

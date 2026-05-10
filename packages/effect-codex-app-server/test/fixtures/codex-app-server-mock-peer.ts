@@ -65,6 +65,23 @@ const handleMethod = (message: Record<string, unknown>) => {
       });
       return;
     }
+    case "account/rateLimits/read": {
+      respond(message.id as number | string, {
+        rateLimits: {
+          credits: {
+            balance: "12.00",
+            hasCredits: true,
+            unlimited: false,
+          },
+          primary: {
+            usedPercent: 0,
+            windowDurationMins: 300,
+          },
+        },
+        rateLimitsByLimitId: null,
+      });
+      return;
+    }
     case "skills/list": {
       pendingSkillsListRequestId = message.id as number | string;
       pendingUserInputRequestId = sendRequest("item/tool/requestUserInput", {
