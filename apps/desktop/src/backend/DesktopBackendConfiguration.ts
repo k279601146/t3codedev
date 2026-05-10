@@ -1,4 +1,10 @@
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
+import {
+  COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV,
+  COMMERCIAL_ENGINE_IDE_JWT_ENV,
+  generateCommercialEngineTomlConfig,
+  getCommercialEngineEnvVar,
+} from "@t3tools/shared/commercialEngine";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -10,6 +16,7 @@ import * as Ref from "effect/Ref";
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
+import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 
 export interface DesktopBackendConfigurationShape {
@@ -42,6 +49,11 @@ const DESKTOP_BACKEND_ENV_NAMES = [
   "T3CODE_DESKTOP_HTTPS_ENDPOINTS",
   "T3CODE_TAILSCALE_SERVE",
   "T3CODE_TAILSCALE_SERVE_PORT",
+] as const;
+
+const COMMERCIAL_ENGINE_DESKTOP_ENV_NAMES = [
+  COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV,
+  COMMERCIAL_ENGINE_IDE_JWT_ENV,
 ] as const;
 
 const backendChildEnvPatch = (): Record<string, string | undefined> =>
@@ -100,6 +112,7 @@ const getOrCreateBootstrapToken = Effect.fn("desktop.backendConfiguration.bootst
 const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolveStartConfig")(
   function* (input: {
     readonly bootstrapToken: string;
+    readonly commercialCredentials: Option.Option<DesktopCommercialAuth.DesktopCommercialAuthCredentials>;
     readonly observabilitySettings: BackendObservabilitySettings;
   }): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
@@ -109,6 +122,19 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const backendExposure = yield* serverExposure.backendConfig;
+    const commercialEnv = Option.match(input.commercialCredentials, {
+      onNone: () =>
+        Object.fromEntries(
+          COMMERCIAL_ENGINE_DESKTOP_ENV_NAMES.map((name) => [
+            name,
+            getCommercialEngineEnvVar(process.env, name),
+          ]),
+        ),
+      onSome: (credentials) => ({
+        [COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV]: credentials.gatewayBaseUrl,
+        [COMMERCIAL_ENGINE_IDE_JWT_ENV]: credentials.ideJwt,
+      }),
+    });
 
     return {
       executablePath: process.execPath,
@@ -120,8 +146,7 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         // 捆绑引擎路径注入：server 层通过这些环境变量检测捆绑模式
         MYIDE_ENGINE_PATH: environment.engineBinaryPath,
         MYIDE_ENGINE_HOME: environment.engineHomePath,
-        // 显式透传 API KEY，确保即使 extendEnv 出现问题也能到达后端
-        MYIDE_API_KEY: process.env.MYIDE_API_KEY || process.env.myide_api_key,
+        ...commercialEnv,
       },
       bootstrap: {
         mode: "desktop",
@@ -152,40 +177,52 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const fileSystem = yield* FileSystem.FileSystem;
+    const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const tokenRef = yield* Ref.make(Option.none<string>());
 
     return DesktopBackendConfiguration.of({
       resolve: Effect.gen(function* () {
-        yield* fileSystem.makeDirectory(environment.engineHomePath, { recursive: true }).pipe(
+        yield* fileSystem
+          .makeDirectory(environment.engineHomePath, { recursive: true })
+          .pipe(
+            Effect.catch((error) =>
+              logBackendConfigurationWarning(
+                `Failed to create engine home directory: ${error.message ?? error}`,
+              ),
+            ),
+          );
+
+        // 写入不含密钥的 TOML 配置文件，避免底层 Figment 对 CODEX_ 环境变量的嵌套解析差异。
+        const commercialCredentials = yield* commercialAuth.getCredentials.pipe(
           Effect.catch((error) =>
-            logBackendConfigurationWarning(`Failed to create engine home directory: ${error.message ?? error}`)
-          )
+            logBackendConfigurationWarning(
+              `Failed to load commercial auth credentials: ${error.message ?? error}`,
+            ).pipe(
+              Effect.as(Option.none<DesktopCommercialAuth.DesktopCommercialAuthCredentials>()),
+            ),
+          ),
         );
-
-        // 写入 TOML 配置文件到引擎主目录，解决 Figment 解析环境变量导致 requires_openai_auth 嵌套失败的问题
-        const tomlConfig = `
-model_provider = "myservice"
-disable_telemetry = true
-
-[model_providers.myservice]
-name = "MyService"
-base_url = "http://127.0.0.1:8317/v1"
-wire_api = "responses"
-env_key = "MYIDE_API_KEY"
-requires_openai_auth = false
-
-[shell_environment_policy]
-include_only = ["PATH", "HOME", "LANG", "TERM", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "SystemRoot", "HOMEDRIVE", "HOMEPATH"]
-
-${process.platform === "win32" ? '[windows]\nsandbox = "unelevated"' : ""}
-`.trim();
-        const configPath = environment.engineHomePath + (process.platform === "win32" ? "\\" : "/") + "config.toml";
-        yield* fileSystem.writeFileString(configPath, tomlConfig).pipe(
-          Effect.catch((error) =>
-            logBackendConfigurationWarning(`Failed to write engine config.toml: ${error.message ?? error}`)
-          )
-        );
+        const commercialConfigEnv = Option.match(commercialCredentials, {
+          onNone: () => process.env,
+          onSome: (credentials) => ({
+            ...process.env,
+            [COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV]: credentials.gatewayBaseUrl,
+            [COMMERCIAL_ENGINE_IDE_JWT_ENV]: credentials.ideJwt,
+          }),
+        });
+        const tomlConfig = generateCommercialEngineTomlConfig(commercialConfigEnv);
+        const configPath =
+          environment.engineHomePath + (process.platform === "win32" ? "\\" : "/") + "config.toml";
+        yield* fileSystem
+          .writeFileString(configPath, tomlConfig)
+          .pipe(
+            Effect.catch((error) =>
+              logBackendConfigurationWarning(
+                `Failed to write engine config.toml: ${error.message ?? error}`,
+              ),
+            ),
+          );
 
         const bootstrapToken = yield* getOrCreateBootstrapToken(tokenRef);
         const observabilitySettings = yield* readPersistedBackendObservabilitySettings.pipe(
@@ -194,6 +231,7 @@ ${process.platform === "win32" ? '[windows]\nsandbox = "unelevated"' : ""}
         );
         return yield* resolveBackendStartConfig({
           bootstrapToken,
+          commercialCredentials,
           observabilitySettings,
         }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),

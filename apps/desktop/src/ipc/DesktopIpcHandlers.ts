@@ -1,6 +1,11 @@
 import * as Effect from "effect/Effect";
 
 import * as DesktopIpc from "./DesktopIpc.ts";
+import {
+  getCommercialAuthState,
+  signInCommercialAuth,
+  signOutCommercialAuth,
+} from "./methods/commercialAuth.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import {
   getSavedEnvironmentRegistry,
@@ -48,6 +53,9 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handleSync(getAppBranding);
   yield* ipc.handleSync(getLocalEnvironmentBootstrap);
 
+  yield* ipc.handle(getCommercialAuthState);
+  yield* ipc.handle(signInCommercialAuth);
+  yield* ipc.handle(signOutCommercialAuth);
   yield* ipc.handle(getClientSettings);
   yield* ipc.handle(setClientSettings);
   yield* ipc.handle(getSavedEnvironmentRegistry);

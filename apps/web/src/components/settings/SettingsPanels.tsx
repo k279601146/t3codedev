@@ -1,9 +1,19 @@
-import { ArchiveIcon, ArchiveX, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveX,
+  LoaderIcon,
+  LogInIcon,
+  LogOutIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  ShieldCheckIcon,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultInstanceIdForDriver,
+  type DesktopCommercialAuthState,
   type DesktopUpdateChannel,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
@@ -11,6 +21,7 @@ import {
   type ProviderInstanceId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
+import { DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL } from "@t3tools/shared/commercialEngine";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -374,6 +385,187 @@ function AboutVersionSection() {
         />
       ) : null}
     </>
+  );
+}
+
+function CommercialGatewaySection() {
+  const [authState, setAuthState] = useState<DesktopCommercialAuthState | null>(null);
+  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL);
+  const [webAccessToken, setWebAccessToken] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+
+  const bridge = typeof window !== "undefined" ? window.desktopBridge : undefined;
+  const canManageCommercialAuth =
+    bridge?.getCommercialAuthState && bridge.signInCommercialAuth && bridge.signOutCommercialAuth;
+
+  useEffect(() => {
+    if (!bridge?.getCommercialAuthState) return;
+    let disposed = false;
+    void bridge
+      .getCommercialAuthState()
+      .then((state) => {
+        if (disposed) return;
+        setAuthState(state);
+        setGatewayBaseUrl(state.gatewayBaseUrl);
+      })
+      .catch((error: unknown) => {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not load gateway session",
+            description: error instanceof Error ? error.message : "Gateway session is unavailable.",
+          }),
+        );
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [bridge]);
+
+  const handleSignIn = useCallback(() => {
+    if (!bridge?.signInCommercialAuth) return;
+    setIsWorking(true);
+    void bridge
+      .signInCommercialAuth({
+        gatewayBaseUrl,
+        webAccessToken,
+      })
+      .then((state) => {
+        setAuthState(state);
+        setGatewayBaseUrl(state.gatewayBaseUrl);
+        setWebAccessToken("");
+        toastManager.add(
+          stackedThreadToast({
+            type: "success",
+            title: "Commercial gateway connected",
+            description: state.userLabel ? `Signed in as ${state.userLabel}.` : "IDE token saved.",
+          }),
+        );
+      })
+      .catch((error: unknown) => {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not connect gateway",
+            description: error instanceof Error ? error.message : "Gateway sign-in failed.",
+          }),
+        );
+      })
+      .finally(() => {
+        setIsWorking(false);
+      });
+  }, [bridge, gatewayBaseUrl, webAccessToken]);
+
+  const handleSignOut = useCallback(() => {
+    if (!bridge?.signOutCommercialAuth) return;
+    setIsWorking(true);
+    void bridge
+      .signOutCommercialAuth()
+      .then((state) => {
+        setAuthState(state);
+        setGatewayBaseUrl(state.gatewayBaseUrl);
+      })
+      .catch((error: unknown) => {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not clear gateway session",
+            description: error instanceof Error ? error.message : "Gateway sign-out failed.",
+          }),
+        );
+      })
+      .finally(() => {
+        setIsWorking(false);
+      });
+  }, [bridge]);
+
+  if (!canManageCommercialAuth) {
+    return null;
+  }
+
+  const signedIn = authState?.signedIn ?? false;
+  const canSignIn = gatewayBaseUrl.trim().length > 0 && webAccessToken.trim().length > 0;
+
+  return (
+    <SettingsSection title="Commercial Gateway">
+      <SettingsRow
+        title={
+          <span className="inline-flex items-center gap-2">
+            <ShieldCheckIcon className="size-3.5 text-muted-foreground" />
+            {signedIn ? "Connected" : "Not connected"}
+          </span>
+        }
+        description={
+          signedIn
+            ? (authState?.userLabel ?? "IDE token is encrypted on this device.")
+            : "Connect with a gateway-issued user token."
+        }
+        control={
+          signedIn ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={isWorking}
+              onClick={handleSignOut}
+            >
+              {isWorking ? (
+                <LoaderIcon className="size-3 animate-spin" />
+              ) : (
+                <LogOutIcon className="size-3" />
+              )}
+              <span>Sign Out</span>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="xs"
+              variant="default"
+              disabled={isWorking || !canSignIn}
+              onClick={handleSignIn}
+            >
+              {isWorking ? (
+                <LoaderIcon className="size-3 animate-spin" />
+              ) : (
+                <LogInIcon className="size-3" />
+              )}
+              <span>Connect</span>
+            </Button>
+          )
+        }
+      />
+      <SettingsRow
+        title="Gateway URL"
+        description="OpenAI-compatible sub2api endpoint."
+        control={
+          <DraftInput
+            className="w-full sm:w-80"
+            value={gatewayBaseUrl}
+            onCommit={setGatewayBaseUrl}
+            placeholder="https://api.yourservice.com/v1"
+            spellCheck={false}
+            aria-label="Commercial gateway URL"
+          />
+        }
+      />
+      {!signedIn ? (
+        <SettingsRow
+          title="Web token"
+          description="Existing web login JWT used once to issue an IDE token."
+          control={
+            <DraftInput
+              className="w-full sm:w-80"
+              value={webAccessToken}
+              onCommit={setWebAccessToken}
+              placeholder="eyJ..."
+              spellCheck={false}
+              type="password"
+              aria-label="Commercial gateway web access token"
+            />
+          }
+        />
+      ) : null}
+    </SettingsSection>
   );
 }
 
@@ -890,6 +1082,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <CommercialGatewaySection />
 
       <SettingsSection title="About">
         {isElectron ? (

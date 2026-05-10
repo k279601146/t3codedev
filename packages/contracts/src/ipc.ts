@@ -228,6 +228,32 @@ export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
   bootstrapToken: Schema.optionalKey(Schema.String),
 });
 
+export interface DesktopCommercialAuthState {
+  gatewayBaseUrl: string;
+  signedIn: boolean;
+  authenticatedAt: string | null;
+  tokenExpiresAt: string | null;
+  userLabel: string | null;
+}
+
+export interface DesktopCommercialAuthSignInInput {
+  gatewayBaseUrl: string;
+  webAccessToken: string;
+}
+
+export const DesktopCommercialAuthStateSchema = Schema.Struct({
+  gatewayBaseUrl: Schema.String,
+  signedIn: Schema.Boolean,
+  authenticatedAt: Schema.NullOr(Schema.String),
+  tokenExpiresAt: Schema.NullOr(Schema.String),
+  userLabel: Schema.NullOr(Schema.String),
+});
+
+export const DesktopCommercialAuthSignInInputSchema = Schema.Struct({
+  gatewayBaseUrl: Schema.String,
+  webAccessToken: Schema.String,
+});
+
 export const DesktopSshEnvironmentTargetSchema = Schema.Struct({
   alias: Schema.String,
   hostname: Schema.String,
@@ -370,6 +396,11 @@ export const PickFolderOptionsSchema = Schema.Struct({
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
+  getCommercialAuthState?: () => Promise<DesktopCommercialAuthState>;
+  signInCommercialAuth?: (
+    input: DesktopCommercialAuthSignInInput,
+  ) => Promise<DesktopCommercialAuthState>;
+  signOutCommercialAuth?: () => Promise<DesktopCommercialAuthState>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
   getSavedEnvironmentRegistry: () => Promise<readonly PersistedSavedEnvironmentRecord[]>;

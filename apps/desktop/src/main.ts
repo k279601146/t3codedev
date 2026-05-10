@@ -34,6 +34,7 @@ import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./app/DesktopLifecycle.ts";
 import * as DesktopObservability from "./app/DesktopObservability.ts";
 import * as DesktopServerExposure from "./backend/DesktopServerExposure.ts";
+import * as DesktopCommercialAuth from "./settings/DesktopCommercialAuth.ts";
 import * as DesktopClientSettings from "./settings/DesktopClientSettings.ts";
 import * as DesktopSavedEnvironments from "./settings/DesktopSavedEnvironments.ts";
 import * as DesktopAppSettings from "./settings/DesktopAppSettings.ts";
@@ -110,6 +111,7 @@ const desktopFoundationLayer = Layer.mergeAll(
   DesktopState.layer,
   DesktopLifecycle.layerShutdown,
   DesktopAppSettings.layer,
+  DesktopCommercialAuth.layer,
   DesktopClientSettings.layer,
   DesktopSavedEnvironments.layer,
   DesktopAssets.layer,
