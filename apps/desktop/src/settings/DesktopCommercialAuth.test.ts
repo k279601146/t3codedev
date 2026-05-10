@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
+import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as DesktopCommercialAuth from "./DesktopCommercialAuth.ts";
 
 const textDecoder = new TextDecoder();
@@ -51,6 +52,12 @@ function makeLayer(baseDir: string, options?: { readonly safeStorageAvailable?: 
   return DesktopCommercialAuth.layer.pipe(
     Layer.provideMerge(environmentLayer),
     Layer.provideMerge(makeSafeStorageLayer({ available: options?.safeStorageAvailable ?? true })),
+    Layer.provideMerge(
+      Layer.succeed(ElectronShell.ElectronShell, {
+        openExternal: () => Effect.succeed(true),
+        copyText: () => Effect.void,
+      } satisfies ElectronShell.ElectronShellShape),
+    ),
     Layer.provideMerge(NodeServices.layer),
   );
 }

@@ -14,6 +14,8 @@ export const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
 export const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
 export const GET_COMMERCIAL_AUTH_STATE_CHANNEL = "desktop:get-commercial-auth-state";
 export const SIGN_IN_COMMERCIAL_AUTH_CHANNEL = "desktop:sign-in-commercial-auth";
+export const SIGN_IN_COMMERCIAL_AUTH_WITH_BROWSER_CHANNEL =
+  "desktop:sign-in-commercial-auth-with-browser";
 export const SIGN_OUT_COMMERCIAL_AUTH_CHANNEL = "desktop:sign-out-commercial-auth";
 export const GET_CLIENT_SETTINGS_CHANNEL = "desktop:get-client-settings";
 export const SET_CLIENT_SETTINGS_CHANNEL = "desktop:set-client-settings";

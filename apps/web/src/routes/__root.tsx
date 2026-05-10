@@ -7,11 +7,16 @@ import {
   useLocation,
   useNavigate,
 } from "@tanstack/react-router";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import {
+  CommercialGatewayLoginGate,
+  CommercialGatewayLoginPending,
+  useDesktopCommercialAuthGate,
+} from "../components/auth/CommercialGatewayLoginGate";
 import { CommandPalette } from "../components/CommandPalette";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
@@ -102,6 +107,10 @@ function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+  const [commercialAuthAccepted, setCommercialAuthAccepted] = useState(false);
+  const commercialAuthGate = useDesktopCommercialAuthGate(
+    pathname !== "/pair" && primaryEnvironmentAuthenticated,
+  );
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -114,6 +123,22 @@ function RootRouteView() {
 
   if (pathname === "/pair") {
     return <Outlet />;
+  }
+
+  if (primaryEnvironmentAuthenticated && !commercialAuthAccepted) {
+    if (commercialAuthGate.status === "loading") {
+      return <CommercialGatewayLoginPending />;
+    }
+
+    if (commercialAuthGate.status === "requires-sign-in") {
+      return (
+        <CommercialGatewayLoginGate
+          authState={commercialAuthGate.authState}
+          errorMessage={commercialAuthGate.errorMessage}
+          onAuthenticated={() => setCommercialAuthAccepted(true)}
+        />
+      );
+    }
   }
 
   if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {

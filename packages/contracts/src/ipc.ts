@@ -241,6 +241,10 @@ export interface DesktopCommercialAuthSignInInput {
   webAccessToken: string;
 }
 
+export interface DesktopCommercialAuthBrowserSignInInput {
+  gatewayBaseUrl: string;
+}
+
 export const DesktopCommercialAuthStateSchema = Schema.Struct({
   gatewayBaseUrl: Schema.String,
   signedIn: Schema.Boolean,
@@ -252,6 +256,10 @@ export const DesktopCommercialAuthStateSchema = Schema.Struct({
 export const DesktopCommercialAuthSignInInputSchema = Schema.Struct({
   gatewayBaseUrl: Schema.String,
   webAccessToken: Schema.String,
+});
+
+export const DesktopCommercialAuthBrowserSignInInputSchema = Schema.Struct({
+  gatewayBaseUrl: Schema.String,
 });
 
 export const DesktopSshEnvironmentTargetSchema = Schema.Struct({
@@ -399,6 +407,9 @@ export interface DesktopBridge {
   getCommercialAuthState?: () => Promise<DesktopCommercialAuthState>;
   signInCommercialAuth?: (
     input: DesktopCommercialAuthSignInInput,
+  ) => Promise<DesktopCommercialAuthState>;
+  signInCommercialAuthWithBrowser?: (
+    input: DesktopCommercialAuthBrowserSignInInput,
   ) => Promise<DesktopCommercialAuthState>;
   signOutCommercialAuth?: () => Promise<DesktopCommercialAuthState>;
   getClientSettings: () => Promise<ClientSettings | null>;

@@ -1,4 +1,5 @@
 import {
+  type DesktopCommercialAuthBrowserSignInInput,
   type DesktopCommercialAuthSignInInput,
   type DesktopCommercialAuthState,
 } from "@t3tools/contracts";
@@ -8,6 +9,11 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import { resilientFetch } from "@t3tools/shared/Net";
+import * as Crypto from "node:crypto";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - OAuth PKCE desktop login needs a temporary loopback callback listener.
+import * as Http from "node:http";
+import type * as Net from "node:net";
+import { clearTimeout, setTimeout } from "node:timers";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
@@ -24,6 +30,7 @@ import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
+import * as ElectronShell from "../electron/ElectronShell.ts";
 
 export interface DesktopCommercialAuthCredentials {
   readonly gatewayBaseUrl: string;
@@ -93,6 +100,16 @@ export class DesktopCommercialAuthExchangeError extends Data.TaggedError(
   }
 }
 
+export class DesktopCommercialAuthPKCEError extends Data.TaggedError(
+  "DesktopCommercialAuthPKCEError",
+)<{
+  readonly cause: unknown;
+}> {
+  override get message() {
+    return this.cause instanceof Error ? this.cause.message : "Failed to complete browser sign-in.";
+  }
+}
+
 export type DesktopCommercialAuthGetCredentialsError =
   | DesktopCommercialAuthSecretDecodeError
   | ElectronSafeStorage.ElectronSafeStorageAvailabilityError
@@ -100,6 +117,7 @@ export type DesktopCommercialAuthGetCredentialsError =
 
 export type DesktopCommercialAuthSignInError =
   | DesktopCommercialAuthExchangeError
+  | DesktopCommercialAuthPKCEError
   | DesktopCommercialAuthWriteError
   | ElectronSafeStorage.ElectronSafeStorageAvailabilityError
   | ElectronSafeStorage.ElectronSafeStorageEncryptError;
@@ -112,6 +130,9 @@ export interface DesktopCommercialAuthShape {
   >;
   readonly signIn: (
     input: DesktopCommercialAuthSignInInput,
+  ) => Effect.Effect<DesktopCommercialAuthState, DesktopCommercialAuthSignInError>;
+  readonly signInWithBrowser: (
+    input: DesktopCommercialAuthBrowserSignInInput,
   ) => Effect.Effect<DesktopCommercialAuthState, DesktopCommercialAuthSignInError>;
   readonly signOut: Effect.Effect<DesktopCommercialAuthState, DesktopCommercialAuthWriteError>;
 }
@@ -228,6 +249,16 @@ interface IDETokenExchangeResult {
   readonly userLabel: string | null;
 }
 
+interface PKCEAuthorizationCode {
+  readonly code: string;
+  readonly redirectUri: string;
+}
+
+const IDE_CLIENT_ID = "t3code-desktop";
+const PKCE_CALLBACK_HOST = "127.0.0.1";
+const PKCE_CALLBACK_PATH = "/callback";
+const PKCE_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+
 function getObjectProperty(record: unknown, key: string): unknown {
   return typeof record === "object" && record !== null
     ? (record as Record<string, unknown>)[key]
@@ -264,6 +295,139 @@ function parseExchangePayload(payload: unknown): IDETokenExchangeResult {
     expiresIn,
     userLabel: resolveUserLabel(getObjectProperty(data, "user")),
   };
+}
+
+function base64Url(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64url");
+}
+
+function makePKCEVerifier(): string {
+  return base64Url(Crypto.randomBytes(32));
+}
+
+function makePKCEChallenge(verifier: string): string {
+  return Crypto.createHash("sha256").update(verifier).digest("base64url");
+}
+
+function makeDeviceId(environment: DesktopEnvironment.DesktopEnvironmentShape): string {
+  return Crypto.createHash("sha256")
+    .update(`${environment.baseDir}:${process.platform}:${process.arch}`)
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function resolveAuthAuthorizeEndpoint(gatewayBaseUrl: string): string {
+  const url = new URL(gatewayBaseUrl);
+  return new URL("/ide/auth/authorize", url.origin).toString();
+}
+
+function buildAuthorizeUrl(input: {
+  readonly gatewayBaseUrl: string;
+  readonly codeChallenge: string;
+  readonly redirectUri: string;
+}): string {
+  const url = new URL(resolveAuthAuthorizeEndpoint(input.gatewayBaseUrl));
+  url.searchParams.set("code_challenge", input.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("redirect_uri", input.redirectUri);
+  url.searchParams.set("client_id", IDE_CLIENT_ID);
+  return url.toString();
+}
+
+function serverAddressPort(address: string | Net.AddressInfo | null): number {
+  if (typeof address === "object" && address !== null) {
+    return address.port;
+  }
+  throw new Error("Could not reserve a local OAuth callback port.");
+}
+
+function waitForPKCECallback(
+  openAuthorizeUrl: (authorizeUrl: string) => Promise<boolean>,
+  input: {
+    readonly gatewayBaseUrl: string;
+    readonly codeChallenge: string;
+  },
+): Promise<PKCEAuthorizationCode> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const server = Http.createServer((request, response) => {
+      const requestUrl = new URL(request.url ?? "/", `http://${PKCE_CALLBACK_HOST}`);
+      if (requestUrl.pathname !== PKCE_CALLBACK_PATH) {
+        response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Not found");
+        return;
+      }
+
+      const error = requestUrl.searchParams.get("error");
+      const code = requestUrl.searchParams.get("code");
+      if (error || !code) {
+        response.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        response.end("<!doctype html><title>Sign-in failed</title><p>Sign-in failed.</p>");
+        finish(
+          null,
+          new Error(
+            error ? `Gateway authorization failed: ${error}` : "Missing authorization code.",
+          ),
+        );
+        return;
+      }
+
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(
+        "<!doctype html><title>Signed in</title><p>Sign-in complete. You can return to T3 Code.</p>",
+      );
+      finish({ code, redirectUri }, null);
+    });
+
+    // @effect-diagnostics-next-line globalTimers:off - This timeout is tied to a Node HTTP server created inside the same Promise.
+    const timeout = setTimeout(() => {
+      finish(null, new Error("Timed out waiting for browser sign-in."));
+    }, PKCE_LOGIN_TIMEOUT_MS);
+
+    let redirectUri = "";
+    const closeServer = () => {
+      clearTimeout(timeout);
+      if (server.listening) {
+        server.close();
+      }
+    };
+
+    const finish = (result: PKCEAuthorizationCode | null, error: Error | null) => {
+      if (settled) return;
+      settled = true;
+      closeServer();
+      if (error) {
+        reject(error);
+      } else if (result) {
+        resolve(result);
+      } else {
+        reject(new Error("Browser sign-in did not return an authorization code."));
+      }
+    };
+
+    server.once("error", (error) => {
+      finish(null, error);
+    });
+
+    server.listen(0, PKCE_CALLBACK_HOST, () => {
+      redirectUri = `http://${PKCE_CALLBACK_HOST}:${serverAddressPort(server.address())}${PKCE_CALLBACK_PATH}`;
+      const authorizeUrl = buildAuthorizeUrl({
+        gatewayBaseUrl: input.gatewayBaseUrl,
+        codeChallenge: input.codeChallenge,
+        redirectUri,
+      });
+      void openAuthorizeUrl(authorizeUrl).then(
+        (opened) => {
+          if (!opened) {
+            finish(null, new Error("Could not open the browser for gateway sign-in."));
+          }
+        },
+        (error: unknown) => {
+          finish(null, error instanceof Error ? error : new Error("Could not open the browser."));
+        },
+      );
+    });
+  });
 }
 
 function exchangeWebTokenForIDEToken(
@@ -304,6 +468,46 @@ function exchangeWebTokenForIDEToken(
   });
 }
 
+function exchangePKCECodeForIDEToken(input: {
+  readonly gatewayBaseUrl: string;
+  readonly code: string;
+  readonly codeVerifier: string;
+  readonly clientVersion: string;
+  readonly platform: string;
+  readonly deviceId: string;
+}): Effect.Effect<IDETokenExchangeResult, DesktopCommercialAuthExchangeError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const gatewayBaseUrl = normalizeGatewayBaseUrl(input.gatewayBaseUrl);
+      const response = await resilientFetch(resolveAuthTokenEndpoint(gatewayBaseUrl), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: input.code,
+          code_verifier: input.codeVerifier,
+          client_id: IDE_CLIENT_ID,
+          client_version: input.clientVersion,
+          platform: input.platform,
+          device_id: input.deviceId,
+        }),
+        maxRetries: 2,
+        timeoutMs: 30_000,
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = readString(payload, "message") ?? readString(payload, "error");
+        throw new Error(message ?? `Gateway token exchange failed with HTTP ${response.status}.`);
+      }
+
+      return parseExchangePayload(payload);
+    },
+    catch: (cause) => new DesktopCommercialAuthExchangeError({ cause }),
+  });
+}
+
 function toState(document: CommercialAuthDocument): DesktopCommercialAuthState {
   return {
     gatewayBaseUrl: document.gatewayBaseUrl,
@@ -321,6 +525,9 @@ export const layer = Layer.effect(
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const safeStorage = yield* ElectronSafeStorage.ElectronSafeStorage;
+    const shell = yield* ElectronShell.ElectronShell;
+    const shellContext = yield* Effect.context<ElectronShell.ElectronShell>();
+    const runShellPromise = Effect.runPromiseWith(shellContext);
 
     const writeAuthDocument = (document: CommercialAuthDocument) =>
       writeDocument({
@@ -353,6 +560,55 @@ export const layer = Layer.effect(
         const exchanged = yield* exchangeWebTokenForIDEToken({
           ...input,
           gatewayBaseUrl,
+        });
+
+        if (!(yield* safeStorage.isEncryptionAvailable)) {
+          return yield* new ElectronSafeStorage.ElectronSafeStorageAvailabilityError({
+            cause: new Error("safeStorage encryption is unavailable"),
+          });
+        }
+
+        const now = yield* DateTime.now;
+        const tokenExpiresAt =
+          exchanged.expiresIn !== null && exchanged.expiresIn > 0
+            ? DateTime.formatIso(DateTime.add(now, { seconds: exchanged.expiresIn }))
+            : null;
+        const document: CommercialAuthDocument = {
+          version: 1,
+          gatewayBaseUrl,
+          encryptedIdeJwt: Encoding.encodeBase64(
+            yield* safeStorage.encryptString(exchanged.accessToken),
+          ),
+          authenticatedAt: DateTime.formatIso(now),
+          tokenExpiresAt,
+          userLabel: exchanged.userLabel,
+        };
+
+        yield* writeAuthDocument(document);
+        return toState(document);
+      }),
+      signInWithBrowser: Effect.fn("desktop.commercialAuth.signInWithBrowser")(function* (input) {
+        const gatewayBaseUrl = normalizeGatewayBaseUrl(input.gatewayBaseUrl);
+        const codeVerifier = makePKCEVerifier();
+        const codeChallenge = makePKCEChallenge(codeVerifier);
+        const authorization = yield* Effect.tryPromise({
+          try: () =>
+            waitForPKCECallback(
+              (authorizeUrl) => runShellPromise(shell.openExternal(authorizeUrl)),
+              {
+                gatewayBaseUrl,
+                codeChallenge,
+              },
+            ),
+          catch: (cause) => new DesktopCommercialAuthPKCEError({ cause }),
+        });
+        const exchanged = yield* exchangePKCECodeForIDEToken({
+          gatewayBaseUrl,
+          code: authorization.code,
+          codeVerifier,
+          clientVersion: environment.appVersion,
+          platform: process.platform,
+          deviceId: makeDeviceId(environment),
         });
 
         if (!(yield* safeStorage.isEncryptionAvailable)) {
@@ -425,6 +681,13 @@ export const layerTest = (input?: {
         getState: Ref.get(stateRef),
         getCredentials: Ref.get(credentialRef),
         signIn: (request) =>
+          Ref.updateAndGet(stateRef, (previous) => ({
+            ...previous,
+            gatewayBaseUrl: request.gatewayBaseUrl,
+            signedIn: true,
+            authenticatedAt: "2026-05-10T00:00:00.000Z",
+          })),
+        signInWithBrowser: (request) =>
           Ref.updateAndGet(stateRef, (previous) => ({
             ...previous,
             gatewayBaseUrl: request.gatewayBaseUrl,
