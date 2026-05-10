@@ -1,5 +1,6 @@
 import {
   type DesktopCommercialAuthBrowserSignInInput,
+  type DesktopCommercialAuthBrowserSignInCancelInput,
   type DesktopCommercialAuthSignInInput,
   type DesktopCommercialAuthState,
 } from "@t3tools/contracts";
@@ -134,6 +135,9 @@ export interface DesktopCommercialAuthShape {
   readonly signInWithBrowser: (
     input: DesktopCommercialAuthBrowserSignInInput,
   ) => Effect.Effect<DesktopCommercialAuthState, DesktopCommercialAuthSignInError>;
+  readonly cancelBrowserSignIn: (
+    input: DesktopCommercialAuthBrowserSignInCancelInput,
+  ) => Effect.Effect<void>;
   readonly signOut: Effect.Effect<DesktopCommercialAuthState, DesktopCommercialAuthWriteError>;
 }
 
@@ -259,6 +263,8 @@ const PKCE_CALLBACK_HOST = "127.0.0.1";
 const PKCE_CALLBACK_PATH = "/callback";
 const PKCE_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
+const activePKCESignIns = new Map<string, () => void>();
+
 function getObjectProperty(record: unknown, key: string): unknown {
   return typeof record === "object" && record !== null
     ? (record as Record<string, unknown>)[key]
@@ -334,6 +340,96 @@ function buildAuthorizeUrl(input: {
   return url.toString();
 }
 
+function signInSuccessHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Signed in to T3 Code</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: start center;
+        background: #fff;
+        color: #050505;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        margin-top: 17vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .icon {
+        width: 62px;
+        height: 62px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #e8e8e8;
+        border-radius: 14px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+      }
+      .mark {
+        width: 30px;
+        height: 30px;
+        border: 3px solid currentColor;
+        border-radius: 999px;
+        position: relative;
+      }
+      .mark::before {
+        content: "";
+        position: absolute;
+        left: 7px;
+        top: 9px;
+        width: 5px;
+        height: 5px;
+        border-left: 2px solid currentColor;
+        border-bottom: 2px solid currentColor;
+      }
+      .mark::after {
+        content: "";
+        position: absolute;
+        right: 7px;
+        top: 14px;
+        width: 8px;
+        height: 2px;
+        background: currentColor;
+        border-radius: 999px;
+      }
+      h1 {
+        margin: 24px 0 0;
+        font-size: 32px;
+        line-height: 1.2;
+        font-weight: 500;
+        letter-spacing: 0;
+      }
+      p {
+        margin: 18px 0 0;
+        color: #555;
+        font-size: 15px;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #050505; color: #fafafa; }
+        .icon { border-color: #242424; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+        p { color: #b8b8b8; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="icon" aria-hidden="true"><div class="mark"></div></div>
+      <h1>Signed in to T3 Code</h1>
+      <p>You may now close this page</p>
+    </main>
+  </body>
+</html>`;
+}
+
 function serverAddressPort(address: string | Net.AddressInfo | null): number {
   if (typeof address === "object" && address !== null) {
     return address.port;
@@ -346,6 +442,7 @@ function waitForPKCECallback(
   input: {
     readonly gatewayBaseUrl: string;
     readonly codeChallenge: string;
+    readonly requestId?: string;
   },
 ): Promise<PKCEAuthorizationCode> {
   return new Promise((resolve, reject) => {
@@ -373,9 +470,7 @@ function waitForPKCECallback(
       }
 
       response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      response.end(
-        "<!doctype html><title>Signed in</title><p>Sign-in complete. You can return to T3 Code.</p>",
-      );
+      response.end(signInSuccessHtml());
       finish({ code, redirectUri }, null);
     });
 
@@ -387,6 +482,9 @@ function waitForPKCECallback(
     let redirectUri = "";
     const closeServer = () => {
       clearTimeout(timeout);
+      if (input.requestId) {
+        activePKCESignIns.delete(input.requestId);
+      }
       if (server.listening) {
         server.close();
       }
@@ -408,6 +506,12 @@ function waitForPKCECallback(
     server.once("error", (error) => {
       finish(null, error);
     });
+
+    if (input.requestId) {
+      activePKCESignIns.set(input.requestId, () => {
+        finish(null, new Error("Browser sign-in cancelled."));
+      });
+    }
 
     server.listen(0, PKCE_CALLBACK_HOST, () => {
       redirectUri = `http://${PKCE_CALLBACK_HOST}:${serverAddressPort(server.address())}${PKCE_CALLBACK_PATH}`;
@@ -595,10 +699,16 @@ export const layer = Layer.effect(
           try: () =>
             waitForPKCECallback(
               (authorizeUrl) => runShellPromise(shell.openExternal(authorizeUrl)),
-              {
-                gatewayBaseUrl,
-                codeChallenge,
-              },
+              input.requestId
+                ? {
+                    gatewayBaseUrl,
+                    codeChallenge,
+                    requestId: input.requestId,
+                  }
+                : {
+                    gatewayBaseUrl,
+                    codeChallenge,
+                  },
             ),
           catch: (cause) => new DesktopCommercialAuthPKCEError({ cause }),
         });
@@ -636,6 +746,13 @@ export const layer = Layer.effect(
         yield* writeAuthDocument(document);
         return toState(document);
       }),
+      cancelBrowserSignIn: Effect.fn("desktop.commercialAuth.cancelBrowserSignIn")(
+        function* (input) {
+          yield* Effect.sync(() => {
+            activePKCESignIns.get(input.requestId)?.();
+          });
+        },
+      ),
       signOut: Effect.gen(function* () {
         const document = yield* readDocument(fileSystem, environment.commercialAuthPath);
         const nextDocument: CommercialAuthDocument = {
@@ -694,6 +811,7 @@ export const layerTest = (input?: {
             signedIn: true,
             authenticatedAt: "2026-05-10T00:00:00.000Z",
           })),
+        cancelBrowserSignIn: () => Effect.void,
         signOut: Ref.updateAndGet(stateRef, (previous) => ({
           ...previous,
           signedIn: false,

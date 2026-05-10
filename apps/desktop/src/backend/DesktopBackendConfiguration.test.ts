@@ -302,7 +302,7 @@ describe("DesktopBackendConfiguration", () => {
           const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
           assert.match(engineConfig, /base_url = "https:\/\/api\.example\.com\/v1"/);
-          assert.match(engineConfig, /wire_api = "chat"/);
+          assert.match(engineConfig, /wire_api = "responses"/);
           assert.match(engineConfig, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
           assert.equal(engineConfig.includes("legacy-real-key"), false);
           assert.equal(engineConfig.includes("jwt-token"), false);

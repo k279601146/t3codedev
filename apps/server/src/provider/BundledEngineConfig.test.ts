@@ -29,7 +29,7 @@ describe("BundledEngineConfig", () => {
       config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_BASE_URL,
       "https://api.example.com/v1",
     );
-    assert.equal(config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_WIRE_API, "chat");
+    assert.equal(config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_WIRE_API, "responses");
     assert.equal(
       config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_ENV_KEY,
       COMMERCIAL_ENGINE_IDE_JWT_ENV,
@@ -43,7 +43,7 @@ describe("BundledEngineConfig", () => {
     });
 
     assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
-    assert.match(toml, /wire_api = "chat"/);
+    assert.match(toml, /wire_api = "responses"/);
     assert.match(toml, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
     assert.doesNotMatch(toml, /jwt-token/);
   });

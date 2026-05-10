@@ -22,6 +22,7 @@ import type {
 import { ServerSettingsError } from "@t3tools/contracts";
 
 import { createModelCapabilities } from "@t3tools/shared/model";
+import { resolveCommercialEngineIdeJwt } from "@t3tools/shared/commercialEngine";
 import { buildServerProvider, type ServerProviderDraft } from "../providerSnapshot.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { scopedSafeTeardown } from "./scopedSafeTeardown.ts";
@@ -391,11 +392,34 @@ const makePendingCodexProvider = (
     });
   });
 
-function accountProbeStatus(account: CodexAppServerProviderSnapshot["account"]): {
+function accountProbeStatus(
+  account: CodexAppServerProviderSnapshot["account"],
+  options?: {
+    readonly bundledEngine: boolean;
+    readonly hasCommercialToken: boolean;
+  },
+): {
   readonly status: Exclude<ServerProviderState, "disabled">;
   readonly auth: ServerProvider["auth"];
   readonly message?: string;
 } {
+  if (options?.bundledEngine) {
+    if (options.hasCommercialToken) {
+      return {
+        status: "ready",
+        auth: {
+          status: "authenticated",
+          label: "T3 Code account",
+        },
+      };
+    }
+    return {
+      status: "error",
+      auth: { status: "unauthenticated" },
+      message: "T3 Code is not signed in. Sign in to your account and try again.",
+    };
+  }
+
   const authLabel = codexAccountAuthLabel(account.account);
   const authEmail = codexAccountEmail(account.account);
   const auth = {
@@ -509,7 +533,11 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   }
 
   const snapshot = probeResult.success.value;
-  const accountStatus = accountProbeStatus(snapshot.account);
+  const bundledEngine = resolveBundledEngineConfig(environment) !== undefined;
+  const accountStatus = accountProbeStatus(snapshot.account, {
+    bundledEngine,
+    hasCommercialToken: Boolean(resolveCommercialEngineIdeJwt(environment)),
+  });
 
   return buildServerProvider({
     presentation: getPresentation(environment),

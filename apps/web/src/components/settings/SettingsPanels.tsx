@@ -542,7 +542,7 @@ function CommercialGatewaySection() {
             className="w-full sm:w-80"
             value={gatewayBaseUrl}
             onCommit={setGatewayBaseUrl}
-            placeholder="https://api.yourservice.com/v1"
+            placeholder="http://localhost:3000/v1"
             spellCheck={false}
             aria-label="Commercial gateway URL"
           />

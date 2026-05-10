@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 
 import * as DesktopIpc from "./DesktopIpc.ts";
 import {
+  cancelCommercialAuthBrowserSignIn,
   getCommercialAuthState,
   signInCommercialAuth,
   signInCommercialAuthWithBrowser,
@@ -57,6 +58,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(getCommercialAuthState);
   yield* ipc.handle(signInCommercialAuth);
   yield* ipc.handle(signInCommercialAuthWithBrowser);
+  yield* ipc.handle(cancelCommercialAuthBrowserSignIn);
   yield* ipc.handle(signOutCommercialAuth);
   yield* ipc.handle(getClientSettings);
   yield* ipc.handle(setClientSettings);

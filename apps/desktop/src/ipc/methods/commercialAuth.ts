@@ -1,4 +1,5 @@
 import {
+  DesktopCommercialAuthBrowserSignInCancelInputSchema,
   DesktopCommercialAuthBrowserSignInInputSchema,
   DesktopCommercialAuthSignInInputSchema,
   DesktopCommercialAuthStateSchema,
@@ -53,6 +54,16 @@ export const signInCommercialAuthWithBrowser = makeIpcMethod({
     const state = yield* commercialAuth.signInWithBrowser(input);
     yield* restartBackendAfterAuthChange();
     return state;
+  }),
+});
+
+export const cancelCommercialAuthBrowserSignIn = makeIpcMethod({
+  channel: IpcChannels.CANCEL_COMMERCIAL_AUTH_BROWSER_SIGN_IN_CHANNEL,
+  payload: DesktopCommercialAuthBrowserSignInCancelInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.commercialAuth.cancelBrowserSignIn")(function* (input) {
+    const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+    yield* commercialAuth.cancelBrowserSignIn(input);
   }),
 });
 

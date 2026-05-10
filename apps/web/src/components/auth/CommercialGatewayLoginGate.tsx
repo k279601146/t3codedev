@@ -1,8 +1,8 @@
 import type { DesktopCommercialAuthState } from "@t3tools/contracts";
 import { DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL } from "@t3tools/shared/commercialEngine";
-import { CheckIcon, ExternalLinkIcon, LoaderIcon, LogInIcon } from "lucide-react";
+import { CheckIcon, ExternalLinkIcon, LoaderIcon, LogInIcon, XIcon } from "lucide-react";
 import type React from "react";
-import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
 import { OpenAI } from "../Icons";
@@ -89,6 +89,7 @@ export function CommercialGatewayLoginGate({
   const [isTokenSignIn, setIsTokenSignIn] = useState(false);
   const [showTokenFallback, setShowTokenFallback] = useState(false);
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
+  const browserSignInRequestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (authState?.gatewayBaseUrl) {
@@ -108,20 +109,37 @@ export function CommercialGatewayLoginGate({
 
   const handleBrowserSignIn = useCallback(() => {
     if (!bridge?.signInCommercialAuthWithBrowser) return;
+    if (isBrowserSignIn) {
+      const requestId = browserSignInRequestIdRef.current;
+      if (requestId) {
+        void bridge.cancelCommercialAuthBrowserSignIn?.({ requestId });
+      }
+      browserSignInRequestIdRef.current = null;
+      setIsBrowserSignIn(false);
+      return;
+    }
+
+    const requestId = makeBrowserSignInRequestId();
+    browserSignInRequestIdRef.current = requestId;
     setIsBrowserSignIn(true);
     setCurrentErrorMessage("");
     void bridge
-      .signInCommercialAuthWithBrowser({ gatewayBaseUrl: normalizedGateway })
+      .signInCommercialAuthWithBrowser({ gatewayBaseUrl: normalizedGateway, requestId })
       .then((nextState) => {
+        if (browserSignInRequestIdRef.current !== requestId) return;
         startTransition(() => onAuthenticated(nextState));
       })
       .catch((error: unknown) => {
+        if (browserSignInRequestIdRef.current !== requestId) return;
         setCurrentErrorMessage(errorMessageFromUnknown(error));
       })
       .finally(() => {
-        setIsBrowserSignIn(false);
+        if (browserSignInRequestIdRef.current === requestId) {
+          browserSignInRequestIdRef.current = null;
+          setIsBrowserSignIn(false);
+        }
       });
-  }, [bridge, normalizedGateway, onAuthenticated]);
+  }, [bridge, isBrowserSignIn, normalizedGateway, onAuthenticated]);
 
   const handleTokenSignIn = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -165,16 +183,12 @@ export function CommercialGatewayLoginGate({
         <div className="mt-8 flex w-full flex-col gap-3">
           <Button
             className="h-12 w-full rounded-full border-neutral-900 bg-neutral-900 text-[15px] text-white shadow-none hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
-            disabled={isWorking || !canBrowserSignIn}
+            disabled={isTokenSignIn || !canBrowserSignIn}
             onClick={handleBrowserSignIn}
             size="lg"
           >
-            {isBrowserSignIn ? (
-              <LoaderIcon className="size-4 animate-spin" />
-            ) : (
-              <OpenAI className="size-4" />
-            )}
-            <span>{isBrowserSignIn ? "等待浏览器授权" : "使用账户继续"}</span>
+            {isBrowserSignIn ? <XIcon className="size-4" /> : <OpenAI className="size-4" />}
+            <span>{isBrowserSignIn ? "取消登录" : "使用账户继续"}</span>
             {!isBrowserSignIn ? <ExternalLinkIcon className="size-4 opacity-70" /> : null}
           </Button>
 
@@ -277,6 +291,13 @@ function resolveRegisterUrl(gatewayBaseUrl: string): string {
     url.hash = "";
     return url.toString();
   } catch {
-    return "https://api.yourservice.com/register";
+    return "http://localhost:3000/register";
   }
+}
+
+function makeBrowserSignInRequestId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
