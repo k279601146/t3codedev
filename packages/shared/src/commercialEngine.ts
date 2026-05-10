@@ -3,9 +3,13 @@ export const COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME = "MyService";
 export const COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV = "MYIDE_GATEWAY_BASE_URL";
 export const COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV = "MYIDE_API_URL";
 export const COMMERCIAL_ENGINE_IDE_JWT_ENV = "MYIDE_IDE_JWT";
+export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV = "MYIDE_WINDOWS_SANDBOX";
 
 export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "https://api.yourservice.com/v1";
 export const COMMERCIAL_ENGINE_WIRE_API = "chat";
+export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_MODES = ["unelevated", "elevated"] as const;
+export type CommercialEngineWindowsSandboxMode =
+  (typeof COMMERCIAL_ENGINE_WINDOWS_SANDBOX_MODES)[number];
 
 export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
   "PATH",
@@ -48,6 +52,15 @@ export function resolveCommercialEngineIdeJwt(
   return token && token.length > 0 ? token : undefined;
 }
 
+export function resolveCommercialEngineWindowsSandboxMode(
+  env: NodeJS.ProcessEnv = process.env,
+): CommercialEngineWindowsSandboxMode {
+  const raw = getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV)
+    ?.trim()
+    .toLowerCase();
+  return raw === "elevated" ? "elevated" : "unelevated";
+}
+
 function tomlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -58,7 +71,10 @@ function tomlStringArray(values: ReadonlyArray<string>): string {
 
 export function generateCommercialEngineTomlConfig(env: NodeJS.ProcessEnv = process.env): string {
   const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(env);
-  const windowsConfig = process.platform === "win32" ? '[windows]\nsandbox = "unelevated"' : "";
+  const windowsConfig =
+    process.platform === "win32"
+      ? `[windows]\nsandbox = ${tomlString(resolveCommercialEngineWindowsSandboxMode(env))}`
+      : "";
 
   return `
 model_provider = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_ID)}

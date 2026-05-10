@@ -33,6 +33,7 @@ import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import { ProviderSessionReaper } from "./provider/Services/ProviderSessionReaper.ts";
+import { ProjectWorkspaceConfig } from "./workspace/ProjectWorkspaceConfig.ts";
 import {
   formatHeadlessServeOutput,
   formatHostForUrl,
@@ -173,6 +174,7 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
   const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngineService;
+  const projectWorkspaceConfig = yield* ProjectWorkspaceConfig;
   const path = yield* Path.Path;
 
   let bootstrapProjectId: ProjectId | undefined;
@@ -189,8 +191,22 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
       if (Option.isNone(existingProject)) {
         const createdAt = DateTime.formatIso(yield* DateTime.now);
         nextProjectId = ProjectId.make(crypto.randomUUID());
-        const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
-        nextProjectDefaultModelSelection = getAutoBootstrapDefaultModelSelection();
+        const workspaceConfig = yield* projectWorkspaceConfig.read(serverConfig.cwd);
+        const configuredProjectName = Option.isSome(workspaceConfig)
+          ? workspaceConfig.value.project.name
+          : undefined;
+        const configuredDefaultModel = Option.isSome(workspaceConfig)
+          ? workspaceConfig.value.project.defaultModel
+          : undefined;
+        const bootstrapProjectTitle =
+          configuredProjectName ?? path.basename(serverConfig.cwd) ?? "project";
+        nextProjectDefaultModelSelection =
+          configuredDefaultModel !== undefined
+            ? {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: configuredDefaultModel,
+              }
+            : getAutoBootstrapDefaultModelSelection();
         yield* orchestrationEngine.dispatch({
           type: "project.create",
           commandId: CommandId.make(crypto.randomUUID()),

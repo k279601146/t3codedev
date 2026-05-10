@@ -79,6 +79,8 @@ export interface DesktopEnvironmentShape {
   readonly engineBinaryPath: string;
   /** 捆绑引擎的隔离数据目录（CODEX_HOME 重定向目标） */
   readonly engineHomePath: string;
+  /** 独立热更新引擎版本目录 */
+  readonly engineVersionsPath: string;
 }
 
 export class DesktopEnvironment extends Context.Service<
@@ -258,6 +260,7 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
       rootDir,
     }),
     engineHomePath: path.join(baseDir, "agent-data"),
+    engineVersionsPath: path.join(stateDir, "engines"),
   });
 });
 

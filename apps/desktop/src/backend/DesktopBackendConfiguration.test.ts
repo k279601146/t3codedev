@@ -10,6 +10,9 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopEngineIntegrity from "../engine/DesktopEngineIntegrity.ts";
+import * as DesktopEngineUpdater from "../engine/DesktopEngineUpdater.ts";
+import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
@@ -94,6 +97,9 @@ const withHarness = <A, E, R>(
       Effect.provide(
         DesktopBackendConfiguration.layer.pipe(
           Layer.provideMerge(DesktopCommercialAuth.layerTest()),
+          Layer.provideMerge(DesktopEngineIntegrity.layerTest),
+          Layer.provideMerge(DesktopEngineUpdater.layerTest()),
+          Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
           Layer.provideMerge(serverExposureLayer),
           Layer.provideMerge(makeEnvironmentLayer(baseDir)),
         ),
@@ -216,6 +222,9 @@ describe("DesktopBackendConfiguration", () => {
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
             Layer.provideMerge(DesktopCommercialAuth.layerTest()),
+            Layer.provideMerge(DesktopEngineIntegrity.layerTest),
+            Layer.provideMerge(DesktopEngineUpdater.layerTest()),
+            Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(
               makeEnvironmentLayer(baseDir, {
@@ -299,6 +308,9 @@ describe("DesktopBackendConfiguration", () => {
                   ideJwt: "stored-jwt",
                 }),
               ),
+              Layer.provideMerge(DesktopEngineIntegrity.layerTest),
+              Layer.provideMerge(DesktopEngineUpdater.layerTest()),
+              Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(makeEnvironmentLayer(baseDir)),
             ),

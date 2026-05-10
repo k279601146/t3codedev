@@ -91,6 +91,10 @@
     "./commercialEngine": {
       "types": "./src/commercialEngine.ts",
       "import": "./src/commercialEngine.ts"
+    },
+    "./workspaceConfig": {
+      "types": "./src/workspaceConfig.ts",
+      "import": "./src/workspaceConfig.ts"
     }
   },
   "scripts": {

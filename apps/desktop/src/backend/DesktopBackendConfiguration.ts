@@ -2,6 +2,8 @@ import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serve
 import {
   COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV,
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
+  COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
+  type CommercialEngineWindowsSandboxMode,
   generateCommercialEngineTomlConfig,
   getCommercialEngineEnvVar,
 } from "@t3tools/shared/commercialEngine";
@@ -16,6 +18,9 @@ import * as Ref from "effect/Ref";
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
+import * as DesktopEngineIntegrity from "../engine/DesktopEngineIntegrity.ts";
+import * as DesktopEngineUpdater from "../engine/DesktopEngineUpdater.ts";
+import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 
@@ -113,6 +118,8 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
   function* (input: {
     readonly bootstrapToken: string;
     readonly commercialCredentials: Option.Option<DesktopCommercialAuth.DesktopCommercialAuthCredentials>;
+    readonly engineBinaryPath: string;
+    readonly windowsSandboxMode: CommercialEngineWindowsSandboxMode;
     readonly observabilitySettings: BackendObservabilitySettings;
   }): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
@@ -144,8 +151,9 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
         // 捆绑引擎路径注入：server 层通过这些环境变量检测捆绑模式
-        MYIDE_ENGINE_PATH: environment.engineBinaryPath,
+        MYIDE_ENGINE_PATH: input.engineBinaryPath,
         MYIDE_ENGINE_HOME: environment.engineHomePath,
+        [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: input.windowsSandboxMode,
         ...commercialEnv,
       },
       bootstrap: {
@@ -178,6 +186,9 @@ export const layer = Layer.effect(
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const fileSystem = yield* FileSystem.FileSystem;
     const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+    const engineIntegrity = yield* DesktopEngineIntegrity.DesktopEngineIntegrity;
+    const engineUpdater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
+    const windowsSandbox = yield* DesktopWindowsSandbox.DesktopWindowsSandbox;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const tokenRef = yield* Ref.make(Option.none<string>());
 
@@ -211,7 +222,11 @@ export const layer = Layer.effect(
             [COMMERCIAL_ENGINE_IDE_JWT_ENV]: credentials.ideJwt,
           }),
         });
-        const tomlConfig = generateCommercialEngineTomlConfig(commercialConfigEnv);
+        const windowsSandboxMode = yield* windowsSandbox.resolveMode;
+        const tomlConfig = generateCommercialEngineTomlConfig({
+          ...commercialConfigEnv,
+          [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: windowsSandboxMode,
+        });
         const configPath =
           environment.engineHomePath + (process.platform === "win32" ? "\\" : "/") + "config.toml";
         yield* fileSystem
@@ -225,6 +240,14 @@ export const layer = Layer.effect(
           );
 
         const bootstrapToken = yield* getOrCreateBootstrapToken(tokenRef);
+        const engineBinaryPath = yield* engineUpdater.getActiveEnginePath;
+        yield* engineIntegrity
+          .ensure(engineBinaryPath)
+          .pipe(
+            Effect.catch((error) =>
+              logBackendConfigurationWarning(error.message).pipe(Effect.andThen(Effect.die(error))),
+            ),
+          );
         const observabilitySettings = yield* readPersistedBackendObservabilitySettings.pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
@@ -232,6 +255,8 @@ export const layer = Layer.effect(
         return yield* resolveBackendStartConfig({
           bootstrapToken,
           commercialCredentials,
+          engineBinaryPath,
+          windowsSandboxMode,
           observabilitySettings,
         }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),

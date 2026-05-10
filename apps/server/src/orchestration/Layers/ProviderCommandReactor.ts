@@ -39,6 +39,7 @@ import {
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { ProjectWorkspaceConfig } from "../../workspace/ProjectWorkspaceConfig.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
@@ -185,6 +186,7 @@ const make = Effect.gen(function* () {
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const projectWorkspaceConfig = yield* ProjectWorkspaceConfig;
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -534,7 +536,22 @@ const make = Effect.gen(function* () {
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
-    const normalizedInput = toNonEmptyProviderInput(input.messageText);
+    const project = yield* resolveProject(thread.projectId);
+    const effectiveCwd = resolveThreadWorkspaceCwd({
+      thread,
+      projects: project ? [project] : [],
+    });
+    const workspaceContext =
+      effectiveCwd !== undefined
+        ? yield* projectWorkspaceConfig.buildPromptContext(effectiveCwd)
+        : Option.none();
+    const promptPrefix =
+      Option.isSome(workspaceContext) && workspaceContext.value.promptPrefix
+        ? workspaceContext.value.promptPrefix
+        : undefined;
+    const normalizedInput = toNonEmptyProviderInput(
+      promptPrefix ? `${promptPrefix}\n\nUser request:\n${input.messageText}` : input.messageText,
+    );
     const normalizedAttachments = input.attachments ?? [];
     const activeSession = yield* providerService
       .listSessions()

@@ -5,10 +5,12 @@ import { describe, it } from "vitest";
 import {
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
   COMMERCIAL_ENGINE_WIRE_API,
+  COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
   generateCommercialEngineTomlConfig,
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineWindowsSandboxMode,
 } from "./commercialEngine.ts";
 
 describe("commercialEngine", () => {
@@ -37,6 +39,22 @@ describe("commercialEngine", () => {
       "jwt-token",
     );
     assert.equal(resolveCommercialEngineIdeJwt({ MYIDE_API_KEY: "legacy-real-key" }), undefined);
+  });
+
+  it("resolves the Windows sandbox mode with a conservative fallback", () => {
+    assert.equal(resolveCommercialEngineWindowsSandboxMode({}), "unelevated");
+    assert.equal(
+      resolveCommercialEngineWindowsSandboxMode({
+        [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: " elevated ",
+      }),
+      "elevated",
+    );
+    assert.equal(
+      resolveCommercialEngineWindowsSandboxMode({
+        [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: "unexpected",
+      }),
+      "unelevated",
+    );
   });
 
   it("generates non-secret codex provider configuration for the bundled engine", () => {

@@ -6,7 +6,12 @@ import {
   type OrchestrationCommand,
   OrchestrationDispatchCommandError,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  ProviderDriverKind,
+  defaultInstanceIdForDriver,
 } from "@t3tools/contracts";
+import { createModelSelection } from "@t3tools/shared/model";
+import { parseMyIdeWorkspaceConfigToml } from "@t3tools/shared/workspaceConfig";
+import * as Option from "effect/Option";
 
 import { createAttachmentId, resolveAttachmentPath } from "../attachmentStore.ts";
 import { ServerConfig } from "../config.ts";
@@ -48,12 +53,34 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
         );
 
     if (command.type === "project.create") {
+      const workspaceRoot = yield* normalizeProjectWorkspaceRootForCreate(
+        command.workspaceRoot,
+        command.createWorkspaceRootIfMissing,
+      );
+      const rawWorkspaceConfig = yield* fileSystem
+        .readFileString(path.join(workspaceRoot, ".myide", "config.toml"))
+        .pipe(Effect.option);
+      const workspaceConfig = Option.isSome(rawWorkspaceConfig)
+        ? Option.some(parseMyIdeWorkspaceConfigToml(rawWorkspaceConfig.value))
+        : Option.none();
+      const configDefaultModel = Option.isSome(workspaceConfig)
+        ? workspaceConfig.value.project.defaultModel
+        : undefined;
+      const configProjectName = Option.isSome(workspaceConfig)
+        ? workspaceConfig.value.project.name
+        : undefined;
       return {
         ...command,
-        workspaceRoot: yield* normalizeProjectWorkspaceRootForCreate(
-          command.workspaceRoot,
-          command.createWorkspaceRootIfMissing,
-        ),
+        ...(configProjectName !== undefined ? { title: configProjectName } : {}),
+        workspaceRoot,
+        ...(command.defaultModelSelection === undefined && configDefaultModel !== undefined
+          ? {
+              defaultModelSelection: createModelSelection(
+                defaultInstanceIdForDriver(ProviderDriverKind.make("codex")),
+                configDefaultModel,
+              ),
+            }
+          : {}),
         createWorkspaceRootIfMissing: command.createWorkspaceRootIfMissing === true,
       } satisfies OrchestrationCommand;
     }

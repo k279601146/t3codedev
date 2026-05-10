@@ -17,10 +17,12 @@ import {
   COMMERCIAL_ENGINE_PROVIDER_ID,
   COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY,
   COMMERCIAL_ENGINE_WIRE_API,
+  COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   generateCommercialEngineTomlConfig,
   getCommercialEngineEnvVar,
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineWindowsSandboxMode,
 } from "@t3tools/shared/commercialEngine";
 
 // ── 环境变量常量 ────────────────────────────────────────────
@@ -101,9 +103,9 @@ export function resolveBundledEngineConfig(
     CODEX_DISABLE_TELEMETRY: "true",
   };
 
-  // Windows 使用 unelevated 沙箱（早期版本）
+  // Windows sandbox can be upgraded by the desktop runtime after installer initialization.
   if (process.platform === "win32") {
-    spawnEnvPatch.CODEX_WINDOWS_SANDBOX = "unelevated";
+    spawnEnvPatch.CODEX_WINDOWS_SANDBOX = resolveCommercialEngineWindowsSandboxMode(env);
   }
 
   if (ideJwt) {
@@ -111,6 +113,10 @@ export function resolveBundledEngineConfig(
   }
   if (engineHome) {
     spawnEnvPatch.CODEX_HOME = engineHome;
+  }
+  const windowsSandboxMode = getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV);
+  if (windowsSandboxMode) {
+    spawnEnvPatch[COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV] = windowsSandboxMode;
   }
 
   return {

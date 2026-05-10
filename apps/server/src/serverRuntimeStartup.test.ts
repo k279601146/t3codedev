@@ -4,6 +4,7 @@ import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -15,6 +16,7 @@ import {
 } from "./orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
+import * as ProjectWorkspaceConfig from "./workspace/ProjectWorkspaceConfig.ts";
 import {
   getAutoBootstrapDefaultModelSelection,
   launchStartupHeartbeat,
@@ -170,7 +172,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
           ),
         streamDomainEvents: Stream.empty,
       } satisfies OrchestrationEngineShape),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(Layer.mergeAll(ProjectWorkspaceConfig.layerEmpty, NodeServices.layer)),
     );
 
     assert.deepStrictEqual(targets, {
@@ -211,7 +213,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when 
           ),
         streamDomainEvents: Stream.empty,
       } satisfies OrchestrationEngineShape),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(Layer.mergeAll(ProjectWorkspaceConfig.layerEmpty, NodeServices.layer)),
     );
 
     assert.equal(typeof targets.bootstrapProjectId, "string");
