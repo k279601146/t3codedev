@@ -6,7 +6,7 @@ import * as Fiber from "effect/Fiber";
 import * as Metric from "effect/Metric";
 import * as TestClock from "effect/testing/TestClock";
 
-import { withMetrics } from "./Metrics.ts";
+import { formatPrometheusMetrics, withMetrics } from "./Metrics.ts";
 
 const hasMetricSnapshot = (
   snapshots: ReadonlyArray<Metric.Metric.Snapshot>,
@@ -155,6 +155,32 @@ describe("withMetrics", () => {
 
       assert.equal(snapshot?.state.count, 1);
       assert.equal(snapshot?.state.sum, 1.5);
+    }),
+  );
+});
+
+describe("formatPrometheusMetrics", () => {
+  it.effect("exports counters and histograms in Prometheus text format", () =>
+    Effect.gen(function* () {
+      const counter = Metric.counter("prometheus_requests_total", {
+        description: "Total requests",
+      });
+      const histogram = Metric.histogram("prometheus_latency_seconds", {
+        description: "Latency",
+        boundaries: Metric.linearBoundaries({ start: 1, width: 1, count: 2 }),
+      });
+
+      yield* Metric.update(Metric.withAttributes(counter, [["route", "/chat"]]), 3);
+      yield* Metric.update(Metric.withAttributes(histogram, [["route", "/chat"]]), 1.5);
+      const output = formatPrometheusMetrics(yield* Metric.snapshot);
+
+      assert.include(output, "# HELP prometheus_requests_total Total requests");
+      assert.include(output, "# TYPE prometheus_requests_total counter");
+      assert.include(output, 'prometheus_requests_total{route="/chat"} 3');
+      assert.include(output, "# TYPE prometheus_latency_seconds histogram");
+      assert.include(output, 'prometheus_latency_seconds_bucket{le="+Inf",route="/chat"} 1');
+      assert.include(output, 'prometheus_latency_seconds_sum{route="/chat"} 1.5');
+      assert.include(output, 'prometheus_latency_seconds_count{route="/chat"} 1');
     }),
   );
 });

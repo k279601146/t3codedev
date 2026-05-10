@@ -17,6 +17,7 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import { normalizeModelSlug } from "@t3tools/shared/model";
+import { buildCommercialEngineProcessEnv } from "@t3tools/shared/commercialEngine";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -45,6 +46,7 @@ import {
   resolveBundledEngineConfig,
   buildBundledSpawnArgs,
   buildSystemSpawnArgs,
+  type BundledEngineResolvedConfig,
 } from "../BundledEngineConfig.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
@@ -65,6 +67,8 @@ const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "unknown thread",
   "does not exist",
 ];
+const CODEX_RUNTIME_EVENT_QUEUE_CAPACITY = 2048;
+const CODEX_SERVER_NOTIFICATION_QUEUE_CAPACITY = 2048;
 
 export const CodexResumeCursorSchema = Schema.Struct({
   threadId: Schema.String,
@@ -107,6 +111,7 @@ export interface CodexSessionRuntimeOptions {
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly resumeCursor?: CodexResumeCursor;
+  readonly prewarmedChild?: ChildProcessSpawner.ChildProcessHandle;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -433,6 +438,68 @@ interface CodexThreadOpenClient {
   ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
 }
 
+function buildCodexProcessEnv(input: {
+  readonly baseEnv: NodeJS.ProcessEnv;
+  readonly resolvedHomePath: string | undefined;
+  readonly bundledConfig: BundledEngineResolvedConfig | undefined;
+}): Record<string, string | undefined> {
+  const patch = {
+    ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),
+    ...(input.bundledConfig?.spawnEnvPatch ?? {}),
+  };
+  if (input.bundledConfig) {
+    return buildCommercialEngineProcessEnv(input.baseEnv, patch);
+  }
+  return {
+    ...input.baseEnv,
+    ...patch,
+  };
+}
+
+export const spawnCodexAppServerChild = (input: {
+  readonly binaryPath: string;
+  readonly homePath: string | undefined;
+  readonly environment: NodeJS.ProcessEnv | undefined;
+  readonly cwd: string;
+}): Effect.Effect<
+  ChildProcessSpawner.ChildProcessHandle,
+  CodexErrors.CodexAppServerSpawnError,
+  ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const runtimeScope = yield* Scope.Scope;
+    const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
+    const baseEnv = input.environment ?? process.env;
+    const bundledConfig = resolveBundledEngineConfig(baseEnv);
+    const effectiveBinaryPath = bundledConfig?.binaryPath ?? input.binaryPath;
+    const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
+    const env = buildCodexProcessEnv({
+      baseEnv,
+      resolvedHomePath,
+      bundledConfig,
+    });
+
+    return yield* spawner
+      .spawn(
+        ChildProcess.make(effectiveBinaryPath, [...spawnArgs], {
+          cwd: input.cwd,
+          env,
+          shell: process.platform === "win32",
+        }),
+      )
+      .pipe(
+        Effect.provideService(Scope.Scope, runtimeScope),
+        Effect.mapError(
+          (cause) =>
+            new CodexErrors.CodexAppServerSpawnError({
+              command: `${effectiveBinaryPath} ${spawnArgs.join(" ")}`,
+              cause,
+            }),
+        ),
+      );
+  });
+
 export const openCodexThread = (input: {
   readonly client: CodexThreadOpenClient;
   readonly threadId: ThreadId;
@@ -704,48 +771,28 @@ export const makeCodexSessionRuntime = (
   ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const runtimeScope = yield* Scope.Scope;
-    const events = yield* Queue.unbounded<ProviderEvent>();
+    const events = yield* Queue.bounded<ProviderEvent>(CODEX_RUNTIME_EVENT_QUEUE_CAPACITY);
     const pendingApprovalsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingApproval>());
     const approvalCorrelationsRef = yield* Ref.make(new Map<string, ApprovalCorrelation>());
     const pendingUserInputsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingUserInput>());
     const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const closedRef = yield* Ref.make(false);
 
-    // `~` is not shell-expanded when env vars are set via
-    // `child_process.spawn`; `expandHomePath` lets a configured
-    // `CODEX_HOME=~/.codex_work` reach codex as an absolute path.
-    const resolvedHomePath = options.homePath ? expandHomePath(options.homePath) : undefined;
-    const baseEnv = options.environment ?? process.env;
-
-    // 检测捆绑引擎模式：使用内嵌的 codex-app-server 二进制 + 自定义配置
-    const bundledConfig = resolveBundledEngineConfig(baseEnv);
-    const effectiveBinaryPath = bundledConfig?.binaryPath ?? options.binaryPath;
-    const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
-    const env = {
-      ...baseEnv,
-      ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-      ...(bundledConfig?.spawnEnvPatch ?? {}),
-    };
-    const child = yield* spawner
-      .spawn(
-        ChildProcess.make(effectiveBinaryPath, [...spawnArgs], {
-          cwd: options.cwd,
-          env,
-          shell: process.platform === "win32",
-        }),
-      )
-      .pipe(
-        Effect.provideService(Scope.Scope, runtimeScope),
-        Effect.mapError(
-          (cause) =>
-            new CodexErrors.CodexAppServerSpawnError({
-              command: `${effectiveBinaryPath} ${spawnArgs.join(" ")}`,
-              cause,
-            }),
-        ),
+    const child =
+      options.prewarmedChild ??
+      (yield* spawnCodexAppServerChild({
+        binaryPath: options.binaryPath,
+        homePath: options.homePath,
+        environment: options.environment,
+        cwd: options.cwd,
+      }).pipe(Effect.provideService(Scope.Scope, runtimeScope)));
+    if (options.prewarmedChild !== undefined) {
+      yield* Scope.addFinalizer(
+        runtimeScope,
+        child.kill({ killSignal: "SIGTERM" }).pipe(Effect.ignore),
       );
+    }
 
     const clientContext = yield* CodexClient.layerChildProcess(child).pipe(
       Layer.build,
@@ -754,7 +801,9 @@ export const makeCodexSessionRuntime = (
     const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
       Effect.provide(clientContext),
     );
-    const serverNotifications = yield* Queue.unbounded<CodexServerNotification>();
+    const serverNotifications = yield* Queue.bounded<CodexServerNotification>(
+      CODEX_SERVER_NOTIFICATION_QUEUE_CAPACITY,
+    );
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
     const sessionCreatedAt = yield* nowIso;

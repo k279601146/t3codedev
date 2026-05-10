@@ -1,4 +1,5 @@
 # 商业化 AI 编程助手 IDE 客户端
+
 ## 最佳实践 · 后续开发方案
 
 > **适用阶段**：已完成 codex-app-server 捆绑集成的基础版本，进入商业化迭代阶段  
@@ -63,14 +64,17 @@ Cursor、Windsurf、GitHub Copilot 等主流 AI 编程助手的共同做法是�
 ```
 
 **客户端只知道：**
+
 - 你的网关地址（`https://api.yourservice.com`，这是正常的）
 - 用户自己的 JWT（从登录接口获取，有有效期）
 
 **客户端永远不知道：**
+
 - 真实 AI 服务的 base_url
 - 真实的 API Key（无论是你的 Key 还是上游的 Key）
 
 用户就算抓包，只能看到：
+
 ```http
 POST https://api.yourservice.com/v1/chat/completions
 Authorization: Bearer eyJhbGc...（JWT，只属于他自己的账号）
@@ -105,12 +109,12 @@ JWT 过期或账号被封，对应的访问权限立即失效，不会影响其�
 
 **各层职责：**
 
-| 层 | 持有什么 | 暴露给谁 |
-|---|---|---|
-| IDE 客户端 | JWT（用户登录凭证） | 用户自己可见，正常 |
-| 你的业务后端 | 用户数据、JWT 签发密钥 | 不对外暴露 |
-| sub2api 网关 | 各模型的真实 Key + 反代 URL | 仅服务端持有，绝不下发 |
-| 第三方反代服务 | 原始 API Key | 仅 sub2api 持有 |
+| 层             | 持有什么                    | 暴露给谁               |
+| -------------- | --------------------------- | ---------------------- |
+| IDE 客户端     | JWT（用户登录凭证）         | 用户自己可见，正常     |
+| 你的业务后端   | 用户数据、JWT 签发密钥      | 不对外暴露             |
+| sub2api 网关   | 各模型的真实 Key + 反代 URL | 仅服务端持有，绝不下发 |
+| 第三方反代服务 | 原始 API Key                | 仅 sub2api 持有        |
 
 ### 🔐 客户端：只存 JWT，按需透传
 
@@ -125,12 +129,12 @@ class AuthStore {
   setJwt(token: string) {
     this.jwt = token;
     // 可选：持久化（加密存储，非明文）
-    safeStorage.isEncryptionAvailable()
-      && app.getPath('userData')
-      && require('fs').writeFileSync(
-          path.join(app.getPath('userData'), 'session.enc'),
-          safeStorage.encryptString(token)
-        );
+    safeStorage.isEncryptionAvailable() &&
+      app.getPath("userData") &&
+      require("fs").writeFileSync(
+        path.join(app.getPath("userData"), "session.enc"),
+        safeStorage.encryptString(token),
+      );
   }
 
   getJwt(): string | null {
@@ -140,8 +144,8 @@ class AuthStore {
   clear() {
     this.jwt = null;
     // 清除持久化文件
-    const encPath = path.join(app.getPath('userData'), 'session.enc');
-    if (require('fs').existsSync(encPath)) require('fs').unlinkSync(encPath);
+    const encPath = path.join(app.getPath("userData"), "session.enc");
+    if (require("fs").existsSync(encPath)) require("fs").unlinkSync(encPath);
   }
 }
 
@@ -152,11 +156,11 @@ export const authStore = new AuthStore();
 // 客户端发起 AI 请求时，只用 JWT
 function buildAIRequestHeaders(): Record<string, string> {
   const jwt = authStore.getJwt();
-  if (!jwt) throw new Error('Not authenticated');
+  if (!jwt) throw new Error("Not authenticated");
 
   return {
-    'Authorization': `Bearer ${jwt}`,
-    'Content-Type': 'application/json',
+    Authorization: `Bearer ${jwt}`,
+    "Content-Type": "application/json",
   };
 }
 
@@ -165,13 +169,13 @@ const child = spawn(enginePath, args, {
   env: {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
-    LANG: process.env.LANG ?? 'en_US.UTF-8',
-    TERM: 'xterm-256color',
+    LANG: process.env.LANG ?? "en_US.UTF-8",
+    TERM: "xterm-256color",
     // base_url 指向你的网关（公开的，不是秘密）
-    OPENAI_BASE_URL: 'https://api.yourservice.com/v1',
+    OPENAI_BASE_URL: "https://api.yourservice.com/v1",
     // API Key 就是 JWT，用户自己的登录凭证
     OPENAI_API_KEY: authStore.getJwt(),
-  }
+  },
 });
 ```
 
@@ -181,28 +185,28 @@ const child = spawn(enginePath, args, {
 // 后端网关中间件（Hono 示例）
 // 这里是 sub2api 内部已经实现的逻辑，你只需要配置
 
-app.use('/v1/*', async (c, next) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Unauthorized' }, 401);
+app.use("/v1/*", async (c, next) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
   }
 
   // 1. 验证 JWT（sub2api 内置）
   const jwt = authHeader.slice(7);
   const payload = await verifyJwt(jwt, JWT_SECRET);
-  if (!payload) return c.json({ error: 'Invalid token' }, 401);
+  if (!payload) return c.json({ error: "Invalid token" }, 401);
 
   // 2. 检查账户状态与配额（sub2api 内置）
   const user = await db.getUserById(payload.sub);
-  if (user.status !== 'active') return c.json({ error: 'Account suspended' }, 403);
-  if (await isQuotaExceeded(user.id)) return c.json({ error: 'Quota exceeded' }, 429);
+  if (user.status !== "active") return c.json({ error: "Account suspended" }, 403);
+  if (await isQuotaExceeded(user.id)) return c.json({ error: "Quota exceeded" }, 429);
 
   // 3. 将请求转发给上游时，替换为真实的 API Key
   // 客户端发来的是 JWT，网关转发时换成真实 Key
   // 整个替换过程在服务端完成，客户端永远看不到真实 Key
-  c.set('userId', user.id);
-  c.set('upstreamKey', process.env.UPSTREAM_API_KEY); // 真实 Key 只存服务端环境变量
-  c.set('upstreamBaseUrl', process.env.UPSTREAM_BASE_URL); // 你购买的反代地址
+  c.set("userId", user.id);
+  c.set("upstreamKey", process.env.UPSTREAM_API_KEY); // 真实 Key 只存服务端环境变量
+  c.set("upstreamBaseUrl", process.env.UPSTREAM_BASE_URL); // 你购买的反代地址
   await next();
 });
 ```
@@ -212,7 +216,7 @@ app.use('/v1/*', async (c, next) => {
 ```typescript
 // ❌ 错误做法 — 所有环境变量泄漏给子进程
 const child = spawn(enginePath, args, {
-  env: { ...process.env }
+  env: { ...process.env },
 });
 
 // ✅ 正确做法 — 最小化白名单
@@ -220,11 +224,11 @@ const child = spawn(enginePath, args, {
   env: {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
-    LANG: process.env.LANG ?? 'en_US.UTF-8',
-    TERM: 'xterm-256color',
-    OPENAI_BASE_URL: 'https://api.yourservice.com/v1',
+    LANG: process.env.LANG ?? "en_US.UTF-8",
+    TERM: "xterm-256color",
+    OPENAI_BASE_URL: "https://api.yourservice.com/v1",
     OPENAI_API_KEY: authStore.getJwt(), // JWT，不是真实 Key
-  }
+  },
 });
 ```
 
@@ -239,8 +243,8 @@ const child = spawn(enginePath, args, {
 
 ```typescript
 // apps/desktop/src/security/integrityCheck.ts
-import crypto from 'node:crypto';
-import fs from 'node:fs';
+import crypto from "node:crypto";
+import fs from "node:fs";
 
 interface BinaryManifest {
   version: string;
@@ -249,20 +253,20 @@ interface BinaryManifest {
 
 export async function verifyBinaryIntegrity(
   binaryPath: string,
-  expectedHash: string
+  expectedHash: string,
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
+    const hash = crypto.createHash("sha256");
     const stream = fs.createReadStream(binaryPath);
-    stream.on('data', chunk => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex') === expectedHash));
-    stream.on('error', reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex") === expectedHash));
+    stream.on("error", reject);
   });
 }
 
 export async function ensureBinaryIntegrity(enginePath: string) {
   const manifest: BinaryManifest = JSON.parse(
-    fs.readFileSync(path.join(process.resourcesPath, 'manifest.json'), 'utf-8')
+    fs.readFileSync(path.join(process.resourcesPath, "manifest.json"), "utf-8"),
   );
   const binaryName = path.basename(enginePath);
   const expectedHash = manifest.binaries[binaryName];
@@ -276,29 +280,26 @@ export async function ensureBinaryIntegrity(enginePath: string) {
 
 ```typescript
 // preload.ts — 只暴露白名单 API
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld('myideAPI', {
+contextBridge.exposeInMainWorld("myideAPI", {
   auth: {
-    login: (credentials: LoginCredentials) =>
-      ipcRenderer.invoke('auth:login', credentials),
-    logout: () => ipcRenderer.invoke('auth:logout'),
-    getUsage: () => ipcRenderer.invoke('auth:getUsage'),
+    login: (credentials: LoginCredentials) => ipcRenderer.invoke("auth:login", credentials),
+    logout: () => ipcRenderer.invoke("auth:logout"),
+    getUsage: () => ipcRenderer.invoke("auth:getUsage"),
   },
   engine: {
-    startSession: (projectPath: string) =>
-      ipcRenderer.invoke('engine:startSession', projectPath),
-    stopSession: (sessionId: string) =>
-      ipcRenderer.invoke('engine:stopSession', sessionId),
+    startSession: (projectPath: string) => ipcRenderer.invoke("engine:startSession", projectPath),
+    stopSession: (sessionId: string) => ipcRenderer.invoke("engine:stopSession", sessionId),
   },
 });
 
 // main.ts — 输入参数严格验证
-ipcMain.handle('engine:startSession', (_event, projectPath: unknown) => {
-  if (typeof projectPath !== 'string') throw new Error('Invalid projectPath');
-  if (!path.isAbsolute(projectPath)) throw new Error('Path must be absolute');
+ipcMain.handle("engine:startSession", (_event, projectPath: unknown) => {
+  if (typeof projectPath !== "string") throw new Error("Invalid projectPath");
+  if (!path.isAbsolute(projectPath)) throw new Error("Path must be absolute");
   const normalized = path.normalize(projectPath);
-  if (normalized.includes('..')) throw new Error('Path traversal detected');
+  if (normalized.includes("..")) throw new Error("Path traversal detected");
   return engineManager.startSession(normalized);
 });
 ```
@@ -323,7 +324,7 @@ class EnginePool {
     this.isWarming = true;
     try {
       this.standbyProcess = await this.spawnEngine();
-      console.log('[Engine] Warm standby process ready');
+      console.log("[Engine] Warm standby process ready");
     } finally {
       this.isWarming = false;
     }
@@ -337,19 +338,19 @@ class EnginePool {
   }
 
   private spawnEngine(): ChildProcess {
-    return spawn(engineUpdater.getActiveEnginePath(), ['serve'], {
+    return spawn(engineUpdater.getActiveEnginePath(), ["serve"], {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        OPENAI_BASE_URL: 'https://api.yourservice.com/v1',
+        OPENAI_BASE_URL: "https://api.yourservice.com/v1",
         OPENAI_API_KEY: authStore.getJwt(),
-      }
+      },
     });
   }
 }
 
 export const enginePool = new EnginePool();
-authStore.on('login', () => enginePool.warmUp());
+authStore.on("login", () => enginePool.warmUp());
 ```
 
 ### ⚡ 流式响应的背压控制
@@ -419,12 +420,12 @@ class EngineManager {
   private readonly RESTART_WINDOW_MS = 60_000;
 
   private attachCrashHandler() {
-    this.process?.on('exit', (code) => {
+    this.process?.on("exit", (code) => {
       if (code === 0) return;
       this.restartCount++;
       const delay = Math.min(1000 * Math.pow(2, this.restartCount), 30_000);
       if (this.restartCount >= this.MAX_RESTARTS) {
-        this.notifyFrontend({ type: 'engine:fatal', message: '引擎反复崩溃，请重启应用' });
+        this.notifyFrontend({ type: "engine:fatal", message: "引擎反复崩溃，请重启应用" });
         return;
       }
       setTimeout(() => this.start(), delay);
@@ -439,7 +440,7 @@ class EngineManager {
 async function resilientFetch(
   url: string,
   options: RequestInit,
-  retryOpts = { maxRetries: 3, timeoutMs: 30_000, retryOn: [429, 502, 503, 504] }
+  retryOpts = { maxRetries: 3, timeoutMs: 30_000, retryOn: [429, 502, 503, 504] },
 ): Promise<Response> {
   for (let attempt = 0; attempt <= retryOpts.maxRetries; attempt++) {
     const controller = new AbortController();
@@ -449,17 +450,17 @@ async function resilientFetch(
       clearTimeout(timeoutId);
       if (retryOpts.retryOn.includes(resp.status) && attempt < retryOpts.maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 16_000);
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise((r) => setTimeout(r, delay));
         continue;
       }
       return resp;
     } catch (err) {
       clearTimeout(timeoutId);
       if (attempt === retryOpts.maxRetries) throw err;
-      await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, attempt), 16_000)));
+      await new Promise((r) => setTimeout(r, Math.min(1000 * Math.pow(2, attempt), 16_000)));
     }
   }
-  throw new Error('Request failed after all retries');
+  throw new Error("Request failed after all retries");
 }
 ```
 
@@ -467,7 +468,7 @@ async function resilientFetch(
 
 ```typescript
 export function setupGracefulShutdown() {
-  app.on('before-quit', async (event) => {
+  app.on("before-quit", async (event) => {
     event.preventDefault();
     engineManager.setAcceptingNewSessions(false);
     await engineManager.waitForActiveSessions(10_000);
@@ -503,13 +504,13 @@ interface RequestLog {
 ### 📋 GDPR / 数据删除
 
 ```typescript
-app.delete('/api/account', authenticate, async (c) => {
-  const userId = c.get('userId');
+app.delete("/api/account", authenticate, async (c) => {
+  const userId = c.get("userId");
   await db.revokeAllApiKeys(userId);
   await db.deleteUsageRecords(userId);
   await db.deleteUser(userId);
   await redis.del(`user:${userId}`);
-  await auditLog.record({ action: 'account_deleted', userId, timestamp: new Date() });
+  await auditLog.record({ action: "account_deleted", userId, timestamp: new Date() });
   return c.json({ success: true });
 });
 ```
@@ -524,7 +525,7 @@ interface TelemetryConsent {
 }
 
 function shouldSendTelemetry(type: keyof TelemetryConsent): boolean {
-  const consent = store.get('telemetryConsent') as TelemetryConsent | null;
+  const consent = store.get("telemetryConsent") as TelemetryConsent | null;
   return consent?.[type] ?? false;
 }
 ```
@@ -536,14 +537,14 @@ function shouldSendTelemetry(type: keyof TelemetryConsent): boolean {
 ### 📊 结构化日志
 
 ```typescript
-import { createLogger, format, transports } from 'winston';
+import { createLogger, format, transports } from "winston";
 
 export const logger = createLogger({
   format: format.combine(format.timestamp(), format.errors({ stack: true }), format.json()),
   transports: [
     ...(isDev ? [new transports.Console({ format: format.prettyPrint() })] : []),
     new transports.File({
-      filename: path.join(app.getPath('logs'), 'myide.log'),
+      filename: path.join(app.getPath("logs"), "myide.log"),
       maxsize: 10 * 1024 * 1024,
       maxFiles: 5,
       tailable: true,
@@ -551,7 +552,7 @@ export const logger = createLogger({
   ],
 });
 
-logger.info('engine.session.started', {
+logger.info("engine.session.started", {
   sessionId,
   projectPath: path.basename(projectPath), // 不记录完整路径
   model: userConfig.model,
@@ -562,6 +563,21 @@ logger.info('engine.session.started', {
 ---
 
 # 二、后续开发任务与方案
+
+---
+
+## 当前落地核对（2026-05-10）
+
+本轮按代码落地状态核对并补齐以下需求：
+
+- **进程隔离与最小权限**：桌面后端子进程关闭 `extendEnv`，只注入白名单环境变量；捆绑引擎进程同样使用最小环境变量集合，避免宿主密钥泄漏。
+- **IPC 通信安全**：`openExternal` IPC 入参增加 URL 协议校验，仅允许 `http`、`https`、`mailto`。
+- **引擎进程预热（Warm Start）**：Codex adapter 维护预热 app-server 子进程，启动会话时优先复用并异步补充 standby。
+- **流式响应背压控制**：Codex runtime、server notification、provider runtime event 队列改为有界队列。
+- **引擎进程崩溃自动恢复**：关闭/错误态 runtime session 会被清理，下一次操作走已有持久化 resume 路径恢复。
+- **优雅关闭**：桌面应用退出时先给后端进程 10 秒停止窗口，再完成 shutdown 标记。
+- **Task 1 多模型支持与模型路由**：IDE 客户端模型路由保持依托 sub2api，sub2api fork 已补齐 `/ide/api/models`、OpenAI/Anthropic 兼容头透传与管理入口。
+- **Task 7 性能监控与 APM**：客户端 APM 队列、用户同意控制、批量上报、服务端接收与 Prometheus 指标已落地；sub2api fork 已提供 `/ide/api/telemetry`。
 
 ---
 
@@ -616,16 +632,18 @@ function ModelSelector() {
 
 ```typescript
 function switchModel(modelId: string) {
-  const rpcMessage = JSON.stringify({
-    method: 'config/update',
-    params: { model: modelId },
-    id: nextId(),
-  }) + '\n';
+  const rpcMessage =
+    JSON.stringify({
+      method: "config/update",
+      params: { model: modelId },
+      id: nextId(),
+    }) + "\n";
   engineProcess.stdin?.write(rpcMessage);
 }
 ```
 
 ### 交付物
+
 - sub2api 部署与配置（上游模型接入）
 - 模型选择器 UI 组件（前端）
 - 动态拉取模型列表逻辑
@@ -641,6 +659,7 @@ function switchModel(modelId: string) {
 ### 为什么 sub2api 适合你
 
 你的场景：
+
 - 有一个第三方反代服务（base_url + API Key）
 - 需要支持多用户，每个用户有独立的配额
 - 需要计费功能
@@ -673,6 +692,7 @@ sub2api 部署后你获得：
 3. **计费数据**：per-user token 用量统计
 
 你的 IDE 客户端：
+
 - 登录接口对接 sub2api 的认证（或在 sub2api 前加你自己的业务 API 层处理注册/登录）
 - 请求 AI 接口时，JWT 发给 sub2api
 - sub2api 验证后，用真实 Key 转发到你的反代服务
@@ -686,7 +706,7 @@ sub2api 部署后你获得：
 // AI 请求完全由 sub2api 处理，不经过这里
 
 // 用户注册/登录
-app.post('/auth/login', async (c) => {
+app.post("/auth/login", async (c) => {
   const { email, password } = await c.req.json();
   const user = await authenticateUser(email, password);
 
@@ -698,22 +718,23 @@ app.post('/auth/login', async (c) => {
 });
 
 // 套餐升级（你自己处理付款，然后在 sub2api 调整配额）
-app.post('/subscription/upgrade', authenticate, async (c) => {
+app.post("/subscription/upgrade", authenticate, async (c) => {
   const { planId } = await c.req.json();
-  await processPayment(c.get('userId'), planId);
-  await sub2api.updateUserQuota(c.get('userId'), PLAN_QUOTAS[planId]);
+  await processPayment(c.get("userId"), planId);
+  await sub2api.updateUserQuota(c.get("userId"), PLAN_QUOTAS[planId]);
   return c.json({ success: true });
 });
 ```
 
 ### 交付物
+
 - sub2api 部署与配置
 - 可选：薄业务层（注册/付款/套餐管理）
 - 用量展示 UI（可直接使用 sub2api 管理面板，或在客户端调用 sub2api 的用量 API 自定义显示）
 
 ---
 
-## Task 3：工作区与项目管理（t3code 已具备）
+## Task 3：工作区与项目管理（t3code 已具备）不开发）
 
 ### 目标
 
@@ -745,12 +766,13 @@ custom_instructions = """
 ```
 
 ### 交付物
+
 - `.myide/config.toml` 规范与解析器（在 t3code 基础上扩展）
 - 项目配置与引擎启动参数的映射逻辑
 
 ---
 
-## Task 4：对话历史与持久化（t3code 已具备）
+## Task 4：对话历史与持久化（t3code 已具备）不开发）
 
 ### 目标
 
@@ -770,14 +792,18 @@ db.exec(`
 `);
 
 export function searchHistory(query: string, limit = 20) {
-  return db.prepare(`
+  return db
+    .prepare(
+      `
     SELECT s.id, s.title, s.project_path, s.created_at,
            snippet(turns_fts, 0, '<mark>', '</mark>', '...', 20) as excerpt
     FROM turns_fts
     JOIN sessions s ON turns_fts.session_id = s.id
     WHERE turns_fts MATCH ?
     ORDER BY rank LIMIT ?
-  `).all(query, limit);
+  `,
+    )
+    .all(query, limit);
 }
 ```
 
@@ -785,16 +811,17 @@ export function searchHistory(query: string, limit = 20) {
 
 ```typescript
 async function syncToCloud(lastSyncAt: number) {
-  const newSessions = db.prepare('SELECT * FROM sessions WHERE updated_at > ?').all(lastSyncAt);
+  const newSessions = db.prepare("SELECT * FROM sessions WHERE updated_at > ?").all(lastSyncAt);
   for (const session of newSessions) {
-    const turns = db.prepare('SELECT * FROM turns WHERE session_id = ?').all(session.id);
-    await api.post('/sync/sessions', { session, turns });
+    const turns = db.prepare("SELECT * FROM turns WHERE session_id = ?").all(session.id);
+    await api.post("/sync/sessions", { session, turns });
   }
   return Date.now();
 }
 ```
 
 ### 交付物
+
 - 确认 t3code 的对话历史功能满足需求（可能零开发量）
 - 可选：全文检索扩展
 - 可选：云端同步 API
@@ -814,10 +841,10 @@ Section "Core Engine Setup" SecEngine
   SetOutPath "$INSTDIR\resources"
   File "bin\ai-engine.exe"
   File "bin\sandbox-setup.exe"
-  
+
   DetailPrint "正在初始化安全沙箱..."
   ExecWait '"$INSTDIR\resources\sandbox-setup.exe"' $0
-  
+
   ${If} $0 != 0
     MessageBox MB_OK|MB_ICONEXCLAMATION "安全沙箱初始化失败，将使用基础隔离模式。"
     WriteRegStr HKCU "Software\MyIDE" "SandboxMode" "unelevated"
@@ -830,21 +857,26 @@ SectionEnd
 ### 运行时沙箱选择
 
 ```typescript
-function getSandboxMode(): 'elevated' | 'unelevated' {
-  if (process.platform !== 'win32') return 'unelevated';
+function getSandboxMode(): "elevated" | "unelevated" {
+  if (process.platform !== "win32") return "unelevated";
   try {
-    const result = execSync('reg query "HKCU\\Software\\MyIDE" /v SandboxMode', { encoding: 'utf-8' });
-    if (result.includes('elevated')) return 'elevated';
-  } catch { /* 降级 */ }
-  return 'unelevated';
+    const result = execSync('reg query "HKCU\\Software\\MyIDE" /v SandboxMode', {
+      encoding: "utf-8",
+    });
+    if (result.includes("elevated")) return "elevated";
+  } catch {
+    /* 降级 */
+  }
+  return "unelevated";
 }
 
 export function getSandboxArgs(): string[] {
-  return ['--config', `windows.sandbox="${getSandboxMode()}"`];
+  return ["--config", `windows.sandbox="${getSandboxMode()}"`];
 }
 ```
 
 ### 交付物
+
 - NSIS / WiX 安装脚本（沙箱初始化段）
 - 运行时沙箱模式检测逻辑
 - macOS / Linux 等价隔离方案
@@ -874,20 +906,20 @@ export function getSandboxArgs(): string[] {
 
 ```typescript
 // apps/desktop/src/updater/appUpdater.ts
-import { autoUpdater } from 'electron-updater';
+import { autoUpdater } from "electron-updater";
 
 // 应用更新：有感知，需要用户确认重启
 autoUpdater.autoDownload = false;
 
-autoUpdater.on('update-available', (info) => {
-  mainWindow.webContents.send('update:app:available', {
+autoUpdater.on("update-available", (info) => {
+  mainWindow.webContents.send("update:app:available", {
     version: info.version,
     releaseNotes: info.releaseNotes,
   });
 });
 
-autoUpdater.on('update-downloaded', () => {
-  mainWindow.webContents.send('update:app:ready');
+autoUpdater.on("update-downloaded", () => {
+  mainWindow.webContents.send("update:app:ready");
   // 显示弹窗：立即重启 / 下次启动更新
 });
 
@@ -906,7 +938,8 @@ app.whenReady().then(() => {
 interface EngineManifest {
   version: string;
   binaries: {
-    [platform: string]: {  // 'win32-x64' | 'darwin-arm64' | 'linux-x64'
+    [platform: string]: {
+      // 'win32-x64' | 'darwin-arm64' | 'linux-x64'
       url: string;
       sha256: string;
       size: number;
@@ -916,21 +949,21 @@ interface EngineManifest {
 }
 
 class EngineUpdater {
-  private readonly MANIFEST_URL = 'https://releases.yourservice.com/engine/manifest.json';
-  private readonly ENGINES_DIR = path.join(app.getPath('userData'), 'engines');
+  private readonly MANIFEST_URL = "https://releases.yourservice.com/engine/manifest.json";
+  private readonly ENGINES_DIR = path.join(app.getPath("userData"), "engines");
   private isUpdating = false;
 
   async checkAndUpdate(): Promise<void> {
     if (this.isUpdating) return;
-    
+
     const manifest = await this.fetchManifest();
     const currentVersion = this.getCurrentEngineVersion();
     if (manifest.version === currentVersion) return;
 
     // 检查是否有活跃会话，有的话等待
     if (engineManager.hasActiveSessions()) {
-      console.log('[EngineUpdater] Active sessions detected, will update when idle');
-      engineManager.once('sessionsIdle', () => this.applyUpdate(manifest));
+      console.log("[EngineUpdater] Active sessions detected, will update when idle");
+      engineManager.once("sessionsIdle", () => this.applyUpdate(manifest));
       return;
     }
 
@@ -945,7 +978,7 @@ class EngineUpdater {
       if (!binary) return;
 
       console.log(`[EngineUpdater] Downloading engine ${manifest.version}`);
-      
+
       // 下载到临时文件
       const tmpPath = path.join(this.ENGINES_DIR, `${manifest.version}.tmp`);
       await this.downloadWithVerification(binary.url, tmpPath, binary.sha256);
@@ -957,13 +990,13 @@ class EngineUpdater {
       fs.chmodSync(finalPath, 0o755);
 
       // 更新版本记录
-      fs.writeFileSync(path.join(this.ENGINES_DIR, 'current_version'), manifest.version);
+      fs.writeFileSync(path.join(this.ENGINES_DIR, "current_version"), manifest.version);
 
       // 清理旧版本（保留上一个，用于回滚）
       this.cleanupOldVersions(manifest.version);
 
       console.log(`[EngineUpdater] Engine updated to ${manifest.version} (无需重启应用)`);
-      mainWindow.webContents.send('update:engine:done', { version: manifest.version });
+      mainWindow.webContents.send("update:engine:done", { version: manifest.version });
     } finally {
       this.isUpdating = false;
     }
@@ -974,17 +1007,20 @@ class EngineUpdater {
     const response = await fetch(url);
     const buffer = await response.arrayBuffer();
 
-    const actualHash = crypto.createHash('sha256').update(Buffer.from(buffer)).digest('hex');
+    const actualHash = crypto.createHash("sha256").update(Buffer.from(buffer)).digest("hex");
     if (actualHash !== expectedSha256) {
-      throw new Error(`Engine integrity check failed: expected ${expectedSha256}, got ${actualHash}`);
+      throw new Error(
+        `Engine integrity check failed: expected ${expectedSha256}, got ${actualHash}`,
+      );
     }
 
     fs.writeFileSync(dest, Buffer.from(buffer), { mode: 0o755 });
   }
 
   private cleanupOldVersions(keepVersion: string) {
-    const versions = fs.readdirSync(this.ENGINES_DIR)
-      .filter(f => f !== 'current_version' && f !== keepVersion)
+    const versions = fs
+      .readdirSync(this.ENGINES_DIR)
+      .filter((f) => f !== "current_version" && f !== keepVersion)
       .sort();
     // 最多保留一个旧版本（用于紧急回滚）
     while (versions.length > 1) {
@@ -994,24 +1030,25 @@ class EngineUpdater {
 
   // 版本回滚（紧急情况）
   rollback(): boolean {
-    const versions = fs.readdirSync(this.ENGINES_DIR)
-      .filter(f => f !== 'current_version')
+    const versions = fs
+      .readdirSync(this.ENGINES_DIR)
+      .filter((f) => f !== "current_version")
       .sort();
     if (versions.length < 2) return false;
     const previousVersion = versions[versions.length - 2];
-    fs.writeFileSync(path.join(this.ENGINES_DIR, 'current_version'), previousVersion);
+    fs.writeFileSync(path.join(this.ENGINES_DIR, "current_version"), previousVersion);
     console.log(`[EngineUpdater] Rolled back to ${previousVersion}`);
     return true;
   }
 
   getCurrentEngineVersion(): string {
-    const versionFile = path.join(this.ENGINES_DIR, 'current_version');
-    return fs.existsSync(versionFile) ? fs.readFileSync(versionFile, 'utf-8').trim() : 'bundled';
+    const versionFile = path.join(this.ENGINES_DIR, "current_version");
+    return fs.existsSync(versionFile) ? fs.readFileSync(versionFile, "utf-8").trim() : "bundled";
   }
 
   getActiveEnginePath(): string {
     const version = this.getCurrentEngineVersion();
-    if (version === 'bundled') return getBundledEnginePath();
+    if (version === "bundled") return getBundledEnginePath();
     const binaryPath = path.join(this.ENGINES_DIR, version, this.getBinaryName());
     return fs.existsSync(binaryPath) ? binaryPath : getBundledEnginePath();
   }
@@ -1056,6 +1093,7 @@ app.whenReady().then(() => {
 在 CI/CD 中，codex-rs 构建完成后自动更新这个文件并推到 CDN。
 
 ### 交付物
+
 - `AppUpdater`：electron-updater 集成（有感知，用户确认重启）
 - `EngineUpdater`：引擎热更新模块（无感知，原子替换）
 - CI/CD 自动发布 `manifest.json` 到 CDN 的流水线
@@ -1074,7 +1112,7 @@ app.whenReady().then(() => {
 
 ```typescript
 interface APMEvent {
-  type: 'session_start' | 'session_end' | 'ttft' | 'error' | 'engine_crash' | 'update';
+  type: "session_start" | "session_end" | "ttft" | "error" | "engine_crash" | "update";
   timestamp: number;
   data: Record<string, unknown>;
   appVersion: string;
@@ -1086,10 +1124,12 @@ class APMClient {
   private queue: APMEvent[] = [];
   private readonly FLUSH_INTERVAL = 30_000;
 
-  track(type: APMEvent['type'], data: Record<string, unknown>) {
-    if (!shouldSendTelemetry('usageAnalytics')) return;
+  track(type: APMEvent["type"], data: Record<string, unknown>) {
+    if (!shouldSendTelemetry("usageAnalytics")) return;
     this.queue.push({
-      type, timestamp: Date.now(), data,
+      type,
+      timestamp: Date.now(),
+      data,
       appVersion: app.getVersion(),
       platform: process.platform,
       engineVersion: engineUpdater.getCurrentEngineVersion(),
@@ -1101,54 +1141,57 @@ class APMClient {
     if (!this.queue.length) return;
     const events = this.queue.splice(0);
     try {
-      await fetch('https://apm.yourservice.com/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("https://apm.yourservice.com/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ events }),
       });
-    } catch { /* APM 上报失败不影响主流程 */ }
+    } catch {
+      /* APM 上报失败不影响主流程 */
+    }
   }
 }
 
 export const apm = new APMClient();
-apm.track('ttft', { ttftMs: 342, model: 'claude-3-7-sonnet', sessionId });
-apm.track('engine_crash', { exitCode: 1, restartAttempt: 1 });
+apm.track("ttft", { ttftMs: 342, model: "claude-3-7-sonnet", sessionId });
+apm.track("engine_crash", { exitCode: 1, restartAttempt: 1 });
 ```
 
 ### 后端监控（Grafana + Prometheus）
 
 ```typescript
-import { Registry, Counter, Histogram, Gauge } from 'prom-client';
+import { Registry, Counter, Histogram, Gauge } from "prom-client";
 
 const register = new Registry();
 
 export const metrics = {
   requestTotal: new Counter({
-    name: 'myide_requests_total',
-    help: 'Total API requests',
-    labelNames: ['model', 'status'],
+    name: "myide_requests_total",
+    help: "Total API requests",
+    labelNames: ["model", "status"],
     registers: [register],
   }),
   ttftHistogram: new Histogram({
-    name: 'myide_ttft_seconds',
-    help: 'Time to First Token distribution',
-    labelNames: ['model'],
+    name: "myide_ttft_seconds",
+    help: "Time to First Token distribution",
+    labelNames: ["model"],
     buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10],
     registers: [register],
   }),
   activeEngines: new Gauge({
-    name: 'myide_active_engines',
-    help: 'Currently running engine processes',
+    name: "myide_active_engines",
+    help: "Currently running engine processes",
     registers: [register],
   }),
 };
 
-app.get('/metrics', async (c) =>
-  c.text(await register.metrics(), 200, { 'Content-Type': register.contentType })
+app.get("/metrics", async (c) =>
+  c.text(await register.metrics(), 200, { "Content-Type": register.contentType }),
 );
 ```
 
 ### 交付物
+
 - 客户端 APM 模块（批量上报、用户同意控制）
 - APM 事件接收后端
 - Grafana 仪表盘配置（TTFT、错误率、活跃用户、引擎崩溃率）
@@ -1156,7 +1199,7 @@ app.get('/metrics', async (c) =>
 
 ---
 
-## Task 8：移动端 / Web 端延伸
+## Task 8：移动端 / Web 端延伸 （不开发）
 
 ### 目标
 
@@ -1168,13 +1211,13 @@ Web 版不能直接调用 codex-app-server（二进制无法在浏览器运行�
 
 ```typescript
 // 后端：为 Web 版提供 SSE 接口
-app.post('/api/web/chat', authenticate, async (c) => {
+app.post("/api/web/chat", authenticate, async (c) => {
   const { messages, projectContext } = await c.req.json();
   const stream = await serverSideEngine.execute({
-    userId: c.get('userId'),
+    userId: c.get("userId"),
     messages,
     projectContext,
-    sandboxType: 'docker',
+    sandboxType: "docker",
   });
 
   return streamSSE(c, async (send) => {
@@ -1186,6 +1229,7 @@ app.post('/api/web/chat', authenticate, async (c) => {
 ```
 
 ### 交付物
+
 - 服务端引擎执行器（Docker 沙箱）
 - Web 版 SSE 流式接口
 - Web 前端（Next.js，复用 t3code 的 React 组件）
@@ -1195,19 +1239,20 @@ app.post('/api/web/chat', authenticate, async (c) => {
 
 ## 开发优先级推荐
 
-| 优先级 | 任务 | 预计工作量 | 说明 |
-|--------|------|-----------|------|
-| **P0 - 立即** | 安全架构重构（1.1） | 1周 | 客户端不持有真实 Key，这是商业产品底线 |
-| **P0 - 立即** | sub2api 部署（Task 2） | 2-3天 | 部署即获得多用户 + 计费能力，不需要自研 |
-| **P1 - 1个月内** | 自动更新 - 应用+引擎独立（Task 6） | 1周 | 用户体验和快速迭代的基础 |
-| **P1 - 1个月内** | 多模型选择器 UI（Task 1） | 3天 | 模型路由已由 sub2api 处理，只需前端 UI |
-| **P1 - 1个月内** | 确认 t3code 对话历史覆盖（Task 4） | 0-3天 | 大概率零开发量 |
-| **P2 - 2个月内** | 工作区配置扩展（Task 3） | 1周 | 面向专业开发者的必备功能 |
-| **P2 - 2个月内** | 沙箱升级（Task 5） | 1周 | 安全升级 |
-| **P2 - 2个月内** | 性能监控（Task 7） | 1周 | 规模增长后的必需品 |
-| **P3 - 3个月+** | Web / 移动端（Task 8） | 3-4周 | 覆盖更多场景，投入较大 |
+| 优先级           | 任务                               | 预计工作量 | 说明                                    |
+| ---------------- | ---------------------------------- | ---------- | --------------------------------------- |
+| **P0 - 立即**    | 安全架构重构（1.1）                | 1周        | 客户端不持有真实 Key，这是商业产品底线  |
+| **P0 - 立即**    | sub2api 部署（Task 2）             | 2-3天      | 部署即获得多用户 + 计费能力，不需要自研 |
+| **P1 - 1个月内** | 自动更新 - 应用+引擎独立（Task 6） | 1周        | 用户体验和快速迭代的基础                |
+| **P1 - 1个月内** | 多模型选择器 UI（Task 1）          | 3天        | 模型路由已由 sub2api 处理，只需前端 UI  |
+| **P1 - 1个月内** | 确认 t3code 对话历史覆盖（Task 4） | 0-3天      | 大概率零开发量                          |
+| **P2 - 2个月内** | 工作区配置扩展（Task 3）           | 1周        | 面向专业开发者的必备功能                |
+| **P2 - 2个月内** | 沙箱升级（Task 5）                 | 1周        | 安全升级                                |
+| **P2 - 2个月内** | 性能监控（Task 7）                 | 1周        | 规模增长后的必需品                      |
+| **P3 - 3个月+**  | Web / 移动端（Task 8）             | 3-4周      | 覆盖更多场景，投入较大                  |
 
 > **已移除的任务说明：**
+>
 > - **本地 SQLite 索引优化、RAG/代码库索引、多工作区与会话管理、插件/扩展系统**：t3code 已内置，无需重复开发
 > - **网关层缓存策略**：codex-rs 和 t3code 已有处理
 > - **完整计费与订阅（自研）**：直接使用 sub2api，不需要从头开发
@@ -1218,4 +1263,4 @@ app.post('/api/web/chat', authenticate, async (c) => {
 
 ---
 
-*文档持续更新中。如有技术问题或方案调整，请以最新讨论内容为准。*
+_文档持续更新中。如有技术问题或方案调整，请以最新讨论内容为准。_

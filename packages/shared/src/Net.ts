@@ -1,4 +1,5 @@
 import * as NodeNet from "node:net";
+import { setTimeout as sleepPromise } from "node:timers/promises";
 
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -6,10 +7,21 @@ import * as Layer from "effect/Layer";
 import * as Context from "effect/Context";
 import * as Predicate from "effect/Predicate";
 
+const DEFAULT_RETRY_STATUSES = [429, 502, 503, 504] as const;
+
 export class NetError extends Data.TaggedError("NetError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
+
+export interface ResilientFetchOptions extends RequestInit {
+  readonly fetchImpl?: typeof fetch;
+  readonly maxRetries?: number;
+  readonly timeoutMs?: number;
+  readonly retryOn?: ReadonlyArray<number>;
+  readonly baseDelayMs?: number;
+  readonly maxDelayMs?: number;
+}
 
 const isErrnoExceptionWithCode = (
   cause: unknown,
@@ -27,6 +39,55 @@ const closeServer = (server: NodeNet.Server) => {
     // Ignore close failures during cleanup.
   }
 };
+
+const sleep = (ms: number): Promise<void> => (ms <= 0 ? Promise.resolve() : sleepPromise(ms));
+
+const nextDelay = (attempt: number, baseDelayMs: number, maxDelayMs: number): number =>
+  Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
+
+export async function resilientFetch(
+  input: string | URL | globalThis.Request,
+  options: ResilientFetchOptions = {},
+): Promise<Response> {
+  const {
+    fetchImpl = globalThis.fetch,
+    maxRetries = 3,
+    timeoutMs = 30_000,
+    retryOn = DEFAULT_RETRY_STATUSES,
+    baseDelayMs = 1_000,
+    maxDelayMs = 16_000,
+    signal,
+    ...requestInit
+  } = options;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const callerSignal = signal ?? undefined;
+    const attemptSignal =
+      callerSignal === undefined
+        ? AbortSignal.timeout(timeoutMs)
+        : AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)]);
+    try {
+      const response = await fetchImpl(input, {
+        ...requestInit,
+        signal: attemptSignal,
+      });
+      if (retryOn.includes(response.status) && attempt < maxRetries) {
+        await sleep(nextDelay(attempt, baseDelayMs, maxDelayMs));
+        continue;
+      }
+      return response;
+    } catch (cause) {
+      lastError = cause;
+      if (attempt >= maxRetries || callerSignal?.aborted) {
+        throw cause;
+      }
+      await sleep(nextDelay(attempt, baseDelayMs, maxDelayMs));
+    }
+  }
+
+  throw lastError;
+}
 
 const tryReservePort = (port: number): Effect.Effect<number, NetError> =>
   Effect.callback<number, NetError>((resume) => {

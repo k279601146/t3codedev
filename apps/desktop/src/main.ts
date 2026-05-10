@@ -46,6 +46,7 @@ import * as DesktopSshEnvironment from "./ssh/DesktopSshEnvironment.ts";
 import * as DesktopSshPasswordPrompts from "./ssh/DesktopSshPasswordPrompts.ts";
 import * as DesktopSshRemoteApi from "./ssh/DesktopSshRemoteApi.ts";
 import * as DesktopState from "./app/DesktopState.ts";
+import * as DesktopApm from "./telemetry/DesktopApm.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
 
@@ -124,6 +125,8 @@ const desktopFoundationLayer = Layer.mergeAll(
   DesktopObservability.layer,
 ).pipe(Layer.provideMerge(desktopEnvironmentLayer));
 
+const desktopApmLayer = DesktopApm.layer.pipe(Layer.provideMerge(desktopFoundationLayer));
+
 const desktopSshLayer = Layer.mergeAll(desktopSshEnvironmentLayer, DesktopSshRemoteApi.layer).pipe(
   Layer.provideMerge(DesktopSshPasswordPrompts.layer()),
 );
@@ -138,6 +141,7 @@ const desktopWindowLayer = DesktopWindow.layer.pipe(Layer.provideMerge(desktopSe
 const desktopBackendLayer = DesktopBackendManager.layer.pipe(
   Layer.provideMerge(DesktopAppIdentity.layer),
   Layer.provideMerge(DesktopBackendConfiguration.layer),
+  Layer.provideMerge(desktopApmLayer),
   Layer.provideMerge(desktopWindowLayer),
 );
 

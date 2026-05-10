@@ -27,6 +27,7 @@
 ### 现状
 
 T3Code 目前采用**两栏布局**：
+
 - **左栏**：对话侧边栏（会话列表）
 - **右栏**：聊天视图 + Diff 面板（代码差异预览）
 
@@ -36,13 +37,14 @@ T3Code 目前采用**两栏布局**：
 
 新增一种**三栏布局（Cursor 模式）**，包含：
 
-| 栏位 | 内容 |
-|------|------|
-| 左栏 | 文件树 + 会话列表（可折叠） |
+| 栏位 | 内容                                          |
+| ---- | --------------------------------------------- |
+| 左栏 | 文件树 + 会话列表（可折叠）                   |
 | 中栏 | **Monaco Editor**（完整代码编辑器，支持读写） |
-| 右栏 | AI 对话面板 |
+| 右栏 | AI 对话面板                                   |
 
 用户可在**个性化设置**中自由切换：
+
 - `codex`（默认）：现有两栏布局，无代码编辑器
 - `cursor`：三栏布局，带 Monaco Editor 完整编辑体验
 
@@ -82,6 +84,7 @@ apps/web/src/
 ### 2.3 后端通信模式
 
 前后端通过单条 WebSocket 连接通信，分为两类：
+
 - **RPC 请求-响应**：客户端调用 `WS_METHODS`，服务器返回结果
 - **服务器推送**：服务器通过 `WS_CHANNELS` 广播状态变更
 
@@ -99,7 +102,7 @@ apps/web/src/
 
 ```typescript
 // packages/contracts/src/layout.ts（新建）
-export type LayoutMode = 'codex' | 'cursor';
+export type LayoutMode = "codex" | "cursor";
 ```
 
 ### 3.2 三栏布局示意
@@ -139,11 +142,11 @@ export type LayoutMode = 'codex' | 'cursor';
 
 **选择 `@monaco-editor/react`**，理由：
 
-| 方案 | 优点 | 缺点 |
-|------|------|------|
-| `@monaco-editor/react` | 开箱即用，React 集成好，自动加载 worker | 包体较大 |
-| 裸 `monaco-editor` | 更灵活 | 需要手动配置 webpack/vite 插件 |
-| CodeMirror 6 | 更轻量 | 功能不如 Monaco 完整，无 IntelliSense |
+| 方案                   | 优点                                    | 缺点                                  |
+| ---------------------- | --------------------------------------- | ------------------------------------- |
+| `@monaco-editor/react` | 开箱即用，React 集成好，自动加载 worker | 包体较大                              |
+| 裸 `monaco-editor`     | 更灵活                                  | 需要手动配置 webpack/vite 插件        |
+| CodeMirror 6           | 更轻量                                  | 功能不如 Monaco 完整，无 IntelliSense |
 
 Monaco Editor 完全满足需求：语法高亮、多语言、LSP（Language Server Protocol）支持、差异视图（diff editor）、多标签、主题等。
 
@@ -157,16 +160,16 @@ bun add @monaco-editor/react monaco-editor --filter @t3tools/web
 
 ```typescript
 // apps/web/vite.config.ts
-import { defineConfig } from 'vite'
-import monacoEditorPlugin from 'vite-plugin-monaco-editor'
+import { defineConfig } from "vite";
+import monacoEditorPlugin from "vite-plugin-monaco-editor";
 
 export default defineConfig({
   plugins: [
     monacoEditorPlugin({
-      languageWorkers: ['editorWorkerService', 'typescript', 'json', 'css', 'html']
-    })
-  ]
-})
+      languageWorkers: ["editorWorkerService", "typescript", "json", "css", "html"],
+    }),
+  ],
+});
 ```
 
 ```bash
@@ -263,54 +266,47 @@ bun add -D vite-plugin-monaco-editor
 
 ```typescript
 // apps/web/vite.config.ts
-import react from '@vitejs/plugin-react'
-import monacoEditorPlugin from 'vite-plugin-monaco-editor'
-import { defineConfig } from 'vite'
+import react from "@vitejs/plugin-react";
+import monacoEditorPlugin from "vite-plugin-monaco-editor";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
     react(),
     monacoEditorPlugin({
-      languageWorkers: [
-        'editorWorkerService',
-        'typescript',
-        'json',
-        'css',
-        'html',
-        'markdown'
-      ]
-    })
-  ]
-})
+      languageWorkers: ["editorWorkerService", "typescript", "json", "css", "html", "markdown"],
+    }),
+  ],
+});
 ```
 
 ### 步骤 3：定义编辑器全局状态
 
 ```typescript
 // apps/web/src/store/editorStore.ts
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export interface EditorTab {
-  id: string
-  filePath: string       // 绝对路径
-  fileName: string       // 显示名
-  content: string        // 当前编辑器内容
-  savedContent: string   // 磁盘上的内容（用于判断是否有未保存修改）
-  language: string       // Monaco 语言 ID
-  isDirty: boolean       // 有未保存修改
-  cursorPosition?: { line: number; column: number }
+  id: string;
+  filePath: string; // 绝对路径
+  fileName: string; // 显示名
+  content: string; // 当前编辑器内容
+  savedContent: string; // 磁盘上的内容（用于判断是否有未保存修改）
+  language: string; // Monaco 语言 ID
+  isDirty: boolean; // 有未保存修改
+  cursorPosition?: { line: number; column: number };
 }
 
 interface EditorState {
-  tabs: EditorTab[]
-  activeTabId: string | null
-  openFile: (filePath: string, content: string) => void
-  closeTab: (tabId: string) => void
-  setActiveTab: (tabId: string) => void
-  updateContent: (tabId: string, content: string) => void
-  markSaved: (tabId: string) => void
-  applyAiDiff: (filePath: string, newContent: string) => void
+  tabs: EditorTab[];
+  activeTabId: string | null;
+  openFile: (filePath: string, content: string) => void;
+  closeTab: (tabId: string) => void;
+  setActiveTab: (tabId: string) => void;
+  updateContent: (tabId: string, content: string) => void;
+  markSaved: (tabId: string) => void;
+  applyAiDiff: (filePath: string, newContent: string) => void;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -320,77 +316,79 @@ export const useEditorStore = create<EditorState>()(
       activeTabId: null,
 
       openFile: (filePath, content) => {
-        const existing = get().tabs.find(t => t.filePath === filePath)
+        const existing = get().tabs.find((t) => t.filePath === filePath);
         if (existing) {
-          set({ activeTabId: existing.id })
-          return
+          set({ activeTabId: existing.id });
+          return;
         }
         const tab: EditorTab = {
           id: crypto.randomUUID(),
           filePath,
-          fileName: filePath.split('/').pop() ?? filePath,
+          fileName: filePath.split("/").pop() ?? filePath,
           content,
           savedContent: content,
           language: inferLanguage(filePath),
           isDirty: false,
-        }
-        set(s => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }))
+        };
+        set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
       },
 
-      closeTab: (tabId) => set(s => {
-        const tabs = s.tabs.filter(t => t.id !== tabId)
-        const activeTabId = s.activeTabId === tabId
-          ? (tabs[tabs.length - 1]?.id ?? null)
-          : s.activeTabId
-        return { tabs, activeTabId }
-      }),
+      closeTab: (tabId) =>
+        set((s) => {
+          const tabs = s.tabs.filter((t) => t.id !== tabId);
+          const activeTabId =
+            s.activeTabId === tabId ? (tabs[tabs.length - 1]?.id ?? null) : s.activeTabId;
+          return { tabs, activeTabId };
+        }),
 
       setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
-      updateContent: (tabId, content) => set(s => ({
-        tabs: s.tabs.map(t =>
-          t.id === tabId
-            ? { ...t, content, isDirty: content !== t.savedContent }
-            : t
-        )
-      })),
+      updateContent: (tabId, content) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId ? { ...t, content, isDirty: content !== t.savedContent } : t,
+          ),
+        })),
 
-      markSaved: (tabId) => set(s => ({
-        tabs: s.tabs.map(t =>
-          t.id === tabId
-            ? { ...t, savedContent: t.content, isDirty: false }
-            : t
-        )
-      })),
+      markSaved: (tabId) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId ? { ...t, savedContent: t.content, isDirty: false } : t,
+          ),
+        })),
 
       applyAiDiff: (filePath, newContent) => {
-        const tab = get().tabs.find(t => t.filePath === filePath)
+        const tab = get().tabs.find((t) => t.filePath === filePath);
         if (tab) {
-          set(s => ({
-            tabs: s.tabs.map(t =>
-              t.id === tab.id
-                ? { ...t, content: newContent, isDirty: true }
-                : t
-            )
-          }))
+          set((s) => ({
+            tabs: s.tabs.map((t) =>
+              t.id === tab.id ? { ...t, content: newContent, isDirty: true } : t,
+            ),
+          }));
         }
-      }
+      },
     }),
-    { name: 'editor-store', partialize: s => ({ tabs: s.tabs, activeTabId: s.activeTabId }) }
-  )
-)
+    { name: "editor-store", partialize: (s) => ({ tabs: s.tabs, activeTabId: s.activeTabId }) },
+  ),
+);
 
 function inferLanguage(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase()
+  const ext = filePath.split(".").pop()?.toLowerCase();
   const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'typescript',
-    js: 'javascript', jsx: 'javascript',
-    json: 'json', md: 'markdown',
-    css: 'css', scss: 'scss',
-    html: 'html', py: 'python',
-    rs: 'rust', go: 'go',
-  }
-  return map[ext ?? ''] ?? 'plaintext'
+    ts: "typescript",
+    tsx: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    json: "json",
+    md: "markdown",
+    css: "css",
+    scss: "scss",
+    html: "html",
+    py: "python",
+    rs: "rust",
+    go: "go",
+  };
+  return map[ext ?? ""] ?? "plaintext";
 }
 ```
 
@@ -398,31 +396,31 @@ function inferLanguage(filePath: string): string {
 
 ```typescript
 // apps/web/src/store/layoutStore.ts
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
-export type LayoutMode = 'codex' | 'cursor'
+export type LayoutMode = "codex" | "cursor";
 
 interface LayoutState {
-  mode: LayoutMode
-  setMode: (mode: LayoutMode) => void
+  mode: LayoutMode;
+  setMode: (mode: LayoutMode) => void;
 
   // 面板宽度（百分比），cursor 模式专用
-  panelSizes: [number, number, number] // [左栏, 中栏, 右栏]
-  setPanelSizes: (sizes: [number, number, number]) => void
+  panelSizes: [number, number, number]; // [左栏, 中栏, 右栏]
+  setPanelSizes: (sizes: [number, number, number]) => void;
 }
 
 export const useLayoutStore = create<LayoutState>()(
   persist(
     (set) => ({
-      mode: 'codex',
+      mode: "codex",
       setMode: (mode) => set({ mode }),
       panelSizes: [18, 50, 32],
       setPanelSizes: (panelSizes) => set({ panelSizes }),
     }),
-    { name: 'layout-store' }
-  )
-)
+    { name: "layout-store" },
+  ),
+);
 ```
 
 ### 步骤 5：Monaco Editor 封装组件
@@ -642,23 +640,23 @@ export const WS_METHODS = {
   // ... 现有方法 ...
 
   // 文件操作
-  'file.readFile': {
+  "file.readFile": {
     input: z.object({ filePath: z.string() }),
     output: z.object({ content: z.string(), encoding: z.string() }),
   },
-  'file.writeFile': {
+  "file.writeFile": {
     input: z.object({ filePath: z.string(), content: z.string() }),
     output: z.object({ success: z.boolean() }),
   },
-  'file.listDirectory': {
+  "file.listDirectory": {
     input: z.object({ dirPath: z.string(), depth: z.number().default(5) }),
     output: z.object({ tree: FileTreeNodeSchema }),
   },
-  'file.watchDirectory': {
+  "file.watchDirectory": {
     input: z.object({ dirPath: z.string() }),
     output: z.object({ watchId: z.string() }),
   },
-} as const
+} as const;
 
 // 文件树节点结构
 const FileTreeNodeSchema: z.ZodType<FileTreeNode> = z.lazy(() =>
@@ -668,68 +666,68 @@ const FileTreeNodeSchema: z.ZodType<FileTreeNode> = z.lazy(() =>
     path: z.string(),
     isDirectory: z.boolean(),
     children: z.array(FileTreeNodeSchema).optional(),
-  })
-)
+  }),
+);
 ```
 
 ### 7.2 服务器实现
 
 ```typescript
 // apps/server/src/services/fileService.ts
-import fs from 'fs/promises'
-import path from 'path'
+import fs from "fs/promises";
+import path from "path";
 
 export class FileService {
   constructor(private workspaceRoot: string) {}
 
   async readFile(filePath: string): Promise<string> {
-    const abs = this.resolveSafe(filePath)
-    return fs.readFile(abs, 'utf-8')
+    const abs = this.resolveSafe(filePath);
+    return fs.readFile(abs, "utf-8");
   }
 
   async writeFile(filePath: string, content: string): Promise<void> {
-    const abs = this.resolveSafe(filePath)
+    const abs = this.resolveSafe(filePath);
     // 确保目录存在
-    await fs.mkdir(path.dirname(abs), { recursive: true })
-    await fs.writeFile(abs, content, 'utf-8')
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, content, "utf-8");
   }
 
   async listDirectory(dirPath: string, depth = 5): Promise<FileTreeNode> {
-    const abs = this.resolveSafe(dirPath)
-    return this.buildTree(abs, depth)
+    const abs = this.resolveSafe(dirPath);
+    return this.buildTree(abs, depth);
   }
 
   private async buildTree(dirPath: string, depth: number): Promise<FileTreeNode> {
-    const name = path.basename(dirPath)
-    const stat = await fs.stat(dirPath)
+    const name = path.basename(dirPath);
+    const stat = await fs.stat(dirPath);
 
     if (!stat.isDirectory() || depth === 0) {
-      return { id: dirPath, name, path: dirPath, isDirectory: stat.isDirectory() }
+      return { id: dirPath, name, path: dirPath, isDirectory: stat.isDirectory() };
     }
 
-    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
     const filtered = entries
-      .filter(e => !e.name.startsWith('.') && e.name !== 'node_modules')
+      .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
       .sort((a, b) => {
         // 目录排在前面
-        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
-        return a.name.localeCompare(b.name)
-      })
+        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
 
     const children = await Promise.all(
-      filtered.map(e => this.buildTree(path.join(dirPath, e.name), depth - 1))
-    )
+      filtered.map((e) => this.buildTree(path.join(dirPath, e.name), depth - 1)),
+    );
 
-    return { id: dirPath, name, path: dirPath, isDirectory: true, children }
+    return { id: dirPath, name, path: dirPath, isDirectory: true, children };
   }
 
   /** 防止路径穿越攻击，确保路径在工作区内 */
   private resolveSafe(filePath: string): string {
-    const abs = path.resolve(this.workspaceRoot, filePath)
+    const abs = path.resolve(this.workspaceRoot, filePath);
     if (!abs.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected')
+      throw new Error("Path traversal detected");
     }
-    return abs
+    return abs;
   }
 }
 ```
@@ -759,51 +757,51 @@ case 'file.listDirectory': {
 
 ```typescript
 // apps/web/src/hooks/useFileContent.ts
-import { useWs } from '../wsNativeApi'
+import { useWs } from "../wsNativeApi";
 
 export function useFileContent() {
-  const ws = useWs()
+  const ws = useWs();
 
   const fetchFile = async (filePath: string): Promise<string> => {
-    const result = await ws.request('file.readFile', { filePath })
-    return result.content
-  }
+    const result = await ws.request("file.readFile", { filePath });
+    return result.content;
+  };
 
-  return { fetchFile }
+  return { fetchFile };
 }
 
 // apps/web/src/hooks/useFileSave.ts
 export function useFileSave() {
-  const ws = useWs()
+  const ws = useWs();
 
   const saveFile = async (filePath: string, content: string): Promise<void> => {
-    await ws.request('file.writeFile', { filePath, content })
-  }
+    await ws.request("file.writeFile", { filePath, content });
+  };
 
-  return { saveFile }
+  return { saveFile };
 }
 
 // apps/web/src/hooks/useFileTree.ts
-import { useQuery } from '@tanstack/react-query'
-import { useWs } from '../wsNativeApi'
-import { useWorkspaceStore } from '../store/store'
+import { useQuery } from "@tanstack/react-query";
+import { useWs } from "../wsNativeApi";
+import { useWorkspaceStore } from "../store/store";
 
 export function useFileTree() {
-  const ws = useWs()
-  const workspacePath = useWorkspaceStore(s => s.workspacePath)
+  const ws = useWs();
+  const workspacePath = useWorkspaceStore((s) => s.workspacePath);
 
   return useQuery({
-    queryKey: ['file-tree', workspacePath],
+    queryKey: ["file-tree", workspacePath],
     queryFn: async () => {
-      const result = await ws.request('file.listDirectory', {
+      const result = await ws.request("file.listDirectory", {
         dirPath: workspacePath,
-        depth: 6
-      })
-      return result.tree
+        depth: 6,
+      });
+      return result.tree;
     },
     enabled: !!workspacePath,
     staleTime: 30_000,
-  })
+  });
 }
 ```
 
@@ -1088,27 +1086,27 @@ export function EditorStatusBar({ tab }: { tab: EditorTab }) {
 
 ```typescript
 // apps/web/src/hooks/useAiEditorSync.ts
-import { useEffect } from 'react'
-import { useWsStore } from '../store/store'
-import { useEditorStore } from '../store/editorStore'
+import { useEffect } from "react";
+import { useWsStore } from "../store/store";
+import { useEditorStore } from "../store/editorStore";
 
 /**
  * 监听 AI 完成代码修改的 WS 推送事件，
  * 同步更新编辑器中对应文件的内容
  */
 export function useAiEditorSync() {
-  const { applyAiDiff } = useEditorStore()
-  const wsChannel = useWsStore(s => s.channels['file.changed'])
+  const { applyAiDiff } = useEditorStore();
+  const wsChannel = useWsStore((s) => s.channels["file.changed"]);
 
   useEffect(() => {
-    if (!wsChannel) return
+    if (!wsChannel) return;
     // 当服务器推送 file.changed 事件时，更新编辑器内容
     const handler = (event: { filePath: string; newContent: string }) => {
-      applyAiDiff(event.filePath, event.newContent)
-    }
-    wsChannel.subscribe(handler)
-    return () => wsChannel.unsubscribe(handler)
-  }, [wsChannel, applyAiDiff])
+      applyAiDiff(event.filePath, event.newContent);
+    };
+    wsChannel.subscribe(handler);
+    return () => wsChannel.unsubscribe(handler);
+  }, [wsChannel, applyAiDiff]);
 }
 ```
 
@@ -1117,37 +1115,35 @@ export function useAiEditorSync() {
 ```typescript
 // 在 MonacoEditor.tsx 的 onMount 回调中注册上下文菜单
 editor.addAction({
-  id: 'ai-explain-selection',
-  label: '🤖 用 AI 解释选中代码',
-  contextMenuGroupId: 'ai',
+  id: "ai-explain-selection",
+  label: "🤖 用 AI 解释选中代码",
+  contextMenuGroupId: "ai",
   contextMenuOrder: 1,
   run: (ed) => {
-    const selection = ed.getSelection()
-    const selectedText = ed.getModel()?.getValueInRange(selection)
+    const selection = ed.getSelection();
+    const selectedText = ed.getModel()?.getValueInRange(selection);
     if (selectedText) {
       // 将选中文本发送到右侧 AI 对话面板
-      useChatStore.getState().sendMessage(
-        `请解释以下代码：\n\`\`\`\n${selectedText}\n\`\`\``
-      )
+      useChatStore.getState().sendMessage(`请解释以下代码：\n\`\`\`\n${selectedText}\n\`\`\``);
     }
-  }
-})
+  },
+});
 
 editor.addAction({
-  id: 'ai-rewrite-selection',
-  label: '🤖 用 AI 重写选中代码',
-  contextMenuGroupId: 'ai',
+  id: "ai-rewrite-selection",
+  label: "🤖 用 AI 重写选中代码",
+  contextMenuGroupId: "ai",
   contextMenuOrder: 2,
   run: (ed) => {
-    const selection = ed.getSelection()
-    const selectedText = ed.getModel()?.getValueInRange(selection)
+    const selection = ed.getSelection();
+    const selectedText = ed.getModel()?.getValueInRange(selection);
     if (selectedText) {
-      useChatStore.getState().sendMessage(
-        `请重写以下代码，使其更清晰、高效：\n\`\`\`\n${selectedText}\n\`\`\``
-      )
+      useChatStore
+        .getState()
+        .sendMessage(`请重写以下代码，使其更清晰、高效：\n\`\`\`\n${selectedText}\n\`\`\``);
     }
-  }
-})
+  },
+});
 ```
 
 ---
@@ -1156,51 +1152,51 @@ editor.addAction({
 
 ### 阶段 1：基础框架（1~2 周）
 
-| 任务 | 优先级 | 说明 |
-|------|--------|------|
-| 安装并配置 Monaco Editor + Vite 插件 | P0 | 验证 Monaco 在项目中可用 |
-| 实现 `editorStore` 和 `layoutStore` | P0 | 状态管理基础 |
-| 实现三栏 `CursorLayout` 骨架 | P0 | 布局容器，各栏先用占位内容 |
-| 在设置页新增布局切换 UI | P0 | 用户可以切换模式 |
-| 路由层根据 `layoutMode` 渲染不同布局 | P0 | 切换生效 |
+| 任务                                 | 优先级 | 说明                       |
+| ------------------------------------ | ------ | -------------------------- |
+| 安装并配置 Monaco Editor + Vite 插件 | P0     | 验证 Monaco 在项目中可用   |
+| 实现 `editorStore` 和 `layoutStore`  | P0     | 状态管理基础               |
+| 实现三栏 `CursorLayout` 骨架         | P0     | 布局容器，各栏先用占位内容 |
+| 在设置页新增布局切换 UI              | P0     | 用户可以切换模式           |
+| 路由层根据 `layoutMode` 渲染不同布局 | P0     | 切换生效                   |
 
 ### 阶段 2：编辑器功能（1~2 周）
 
-| 任务 | 优先级 | 说明 |
-|------|--------|------|
-| 实现 `MonacoEditorPanel` | P0 | 核心编辑器面板 |
-| 实现多标签页 `EditorTabs` | P0 | 多文件同时打开 |
-| 后端 `fileService` + WS RPC | P0 | 文件读写 |
-| 前端 `useFileContent` / `useFileSave` hooks | P0 | 读写 hooks |
-| Ctrl+S 保存快捷键 | P1 | 用户习惯 |
-| 编辑器状态栏 | P2 | 行列号、语言显示 |
+| 任务                                        | 优先级 | 说明             |
+| ------------------------------------------- | ------ | ---------------- |
+| 实现 `MonacoEditorPanel`                    | P0     | 核心编辑器面板   |
+| 实现多标签页 `EditorTabs`                   | P0     | 多文件同时打开   |
+| 后端 `fileService` + WS RPC                 | P0     | 文件读写         |
+| 前端 `useFileContent` / `useFileSave` hooks | P0     | 读写 hooks       |
+| Ctrl+S 保存快捷键                           | P1     | 用户习惯         |
+| 编辑器状态栏                                | P2     | 行列号、语言显示 |
 
 ### 阶段 3：文件树（1 周）
 
-| 任务 | 优先级 | 说明 |
-|------|--------|------|
-| `file.listDirectory` 后端实现 | P0 | 目录树数据 |
-| `FileTree` 组件 | P0 | 可视化目录树 |
-| 点击文件在编辑器中打开 | P0 | 核心交互 |
-| 文件树图标（根据文件类型） | P2 | 视觉优化 |
+| 任务                          | 优先级 | 说明         |
+| ----------------------------- | ------ | ------------ |
+| `file.listDirectory` 后端实现 | P0     | 目录树数据   |
+| `FileTree` 组件               | P0     | 可视化目录树 |
+| 点击文件在编辑器中打开        | P0     | 核心交互     |
+| 文件树图标（根据文件类型）    | P2     | 视觉优化     |
 
 ### 阶段 4：AI 联动（1 周）
 
-| 任务 | 优先级 | 说明 |
-|------|--------|------|
-| AI 修改后同步到编辑器 | P0 | `useAiEditorSync` |
-| Diff 视图（接受/拒绝 AI 修改） | P1 | `EditorDiffOverlay` |
-| 右键菜单"用 AI 解释/重写" | P2 | 增强体验 |
+| 任务                           | 优先级 | 说明                |
+| ------------------------------ | ------ | ------------------- |
+| AI 修改后同步到编辑器          | P0     | `useAiEditorSync`   |
+| Diff 视图（接受/拒绝 AI 修改） | P1     | `EditorDiffOverlay` |
+| 右键菜单"用 AI 解释/重写"      | P2     | 增强体验            |
 
 ### 阶段 5：打磨与测试（1 周）
 
-| 任务 | 说明 |
-|------|------|
-| 面板宽度记忆持久化 | 用户调整面板宽度后下次保持 |
+| 任务                    | 说明                                       |
+| ----------------------- | ------------------------------------------ |
+| 面板宽度记忆持久化      | 用户调整面板宽度后下次保持                 |
 | Electron 桌面端适配测试 | 确保 Monaco 在 Electron 渲染进程中正常工作 |
-| 性能测试（大文件） | Monaco 处理 10k+ 行文件的性能验证 |
-| 主题适配 | 跟随 t3code 现有的亮/暗主题 |
-| 单元测试 | `editorStore`、`layoutStore` 的状态逻辑 |
+| 性能测试（大文件）      | Monaco 处理 10k+ 行文件的性能验证          |
+| 主题适配                | 跟随 t3code 现有的亮/暗主题                |
+| 单元测试                | `editorStore`、`layoutStore` 的状态逻辑    |
 
 ---
 
@@ -1209,6 +1205,7 @@ editor.addAction({
 ### 13.1 Monaco 包体积
 
 Monaco Editor 核心 + 所有 worker 约 5~8MB。建议：
+
 - 使用 `vite-plugin-monaco-editor` 实现按需加载
 - 语言 worker 仅加载常用语言（ts/js/json/css/html）
 - 利用 CDN 加载 Monaco（`loader.config({ paths: { vs: '...' } })`）
@@ -1216,6 +1213,7 @@ Monaco Editor 核心 + 所有 worker 约 5~8MB。建议：
 ### 13.2 Electron 渲染进程中的 Monaco
 
 Monaco 在 Electron 渲染进程中运行需要注意：
+
 - `contextIsolation: true` 环境下 Monaco 需要通过 `preload.ts` 暴露 `desktopBridge`
 - Worker 路径需要用 `file://` 协议
 - 建议在 `apps/desktop/src/main.ts` 中设置 `webSecurity: false`（开发环境）或使用 CSP 白名单
@@ -1227,12 +1225,14 @@ Monaco 在 Electron 渲染进程中运行需要注意：
 ### 13.4 大文件性能
 
 Monaco 默认对超过 5MB 的文件禁用 IntelliSense。对于大型代码仓库，建议：
+
 - 文件树采用懒加载（按需展开目录）
 - 读取文件时添加大小限制（如 > 2MB 警告用户）
 
 ### 13.5 与现有 Diff 系统的兼容
 
 t3code 现有 `DiffPanel.tsx` 是 AI 修改的主要展示入口。在 Cursor 模式下，需要决策：
+
 - 方案 A：保留 DiffPanel，显示在右侧 AI 面板下方（堆叠）
 - 方案 B：AI 修改直接反映到编辑器内联 Diff（推荐，体验更自然）
 
@@ -1242,14 +1242,14 @@ t3code 现有 `DiffPanel.tsx` 是 AI 修改的主要展示入口。在 Cursor �
 
 ## 附录：关键依赖版本参考
 
-| 包名 | 推荐版本 | 用途 |
-|------|---------|------|
-| `@monaco-editor/react` | `^4.6.0` | Monaco React 封装 |
-| `monaco-editor` | `^0.47.0` | Monaco 核心 |
-| `vite-plugin-monaco-editor` | `^1.1.0` | Vite 构建配置 |
-| `react-resizable-panels` | `^2.0.0` | 可拖拽分割面板 |
-| `react-arborist` | `^3.4.0` | 文件树组件 |
+| 包名                        | 推荐版本  | 用途              |
+| --------------------------- | --------- | ----------------- |
+| `@monaco-editor/react`      | `^4.6.0`  | Monaco React 封装 |
+| `monaco-editor`             | `^0.47.0` | Monaco 核心       |
+| `vite-plugin-monaco-editor` | `^1.1.0`  | Vite 构建配置     |
+| `react-resizable-panels`    | `^2.0.0`  | 可拖拽分割面板    |
+| `react-arborist`            | `^3.4.0`  | 文件树组件        |
 
 ---
 
-*文档版本：v1.0 · 2026-05-10*
+_文档版本：v1.0 · 2026-05-10_

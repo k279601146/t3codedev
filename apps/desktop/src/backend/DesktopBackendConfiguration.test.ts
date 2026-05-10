@@ -4,15 +4,18 @@ import {
   COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV,
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
 } from "@t3tools/shared/commercialEngine";
+import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopEngineIntegrity from "../engine/DesktopEngineIntegrity.ts";
 import * as DesktopEngineUpdater from "../engine/DesktopEngineUpdater.ts";
 import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
+import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
@@ -86,6 +89,9 @@ const withHarness = <A, E, R>(
     | FileSystem.FileSystem
     | DesktopBackendConfiguration.DesktopBackendConfiguration
   >,
+  options?: {
+    readonly clientSettings?: Parameters<typeof DesktopClientSettings.layerTest>[0];
+  },
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -97,6 +103,7 @@ const withHarness = <A, E, R>(
       Effect.provide(
         DesktopBackendConfiguration.layer.pipe(
           Layer.provideMerge(DesktopCommercialAuth.layerTest()),
+          Layer.provideMerge(DesktopClientSettings.layerTest(options?.clientSettings)),
           Layer.provideMerge(DesktopEngineIntegrity.layerTest),
           Layer.provideMerge(DesktopEngineUpdater.layerTest()),
           Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
@@ -207,6 +214,38 @@ describe("DesktopBackendConfiguration", () => {
     ),
   );
 
+  it.effect("keeps anonymous telemetry disabled unless the user opts in", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+        const config = yield* configuration.resolve;
+
+        assert.equal(config.env.T3CODE_TELEMETRY_ENABLED, "false");
+      }),
+    ),
+  );
+
+  it.effect("enables anonymous telemetry for the backend after usage consent", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+        const config = yield* configuration.resolve;
+
+        assert.equal(config.env.T3CODE_TELEMETRY_ENABLED, "true");
+      }),
+      {
+        clientSettings: Option.some({
+          ...DEFAULT_CLIENT_SETTINGS,
+          telemetryConsent: {
+            crashReporting: false,
+            usageAnalytics: true,
+            improveProduct: false,
+          },
+        }),
+      },
+    ),
+  );
+
   it.effect("captures backend output in development so child process logs can be persisted", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -222,6 +261,7 @@ describe("DesktopBackendConfiguration", () => {
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
             Layer.provideMerge(DesktopCommercialAuth.layerTest()),
+            Layer.provideMerge(DesktopClientSettings.layerTest()),
             Layer.provideMerge(DesktopEngineIntegrity.layerTest),
             Layer.provideMerge(DesktopEngineUpdater.layerTest()),
             Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
@@ -308,6 +348,7 @@ describe("DesktopBackendConfiguration", () => {
                   ideJwt: "stored-jwt",
                 }),
               ),
+              Layer.provideMerge(DesktopClientSettings.layerTest()),
               Layer.provideMerge(DesktopEngineIntegrity.layerTest),
               Layer.provideMerge(DesktopEngineUpdater.layerTest()),
               Layer.provideMerge(DesktopWindowsSandbox.layerTest()),

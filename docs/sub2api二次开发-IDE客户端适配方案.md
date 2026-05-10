@@ -1,4 +1,5 @@
 # sub2api 二次开发方案
+
 ## 面向 AI 编程助手 IDE 客户端的适配与扩展
 
 > **文档版本**：1.0  
@@ -74,26 +75,26 @@ git merge upstream/main  # 或 rebase
 
 在开始开发前，先明确 sub2api **原生已有**哪些能力，避免重复造轮子：
 
-| 能力 | sub2api 是否已有 | IDE 项目是否需要改动 |
-|------|-----------------|-------------------|
-| OpenAI 兼容 API 转发 | ✅ 完整支持 | 无需改动，codex-rs 直接对接 |
-| 多上游账号管理（OAuth/API Key） | ✅ | 无需改动，管理员后台配置即可 |
-| 粘性会话（同一会话路由到同账号） | ✅ | 无需改动 |
-| API Key 分发给用户 | ✅ | **需要替换为 JWT 方案** |
-| Token 级用量追踪 | ✅ | 无需改动，接 IDE 查询接口即可 |
-| 并发控制（per-user） | ✅ | 无需改动，配置即可 |
-| 内置支付（EasyPay / 支付宝 / 微信 / Stripe） | ✅ | 无需改动，配置即可 |
-| 管理员后台 Web UI | ✅ Vue3 | **需要新增 IDE 专属管理页面** |
-| 用户注册/登录（Web 端） | ✅ | **需要新增 IDE 客户端 OAuth 流程** |
-| 邮箱验证码登录 | ✅ | 可直接复用 |
-| GitHub/Google 快捷登录 | ✅（v0.1.125+） | 可直接复用 |
-| 频道（渠道）监控 | ✅ | 无需改动 |
-| 内容风险控制 | ✅（v0.1.125+） | 无需改动，配置即可 |
-| **IDE 客户端版本管理** | ❌ | **需要新增** |
-| **引擎二进制版本管理** | ❌ | **需要新增** |
-| **IDE 专用 JWT 认证** | ❌ | **需要新增** |
-| **套餐/功能权限与 IDE 特性绑定** | ❌ | **需要新增** |
-| **客户端健康/诊断上报** | ❌ | **需要新增** |
+| 能力                                         | sub2api 是否已有 | IDE 项目是否需要改动               |
+| -------------------------------------------- | ---------------- | ---------------------------------- |
+| OpenAI 兼容 API 转发                         | ✅ 完整支持      | 无需改动，codex-rs 直接对接        |
+| 多上游账号管理（OAuth/API Key）              | ✅               | 无需改动，管理员后台配置即可       |
+| 粘性会话（同一会话路由到同账号）             | ✅               | 无需改动                           |
+| API Key 分发给用户                           | ✅               | **需要替换为 JWT 方案**            |
+| Token 级用量追踪                             | ✅               | 无需改动，接 IDE 查询接口即可      |
+| 并发控制（per-user）                         | ✅               | 无需改动，配置即可                 |
+| 内置支付（EasyPay / 支付宝 / 微信 / Stripe） | ✅               | 无需改动，配置即可                 |
+| 管理员后台 Web UI                            | ✅ Vue3          | **需要新增 IDE 专属管理页面**      |
+| 用户注册/登录（Web 端）                      | ✅               | **需要新增 IDE 客户端 OAuth 流程** |
+| 邮箱验证码登录                               | ✅               | 可直接复用                         |
+| GitHub/Google 快捷登录                       | ✅（v0.1.125+）  | 可直接复用                         |
+| 频道（渠道）监控                             | ✅               | 无需改动                           |
+| 内容风险控制                                 | ✅（v0.1.125+）  | 无需改动，配置即可                 |
+| **IDE 客户端版本管理**                       | ❌               | **需要新增**                       |
+| **引擎二进制版本管理**                       | ❌               | **需要新增**                       |
+| **IDE 专用 JWT 认证**                        | ❌               | **需要新增**                       |
+| **套餐/功能权限与 IDE 特性绑定**             | ❌               | **需要新增**                       |
+| **客户端健康/诊断上报**                      | ❌               | **需要新增**                       |
 
 ---
 
@@ -101,15 +102,15 @@ git merge upstream/main  # 或 rebase
 
 归纳为以下 7 个开发项：
 
-| # | 开发项 | 改动位置 | 优先级 |
-|---|--------|---------|--------|
-| Dev 1 | IDE 客户端专用认证接口 | Go backend + Ent Schema | P0 |
-| Dev 2 | JWT 令牌体系（替代 API Key 直接传输） | Go backend middleware | P0 |
-| Dev 3 | IDE 用量查询接口 | Go backend handler | P1 |
-| Dev 4 | 套餐与订阅管理接口 | Go backend handler | P1 |
-| Dev 5 | 客户端/引擎版本管理接口 | Go backend + Ent Schema | P1 |
-| Dev 6 | codex / t3code 兼容性适配 | Go backend | P0 |
-| Dev 7 | 管理后台扩展 | Vue3 frontend | P2 |
+| #     | 开发项                                | 改动位置                | 优先级 |
+| ----- | ------------------------------------- | ----------------------- | ------ |
+| Dev 1 | IDE 客户端专用认证接口                | Go backend + Ent Schema | P0     |
+| Dev 2 | JWT 令牌体系（替代 API Key 直接传输） | Go backend middleware   | P0     |
+| Dev 3 | IDE 用量查询接口                      | Go backend handler      | P1     |
+| Dev 4 | 套餐与订阅管理接口                    | Go backend handler      | P1     |
+| Dev 5 | 客户端/引擎版本管理接口               | Go backend + Ent Schema | P1     |
+| Dev 6 | codex / t3code 兼容性适配             | Go backend              | P0     |
+| Dev 7 | 管理后台扩展                          | Vue3 frontend           | P2     |
 
 ---
 
@@ -1080,20 +1081,20 @@ codex-rs 的 AI 响应可能很长（复杂任务几分钟），需要确保代�
 ```nginx
 location /v1/ {
     proxy_pass http://sub2api:8080;
-    
+
     # 流式响应必须关闭缓冲
     proxy_buffering off;
     proxy_cache off;
-    
+
     # 超时设置（codex 长任务需要较长时间）
     proxy_read_timeout 600s;      # 10 分钟
     proxy_send_timeout 600s;
     proxy_connect_timeout 10s;
-    
+
     # 保持连接
     proxy_http_version 1.1;
     proxy_set_header Connection "";
-    
+
     # 传递必要的头（包括 session_id）
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -1187,41 +1188,39 @@ frontend/src/views/
         <StatusBadge :revoked="row.revoked" :expired="isExpired(row.expires_at)" />
       </template>
       <template #actions="{ row }">
-        <Button v-if="!row.revoked" @click="revokeSession(row.id)" danger>
-          吊销
-        </Button>
+        <Button v-if="!row.revoked" @click="revokeSession(row.id)" danger> 吊销 </Button>
       </template>
     </DataTable>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useIDESessionAPI } from '@/api/ide'
+import { ref, onMounted } from "vue";
+import { useIDESessionAPI } from "@/api/ide";
 
-const { getSessions, revokeSession: apiRevoke } = useIDESessionAPI()
-const sessions = ref([])
-const loading = ref(false)
+const { getSessions, revokeSession: apiRevoke } = useIDESessionAPI();
+const sessions = ref([]);
+const loading = ref(false);
 
 const columns = [
-  { key: 'user_email', label: '用户' },
-  { key: 'client_version', label: 'IDE 版本' },
-  { key: 'platform', label: '平台' },
-  { key: 'last_used_at', label: '最后使用' },
-  { key: 'expires_at', label: '过期时间' },
-  { key: 'status', label: '状态' },
-  { key: 'actions', label: '操作' },
-]
+  { key: "user_email", label: "用户" },
+  { key: "client_version", label: "IDE 版本" },
+  { key: "platform", label: "平台" },
+  { key: "last_used_at", label: "最后使用" },
+  { key: "expires_at", label: "过期时间" },
+  { key: "status", label: "状态" },
+  { key: "actions", label: "操作" },
+];
 
 onMounted(async () => {
-  loading.value = true
-  sessions.value = await getSessions()
-  loading.value = false
-})
+  loading.value = true;
+  sessions.value = await getSessions();
+  loading.value = false;
+});
 
 async function revokeSession(sessionId: string) {
-  await apiRevoke(sessionId)
-  sessions.value = await getSessions()
+  await apiRevoke(sessionId);
+  sessions.value = await getSessions();
 }
 </script>
 ```
@@ -1233,9 +1232,7 @@ async function revokeSession(sessionId: string) {
 <template>
   <div class="ide-releases">
     <PageHeader title="版本发布管理">
-      <Button @click="showPublishModal = true" type="primary">
-        发布新版本
-      </Button>
+      <Button @click="showPublishModal = true" type="primary"> 发布新版本 </Button>
     </PageHeader>
 
     <!-- 版本列表（分 app / engine 两个 tab） -->
@@ -1249,10 +1246,7 @@ async function revokeSession(sessionId: string) {
     </Tabs>
 
     <!-- 发布弹窗 -->
-    <PublishReleaseModal
-      v-model:visible="showPublishModal"
-      @published="refreshReleases"
-    />
+    <PublishReleaseModal v-model:visible="showPublishModal" @published="refreshReleases" />
   </div>
 </template>
 ```
@@ -1260,7 +1254,12 @@ async function revokeSession(sessionId: string) {
 ```vue
 <!-- 发布弹窗：填写版本信息 -->
 <template>
-  <Modal title="发布新版本" :visible="visible" @ok="submit" @cancel="$emit('update:visible', false)">
+  <Modal
+    title="发布新版本"
+    :visible="visible"
+    @ok="submit"
+    @cancel="$emit('update:visible', false)"
+  >
     <Form :model="form">
       <FormItem label="类型">
         <RadioGroup v-model="form.type">
@@ -1296,11 +1295,11 @@ async function revokeSession(sessionId: string) {
 
 <script setup lang="ts">
 const platforms = [
-  { key: 'win32-x64', label: 'Windows x64' },
-  { key: 'darwin-arm64', label: 'macOS Apple Silicon' },
-  { key: 'darwin-x64', label: 'macOS Intel' },
-  { key: 'linux-x64', label: 'Linux x64' },
-]
+  { key: "win32-x64", label: "Windows x64" },
+  { key: "darwin-arm64", label: "macOS Apple Silicon" },
+  { key: "darwin-x64", label: "macOS Intel" },
+  { key: "linux-x64", label: "Linux x64" },
+];
 </script>
 ```
 
@@ -1385,14 +1384,14 @@ Internet
 
 ```yaml
 # deploy/docker-compose.prod.yml
-version: '3.8'
+version: "3.8"
 
 services:
   sub2api:
     image: your-registry/sub2api-myide:latest
     restart: always
     ports:
-      - "127.0.0.1:8080:8080"  # 只监听本地，通过 Nginx 暴露
+      - "127.0.0.1:8080:8080" # 只监听本地，通过 Nginx 暴露
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -1401,7 +1400,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_ADDR=redis:6379
       # IDE JWT 配置
-      - IDE_JWT_SECRET=${IDE_JWT_SECRET}  # 强随机字符串，至少 64 字节
+      - IDE_JWT_SECRET=${IDE_JWT_SECRET} # 强随机字符串，至少 64 字节
       - IDE_JWT_TTL_DAYS=30
       # 上游 AI 服务（管理员在后台配置，这里是环境变量备用）
       - UPSTREAM_BASE_URL=${UPSTREAM_BASE_URL}
@@ -1453,7 +1452,7 @@ name: Build and Push
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 jobs:
   build:
@@ -1464,7 +1463,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: "1.25"
 
       - name: Run tests
         run: |
@@ -1497,7 +1496,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Engine version (e.g. 0.5.2)'
+        description: "Engine version (e.g. 0.5.2)"
         required: true
 
 jobs:
@@ -1558,31 +1557,31 @@ jobs:
 
 ## 优先级矩阵
 
-| # | 开发项 | 优先级 | 预计工时 | 说明 |
-|---|--------|--------|---------|------|
-| Dev 1 | IDE 客户端 OAuth PKCE 认证 | **P0** | 3天 | 没有这个，客户端无法登录 |
-| Dev 2 | JWT 中间件（兼容 API Key 认证） | **P0** | 2天 | 核心安全架构，必须先做 |
-| Dev 6 | codex/t3code 兼容性适配 | **P0** | 1天 | Nginx 配置 + 头透传，工作量小 |
-| Dev 3 | IDE 用量查询接口 | P1 | 1天 | 复用现有用量数据，接口薄 |
-| Dev 4 | 套餐与模型权限接口 | P1 | 1天 | 配置驱动，开发量小 |
-| Dev 5 | 版本管理接口 | P1 | 2天 | 含 Schema + Handler + 管理接口 |
-| Dev 7 | 管理后台 Vue3 扩展 | P2 | 3天 | 有现成组件可复用，主要是页面 |
-| — | 部署与 CI/CD 配置 | P1 | 1天 | Docker Compose + GitHub Actions |
-| **合计** | | | **约 14 个工作日** | |
+| #        | 开发项                          | 优先级 | 预计工时           | 说明                            |
+| -------- | ------------------------------- | ------ | ------------------ | ------------------------------- |
+| Dev 1    | IDE 客户端 OAuth PKCE 认证      | **P0** | 3天                | 没有这个，客户端无法登录        |
+| Dev 2    | JWT 中间件（兼容 API Key 认证） | **P0** | 2天                | 核心安全架构，必须先做          |
+| Dev 6    | codex/t3code 兼容性适配         | **P0** | 1天                | Nginx 配置 + 头透传，工作量小   |
+| Dev 3    | IDE 用量查询接口                | P1     | 1天                | 复用现有用量数据，接口薄        |
+| Dev 4    | 套餐与模型权限接口              | P1     | 1天                | 配置驱动，开发量小              |
+| Dev 5    | 版本管理接口                    | P1     | 2天                | 含 Schema + Handler + 管理接口  |
+| Dev 7    | 管理后台 Vue3 扩展              | P2     | 3天                | 有现成组件可复用，主要是页面    |
+| —        | 部署与 CI/CD 配置               | P1     | 1天                | Docker Compose + GitHub Actions |
+| **合计** |                                 |        | **约 14 个工作日** |                                 |
 
 ## 与上游同步风险评估
 
-| 改动方式 | 冲突风险 | 建议 |
-|---------|---------|------|
-| 新增文件（`ide/` 目录） | ✅ 无风险 | 所有 IDE 代码都放独立目录 |
-| 修改路由注册（追加） | ⚠️ 低风险 | 在末尾追加，不修改上游路由块 |
-| 修改 Nginx 中间件（插入） | ⚠️ 低风险 | 在上游中间件前插入，保持上游逻辑不变 |
-| 新增 Ent Schema 文件 | ✅ 无风险 | 新增文件，不修改上游 Schema |
-| 修改前端路由和菜单（追加） | ⚠️ 低风险 | 只追加，不修改上游项 |
-| 修改 AI 转发中间件（替换） | ⚠️ 中风险 | 保存上游实现，用包装函数调用 |
+| 改动方式                   | 冲突风险  | 建议                                 |
+| -------------------------- | --------- | ------------------------------------ |
+| 新增文件（`ide/` 目录）    | ✅ 无风险 | 所有 IDE 代码都放独立目录            |
+| 修改路由注册（追加）       | ⚠️ 低风险 | 在末尾追加，不修改上游路由块         |
+| 修改 Nginx 中间件（插入）  | ⚠️ 低风险 | 在上游中间件前插入，保持上游逻辑不变 |
+| 新增 Ent Schema 文件       | ✅ 无风险 | 新增文件，不修改上游 Schema          |
+| 修改前端路由和菜单（追加） | ⚠️ 低风险 | 只追加，不修改上游项                 |
+| 修改 AI 转发中间件（替换） | ⚠️ 中风险 | 保存上游实现，用包装函数调用         |
 
 > **同步上游的频率建议**：每两周同步一次上游，保持与上游的改动在 200 行以内，出现冲突时优先保留上游逻辑，在其基础上重新应用你的改动。
 
 ---
 
-*文档持续更新，与开发进展同步。优先完成 P0 项目，确保 IDE 客户端可以完整走通登录 → 请求 AI → 查看用量的核心链路。*
+_文档持续更新，与开发进展同步。优先完成 P0 项目，确保 IDE 客户端可以完整走通登录 → 请求 AI → 查看用量的核心链路。_

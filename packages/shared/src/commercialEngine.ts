@@ -26,6 +26,14 @@ export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
   "HOMEPATH",
 ] as const;
 
+const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
+  ...COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY,
+  "Path",
+  "ComSpec",
+  "PATHEXT",
+  "WINDIR",
+] as const;
+
 export function getCommercialEngineEnvVar(env: NodeJS.ProcessEnv, key: string): string | undefined {
   if (env[key] !== undefined) return env[key];
   const upperKey = key.toUpperCase();
@@ -33,6 +41,23 @@ export function getCommercialEngineEnvVar(env: NodeJS.ProcessEnv, key: string): 
     if (envKey.toUpperCase() === upperKey) return env[envKey];
   }
   return undefined;
+}
+
+export function buildCommercialEngineProcessEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  patch: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const name of COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY) {
+    const value = getCommercialEngineEnvVar(baseEnv, name);
+    if (value !== undefined) {
+      env[name] = value;
+    }
+  }
+  for (const [name, value] of Object.entries(patch)) {
+    env[name] = value;
+  }
+  return env;
 }
 
 export function resolveCommercialEngineGatewayBaseUrl(

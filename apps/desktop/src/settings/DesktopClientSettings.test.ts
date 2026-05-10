@@ -27,6 +27,11 @@ const clientSettings: ClientSettings = {
   sidebarProjectSortOrder: "manual",
   sidebarThreadSortOrder: "created_at",
   sidebarThreadPreviewCount: 6,
+  telemetryConsent: {
+    crashReporting: false,
+    usageAnalytics: true,
+    improveProduct: false,
+  },
   timestampFormat: "24-hour",
 };
 
@@ -125,6 +130,11 @@ describe("DesktopClientSettings", () => {
         assert.isTrue(Option.isSome(persisted));
         if (Option.isSome(persisted)) {
           assert.equal(persisted.value.timestampFormat, "24-hour");
+          assert.deepEqual(persisted.value.telemetryConsent, {
+            crashReporting: false,
+            usageAnalytics: false,
+            improveProduct: false,
+          });
         }
       }),
     ),

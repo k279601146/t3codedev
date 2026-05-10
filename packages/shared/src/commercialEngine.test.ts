@@ -7,6 +7,7 @@ import {
   COMMERCIAL_ENGINE_WIRE_API,
   COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+  buildCommercialEngineProcessEnv,
   generateCommercialEngineTomlConfig,
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
@@ -69,5 +70,27 @@ describe("commercialEngine", () => {
     assert.match(toml, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
     assert.doesNotMatch(toml, /must-not-appear/);
     assert.doesNotMatch(toml, /jwt-token/);
+  });
+
+  it("builds a minimum process environment for the bundled engine", () => {
+    const env = buildCommercialEngineProcessEnv(
+      {
+        PATH: "/bin",
+        HOME: "/home/user",
+        AWS_SECRET_ACCESS_KEY: "must-not-leak",
+        OPENAI_API_KEY: "must-not-leak",
+      },
+      {
+        CODEX_HOME: "/home/user/.t3/engine",
+        [COMMERCIAL_ENGINE_IDE_JWT_ENV]: "jwt-token",
+      },
+    );
+
+    assert.equal(env.PATH, "/bin");
+    assert.equal(env.HOME, "/home/user");
+    assert.equal(env.CODEX_HOME, "/home/user/.t3/engine");
+    assert.equal(env[COMMERCIAL_ENGINE_IDE_JWT_ENV], "jwt-token");
+    assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
+    assert.equal(env.OPENAI_API_KEY, undefined);
   });
 });

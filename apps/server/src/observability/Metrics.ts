@@ -58,6 +58,10 @@ export const providerRuntimeEventsTotal = Metric.counter("t3_provider_runtime_ev
   description: "Total canonical provider runtime events processed.",
 });
 
+export const desktopApmEventsTotal = Metric.counter("t3_desktop_apm_events_total", {
+  description: "Total desktop APM events accepted by the local server.",
+});
+
 export const gitCommandsTotal = Metric.counter("t3_git_commands_total", {
   description: "Total git commands executed by the server runtime.",
 });
@@ -164,3 +168,103 @@ export const providerTurnMetricAttributes = (input: {
     ...input.extra,
   });
 };
+
+function escapePrometheusHelp(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n");
+}
+
+function escapePrometheusLabel(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/"/g, '\\"');
+}
+
+function formatMetricValue(value: number | bigint): string {
+  return typeof value === "bigint" ? value.toString() : String(value);
+}
+
+function formatLabels(
+  attributes: Readonly<Record<string, string>> | undefined,
+  extra?: Readonly<Record<string, string>>,
+): string {
+  const entries = Object.entries({
+    ...(attributes ?? {}),
+    ...(extra ?? {}),
+  }).filter(([, value]) => value.length > 0);
+  if (entries.length === 0) {
+    return "";
+  }
+  return `{${entries
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}="${escapePrometheusLabel(value)}"`)
+    .join(",")}}`;
+}
+
+function formatMetricHeader(snapshot: Metric.Metric.Snapshot, type: string): string {
+  const description = snapshot.description
+    ? [`# HELP ${snapshot.id} ${escapePrometheusHelp(snapshot.description)}`]
+    : [];
+  return [...description, `# TYPE ${snapshot.id} ${type}`].join("\n");
+}
+
+export function formatPrometheusMetrics(snapshots: ReadonlyArray<Metric.Metric.Snapshot>): string {
+  const lines: string[] = [];
+  const emittedHeaders = new Set<string>();
+
+  const pushHeader = (snapshot: Metric.Metric.Snapshot, type: string) => {
+    const key = `${snapshot.id}:${type}`;
+    if (emittedHeaders.has(key)) return;
+    emittedHeaders.add(key);
+    lines.push(formatMetricHeader(snapshot, type));
+  };
+
+  for (const snapshot of [...snapshots].sort((left, right) => left.id.localeCompare(right.id))) {
+    switch (snapshot.type) {
+      case "Counter": {
+        pushHeader(snapshot, "counter");
+        lines.push(
+          `${snapshot.id}${formatLabels(snapshot.attributes)} ${formatMetricValue(snapshot.state.count)}`,
+        );
+        break;
+      }
+      case "Gauge": {
+        pushHeader(snapshot, "gauge");
+        lines.push(
+          `${snapshot.id}${formatLabels(snapshot.attributes)} ${formatMetricValue(snapshot.state.value)}`,
+        );
+        break;
+      }
+      case "Frequency": {
+        pushHeader(snapshot, "counter");
+        for (const [value, count] of snapshot.state.occurrences) {
+          lines.push(`${snapshot.id}${formatLabels(snapshot.attributes, { value })} ${count}`);
+        }
+        break;
+      }
+      case "Histogram": {
+        pushHeader(snapshot, "histogram");
+        for (const [le, count] of snapshot.state.buckets) {
+          lines.push(
+            `${snapshot.id}_bucket${formatLabels(snapshot.attributes, { le: String(le) })} ${count}`,
+          );
+        }
+        lines.push(
+          `${snapshot.id}_bucket${formatLabels(snapshot.attributes, { le: "+Inf" })} ${snapshot.state.count}`,
+        );
+        lines.push(`${snapshot.id}_sum${formatLabels(snapshot.attributes)} ${snapshot.state.sum}`);
+        lines.push(
+          `${snapshot.id}_count${formatLabels(snapshot.attributes)} ${snapshot.state.count}`,
+        );
+        break;
+      }
+      case "Summary": {
+        pushHeader(snapshot, "summary");
+        lines.push(
+          `${snapshot.id}_count${formatLabels(snapshot.attributes)} ${snapshot.state.count}`,
+        );
+        lines.push(`${snapshot.id}_sum${formatLabels(snapshot.attributes)} ${snapshot.state.sum}`);
+        break;
+      }
+    }
+  }
+
+  return lines.length === 0 ? "# no metrics recorded\n" : `${lines.join("\n")}\n`;
+}

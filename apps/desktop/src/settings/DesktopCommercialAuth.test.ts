@@ -158,4 +158,42 @@ describe("DesktopCommercialAuth", () => {
       ),
     ),
   );
+
+  it.effect("retries transient gateway token exchange failures", () =>
+    withCommercialAuth(
+      withFetch(
+        (() => {
+          let attempts = 0;
+          return (async () => {
+            attempts += 1;
+            if (attempts === 1) {
+              return new Response("busy", { status: 503 });
+            }
+            return new Response(
+              JSON.stringify({
+                data: { access_token: "ide-jwt", expires_in: 3600 },
+              }),
+              { status: 200 },
+            );
+          }) as typeof fetch;
+        })(),
+        Effect.gen(function* () {
+          const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+          const state = yield* auth.signIn({
+            gatewayBaseUrl: "https://api.example.com/v1",
+            webAccessToken: "web-jwt",
+          });
+
+          assert.isTrue(state.signedIn);
+          assert.deepEqual(
+            yield* auth.getCredentials,
+            Option.some({
+              gatewayBaseUrl: "https://api.example.com/v1",
+              ideJwt: "ide-jwt",
+            }),
+          );
+        }),
+      ),
+    ),
+  );
 });

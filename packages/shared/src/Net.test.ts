@@ -98,3 +98,37 @@ it.layer(NetService.layer)("NetService", (it) => {
     );
   });
 });
+
+describe("resilientFetch", () => {
+  it("retries transient HTTP statuses", async () => {
+    const statuses = [503, 200];
+    const attempts: Array<number> = [];
+
+    const response = await NetService.resilientFetch("https://api.example.test/models", {
+      baseDelayMs: 0,
+      fetchImpl: (async () => {
+        const status = statuses.shift() ?? 500;
+        attempts.push(status);
+        return new Response("{}", { status });
+      }) as typeof fetch,
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(attempts, [503, 200]);
+  });
+
+  it("does not retry non-transient HTTP failures", async () => {
+    let attempts = 0;
+
+    const response = await NetService.resilientFetch("https://api.example.test/auth", {
+      baseDelayMs: 0,
+      fetchImpl: (async () => {
+        attempts += 1;
+        return new Response("unauthorized", { status: 401 });
+      }) as typeof fetch,
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(attempts, 1);
+  });
+});

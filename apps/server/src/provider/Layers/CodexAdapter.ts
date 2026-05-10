@@ -16,6 +16,7 @@ import {
   ProviderInstanceId,
   type ProviderRuntimeEvent,
   type ProviderRequestKind,
+  type ProviderSession,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   RuntimeItemId,
@@ -28,7 +29,9 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -56,6 +59,7 @@ import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
   makeCodexSessionRuntime,
+  spawnCodexAppServerChild,
   type CodexSessionRuntimeError,
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeShape,
@@ -90,6 +94,15 @@ interface CodexAdapterSessionContext {
   readonly runtime: CodexSessionRuntimeShape;
   readonly eventFiber: Fiber.Fiber<void, never>;
   stopped: boolean;
+}
+
+interface CodexWarmProcess {
+  readonly child: ChildProcessSpawner.ChildProcessHandle;
+  readonly cwd: string;
+}
+
+function isRecoverableRuntimeSessionStatus(status: ProviderSession["status"]): boolean {
+  return status === "closed" || status === "error";
 }
 
 function mapCodexRuntimeError(
@@ -1359,8 +1372,67 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       : undefined);
   const managedNativeEventLogger =
     options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
-  const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
+  const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(2048);
+  const warmProcessRef = yield* Ref.make<Option.Option<CodexWarmProcess>>(Option.none());
   const sessions = new Map<ThreadId, CodexAdapterSessionContext>();
+
+  const closeWarmProcess = (warmProcess: CodexWarmProcess): Effect.Effect<void> =>
+    warmProcess.child
+      .kill({ killSignal: "SIGTERM" })
+      .pipe(
+        Effect.catchCause((cause) => Effect.logDebug("codex warm process close failed", { cause })),
+      );
+
+  const warmStandby = Effect.fn("codexAdapter.warmStandby")(function* (cwd: string) {
+    if (options?.makeRuntime !== undefined) {
+      return;
+    }
+    const existing = yield* Ref.get(warmProcessRef);
+    if (Option.isSome(existing)) {
+      return;
+    }
+    const childOption = yield* spawnCodexAppServerChild({
+      binaryPath: codexConfig.binaryPath,
+      ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : { homePath: undefined }),
+      ...(options?.environment ? { environment: options.environment } : { environment: undefined }),
+      cwd,
+    }).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+      Effect.map((child) => Option.some(child)),
+      Effect.catch((error) =>
+        Effect.logDebug("codex warm process spawn failed", { detail: error.message }).pipe(
+          Effect.as(Option.none<ChildProcessSpawner.ChildProcessHandle>()),
+        ),
+      ),
+    );
+    if (Option.isNone(childOption)) {
+      return;
+    }
+    const child = childOption.value;
+    const installed = yield* Ref.modify(warmProcessRef, (current) => {
+      if (Option.isSome(current)) {
+        return [false, current] as const;
+      }
+      return [true, Option.some({ child, cwd })] as const;
+    });
+    if (!installed) {
+      yield* child.kill({ killSignal: "SIGTERM" }).pipe(Effect.ignore);
+    }
+  });
+
+  const acquireWarmProcess = Effect.fn("codexAdapter.acquireWarmProcess")(function* (cwd: string) {
+    if (options?.makeRuntime !== undefined) {
+      return undefined;
+    }
+    const warmProcess = yield* Ref.getAndSet(warmProcessRef, Option.none());
+    yield* warmStandby(cwd).pipe(Effect.forkScoped, Effect.asVoid);
+    return Option.match(warmProcess, {
+      onNone: () => undefined,
+      onSome: (value) => value.child,
+    });
+  });
+
+  yield* warmStandby(process.cwd()).pipe(Effect.forkScoped, Effect.asVoid);
 
   const startSession: CodexAdapterShape["startSession"] = (input) =>
     Effect.scoped(
@@ -1403,7 +1475,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
         );
         const createRuntime = options?.makeRuntime ?? makeCodexSessionRuntime;
-        const runtime = yield* createRuntime(runtimeInput).pipe(
+        const prewarmedChild = yield* acquireWarmProcess(runtimeInput.cwd);
+        const runtime = yield* createRuntime({
+          ...runtimeInput,
+          ...(prewarmedChild ? { prewarmedChild } : {}),
+        }).pipe(
           Effect.provideService(Scope.Scope, sessionScope),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
           Effect.mapError(
@@ -1650,10 +1726,25 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       Array.from(sessions.values()).filter((session) => !session.stopped),
       (session) => session.runtime.getSession,
       { concurrency: 1 },
+    ).pipe(
+      Effect.map((activeSessions) =>
+        activeSessions.filter((session) => !isRecoverableRuntimeSessionStatus(session.status)),
+      ),
     );
 
   const hasSession: CodexAdapterShape["hasSession"] = (threadId) =>
-    Effect.succeed(Boolean(sessions.get(threadId) && !sessions.get(threadId)?.stopped));
+    Effect.gen(function* () {
+      const session = sessions.get(threadId);
+      if (!session || session.stopped) {
+        return false;
+      }
+      const snapshot = yield* session.runtime.getSession;
+      if (!isRecoverableRuntimeSessionStatus(snapshot.status)) {
+        return true;
+      }
+      yield* stopSessionInternal(session).pipe(Effect.ignore);
+      return false;
+    });
 
   const stopAll: CodexAdapterShape["stopAll"] = () =>
     Effect.forEach(Array.from(sessions.values()), stopSessionInternal, {
@@ -1662,11 +1753,15 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     }).pipe(Effect.asVoid);
 
   yield* Effect.acquireRelease(Effect.void, () =>
-    stopAll().pipe(
-      Effect.andThen(Queue.shutdown(runtimeEventQueue)),
-      Effect.andThen(managedNativeEventLogger?.close() ?? Effect.void),
-      Effect.ignore,
-    ),
+    Effect.gen(function* () {
+      const warmProcess = yield* Ref.getAndSet(warmProcessRef, Option.none());
+      if (Option.isSome(warmProcess)) {
+        yield* closeWarmProcess(warmProcess.value);
+      }
+      yield* stopAll();
+      yield* Queue.shutdown(runtimeEventQueue);
+      yield* managedNativeEventLogger?.close() ?? Effect.void;
+    }).pipe(Effect.ignore),
   );
 
   return {

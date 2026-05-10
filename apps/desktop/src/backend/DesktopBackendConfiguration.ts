@@ -21,6 +21,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopEngineIntegrity from "../engine/DesktopEngineIntegrity.ts";
 import * as DesktopEngineUpdater from "../engine/DesktopEngineUpdater.ts";
 import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
+import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 
@@ -61,8 +62,33 @@ const COMMERCIAL_ENGINE_DESKTOP_ENV_NAMES = [
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
 ] as const;
 
+const DESKTOP_BACKEND_PROCESS_ENV_NAMES = [
+  "PATH",
+  "Path",
+  "HOME",
+  "LANG",
+  "TERM",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "TEMP",
+  "TMP",
+  "SystemRoot",
+  "ComSpec",
+  "PATHEXT",
+  "WINDIR",
+] as const;
+
 const backendChildEnvPatch = (): Record<string, string | undefined> =>
   Object.fromEntries(DESKTOP_BACKEND_ENV_NAMES.map((name) => [name, undefined]));
+
+const backendProcessBaseEnv = (): Record<string, string | undefined> =>
+  Object.fromEntries(
+    DESKTOP_BACKEND_PROCESS_ENV_NAMES.map((name) => [
+      name,
+      getCommercialEngineEnvVar(process.env, name),
+    ]),
+  );
 
 const { logWarning: logBackendConfigurationWarning } = DesktopObservability.makeComponentLogger(
   "desktop-backend-configuration",
@@ -121,6 +147,7 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     readonly engineBinaryPath: string;
     readonly windowsSandboxMode: CommercialEngineWindowsSandboxMode;
     readonly observabilitySettings: BackendObservabilitySettings;
+    readonly telemetryEnabled: boolean;
   }): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
     never,
@@ -148,12 +175,14 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       entryPath: environment.backendEntryPath,
       cwd: environment.backendCwd,
       env: {
+        ...backendProcessBaseEnv(),
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
         // 捆绑引擎路径注入：server 层通过这些环境变量检测捆绑模式
         MYIDE_ENGINE_PATH: input.engineBinaryPath,
         MYIDE_ENGINE_HOME: environment.engineHomePath,
         [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: input.windowsSandboxMode,
+        T3CODE_TELEMETRY_ENABLED: input.telemetryEnabled ? "true" : "false",
         ...commercialEnv,
       },
       bootstrap: {
@@ -185,6 +214,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const fileSystem = yield* FileSystem.FileSystem;
+    const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
     const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
     const engineIntegrity = yield* DesktopEngineIntegrity.DesktopEngineIntegrity;
     const engineUpdater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
@@ -252,12 +282,22 @@ export const layer = Layer.effect(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
         );
+        const telemetryEnabled = yield* clientSettings.get.pipe(
+          Effect.map((settings) =>
+            Option.match(settings, {
+              onNone: () => false,
+              onSome: (value) =>
+                value.telemetryConsent.usageAnalytics || value.telemetryConsent.improveProduct,
+            }),
+          ),
+        );
         return yield* resolveBackendStartConfig({
           bootstrapToken,
           commercialCredentials,
           engineBinaryPath,
           windowsSandboxMode,
           observabilitySettings,
+          telemetryEnabled,
         }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
           Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),

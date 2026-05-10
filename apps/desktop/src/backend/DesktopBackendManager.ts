@@ -27,6 +27,7 @@ import {
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
+import * as DesktopApm from "../telemetry/DesktopApm.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 
 const INITIAL_RESTART_DELAY = Duration.millis(500);
@@ -239,7 +240,7 @@ const runBackendProcess = Effect.fn("runBackendProcess")(function* (
     {
       cwd: options.cwd,
       env: options.env,
-      extendEnv: true,
+      extendEnv: false,
       // In Electron main, process.execPath points to the Electron binary.
       // Run the child in Node mode so this backend process does not become a GUI app instance.
       stdin: "ignore",
@@ -284,6 +285,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
   const backendOutputLog = yield* DesktopObservability.DesktopBackendOutputLog;
   const desktopState = yield* DesktopState.DesktopState;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
+  const apm = yield* DesktopApm.DesktopApm;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const httpClient = yield* HttpClient.HttpClient;
   const state = yield* Ref.make(initialState);
@@ -512,6 +514,10 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
       onNone: () => Effect.void,
       onSome: Effect.fn("desktop.backendManager.scheduleRestartFiber")(function* (delay) {
         yield* logBackendManagerError("backend exited unexpectedly; restart scheduled", {
+          reason,
+          delayMs: Duration.toMillis(delay),
+        });
+        yield* apm.track("engine_crash", {
           reason,
           delayMs: Duration.toMillis(delay),
         });

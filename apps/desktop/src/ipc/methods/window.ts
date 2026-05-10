@@ -5,6 +5,7 @@ import {
   DesktopThemeSchema,
   PickFolderOptionsSchema,
 } from "@t3tools/contracts";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -28,6 +29,41 @@ const ContextMenuInput = Schema.Struct({
   items: Schema.Array(ContextMenuItemSchema),
   position: Schema.optionalKey(ContextMenuPosition),
 });
+
+const ALLOWED_EXTERNAL_URL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
+
+class DesktopExternalUrlError extends Data.TaggedError("DesktopExternalUrlError")<{
+  readonly reason: string;
+  readonly cause?: unknown;
+}> {
+  override get message() {
+    return this.reason;
+  }
+}
+
+const normalizeExternalUrl = (value: string): Effect.Effect<string, DesktopExternalUrlError> =>
+  Effect.suspend(() => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch (cause) {
+      return Effect.fail(
+        new DesktopExternalUrlError({
+          reason: "External URL must be a valid absolute URL.",
+          cause,
+        }),
+      );
+    }
+
+    if (!ALLOWED_EXTERNAL_URL_PROTOCOLS.has(url.protocol)) {
+      return Effect.fail(
+        new DesktopExternalUrlError({
+          reason: "External URL must use http, https, or mailto.",
+        }),
+      );
+    }
+    return Effect.succeed(url.toString());
+  });
 
 function toWebSocketBaseUrl(httpBaseUrl: URL): string {
   const url = new URL(httpBaseUrl.href);
@@ -130,6 +166,6 @@ export const openExternal = makeIpcMethod({
   result: Schema.Boolean,
   handler: Effect.fn("desktop.ipc.window.openExternal")(function* (url) {
     const shell = yield* ElectronShell.ElectronShell;
-    return yield* shell.openExternal(url);
+    return yield* shell.openExternal(yield* normalizeExternalUrl(url));
   }),
 });

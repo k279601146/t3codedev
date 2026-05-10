@@ -616,6 +616,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.confirmThreadDelete !== DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete
         ? ["Delete confirmation"]
         : []),
+      ...(!Equal.equals(settings.telemetryConsent, DEFAULT_UNIFIED_SETTINGS.telemetryConsent)
+        ? ["Telemetry consent"]
+        : []),
       ...(isGitWritingModelDirty ? ["Git writing model"] : []),
     ],
     [
@@ -623,6 +626,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.autoOpenPlanSidebar,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
+      settings.telemetryConsent,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
       settings.diffIgnoreWhitespace,
@@ -658,6 +662,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
+      telemetryConsent: DEFAULT_UNIFIED_SETTINGS.telemetryConsent,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
     });
     onRestored?.();
@@ -1079,6 +1084,111 @@ export function GeneralSettingsPanel() {
                 }}
               />
             </div>
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Privacy">
+        <SettingsRow
+          title="Usage analytics"
+          description="Allow anonymous product usage events. Code content, prompts, and file paths are not sent."
+          resetAction={
+            settings.telemetryConsent.usageAnalytics !==
+            DEFAULT_UNIFIED_SETTINGS.telemetryConsent.usageAnalytics ? (
+              <SettingResetButton
+                label="usage analytics"
+                onClick={() =>
+                  updateSettings({
+                    telemetryConsent: {
+                      ...settings.telemetryConsent,
+                      usageAnalytics: DEFAULT_UNIFIED_SETTINGS.telemetryConsent.usageAnalytics,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.telemetryConsent.usageAnalytics}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  telemetryConsent: {
+                    ...settings.telemetryConsent,
+                    usageAnalytics: Boolean(checked),
+                  },
+                })
+              }
+              aria-label="Allow usage analytics"
+            />
+          }
+        />
+        <SettingsRow
+          title="Crash reporting"
+          description="Reserve consent for crash diagnostics; no crash reporter is enabled until this is on."
+          resetAction={
+            settings.telemetryConsent.crashReporting !==
+            DEFAULT_UNIFIED_SETTINGS.telemetryConsent.crashReporting ? (
+              <SettingResetButton
+                label="crash reporting"
+                onClick={() =>
+                  updateSettings({
+                    telemetryConsent: {
+                      ...settings.telemetryConsent,
+                      crashReporting: DEFAULT_UNIFIED_SETTINGS.telemetryConsent.crashReporting,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.telemetryConsent.crashReporting}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  telemetryConsent: {
+                    ...settings.telemetryConsent,
+                    crashReporting: Boolean(checked),
+                  },
+                })
+              }
+              aria-label="Allow crash reporting"
+            />
+          }
+        />
+        <SettingsRow
+          title="Improve product"
+          description="Allow anonymous feature-quality signals used to prioritize reliability work."
+          resetAction={
+            settings.telemetryConsent.improveProduct !==
+            DEFAULT_UNIFIED_SETTINGS.telemetryConsent.improveProduct ? (
+              <SettingResetButton
+                label="improve product telemetry"
+                onClick={() =>
+                  updateSettings({
+                    telemetryConsent: {
+                      ...settings.telemetryConsent,
+                      improveProduct: DEFAULT_UNIFIED_SETTINGS.telemetryConsent.improveProduct,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.telemetryConsent.improveProduct}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  telemetryConsent: {
+                    ...settings.telemetryConsent,
+                    improveProduct: Boolean(checked),
+                  },
+                })
+              }
+              aria-label="Allow product improvement telemetry"
+            />
           }
         />
       </SettingsSection>

@@ -1,5 +1,6 @@
 import * as Crypto from "node:crypto";
 
+import { resilientFetch } from "@t3tools/shared/Net";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
@@ -61,6 +62,7 @@ export interface DesktopEngineUpdaterShape {
   readonly getCurrentVersion: Effect.Effect<string>;
   readonly getActiveEnginePath: Effect.Effect<string>;
   readonly checkAndUpdate: Effect.Effect<void, DesktopEngineUpdateError>;
+  readonly rollback: Effect.Effect<boolean, DesktopEngineUpdateError>;
   readonly configure: Effect.Effect<void, never, Scope.Scope>;
 }
 
@@ -120,7 +122,7 @@ function assertTrustedDownloadUrl(rawUrl: string, isDevelopment: boolean): void 
 }
 
 async function fetchJson(url: string, timeoutMs: number): Promise<unknown> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  const response = await resilientFetch(url, { timeoutMs });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -128,7 +130,7 @@ async function fetchJson(url: string, timeoutMs: number): Promise<unknown> {
 }
 
 async function fetchBinary(url: string, timeoutMs: number): Promise<Uint8Array> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  const response = await resilientFetch(url, { timeoutMs });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -331,6 +333,48 @@ export const layer = Layer.effect(
       yield* applyUpdate(manifest, binary);
     }).pipe(Effect.withSpan("desktop.engineUpdater.checkAndUpdate"));
 
+    const rollback = Effect.gen(function* () {
+      const currentVersion = yield* getCurrentVersion;
+      const entries = yield* fileSystem
+        .readDirectory(environment.engineVersionsPath)
+        .pipe(Effect.orElseSucceed(() => []));
+      const versions = entries
+        .filter(
+          (entry) =>
+            entry !== CURRENT_ENGINE_VERSION_FILE &&
+            !entry.endsWith(".tmp") &&
+            entry !== BUNDLED_ENGINE_VERSION,
+        )
+        .sort(compareVersions);
+
+      const currentIndex = versions.indexOf(currentVersion);
+      const previousVersion =
+        currentIndex > 0
+          ? versions[currentIndex - 1]
+          : versions.filter((version) => version !== currentVersion).at(-1);
+      if (!previousVersion) {
+        return false;
+      }
+
+      const previousPath = getEnginePathForVersion(previousVersion);
+      const exists = yield* fileSystem.exists(previousPath).pipe(Effect.orElseSucceed(() => false));
+      if (!exists) {
+        return false;
+      }
+
+      yield* fileSystem.makeDirectory(environment.engineVersionsPath, { recursive: true });
+      yield* fileSystem.writeFileString(currentVersionPath, `${previousVersion}\n`);
+      yield* logEngineUpdaterWarning("engine rolled back", {
+        fromVersion: currentVersion,
+        toVersion: previousVersion,
+        path: previousPath,
+      });
+      return true;
+    }).pipe(
+      Effect.mapError(toEngineUpdateError),
+      Effect.withSpan("desktop.engineUpdater.rollback"),
+    );
+
     const configure = Effect.gen(function* () {
       yield* Effect.sleep(ENGINE_UPDATE_STARTUP_DELAY).pipe(
         Effect.andThen(checkAndUpdate),
@@ -349,6 +393,7 @@ export const layer = Layer.effect(
       getCurrentVersion,
       getActiveEnginePath,
       checkAndUpdate,
+      rollback,
       configure,
     });
   }),
@@ -364,6 +409,7 @@ export const layerTest = (input?: {
       getCurrentVersion: Effect.succeed(input?.currentVersion ?? BUNDLED_ENGINE_VERSION),
       getActiveEnginePath: Effect.succeed(input?.activeEnginePath ?? ""),
       checkAndUpdate: Effect.void,
+      rollback: Effect.succeed(false),
       configure: Effect.void,
     }),
   );

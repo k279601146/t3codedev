@@ -39,6 +39,18 @@ export const SidebarThreadPreviewCount = Schema.Int.check(
 export type SidebarThreadPreviewCount = typeof SidebarThreadPreviewCount.Type;
 export const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
 
+export const TelemetryConsent = Schema.Struct({
+  crashReporting: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  usageAnalytics: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  improveProduct: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+});
+export type TelemetryConsent = typeof TelemetryConsent.Type;
+export const DEFAULT_TELEMETRY_CONSENT: TelemetryConsent = {
+  crashReporting: false,
+  usageAnalytics: false,
+  improveProduct: false,
+};
+
 export const ClientSettingsSchema = Schema.Struct({
   autoOpenPlanSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -88,6 +100,9 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   sidebarThreadPreviewCount: SidebarThreadPreviewCount.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT)),
+  ),
+  telemetryConsent: TelemetryConsent.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TELEMETRY_CONSENT)),
   ),
   timestampFormat: TimestampFormat.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
@@ -508,6 +523,13 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
+  telemetryConsent: Schema.optionalKey(
+    Schema.Struct({
+      crashReporting: Schema.optionalKey(Schema.Boolean),
+      usageAnalytics: Schema.optionalKey(Schema.Boolean),
+      improveProduct: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   timestampFormat: Schema.optionalKey(TimestampFormat),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

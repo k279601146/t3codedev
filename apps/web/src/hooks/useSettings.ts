@@ -206,9 +206,17 @@ export function useUpdateSettings() {
     }
 
     if (Object.keys(clientPatch).length > 0) {
+      const currentClientSettings = getClientSettingsSnapshot();
+      const { telemetryConsent, ...restClientPatch } = clientPatch;
       persistClientSettings({
-        ...getClientSettingsSnapshot(),
-        ...clientPatch,
+        ...currentClientSettings,
+        ...restClientPatch,
+        telemetryConsent: telemetryConsent
+          ? {
+              ...currentClientSettings.telemetryConsent,
+              ...telemetryConsent,
+            }
+          : currentClientSettings.telemetryConsent,
       });
     }
   }, []);

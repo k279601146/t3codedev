@@ -23,6 +23,7 @@ import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
+import * as DesktopApm from "../telemetry/DesktopApm.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 
 const decodeDesktopBackendBootstrap = Schema.decodeEffect(
@@ -128,6 +129,7 @@ function makeManagerLayer(input: {
           writeOutputChunk: () => Effect.void,
           ...input.backendOutputLog,
         } satisfies DesktopObservability.DesktopBackendOutputLogShape),
+        DesktopApm.layerNoop,
         Layer.succeed(DesktopWindow.DesktopWindow, {
           createMain: Effect.die("unexpected createMain"),
           ensureMain: Effect.die("unexpected ensureMain"),
@@ -203,7 +205,7 @@ describe("DesktopBackendManager", () => {
         assert.equal(spawnedCommand.command, "/electron");
         assert.deepEqual(spawnedCommand.args, ["/server/bin.mjs", "--bootstrap-fd", "3"]);
         assert.equal(spawnedCommand.options.cwd, "/server");
-        assert.equal(spawnedCommand.options.extendEnv, true);
+        assert.equal(spawnedCommand.options.extendEnv, false);
         assert.equal(spawnedCommand.options.stdout, "pipe");
         assert.equal(spawnedCommand.options.stderr, "pipe");
         assert.equal(spawnedCommand.options.killSignal, "SIGTERM");

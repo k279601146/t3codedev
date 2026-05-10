@@ -2,11 +2,31 @@ import { describe, expect, it } from "vitest";
 import * as Schema from "effect/Schema";
 
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { DEFAULT_SERVER_SETTINGS, ServerSettings, ServerSettingsPatch } from "./settings.ts";
+import {
+  ClientSettingsSchema,
+  DEFAULT_CLIENT_SETTINGS,
+  DEFAULT_SERVER_SETTINGS,
+  ServerSettings,
+  ServerSettingsPatch,
+} from "./settings.ts";
 
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
+const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
+
+describe("ClientSettings telemetry consent", () => {
+  it("defaults every telemetry category to disabled", () => {
+    expect(DEFAULT_CLIENT_SETTINGS.telemetryConsent).toEqual({
+      crashReporting: false,
+      usageAnalytics: false,
+      improveProduct: false,
+    });
+    expect(decodeClientSettings({}).telemetryConsent).toEqual(
+      DEFAULT_CLIENT_SETTINGS.telemetryConsent,
+    );
+  });
+});
 
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults to an empty record so legacy configs without the key still decode", () => {

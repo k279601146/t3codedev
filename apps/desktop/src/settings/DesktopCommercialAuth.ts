@@ -7,6 +7,7 @@ import {
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
   resolveCommercialEngineGatewayBaseUrl,
 } from "@t3tools/shared/commercialEngine";
+import { resilientFetch } from "@t3tools/shared/Net";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
@@ -276,7 +277,7 @@ function exchangeWebTokenForIDEToken(
         throw new Error("Web access token is required.");
       }
 
-      const response = await fetch(resolveAuthTokenEndpoint(gatewayBaseUrl), {
+      const response = await resilientFetch(resolveAuthTokenEndpoint(gatewayBaseUrl), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${webAccessToken}`,
@@ -287,6 +288,8 @@ function exchangeWebTokenForIDEToken(
           client_id: "t3code-desktop",
           client_version: "desktop",
         }),
+        maxRetries: 2,
+        timeoutMs: 30_000,
       });
       const payload = await response.json().catch(() => null);
 

@@ -149,4 +149,35 @@ describe("DesktopEngineUpdater", () => {
       { MYIDE_ENGINE_MANIFEST_URL: manifestUrl },
     );
   });
+
+  it.effect("rolls back to the previous downloaded engine version", () =>
+    withUpdater(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const updater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
+        const binaryName = engineBinaryName();
+
+        for (const version of ["2.0.0", "2.1.0"]) {
+          const versionDir = environment.path.join(environment.engineVersionsPath, version);
+          yield* fileSystem.makeDirectory(versionDir, { recursive: true });
+          yield* fileSystem.writeFile(
+            environment.path.join(versionDir, binaryName),
+            textEncoder.encode(`engine-${version}`),
+          );
+        }
+        yield* fileSystem.writeFileString(
+          environment.path.join(environment.engineVersionsPath, "current_version"),
+          "2.1.0\n",
+        );
+
+        assert.equal(yield* updater.rollback, true);
+        assert.equal(yield* updater.getCurrentVersion, "2.0.0");
+        assert.equal(
+          yield* updater.getActiveEnginePath,
+          environment.path.join(environment.engineVersionsPath, "2.0.0", binaryName),
+        );
+      }),
+    ),
+  );
 });

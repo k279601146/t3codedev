@@ -3,6 +3,7 @@ import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import { cast } from "effect/Function";
@@ -24,6 +25,11 @@ import {
 import { resolveAttachmentPathById } from "./attachmentStore.ts";
 import { resolveStaticDir, ServerConfig } from "./config.ts";
 import { BrowserTraceCollector } from "./observability/Services/BrowserTraceCollector.ts";
+import {
+  desktopApmEventsTotal,
+  formatPrometheusMetrics,
+  increment,
+} from "./observability/Metrics.ts";
 import { ProjectFaviconResolver } from "./project/Services/ProjectFaviconResolver.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import { respondToAuthError } from "./auth/http.ts";
@@ -37,6 +43,8 @@ import {
 const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
 const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#6b728080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-fallback="project-favicon"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>`;
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
+const PROMETHEUS_METRICS_PATH = "/api/observability/metrics";
+const DESKTOP_APM_EVENTS_PATH = "/ide/api/telemetry";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
 export const browserApiCorsLayer = HttpRouter.cors({
@@ -132,6 +140,55 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
           Effect.succeed(HttpServerResponse.text("Trace export failed.", { status: 502 })),
         ),
       );
+  }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
+);
+
+export const prometheusMetricsRouteLayer = HttpRouter.add(
+  "GET",
+  PROMETHEUS_METRICS_PATH,
+  Effect.gen(function* () {
+    yield* requireAuthenticatedRequest;
+    const snapshots = yield* Metric.snapshot;
+    return HttpServerResponse.text(formatPrometheusMetrics(snapshots), {
+      status: 200,
+      headers: {
+        "content-type": "text/plain; version=0.0.4; charset=utf-8",
+      },
+    });
+  }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
+);
+
+export const desktopApmEventsRouteLayer = HttpRouter.add(
+  "POST",
+  DESKTOP_APM_EVENTS_PATH,
+  Effect.gen(function* () {
+    yield* requireAuthenticatedRequest;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const body = (yield* request.json) as unknown;
+    const events =
+      typeof body === "object" &&
+      body !== null &&
+      "events" in body &&
+      Array.isArray((body as { readonly events?: unknown }).events)
+        ? (body as { readonly events: ReadonlyArray<unknown> }).events
+        : [];
+
+    yield* Effect.forEach(
+      events.slice(0, 100),
+      (event) => {
+        const type =
+          typeof event === "object" &&
+          event !== null &&
+          "type" in event &&
+          typeof (event as { readonly type?: unknown }).type === "string"
+            ? (event as { readonly type: string }).type
+            : "unknown";
+        return increment(desktopApmEventsTotal, { type });
+      },
+      { discard: true },
+    );
+
+    return HttpServerResponse.empty({ status: 204 });
   }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
 );
 
