@@ -26,6 +26,8 @@ import {
   ProviderSendTurnInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
+import * as Clock from "effect/Clock";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -65,6 +67,7 @@ import {
   type CodexSessionRuntimeShape,
 } from "./CodexSessionRuntime.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { resolveBundledEngineConfig } from "../BundledEngineConfig.ts";
 const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerProcessExitedError);
 const isCodexAppServerTransportError = Schema.is(CodexErrors.CodexAppServerTransportError);
 const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
@@ -99,7 +102,11 @@ interface CodexAdapterSessionContext {
 interface CodexWarmProcess {
   readonly child: ChildProcessSpawner.ChildProcessHandle;
   readonly cwd: string;
+  readonly createdAtMs: number;
 }
+
+const CODEX_WARM_PROCESS_EXIT_POLL_MS = 1;
+const CODEX_WARM_PROCESS_MAX_AGE_MS = 15_000;
 
 function isRecoverableRuntimeSessionStatus(status: ProviderSession["status"]): boolean {
   return status === "closed" || status === "error";
@@ -1363,6 +1370,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverConfig = yield* Effect.service(ServerConfig);
+  const usesBundledEngine =
+    resolveBundledEngineConfig(options?.environment ?? process.env) !== undefined;
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -1382,6 +1391,39 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       .pipe(
         Effect.catchCause((cause) => Effect.logDebug("codex warm process close failed", { cause })),
       );
+
+  const isWarmProcessReusable = Effect.fn("codexAdapter.isWarmProcessReusable")(function* (
+    warmProcess: CodexWarmProcess,
+  ) {
+    const ageMs = (yield* Clock.currentTimeMillis) - warmProcess.createdAtMs;
+    if (ageMs > CODEX_WARM_PROCESS_MAX_AGE_MS) {
+      yield* Effect.logDebug("codex warm process expired before reuse", {
+        cwd: warmProcess.cwd,
+        ageMs,
+      });
+      yield* closeWarmProcess(warmProcess);
+      return false;
+    }
+
+    const exitStatus = yield* warmProcess.child.exitCode.pipe(
+      Effect.timeoutOption(Duration.millis(CODEX_WARM_PROCESS_EXIT_POLL_MS)),
+      Effect.catchCause((cause) =>
+        Effect.logDebug("codex warm process liveness check failed", { cause }).pipe(
+          Effect.as(Option.some(undefined)),
+        ),
+      ),
+    );
+    if (Option.isSome(exitStatus)) {
+      yield* Effect.logDebug("codex warm process exited before reuse", {
+        cwd: warmProcess.cwd,
+        exitCode: exitStatus.value,
+      });
+      yield* closeWarmProcess(warmProcess);
+      return false;
+    }
+
+    return true;
+  });
 
   const warmStandby = Effect.fn("codexAdapter.warmStandby")(function* (cwd: string) {
     if (options?.makeRuntime !== undefined) {
@@ -1409,11 +1451,12 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       return;
     }
     const child = childOption.value;
+    const createdAtMs = yield* Clock.currentTimeMillis;
     const installed = yield* Ref.modify(warmProcessRef, (current) => {
       if (Option.isSome(current)) {
         return [false, current] as const;
       }
-      return [true, Option.some({ child, cwd })] as const;
+      return [true, Option.some({ child, cwd, createdAtMs })] as const;
     });
     if (!installed) {
       yield* child.kill({ killSignal: "SIGTERM" }).pipe(Effect.ignore);
@@ -1425,11 +1468,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       return undefined;
     }
     const warmProcess = yield* Ref.getAndSet(warmProcessRef, Option.none());
-    yield* warmStandby(cwd).pipe(Effect.forkScoped, Effect.asVoid);
-    return Option.match(warmProcess, {
-      onNone: () => undefined,
-      onSome: (value) => value.child,
-    });
+    if (!usesBundledEngine) {
+      yield* warmStandby(cwd).pipe(Effect.forkScoped, Effect.asVoid);
+    }
+    if (Option.isNone(warmProcess)) {
+      return undefined;
+    }
+    const reusable = yield* isWarmProcessReusable(warmProcess.value);
+    return reusable ? warmProcess.value.child : undefined;
   });
 
   yield* warmStandby(process.cwd()).pipe(Effect.forkScoped, Effect.asVoid);

@@ -4,8 +4,10 @@ import {
   ChevronRightIcon,
   CloudIcon,
   FolderPlusIcon,
+  LogOutIcon,
   SearchIcon,
   SettingsIcon,
+  SlidersHorizontalIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -125,6 +127,7 @@ import { Input } from "./ui/input";
 import {
   Menu,
   MenuGroup,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -178,6 +181,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { CommandDialogTrigger } from "./ui/command";
 import { readEnvironmentApi } from "../environmentApi";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
+import { useI18n } from "../i18n";
 import { useServerKeybindings } from "../rpc/serverState";
 import {
   derivePhysicalProjectKey,
@@ -2490,13 +2494,42 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
 
 const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { isMobile, setOpenMobile } = useSidebar();
-  const handleSettingsClick = useCallback(() => {
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const canSignOut =
+    typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
+
+  const handleOpenSettings = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
     void navigate({ to: "/settings" });
   }, [isMobile, navigate, setOpenMobile]);
+
+  const handleSignOut = useCallback(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    if (!bridge?.signOutCommercialAuth || isSigningOut) {
+      return;
+    }
+
+    setIsSigningOut(true);
+    void bridge
+      .signOutCommercialAuth()
+      .then(() => {
+        window.location.reload();
+      })
+      .catch((error: unknown) => {
+        setIsSigningOut(false);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: t("sidebar.signOutFailed"),
+            description: error instanceof Error ? error.message : t("sidebar.signOutFailed"),
+          }),
+        );
+      });
+  }, [isSigningOut, t]);
 
   return (
     <SidebarFooter className="p-2">
@@ -2504,14 +2537,33 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       <SidebarUpdatePill />
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={handleSettingsClick}
-          >
-            <SettingsIcon className="size-3.5" />
-            <span className="text-xs">Settings</span>
-          </SidebarMenuButton>
+          <Menu>
+            <MenuTrigger
+              render={
+                <SidebarMenuButton
+                  size="sm"
+                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                />
+              }
+            >
+              <SettingsIcon className="size-3.5" />
+              <span className="text-xs">{t("sidebar.settings")}</span>
+            </MenuTrigger>
+            <MenuPopup align="start" side="top" className="w-48">
+              <MenuGroup>
+                <MenuItem onClick={handleOpenSettings}>
+                  <SlidersHorizontalIcon className="size-4" />
+                  <span>{t("sidebar.settings")}</span>
+                </MenuItem>
+                {canSignOut ? (
+                  <MenuItem disabled={isSigningOut} onClick={handleSignOut} variant="destructive">
+                    <LogOutIcon className="size-4" />
+                    <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
+                  </MenuItem>
+                ) : null}
+              </MenuGroup>
+            </MenuPopup>
+          </Menu>
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>
@@ -2559,6 +2611,7 @@ interface SidebarProjectsContentProps {
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
   props: SidebarProjectsContentProps,
 ) {
+  const { t } = useI18n();
   const {
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
@@ -2637,7 +2690,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               }
             >
               <SearchIcon className="size-3.5" />
-              <span className="flex-1 truncate text-left text-xs">Search</span>
+              <span className="flex-1 truncate text-left text-xs">{t("sidebar.search")}</span>
               {commandPaletteShortcutLabel ? (
                 <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">
                   {commandPaletteShortcutLabel}
@@ -2673,7 +2726,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <SidebarGroup className="px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            Projects
+            {t("sidebar.projects")}
           </span>
           <div className="flex items-center gap-1">
             <ProjectSortMenu
@@ -2691,7 +2744,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 render={
                   <button
                     type="button"
-                    aria-label="Add project"
+                    aria-label={t("sidebar.addProject")}
                     data-testid="sidebar-add-project-trigger"
                     className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={openAddProject}
@@ -2700,7 +2753,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               >
                 <FolderPlusIcon className="size-3.5" />
               </TooltipTrigger>
-              <TooltipPopup side="right">Add project</TooltipPopup>
+              <TooltipPopup side="right">{t("sidebar.addProject")}</TooltipPopup>
             </Tooltip>
           </div>
         </div>
@@ -2780,7 +2833,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
         {projectsLength === 0 && (
           <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
-            No projects yet
+            {t("sidebar.noProjects")}
           </div>
         )}
       </SidebarGroup>

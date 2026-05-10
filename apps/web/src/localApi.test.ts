@@ -620,6 +620,7 @@ describe("wsApi", () => {
         improveProduct: false,
       },
       timestampFormat: "24-hour" as const,
+      language: "system" as const,
     };
     const getClientSettings = vi.fn().mockResolvedValue({
       ...clientSettings,
@@ -688,6 +689,7 @@ describe("wsApi", () => {
         improveProduct: false,
       },
       timestampFormat: "24-hour" as const,
+      language: "system" as const,
     };
 
     await api.persistence.setClientSettings(clientSettings);

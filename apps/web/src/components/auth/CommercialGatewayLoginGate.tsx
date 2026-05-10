@@ -5,6 +5,7 @@ import type React from "react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
+import { useI18n } from "../../i18n";
 import { OpenAI } from "../Icons";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -80,6 +81,7 @@ export function CommercialGatewayLoginGate({
   errorMessage?: string | undefined;
   onAuthenticated: (state: DesktopCommercialAuthState) => void;
 }) {
+  const { t } = useI18n();
   const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
   const [gatewayBaseUrl, setGatewayBaseUrl] = useState(
     () => authState?.gatewayBaseUrl ?? DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
@@ -173,11 +175,13 @@ export function CommercialGatewayLoginGate({
           <span className="text-lg font-semibold leading-none">{APP_BASE_NAME.slice(0, 1)}</span>
         </div>
 
-        <h1 className="mt-8 text-3xl font-semibold tracking-normal">欢迎使用 {APP_BASE_NAME}</h1>
+        <h1 className="mt-8 text-3xl font-semibold tracking-normal">
+          {t("auth.welcome", { appName: APP_BASE_NAME })}
+        </h1>
 
         <div className="mt-4 inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-[#eef2ff] px-3 text-sm font-medium text-[#3154ff] dark:bg-white/10 dark:text-[#9facff]">
           <CheckIcon className="size-4 shrink-0" />
-          <span className="truncate">所有 IDE 套餐均包含</span>
+          <span className="truncate">{t("auth.planIncluded")}</span>
         </div>
 
         <div className="mt-8 flex w-full flex-col gap-3">
@@ -188,7 +192,7 @@ export function CommercialGatewayLoginGate({
             size="lg"
           >
             {isBrowserSignIn ? <XIcon className="size-4" /> : <OpenAI className="size-4" />}
-            <span>{isBrowserSignIn ? "取消登录" : "使用账户继续"}</span>
+            <span>{isBrowserSignIn ? t("auth.cancelLogin") : t("auth.continueWithAccount")}</span>
             {!isBrowserSignIn ? <ExternalLinkIcon className="size-4 opacity-70" /> : null}
           </Button>
 
@@ -200,7 +204,7 @@ export function CommercialGatewayLoginGate({
             variant="outline"
           >
             <LogInIcon className="size-4" />
-            <span>使用其他方式登录</span>
+            <span>{t("auth.otherLogin")}</span>
           </Button>
         </div>
 
@@ -221,7 +225,7 @@ export function CommercialGatewayLoginGate({
               className="rounded-full border-neutral-200 bg-white text-left dark:border-white/12 dark:bg-neutral-950"
               nativeInput
               onChange={(event) => setWebAccessToken(event.currentTarget.value)}
-              placeholder="Web access token"
+              placeholder={t("auth.webAccessToken")}
               spellCheck={false}
               type="password"
               value={webAccessToken}
@@ -232,7 +236,7 @@ export function CommercialGatewayLoginGate({
               type="submit"
             >
               {isTokenSignIn ? <LoaderIcon className="size-4 animate-spin" /> : null}
-              <span>{isTokenSignIn ? "正在连接" : "连接"}</span>
+              <span>{isTokenSignIn ? t("auth.connecting") : t("auth.connect")}</span>
             </Button>
           </form>
         ) : null}
@@ -253,7 +257,7 @@ export function CommercialGatewayLoginGate({
           }}
           type="button"
         >
-          注册
+          {t("auth.register")}
         </button>
       </section>
     </main>
@@ -261,13 +265,14 @@ export function CommercialGatewayLoginGate({
 }
 
 export function CommercialGatewayLoginPending() {
+  const { t } = useI18n();
   return (
     <main className="flex min-h-screen items-center justify-center bg-white px-5 py-12 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
       <section className="flex w-full max-w-[360px] flex-col items-center text-center">
         <div className="flex size-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#6f7cff,#2548ff)] text-white shadow-[0_14px_32px_rgba(37,72,255,0.22)]">
           <LoaderIcon className="size-5 animate-spin" />
         </div>
-        <h1 className="mt-8 text-3xl font-semibold tracking-normal">正在检查登录状态</h1>
+        <h1 className="mt-8 text-3xl font-semibold tracking-normal">{t("auth.checking")}</h1>
       </section>
     </main>
   );
@@ -280,7 +285,7 @@ function errorMessageFromUnknown(error: unknown): string {
   if (typeof error === "string" && error.trim().length > 0) {
     return error.trim();
   }
-  return "登录失败，请稍后再试。";
+  return "Sign-in failed. Please try again.";
 }
 
 function resolveRegisterUrl(gatewayBaseUrl: string): string {

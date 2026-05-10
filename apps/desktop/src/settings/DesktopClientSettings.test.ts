@@ -33,6 +33,7 @@ const clientSettings: ClientSettings = {
     improveProduct: false,
   },
   timestampFormat: "24-hour",
+  language: "system",
 };
 
 const decodeClientSettingsJson = Schema.decodeEffect(Schema.fromJsonString(ClientSettingsSchema));
