@@ -207,7 +207,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("lucide-undo-2");
   });
 
-  it("renders context compaction entries in the normal work log", async () => {
+  it("folds context compaction entries into a completed work summary", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -228,11 +228,11 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Context compacted");
-    expect(markup).toContain("Work log");
+    expect(markup).toContain("已处理 1 项");
+    expect(markup).toContain('data-work-group-summary="true"');
   });
 
-  it("formats changed file paths from the workspace root", async () => {
+  it("folds changed file work into an edited-file summary", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -255,7 +255,51 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("t3code/apps/web/src/session-logic.ts");
+    expect(markup).toContain("已编辑 1 个文件");
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
+  });
+
+  it("shows running command work with shimmer styling", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "bun typecheck",
+              itemType: "command_execution",
+              status: "running",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("正在运行");
+    expect(markup).toContain("bun typecheck");
+    expect(markup).toContain("shimmer-scan");
+  });
+
+  it("renders the live working row with shimmer styling", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        activeTurnStartedAt={MESSAGE_CREATED_AT}
+        timelineEntries={[]}
+      />,
+    );
+
+    expect(markup).toContain("正在思考");
+    expect(markup).toContain("shimmer-scan");
   });
 });

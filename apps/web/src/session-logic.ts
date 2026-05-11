@@ -59,6 +59,7 @@ export interface WorkLogEntry {
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  status?: "running" | "completed";
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -551,6 +552,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
           ? "info"
           : activity.tone,
     activityKind: activity.kind,
+    status:
+      activity.kind === "task.progress" || activity.kind === "tool.updated"
+        ? "running"
+        : "completed",
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -638,6 +643,7 @@ function mergeDerivedWorkLogEntries(
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
+  const status = next.status ?? previous.status;
   return {
     ...previous,
     ...next,
@@ -650,6 +656,7 @@ function mergeDerivedWorkLogEntries(
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
     ...(toolCallId ? { toolCallId } : {}),
+    ...(status ? { status } : {}),
   };
 }
 

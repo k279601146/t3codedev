@@ -1947,7 +1947,7 @@ export const ChatComposer = memo(
       <form
         ref={composerFormRef}
         onSubmit={submitComposer}
-        className="mx-auto w-full min-w-0 max-w-208"
+        className="mx-auto w-full min-w-0 max-w-[45rem]"
         data-chat-composer-form="true"
       >
         <div
@@ -1964,8 +1964,8 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45",
-              isDragOverComposer ? "border-primary/70 bg-accent/30" : "border-border",
+              "rounded-[20px] border bg-card shadow-[0_1px_0_rgba(0,0,0,0.02),0_8px_18px_rgba(0,0,0,0.03)] transition-colors duration-200 has-focus-visible:border-ring/45",
+              isDragOverComposer ? "border-foreground/30 bg-accent/30" : "border-border",
               environmentUnavailable ? "opacity-75" : null,
               composerProviderState.composerSurfaceClassName,
             )}
@@ -2113,7 +2113,7 @@ export const ChatComposer = memo(
                 </button>
                 <button
                   type="button"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground disabled:opacity-30"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full border border-black/5 bg-neutral-700 text-white shadow-sm disabled:bg-neutral-300 disabled:text-neutral-500 disabled:opacity-100 dark:bg-neutral-200 dark:text-neutral-950"
                   disabled={collapsedComposerPrimaryActionDisabled}
                   aria-label={collapsedComposerPrimaryActionLabel}
                   onPointerDown={(event) => event.preventDefault()}

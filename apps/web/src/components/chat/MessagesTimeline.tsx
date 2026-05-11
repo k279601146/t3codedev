@@ -23,10 +23,12 @@ import ChatMarkdown from "../ChatMarkdown";
 import {
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
   CircleAlertIcon,
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  LoaderCircleIcon,
   type LucideIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -42,7 +44,6 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
-  MAX_VISIBLE_WORK_LOG_ENTRIES,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
@@ -51,6 +52,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ShimmerScanText } from "../ui/shimmer-scan-text";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -351,14 +353,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
 
   return (
     <div className="flex justify-end">
-      <div className="group flex max-w-[80%] flex-col items-end">
-        <div className="w-fit max-w-full rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+      <div className="group flex max-w-[82%] flex-col items-end">
+        <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
           {userImages.length > 0 && (
-            <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+            <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
               {userImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
                 <div
                   key={image.id}
-                  className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                  className="overflow-hidden rounded-lg border border-border bg-background"
                 >
                   {image.previewUrl ? (
                     <button
@@ -374,7 +376,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                       <img
                         src={image.previewUrl}
                         alt={image.name}
-                        className="block h-auto max-h-[220px] w-full object-cover"
+                        className="block h-auto max-h-[396px] w-full object-cover"
                       />
                     </button>
                   ) : (
@@ -548,22 +550,16 @@ function ProposedPlanTimelineRow({
 
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   return (
-    <div className="py-0.5 pl-1.5">
+    <div className="py-0.5 pl-1.5" data-working-started-at={row.createdAt ?? undefined}>
       <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
-        <span className="inline-flex items-center gap-[3px]">
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
-        </span>
-        <span>
-          {row.createdAt ? (
-            <>
-              Working for <WorkingTimer createdAt={row.createdAt} />
-            </>
-          ) : (
-            "Working..."
-          )}
-        </span>
+        <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/45" />
+        <ShimmerScanText
+          className="text-[11px] text-muted-foreground/72"
+          durationMs={2000}
+          tone="light"
+        >
+          正在思考
+        </ShimmerScanText>
       </div>
     </div>
   );
@@ -573,25 +569,6 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
 // Self-ticking labels — update their own text nodes so elapsed-time display
 // does not create a React commit every second while a response is streaming.
 // ---------------------------------------------------------------------------
-
-/** Live "Working for Xs" label. */
-function WorkingTimer({ createdAt }: { createdAt: string }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const initialText = formatWorkingTimerNow(createdAt);
-
-  useEffect(() => {
-    const updateText = () => {
-      if (textRef.current) {
-        textRef.current.textContent = formatWorkingTimerNow(createdAt);
-      }
-    };
-    updateText();
-    const id = setInterval(updateText, 1000);
-    return () => clearInterval(id);
-  }, [createdAt]);
-
-  return <span ref={textRef}>{initialText}</span>;
-}
 
 /** Live timestamp + elapsed duration for a streaming assistant message. */
 function LiveMessageMeta({
@@ -641,46 +618,104 @@ const WorkGroupSection = memo(function WorkGroupSection({
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
   const [isExpanded, setIsExpanded] = useState(false);
-  const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
-  const visibleEntries =
-    hasOverflow && !isExpanded
-      ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-      : groupedEntries;
-  const hiddenCount = groupedEntries.length - visibleEntries.length;
-  const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
-  const showHeader = hasOverflow || !onlyToolEntries;
-  const groupLabel = onlyToolEntries ? "Tool calls" : "Work log";
+  const summary = summarizeWorkGroup(groupedEntries);
+  const showLiveScan = groupedEntries.some((entry) => entry.status === "running");
 
   return (
-    <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
-      {showHeader && (
-        <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-          <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
-            {groupLabel} ({groupedEntries.length})
-          </p>
-          {hasOverflow && (
-            <button
-              type="button"
-              className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
-              onClick={() => setIsExpanded((v) => !v)}
-            >
-              {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
-            </button>
+    <div className="py-0.5 pl-1">
+      <button
+        type="button"
+        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-1 text-left text-[12px] leading-5 text-muted-foreground/72 transition-colors hover:text-foreground/78"
+        aria-expanded={isExpanded}
+        data-work-group-summary="true"
+        onClick={() => setIsExpanded((value) => !value)}
+      >
+        <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground/55" />
+        {showLiveScan ? (
+          <ShimmerScanText className="min-w-0" durationMs={2000} tone="light">
+            {summary.liveLabel}
+          </ShimmerScanText>
+        ) : (
+          <span className="min-w-0 truncate">{summary.label}</span>
+        )}
+        <ChevronDownIcon
+          className={cn(
+            "size-3 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/work-summary:text-muted-foreground/70",
+            isExpanded && "rotate-180",
           )}
+        />
+      </button>
+      {isExpanded ? (
+        <div className="mt-1 space-y-0.5 pl-4" data-work-group-details="true">
+          {groupedEntries.map((workEntry) => (
+            <SimpleWorkEntryRow
+              key={`work-row:${workEntry.id}`}
+              workEntry={workEntry}
+              workspaceRoot={workspaceRoot}
+            />
+          ))}
         </div>
-      )}
-      <div className="space-y-0.5">
-        {visibleEntries.map((workEntry) => (
-          <SimpleWorkEntryRow
-            key={`work-row:${workEntry.id}`}
-            workEntry={workEntry}
-            workspaceRoot={workspaceRoot}
-          />
-        ))}
-      </div>
+      ) : null}
     </div>
   );
 });
+
+function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
+  label: string;
+  liveLabel: string;
+} {
+  const commandCount = entries.filter(isCommandWorkEntry).length;
+  const changedFileCount = new Set(entries.flatMap((entry) => [...(entry.changedFiles ?? [])]))
+    .size;
+  const runningEntry = entries.find((entry) => entry.status === "running") ?? null;
+  const runningAction = runningEntry ? runningWorkEntryLabel(runningEntry) : "正在处理";
+
+  if (commandCount > 0 && changedFileCount > 0) {
+    return {
+      label: `已运行 ${commandCount} 条命令，已编辑 ${changedFileCount} 个文件`,
+      liveLabel: runningAction,
+    };
+  }
+  if (commandCount > 0) {
+    return {
+      label: `已运行 ${commandCount} 条命令`,
+      liveLabel: runningAction,
+    };
+  }
+  if (changedFileCount > 0) {
+    return {
+      label: `已编辑 ${changedFileCount} 个文件`,
+      liveLabel: runningAction,
+    };
+  }
+  return {
+    label: `已处理 ${entries.length} 项`,
+    liveLabel: runningAction,
+  };
+}
+
+function isCommandWorkEntry(entry: TimelineWorkEntry): boolean {
+  return (
+    entry.requestKind === "command" || entry.itemType === "command_execution" || !!entry.command
+  );
+}
+
+function runningWorkEntryLabel(entry: TimelineWorkEntry): string {
+  if (isCommandWorkEntry(entry)) {
+    const preview = workEntryPreview(entry, undefined);
+    return preview ? `正在运行 ${preview}` : "正在运行命令";
+  }
+  if (entry.tone === "thinking") {
+    return "正在思考";
+  }
+  if (entry.requestKind === "file-change" || (entry.changedFiles?.length ?? 0) > 0) {
+    return "正在编辑文件";
+  }
+  if (entry.itemType === "image_view") {
+    return "正在生成图片";
+  }
+  return `正在处理 ${toolWorkEntryHeading(entry)}`;
+}
 
 /** Subscribes directly to the UI state store for expand/collapse state,
  *  so toggling re-renders only this component — not the entire list. */
@@ -733,13 +768,13 @@ function AssistantChangedFilesSectionInner({
   const changedFileCountLabel = String(checkpointFiles.length);
 
   return (
-    <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
-      <div className="sticky top-2 z-10 mb-1.5 flex items-center justify-between gap-2 bg-[color-mix(in_srgb,var(--card)_45%,var(--background))] before:absolute before:inset-x-0 before:-top-2 before:h-2 before:bg-[color-mix(in_srgb,var(--card)_45%,var(--background))] before:content-['']">
-        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
-          <span>Changed files ({changedFileCountLabel})</span>
+    <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
+        <p className="text-[13px] text-foreground/86">
+          <span>{changedFileCountLabel} 个文件已更改</span>
           {hasNonZeroStat(summaryStat) && (
             <>
-              <span className="mx-1">•</span>
+              <span className="mx-1.5 text-muted-foreground/50"> </span>
               <DiffStatLabel additions={summaryStat.additions} deletions={summaryStat.deletions} />
             </>
           )}
@@ -750,28 +785,34 @@ function AssistantChangedFilesSectionInner({
             size="xs"
             variant="outline"
             data-scroll-anchor-ignore
+            className="h-6 rounded-md border-transparent bg-transparent px-2 text-[12px] text-muted-foreground/70 shadow-none hover:bg-accent hover:text-foreground"
             onClick={() => setExpanded(routeThreadKey, turnSummary.turnId, !allDirectoriesExpanded)}
           >
-            {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
+            {allDirectoriesExpanded ? "折叠" : "展开"}
           </Button>
           <Button
             type="button"
             size="xs"
             variant="outline"
+            className="h-6 rounded-md border-transparent bg-transparent px-2 text-[12px] text-foreground shadow-none hover:bg-accent"
             onClick={() => onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)}
           >
-            View diff
+            查看更改
           </Button>
         </div>
       </div>
-      <ChangedFilesTree
-        key={`changed-files-tree:${turnSummary.turnId}`}
-        turnId={turnSummary.turnId}
-        files={checkpointFiles}
-        allDirectoriesExpanded={allDirectoriesExpanded}
-        resolvedTheme={resolvedTheme}
-        onOpenTurnDiff={onOpenTurnDiff}
-      />
+      {allDirectoriesExpanded ? (
+        <div className="px-2 py-1.5">
+          <ChangedFilesTree
+            key={`changed-files-tree:${turnSummary.turnId}`}
+            turnId={turnSummary.turnId}
+            files={checkpointFiles}
+            allDirectoriesExpanded={allDirectoriesExpanded}
+            resolvedTheme={resolvedTheme}
+            onOpenTurnDiff={onOpenTurnDiff}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -983,33 +1024,6 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
-function formatWorkingTimer(startIso: string, endIso: string): string | null {
-  const startedAtMs = Date.parse(startIso);
-  const endedAtMs = Date.parse(endIso);
-  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
-    return null;
-  }
-
-  const elapsedSeconds = Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000));
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds}s`;
-  }
-
-  const hours = Math.floor(elapsedSeconds / 3600);
-  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-  const seconds = elapsedSeconds % 60;
-
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-}
-
-function formatWorkingTimerNow(startIso: string): string {
-  return formatWorkingTimer(startIso, new Date().toISOString()) ?? "0s";
-}
-
 function formatLiveMessageMetaNow(
   createdAt: string,
   durationStart: string | null | undefined,
@@ -1035,24 +1049,24 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   if (tone === "error") {
     return {
       icon: CircleAlertIcon,
-      className: "text-foreground/92",
+      className: "text-rose-500/70",
     };
   }
   if (tone === "thinking") {
     return {
       icon: BotIcon,
-      className: "text-foreground/92",
+      className: "text-muted-foreground/55",
     };
   }
   if (tone === "info") {
     return {
       icon: CheckIcon,
-      className: "text-foreground/92",
+      className: "text-muted-foreground/55",
     };
   }
   return {
     icon: ZapIcon,
-    className: "text-foreground/92",
+    className: "text-muted-foreground/55",
   };
 }
 
@@ -1122,10 +1136,37 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
+  if (workEntry.status === "running") {
+    if (isCommandWorkEntry(workEntry)) return "正在运行";
+    if (workEntry.tone === "thinking") return "正在思考";
+    if (workEntry.requestKind === "file-change" || (workEntry.changedFiles?.length ?? 0) > 0) {
+      return "正在编辑";
+    }
+    if (workEntry.itemType === "image_view") return "正在生成图片";
+  }
+  if (isCommandWorkEntry(workEntry)) return "已运行";
+  if (workEntry.requestKind === "file-read") return "已读取";
+  if (workEntry.requestKind === "file-change" || (workEntry.changedFiles?.length ?? 0) > 0) {
+    return "已编辑";
+  }
   if (!workEntry.toolTitle) {
     return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
   }
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
+}
+
+function shouldAnimateWorkEntryText(workEntry: TimelineWorkEntry, displayText: string): boolean {
+  const normalizedDisplayText = displayText.trim();
+  if (normalizedDisplayText.length === 0) {
+    return false;
+  }
+  if (workEntry.tone === "thinking") {
+    return true;
+  }
+  if (workEntry.status === "running") {
+    return true;
+  }
+  return /^(?:working|running|thinking|\u6b63\u5728)/i.test(normalizedDisplayText);
 }
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
@@ -1144,15 +1185,17 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ? null
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
-  const displayText = preview ? `${heading} - ${preview}` : heading;
+  const previewSeparator = /^[已正]/.test(heading) ? " " : " - ";
+  const displayText = preview ? `${heading}${previewSeparator}${preview}` : heading;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
+  const animateText = shouldAnimateWorkEntryText(workEntry, displayText);
 
   return (
-    <div className="rounded-lg px-1 py-1">
+    <div className="rounded-md px-1 py-0.5">
       <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">
         <span
-          className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
+          className={cn("flex size-4 shrink-0 items-center justify-center", iconConfig.className)}
         >
           <EntryIcon className="size-3" />
         </span>
@@ -1167,31 +1210,64 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 )}
                 title={displayText}
               >
-                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                  {heading}
-                </span>
-                {preview && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      closeDelay={0}
-                      delay={75}
-                      render={
-                        <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
-                          {" "}
-                          - {preview}
-                        </span>
-                      }
-                    />
-                    <TooltipPopup
-                      align="start"
-                      className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
-                      side="top"
-                    >
-                      <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
-                        {rawCommand}
-                      </div>
-                    </TooltipPopup>
-                  </Tooltip>
+                {animateText ? (
+                  <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
+                    <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                      {heading}
+                    </span>
+                    {preview && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          closeDelay={0}
+                          delay={75}
+                          render={
+                            <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
+                              {previewSeparator}
+                              {preview}
+                            </span>
+                          }
+                        />
+                        <TooltipPopup
+                          align="start"
+                          className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                          side="top"
+                        >
+                          <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                            {rawCommand}
+                          </div>
+                        </TooltipPopup>
+                      </Tooltip>
+                    )}
+                  </ShimmerScanText>
+                ) : (
+                  <>
+                    <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                      {heading}
+                    </span>
+                    {preview && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          closeDelay={0}
+                          delay={75}
+                          render={
+                            <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
+                              {previewSeparator}
+                              {preview}
+                            </span>
+                          }
+                        />
+                        <TooltipPopup
+                          align="start"
+                          className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                          side="top"
+                        >
+                          <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                            {rawCommand}
+                          </div>
+                        </TooltipPopup>
+                      </Tooltip>
+                    )}
+                  </>
                 )}
               </p>
             </div>
@@ -1209,10 +1285,31 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     preview ? "text-muted-foreground/70" : "",
                   )}
                 >
-                  <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                    {heading}
-                  </span>
-                  {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
+                  {animateText ? (
+                    <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
+                      <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                        {heading}
+                      </span>
+                      {preview && (
+                        <span className="text-muted-foreground/55">
+                          {previewSeparator}
+                          {preview}
+                        </span>
+                      )}
+                    </ShimmerScanText>
+                  ) : (
+                    <>
+                      <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                        {heading}
+                      </span>
+                      {preview && (
+                        <span className="text-muted-foreground/55">
+                          {previewSeparator}
+                          {preview}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </p>
               </TooltipTrigger>
               <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
