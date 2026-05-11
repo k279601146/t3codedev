@@ -72,6 +72,15 @@ function removePath(
   });
 }
 
+function makeDirectory(
+  dirPath: string,
+): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    yield* fileSystem.makeDirectory(dirPath, { recursive: true });
+  });
+}
+
 function pathExists(
   filePath: string,
 ): Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem> {
@@ -176,6 +185,81 @@ it.layer(TestLayer)("CheckpointStoreLive", (it) => {
           "A  staged-only.txt",
           "MM README.md",
         ]);
+      }),
+    );
+
+    it.effect("captures and restores a non-git folder with shadow git", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir("checkpoint-store-shadow-test-");
+        const checkpointStore = yield* CheckpointStore;
+        const threadId = ThreadId.make("thread-checkpoint-shadow");
+        const fromCheckpointRef = checkpointRefForThreadTurn(threadId, 0);
+        const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+
+        yield* writeTextFile(path.join(tmp, "index.php"), "<?php echo 'before';\n");
+        yield* writeTextFile(path.join(tmp, "notes.txt"), "notes before\n");
+
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: fromCheckpointRef,
+        });
+
+        expect(yield* pathExists(path.join(tmp, ".git"))).toBe(false);
+
+        yield* writeTextFile(path.join(tmp, "index.php"), "<?php echo 'after';\n");
+        yield* writeTextFile(path.join(tmp, "created.txt"), "created after\n");
+
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: toCheckpointRef,
+        });
+
+        const diff = yield* checkpointStore.diffCheckpoints({
+          cwd: tmp,
+          fromCheckpointRef,
+          toCheckpointRef,
+          ignoreWhitespace: false,
+        });
+        expect(diff).toContain("diff --git");
+        expect(diff).toContain("created.txt");
+
+        yield* removePath(path.join(tmp, "index.php"));
+        yield* writeTextFile(path.join(tmp, "created.txt"), "mutated\n");
+        yield* writeTextFile(path.join(tmp, "extra.txt"), "extra\n");
+
+        const restored = yield* checkpointStore.restoreCheckpoint({
+          cwd: tmp,
+          checkpointRef: fromCheckpointRef,
+        });
+
+        expect(restored).toBe(true);
+        expect(yield* readTextFile(path.join(tmp, "index.php"))).toBe("<?php echo 'before';\n");
+        expect(yield* readTextFile(path.join(tmp, "notes.txt"))).toBe("notes before\n");
+        expect(yield* pathExists(path.join(tmp, "created.txt"))).toBe(false);
+        expect(yield* pathExists(path.join(tmp, "extra.txt"))).toBe(false);
+        expect(yield* pathExists(path.join(tmp, ".git"))).toBe(false);
+      }),
+    );
+
+    it.effect("restores nested git directories after shadow checkpoint capture", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir("checkpoint-store-shadow-nested-git-test-");
+        const checkpointStore = yield* CheckpointStore;
+        const threadId = ThreadId.make("thread-checkpoint-shadow-nested");
+        const checkpointRef = checkpointRefForThreadTurn(threadId, 0);
+        const nestedGitDir = path.join(tmp, "vendor", "pkg", ".git");
+
+        yield* makeDirectory(nestedGitDir);
+        yield* writeTextFile(path.join(tmp, "vendor", "pkg", "file.txt"), "nested file\n");
+        yield* writeTextFile(path.join(nestedGitDir, "HEAD"), "ref: refs/heads/main\n");
+
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef,
+        });
+
+        expect(yield* pathExists(nestedGitDir)).toBe(true);
+        expect(yield* pathExists(`${nestedGitDir}_disabled`)).toBe(false);
       }),
     );
   });

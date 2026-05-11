@@ -81,7 +81,28 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   openFile: (input) => {
     const existing = get().tabs.find((tab) => tabMatchesFile(tab, input));
     if (existing) {
-      set({ activeTabId: existing.id });
+      const externalChange = get().externalChangesByFileKey[getEditorFileKey(input)] ?? null;
+      set((state) => ({
+        activeTabId: existing.id,
+        tabs: state.tabs.map((tab) => {
+          if (tab.id !== existing.id) {
+            return tab;
+          }
+
+          if (tab.isDirty) {
+            return tab;
+          }
+
+          return {
+            ...tab,
+            fileName: input.fileName,
+            language: input.language,
+            contents: input.contents,
+            savedContents: input.contents,
+            externalChange,
+          };
+        }),
+      }));
       return existing.id;
     }
     const externalChange = get().externalChangesByFileKey[getEditorFileKey(input)] ?? null;
@@ -245,12 +266,12 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         tab.environmentId === environmentId &&
         tab.workspaceRoot === workspaceRoot &&
         tab.filePath === filePath &&
-        !tab.isDirty &&
-        !tab.externalChange
+        !tab.isDirty
           ? {
               ...tab,
               contents,
               savedContents: contents,
+              externalChange: null,
             }
           : tab,
       ),

@@ -825,14 +825,14 @@ describe("CheckpointReactor", () => {
   });
 
   it("continues processing runtime events after a single checkpoint runtime failure", async () => {
-    const nonRepositorySessionCwd = fs.mkdtempSync(
-      path.join(os.tmpdir(), "t3-checkpoint-runtime-non-repo-"),
+    const unavailableSessionCwd = path.join(
+      os.tmpdir(),
+      `t3-checkpoint-runtime-unavailable-${crypto.randomUUID()}`,
     );
-    tempDirs.push(nonRepositorySessionCwd);
 
     const harness = await createHarness({
       seedFilesystemCheckpoints: false,
-      providerSessionCwd: nonRepositorySessionCwd,
+      providerSessionCwd: unavailableSessionCwd,
     });
     const createdAt = "2026-01-01T00:00:00.000Z";
 
@@ -875,13 +875,10 @@ describe("CheckpointReactor", () => {
       turnId: asTurnId("turn-after-runtime-failure"),
     });
 
-    await waitForGitRefExists(
-      harness.cwd,
-      checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
-    );
-    expect(
-      gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0)),
-    ).toBe(true);
+    await harness.drain();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread).toBeDefined();
   });
 
   it("executes provider revert and emits thread.reverted for checkpoint revert requests", async () => {

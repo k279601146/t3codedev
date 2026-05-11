@@ -450,44 +450,417 @@ function CheckpointRestoreButton({ checkpointId, workdir }: Props) {
 
 ---
 
-## 五、无 Git 环境的处理
+## 五、非 Git 项目 / 无 Git 环境的处理
 
-用户机器没有安装 Git 时有两个方案：
+前面的 Conductor 方案有两个前提：① 用户机器安装了 Git，② 项目本身是 git repo。这两个条件任意一个不满足，都需要额外处理。
 
-**方案 A（推荐）：使用 isomorphic-git**
+---
 
-纯 JS 实现，零系统依赖，可完全替换上述 `git()` 调用：
+### 情况 A：有 Git，但项目不是 git repo
+
+这是最常见的情况。用户打开了一个普通文件夹，没有 `.git` 目录。
+
+**方案：Shadow Git（Cline 的做法）**
+
+Cline 使用"shadow git"方案：在用户项目**旁边**创建一个隔离的 git 仓库，专门用于 checkpoint，完全不污染用户的项目目录。
+
+Shadow git 仓库存放在应用的数据目录下，以项目路径的 hash 命名，与项目通过 `git worktree` 关联：
+
+```
+~/.your-app/checkpoints/
+  {cwdHash}/          ← 每个项目有独立的 shadow repo
+    .git/
+      refs/
+        conductor-checkpoints/
+          cp-xxx
+          cp-yyy
+```
+
+每个工作区根据路径生成唯一 hash，作为 shadow repo 的目录名，确保不同项目的 checkpoint 互不干扰。
+
+#### 实现代码
+
+```typescript
+import * as crypto from "node:crypto";
+import * as path from "node:path";
+import * as os from "node:os";
+import * as fs from "node:fs/promises";
+
+const APP_DATA_DIR = path.join(os.homedir(), ".your-app", "checkpoints");
+
+/**
+ * 根据项目路径计算 shadow repo 目录
+ */
+function getShadowGitDir(projectRoot: string): string {
+  const hash = crypto.createHash("sha256").update(projectRoot).digest("hex").slice(0, 16);
+  return path.join(APP_DATA_DIR, hash);
+}
+
+/**
+ * 初始化 shadow git repo（如果还不存在）
+ * 通过 --work-tree 指向用户项目，git 对象存在 shadow 目录中
+ */
+async function ensureShadowRepo(projectRoot: string): Promise<string> {
+  const shadowDir = getShadowGitDir(projectRoot);
+  await fs.mkdir(shadowDir, { recursive: true });
+
+  const gitDir = path.join(shadowDir, ".git");
+  const alreadyInit = await fs
+    .access(gitDir)
+    .then(() => true)
+    .catch(() => false);
+
+  if (!alreadyInit) {
+    // 初始化裸 git 结构
+    await exec("git", ["init", "--bare", gitDir]);
+
+    // 写入 worktree 关联配置：告诉 git 工作区在哪里
+    await fs.writeFile(
+      path.join(gitDir, "config"),
+      `[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tworktree = ${projectRoot}\n`,
+      "utf8",
+    );
+
+    // 配置 git identity（避免依赖用户的全局 git config）
+    await gitShadow(projectRoot, ["config", "user.name", "Checkpointer"]);
+    await gitShadow(projectRoot, ["config", "user.email", "checkpointer@noreply"]);
+
+    // 写入排除文件（不追踪 node_modules 等）
+    const excludesPath = path.join(gitDir, "info", "exclude");
+    await fs.mkdir(path.dirname(excludesPath), { recursive: true });
+    await fs.writeFile(excludesPath, DEFAULT_EXCLUDES.join("\n"), "utf8");
+  }
+
+  return shadowDir;
+}
+
+/**
+ * 在 shadow repo 上下文中执行 git 命令
+ * --git-dir 指向 shadow repo，--work-tree 指向用户项目
+ */
+async function gitShadow(
+  projectRoot: string,
+  args: string[],
+  env?: Record<string, string>,
+): Promise<string> {
+  const shadowDir = getShadowGitDir(projectRoot);
+  const gitDir = path.join(shadowDir, ".git");
+  const { stdout } = await exec(
+    "git",
+    [`--git-dir=${gitDir}`, `--work-tree=${projectRoot}`, ...args],
+    { env: { ...process.env, ...env } },
+  );
+  return stdout.trim();
+}
+
+/**
+ * 捕获（shadow git 版本）
+ * 与 Conductor 方案完全相同，区别只是用 gitShadow 替代 git
+ */
+export async function captureShadow(
+  projectRoot: string,
+  options?: { id?: string; messageIndex?: number },
+): Promise<CheckpointMeta> {
+  await ensureShadowRepo(projectRoot);
+
+  const id = options?.id ?? `cp-${new Date().toISOString().replace(/[:.]/g, "")}`;
+  const ref = `${REF_PREFIX}/${id}`;
+
+  // HEAD OID（shadow repo 初始时没有 commit，用 zeros）
+  const headOid = await gitShadow(projectRoot, ["rev-parse", "-q", "--verify", "HEAD"]).catch(
+    () => ZEROS,
+  );
+
+  // Index tree（staged 状态）
+  // 先 add -A 让 shadow index 反映当前工作区，再 write-tree
+  await gitShadow(projectRoot, ["add", "-A", "--", "."]);
+  const indexTree = await gitShadow(projectRoot, ["write-tree"]);
+
+  // Worktree tree（用临时 index，与主方案完全一致）
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "shadow-chkpt-"));
+  const tmpIndex = path.join(tmpDir, "index");
+  const shadowGitDir = path.join(getShadowGitDir(projectRoot), ".git");
+  let worktreeTree: string;
+  try {
+    await gitShadow(projectRoot, ["add", "-A", "--", "."], {
+      GIT_INDEX_FILE: tmpIndex,
+      GIT_DIR: shadowGitDir,
+    });
+    worktreeTree = await gitShadow(projectRoot, ["write-tree"], {
+      GIT_INDEX_FILE: tmpIndex,
+      GIT_DIR: shadowGitDir,
+    });
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+
+  // 写入 checkpoint commit → private ref（与主方案完全一致）
+  const now = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  const messageLines = [
+    `checkpoint:${id}`,
+    `head ${headOid}`,
+    `index-tree ${indexTree}`,
+    `worktree-tree ${worktreeTree}`,
+    `created ${now}`,
+    options?.messageIndex !== undefined ? `message-index ${options.messageIndex}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const commitOid = await gitShadow(
+    projectRoot,
+    ["commit-tree", worktreeTree, "-m", messageLines],
+    {
+      GIT_AUTHOR_NAME: "Checkpointer",
+      GIT_AUTHOR_EMAIL: "checkpointer@noreply",
+      GIT_AUTHOR_DATE: now,
+      GIT_COMMITTER_NAME: "Checkpointer",
+      GIT_COMMITTER_EMAIL: "checkpointer@noreply",
+      GIT_COMMITTER_DATE: now,
+    },
+  );
+
+  await gitShadow(projectRoot, ["update-ref", ref, commitOid]);
+
+  return {
+    id,
+    headOid,
+    indexTree,
+    worktreeTree,
+    createdAt: now,
+    messageIndex: options?.messageIndex,
+  };
+}
+
+/**
+ * 还原（shadow git 版本）
+ * 步骤与主方案完全相同
+ */
+export async function revertShadow(projectRoot: string, checkpointId: string): Promise<void> {
+  const ref = `${REF_PREFIX}/${checkpointId}`;
+  const commitOid = await gitShadow(projectRoot, ["rev-parse", "-q", "--verify", ref]).catch(() => {
+    throw new Error(`Checkpoint not found: ${checkpointId}`);
+  });
+
+  const message = await gitShadow(projectRoot, ["cat-file", "commit", commitOid]);
+  const meta = parseMeta(message, checkpointId);
+
+  // 步骤 1：还原工作区文件到 worktree 快照
+  await gitShadow(projectRoot, ["read-tree", "--reset", "-u", meta.worktreeTree]);
+  await gitShadow(projectRoot, ["clean", "-fd"]);
+
+  // 步骤 2：还原 staged 状态
+  await gitShadow(projectRoot, ["read-tree", "--reset", meta.indexTree]);
+
+  // 注意：非 git repo 项目没有 HEAD commit 可恢复，跳过 reset --hard 步骤
+}
+
+// 默认排除规则（参考 Cline 的 CheckpointExclusions.ts）
+const DEFAULT_EXCLUDES = [
+  "node_modules/",
+  ".git/",
+  "dist/",
+  "build/",
+  ".next/",
+  "*.log",
+  ".DS_Store",
+  "*.pyc",
+  "__pycache__/",
+  ".venv/",
+  "target/", // Rust
+  "*.lock",
+];
+```
+
+#### 嵌套 git repo 的问题
+
+Shadow git 面临的一个挑战是嵌套 git 仓库：用户项目里可能存在子目录本身也是 git repo（如 git submodule 或 monorepo 子包）。Git 默认不允许在一个 repo 内追踪另一个 repo 的文件。Cline 的解决方案是：在执行 checkpoint 操作前，临时将嵌套的 `.git` 目录重命名为 `.git_disabled`，操作完成后再恢复。
+
+```typescript
+/**
+ * 临时禁用嵌套 .git 目录，操作完成后恢复
+ */
+async function withNestedGitDisabled(projectRoot: string, fn: () => Promise<void>): Promise<void> {
+  // 查找所有嵌套的 .git（排除根目录自身）
+  const nested = await findNestedGitDirs(projectRoot);
+
+  // 重命名为 .git_disabled
+  for (const gitDir of nested) {
+    await fs.rename(gitDir, gitDir.replace(/\.git$/, ".git_disabled"));
+  }
+
+  try {
+    await fn();
+  } finally {
+    // 无论成功失败，都要恢复
+    for (const gitDir of nested) {
+      const disabled = gitDir.replace(/\.git$/, ".git_disabled");
+      await fs.rename(disabled, gitDir).catch(() => {});
+    }
+  }
+}
+
+async function findNestedGitDirs(root: string): Promise<string[]> {
+  const results: string[] = [];
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name === ".git") continue;
+    if (entry.isDirectory()) {
+      const sub = path.join(root, entry.name);
+      const gitPath = path.join(sub, ".git");
+      if (
+        await fs
+          .access(gitPath)
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        results.push(gitPath);
+      }
+      results.push(...(await findNestedGitDirs(sub)));
+    }
+  }
+  return results;
+}
+
+// 使用：
+await withNestedGitDisabled(projectRoot, async () => {
+  await captureShadow(projectRoot, options);
+});
+```
+
+---
+
+### 情况 B：没有安装 Git
+
+**方案：使用 isomorphic-git**
+
+Cline 在初始化时会先通过 `simpleGit().version()` 验证 Git 是否可用，如不可用则禁用 checkpoint 功能。 但你可以选择更好的方式：用 isomorphic-git 完整替换系统 Git，用户无感知：
 
 ```bash
 bun add isomorphic-git
 ```
 
+isomorphic-git 是纯 JS 实现，不需要系统安装 Git，并且可以和 shadow git 方案完全结合使用：
+
 ```typescript
 import * as git from "isomorphic-git";
-import * as fs from "node:fs";
+import { fs } from "node:fs"; // isomorphic-git 接受 node fs 模块
 
-// isomorphic-git 的 API 与原生 git 命令一一对应
-// capture 中的 git write-tree 对应：
-const tree = await git.writeTree({ fs, dir });
+// 等价于：git --git-dir=shadowDir init --bare
+await git.init({ fs, dir: projectRoot, gitdir: shadowGitDir, bare: false });
 
-// git update-ref 对应：
-await git.writeRef({ fs, dir, ref: `refs/conductor-checkpoints/${id}`, value: commitOid });
+// 等价于：git write-tree
+const treeOid = await git.writeTree({ fs, dir: projectRoot, gitdir: shadowGitDir });
+
+// 等价于：git commit-tree
+const commitOid = await git.commit({
+  fs,
+  dir: projectRoot,
+  gitdir: shadowGitDir,
+  message: messageLines,
+  author: { name: "Checkpointer", email: "checkpointer@noreply" },
+  tree: treeOid,
+  noUpdateBranch: true, // 不移动 HEAD
+});
+
+// 等价于：git update-ref
+await git.writeRef({
+  fs,
+  dir: projectRoot,
+  gitdir: shadowGitDir,
+  ref: `refs/conductor-checkpoints/${id}`,
+  value: commitOid,
+  force: true,
+});
 ```
 
-**方案 B：降级为文件快照**
+> **注意**：isomorphic-git 的 `git.add()` / `write-tree` 对大型项目（数万文件）性能不如原生 git，建议在文件数超过 10000 时优先检测并使用系统 Git。
 
-检测 Git 不可用时，自动降级为 Cursor 风格的目录复制快照，功能相同但不支持 diff：
+---
+
+### 统一入口：自动选择策略
+
+建议将上述三种情况封装成一个统一的 `CheckpointManager`，根据运行环境自动选择最优策略：
 
 ```typescript
-export async function capture(workdir: string, options?) {
-  const hasGit = await checkGitAvailable(workdir);
-  if (hasGit) {
-    return captureWithGit(workdir, options); // Conductor 方案
-  } else {
-    return captureWithCopy(workdir, options); // 文件复制降级
+type Strategy = "conductor" | "shadow-git" | "isomorphic";
+
+export class CheckpointManager {
+  private strategy: Strategy;
+  private projectRoot: string;
+
+  static async create(projectRoot: string): Promise<CheckpointManager> {
+    const manager = new CheckpointManager(projectRoot);
+    manager.strategy = await manager.detectStrategy();
+    return manager;
   }
+
+  private async detectStrategy(): Promise<Strategy> {
+    // 1. 检测系统 Git 是否可用
+    const hasGit = await exec("git", ["--version"])
+      .then(() => true)
+      .catch(() => false);
+
+    if (!hasGit) {
+      return "isomorphic"; // 没有 Git → isomorphic-git
+    }
+
+    // 2. 检测项目是否是 git repo
+    const isGitRepo = await exec("git", ["-C", this.projectRoot, "rev-parse", "--git-dir"])
+      .then(() => true)
+      .catch(() => false);
+
+    if (isGitRepo) {
+      return "conductor"; // 有 Git + 是 git repo → Conductor 原方案
+    } else {
+      return "shadow-git"; // 有 Git + 不是 git repo → Shadow Git
+    }
+  }
+
+  async capture(options?: { id?: string; messageIndex?: number }) {
+    switch (this.strategy) {
+      case "conductor":
+        return capture(this.projectRoot, options);
+      case "shadow-git":
+        return captureShadow(this.projectRoot, options);
+      case "isomorphic":
+        return captureIsomorphic(this.projectRoot, options);
+    }
+  }
+
+  async revert(checkpointId: string) {
+    switch (this.strategy) {
+      case "conductor":
+        return revert(this.projectRoot, checkpointId);
+      case "shadow-git":
+        return revertShadow(this.projectRoot, checkpointId);
+      case "isomorphic":
+        return revertIsomorphic(this.projectRoot, checkpointId);
+    }
+  }
+
+  // diff、list、delete 同理
 }
 ```
+
+调用方只需：
+
+```typescript
+const checkpoint = await CheckpointManager.create(workdir);
+const meta = await checkpoint.capture({ messageIndex: 3 });
+// ...之后需要还原时：
+await checkpoint.revert(meta.id);
+```
+
+---
+
+### 三种情况对比总结
+
+| 情况                   | 策略                     | 存储位置                           | 支持 diff | 性能           |
+| ---------------------- | ------------------------ | ---------------------------------- | --------- | -------------- |
+| 有 Git + 是 git repo   | Conductor（private ref） | `.git/refs/conductor-checkpoints/` | ✅        | 最快           |
+| 有 Git + 不是 git repo | Shadow Git               | `~/.your-app/checkpoints/{hash}/`  | ✅        | 快             |
+| 无 Git                 | isomorphic-git + shadow  | `~/.your-app/checkpoints/{hash}/`  | ✅        | 较慢（大项目） |
 
 ---
 
@@ -496,7 +869,7 @@ export async function capture(workdir: string, options?) {
 **不能还原的内容：**
 
 - bash 命令的副作用（如已安装的 npm 包、已执行的数据库迁移）
-- `.gitignore` 忽略的文件（快照时被排除）
+- `.gitignore`（或 shadow repo 的 `exclude` 文件）中忽略的文件
 
 **并发限制：**
 如 Conductor 博客所述，多个 AI 任务同时在同一工作区运行时，checkpoint 会将它们的变更混在一起，无法独立还原。建议同一工作区同一时刻只运行一个 AI 任务。
@@ -508,10 +881,12 @@ export async function capture(workdir: string, options?) {
 git gc --prune=7.days
 ```
 
-**Git 要求：**
+对于 shadow repo，可在应用退出时对 shadow git 目录执行 gc。
 
-- 最低版本：Git 2.5+（支持 `commit-tree`、`write-tree`、`read-tree --reset -u`）
-- 项目必须是一个有效的 git repo（至少 `git init` 过）
+**Git 要求（Conductor / Shadow Git 方案）：**
+
+- 最低版本：Git 2.5+
+- Shadow Git 方案：项目根目录不能是 `$HOME` 或 `/` 等受保护目录
 
 ---
 
@@ -520,4 +895,5 @@ git gc --prune=7.days
 - [Conductor 官方博客：How we built checkpointing](https://blog.conductor.build/checkpointing/)
 - [checkpointer.sh 源码 Gist（Conductor 团队）](https://gist.github.com/jacksondc/10507c3e41623769dc2918c8b9a3597f)
 - [Conductor checkpoint 文档](https://docs.conductor.build/core/checkpoints)
+- [Cline Checkpoints System（DeepWiki）](https://deepwiki.com/char8x/cline/5.4-checkpoints-system)
 - [t3code 架构（DeepWiki）](https://deepwiki.com/pingdotgg/t3code)

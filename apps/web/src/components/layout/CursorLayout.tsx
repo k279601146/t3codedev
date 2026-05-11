@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useNavigate, useParams } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import ChatView from "../ChatView";
 import { MonacoEditorPanel } from "../editor/MonacoEditorPanel";
@@ -14,7 +15,7 @@ import {
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useFileContent } from "../../hooks/useFileContent";
-import { useEditorStore } from "../../editorStore";
+import { getEditorLanguage, useEditorStore } from "../../editorStore";
 import { useTurnDiffSummaries } from "../../hooks/useTurnDiffSummaries";
 import { SidebarInset } from "../ui/sidebar";
 import { useShallow } from "zustand/react/shallow";
@@ -27,6 +28,8 @@ import {
   parseUnifiedDiff,
   reconstructOriginalFromModified,
 } from "../../lib/unifiedDiff";
+
+const LAST_RECORDED_CHECKPOINT_TURN_COUNT_BY_THREAD_ID = new Map<string, number>();
 
 export function CursorLayout() {
   const navigate = useNavigate();
@@ -62,6 +65,9 @@ export function CursorLayout() {
     serverThread?.worktreePath ?? draftSession?.worktreePath ?? project?.cwd ?? null;
   const { fetchFile } = useFileContent(environmentId, workspaceRoot);
   const stageExternalChange = useEditorStore((state) => state.stageExternalChange);
+  const openFile = useEditorStore((state) => state.openFile);
+  const replaceFileContents = useEditorStore((state) => state.replaceFileContents);
+  const queryClient = useQueryClient();
   const activeEditorTab = useEditorStore((state) =>
     state.tabs.find((tab) => tab.id === state.activeTabId),
   );
@@ -72,6 +78,8 @@ export function CursorLayout() {
   );
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
+  const latestCheckpointTurnCount =
+    activeThread?.turnDiffSummaries.at(-1)?.checkpointTurnCount ?? 0;
   const stagedTurnDiffKeysRef = useRef(new Set<string>());
 
   const activeEditorProject = useMemo(() => {
@@ -161,31 +169,41 @@ export function CursorLayout() {
             ignoreWhitespace: false,
           });
           const patches = parseUnifiedDiff(result.diff);
-          await Promise.all(
-            patches.flatMap((patch) => {
-              const filePath = getPatchDisplayPath(patch);
-              if (!filePath || patch.hunks.length === 0) {
-                return [];
-              }
-              return [
-                fetchFile(filePath)
-                  .catch(() => "")
-                  .then((modifiedContents) => {
-                    const originalContents = reconstructOriginalFromModified(
-                      patch,
-                      modifiedContents,
-                    );
-                    stageExternalChange(
-                      environmentId,
-                      workspaceRoot,
-                      filePath,
-                      originalContents,
-                      modifiedContents,
-                    );
-                  }),
-              ];
+          void queryClient.invalidateQueries({
+            queryKey: ["cursor-file-tree", environmentId, workspaceRoot],
+          });
+          const changedFiles = patches.flatMap((patch) => {
+            const filePath = getPatchDisplayPath(patch);
+            if (!filePath || patch.newPath === null || patch.hunks.length === 0) {
+              return [];
+            }
+            return [{ patch, filePath }];
+          });
+          const editorUpdates = await Promise.all(
+            changedFiles.map(async ({ patch, filePath }) => {
+              const modifiedContents = await fetchFile(filePath).catch(() => "");
+              const originalContents = reconstructOriginalFromModified(patch, modifiedContents);
+              return { filePath, modifiedContents, originalContents };
             }),
           );
+
+          for (const { filePath, modifiedContents, originalContents } of editorUpdates) {
+            stageExternalChange(
+              environmentId,
+              workspaceRoot,
+              filePath,
+              originalContents,
+              modifiedContents,
+            );
+            openFile({
+              environmentId,
+              workspaceRoot,
+              filePath,
+              fileName: filePath.split(/[\\/]/).at(-1) ?? filePath,
+              language: getEditorLanguage(filePath),
+              contents: modifiedContents,
+            });
+          }
         } catch {
           stagedTurnDiffKeysRef.current.delete(key);
         }
@@ -196,8 +214,60 @@ export function CursorLayout() {
     environmentId,
     fetchFile,
     inferredCheckpointTurnCountByTurnId,
+    openFile,
+    queryClient,
     stageExternalChange,
     turnDiffSummaries,
+    workspaceRoot,
+  ]);
+
+  useEffect(() => {
+    if (!activeThread || !environmentId || !workspaceRoot) {
+      return;
+    }
+
+    const previousCheckpointTurnCount = LAST_RECORDED_CHECKPOINT_TURN_COUNT_BY_THREAD_ID.get(
+      activeThread.id,
+    );
+    LAST_RECORDED_CHECKPOINT_TURN_COUNT_BY_THREAD_ID.set(
+      activeThread.id,
+      latestCheckpointTurnCount,
+    );
+    if (
+      previousCheckpointTurnCount === undefined ||
+      latestCheckpointTurnCount >= previousCheckpointTurnCount
+    ) {
+      return;
+    }
+
+    const openTabs = useEditorStore
+      .getState()
+      .tabs.filter(
+        (tab) =>
+          tab.environmentId === environmentId &&
+          tab.workspaceRoot === workspaceRoot &&
+          !tab.isDirty,
+      );
+    if (openTabs.length === 0) {
+      return;
+    }
+
+    void Promise.all(
+      openTabs.map(async (tab) => {
+        try {
+          const contents = await fetchFile(tab.filePath);
+          replaceFileContents(environmentId, workspaceRoot, tab.filePath, contents);
+        } catch {
+          // Leave the tab untouched if the file can no longer be read.
+        }
+      }),
+    );
+  }, [
+    activeThread,
+    environmentId,
+    fetchFile,
+    latestCheckpointTurnCount,
+    replaceFileContents,
     workspaceRoot,
   ]);
 
