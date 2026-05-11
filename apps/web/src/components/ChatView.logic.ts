@@ -1,6 +1,7 @@
 import {
   type EnvironmentId,
   isProviderDriverKind,
+  type MessageId,
   ProjectId,
   type ModelSelection,
   type ProviderDriverKind,
@@ -8,7 +9,13 @@ import {
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
-import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
+import {
+  type ChatMessage,
+  type SessionPhase,
+  type Thread,
+  type ThreadSession,
+  type TurnDiffSummary,
+} from "../types";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import * as Schema from "effect/Schema";
 import { selectThreadByRef, useStore } from "../store";
@@ -120,6 +127,150 @@ export function revokeUserMessagePreviewUrls(message: ChatMessage): void {
     }
     revokeBlobPreviewUrl(attachment.previewUrl);
   }
+}
+
+export function buildTurnDiffSummaryByAssistantMessageId(input: {
+  timelineEntries: ReadonlyArray<{ readonly kind: string; readonly message?: ChatMessage }>;
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
+}): Map<MessageId, TurnDiffSummary> {
+  const byMessageId = new Map<MessageId, TurnDiffSummary>();
+  const byTurnId = new Map<TurnId, TurnDiffSummary>();
+
+  for (const summary of input.turnDiffSummaries) {
+    byTurnId.set(summary.turnId, summary);
+    if (summary.assistantMessageId) {
+      byMessageId.set(summary.assistantMessageId, summary);
+    }
+  }
+
+  const terminalAssistantMessageIdByTurnId = new Map<TurnId, MessageId>();
+  for (const entry of input.timelineEntries) {
+    if (entry.kind !== "message") {
+      continue;
+    }
+    const message = entry.message;
+    if (!message || message.role !== "assistant" || !message.turnId) {
+      continue;
+    }
+    terminalAssistantMessageIdByTurnId.set(message.turnId, message.id);
+  }
+
+  for (const [turnId, messageId] of terminalAssistantMessageIdByTurnId) {
+    if (byMessageId.has(messageId)) {
+      continue;
+    }
+    const summary = byTurnId.get(turnId);
+    if (summary) {
+      byMessageId.set(messageId, summary);
+    }
+  }
+
+  return byMessageId;
+}
+
+function resolveRevertTargetTurnCount(
+  summary: TurnDiffSummary | undefined,
+  inferredCheckpointTurnCountByTurnId: Readonly<Record<TurnId, number | undefined>>,
+): number | null {
+  if (!summary || summary.status === "missing") {
+    return null;
+  }
+
+  const turnCount =
+    summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId];
+  return typeof turnCount === "number" ? Math.max(0, turnCount - 1) : null;
+}
+
+export function buildRevertTurnCountByUserMessageId(input: {
+  timelineEntries: ReadonlyArray<{ readonly kind: string; readonly message?: ChatMessage }>;
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
+  turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
+  inferredCheckpointTurnCountByTurnId: Readonly<Record<TurnId, number | undefined>>;
+}): Map<MessageId, number> {
+  const byUserMessageId = new Map<MessageId, number>();
+  const assignedSummaryTurnIds = new Set<TurnId>();
+  const summaryByTurnId = new Map<TurnId, TurnDiffSummary>();
+  for (const summary of input.turnDiffSummaries) {
+    summaryByTurnId.set(summary.turnId, summary);
+  }
+
+  const userEntries = input.timelineEntries.flatMap((entry) =>
+    entry.kind === "message" && entry.message?.role === "user" ? [entry.message] : [],
+  );
+
+  const assignSummary = (messageId: MessageId, summary: TurnDiffSummary | undefined): boolean => {
+    const targetTurnCount = resolveRevertTargetTurnCount(
+      summary,
+      input.inferredCheckpointTurnCountByTurnId,
+    );
+    if (targetTurnCount === null || !summary) {
+      return false;
+    }
+    byUserMessageId.set(messageId, targetTurnCount);
+    assignedSummaryTurnIds.add(summary.turnId);
+    return true;
+  };
+
+  for (let index = 0; index < input.timelineEntries.length; index += 1) {
+    const entry = input.timelineEntries[index];
+    if (!entry || entry.kind !== "message" || entry.message?.role !== "user") {
+      continue;
+    }
+
+    const userTurnSummary = entry.message.turnId
+      ? summaryByTurnId.get(entry.message.turnId)
+      : undefined;
+    if (assignSummary(entry.message.id, userTurnSummary)) {
+      continue;
+    }
+
+    for (let nextIndex = index + 1; nextIndex < input.timelineEntries.length; nextIndex += 1) {
+      const nextEntry = input.timelineEntries[nextIndex];
+      if (!nextEntry || nextEntry.kind !== "message") {
+        continue;
+      }
+      if (nextEntry.message?.role === "user") {
+        break;
+      }
+      if (!nextEntry.message || nextEntry.message.role !== "assistant") {
+        continue;
+      }
+
+      if (
+        !assignSummary(
+          entry.message.id,
+          input.turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id),
+        )
+      ) {
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  const actionableSummaries = input.turnDiffSummaries
+    .filter(
+      (summary) =>
+        resolveRevertTargetTurnCount(summary, input.inferredCheckpointTurnCountByTurnId) !== null,
+    )
+    .toSorted((left, right) => left.completedAt.localeCompare(right.completedAt));
+  for (let index = 0; index < userEntries.length; index += 1) {
+    const message = userEntries[index];
+    if (!message || byUserMessageId.has(message.id)) {
+      continue;
+    }
+    const nextUserMessage = userEntries[index + 1];
+    const fallbackSummary = actionableSummaries.find(
+      (summary) =>
+        !assignedSummaryTurnIds.has(summary.turnId) &&
+        summary.completedAt >= message.createdAt &&
+        (!nextUserMessage || summary.completedAt < nextUserMessage.createdAt),
+    );
+    assignSummary(message.id, fallbackSummary);
+  }
+
+  return byUserMessageId;
 }
 
 export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[] {

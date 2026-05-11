@@ -274,6 +274,7 @@ describe("deriveMessagesTimelineRows", () => {
       completedAt: "2026-01-01T00:00:30Z",
       assistantMessageId: "assistant-1" as never,
       checkpointTurnCount: 2,
+      checkpointRef: "refs/t3/checkpoints/thread-1/turn/2" as never,
       files: [{ path: "src/index.ts", additions: 3, deletions: 1 }],
     };
 

@@ -263,4 +263,33 @@ describe("MessagesTimeline", () => {
       await screen.unmount();
     }
   });
+
+  it("keeps user message copy, restore, and time metadata outside the message bubble", async () => {
+    const props = buildProps();
+    const screen = await render(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={[buildUserTimelineEntry("Save as a file")]}
+        revertTurnCountByUserMessageId={new Map([["message-1" as never, 0]])}
+      />,
+    );
+
+    try {
+      const actions = document.querySelector("[data-user-message-actions='true']") as HTMLElement;
+      const messageBody = document.querySelector("[data-user-message-body='true']");
+      const bubble = messageBody?.closest("[class*='bg-secondary']");
+
+      expect(actions).toBeTruthy();
+      expect(actions.className).toContain("opacity-0");
+      expect(actions.className).toContain("group-hover:opacity-100");
+      expect(bubble?.contains(actions)).toBe(false);
+      await expect.element(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+      await expect
+        .element(page.getByRole("button", { name: "Revert to before this message" }))
+        .toBeVisible();
+      expect(actions.textContent).toMatch(/\d{2}:\d{2}/);
+    } finally {
+      await screen.unmount();
+    }
+  });
 });

@@ -214,11 +214,11 @@ export function CursorLayout() {
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
       <Group id="cursor-layout-panels" className="h-full min-h-0" orientation="horizontal">
-        <Panel defaultSize={42} minSize={28}>
+        <Panel defaultSize={42} minSize={28} className="min-h-0 overflow-hidden">
           <MonacoEditorPanel environmentId={environmentId} workspaceRoot={workspaceRoot} />
         </Panel>
         <Separator className="w-px bg-border transition-colors hover:bg-border/80" />
-        <Panel defaultSize={58} minSize={34}>
+        <Panel defaultSize={58} minSize={34} className="min-h-0 overflow-hidden">
           {routeTarget?.kind === "draft" && draftId ? (
             <ChatView
               environmentId={environmentId}

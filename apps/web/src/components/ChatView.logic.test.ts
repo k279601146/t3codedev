@@ -1,6 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import {
   EnvironmentId,
+  MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -13,7 +14,9 @@ import { type Thread } from "../types";
 
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
+  buildTurnDiffSummaryByAssistantMessageId,
   buildExpiredTerminalContextToastCopy,
+  buildRevertTurnCountByUserMessageId,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
@@ -24,6 +27,154 @@ import {
 } from "./ChatView.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("buildTurnDiffSummaryByAssistantMessageId", () => {
+  it("falls back to the terminal assistant message for a turn when the summary lacks message id", () => {
+    const summary = {
+      turnId: TurnId.make("turn-1"),
+      completedAt: "2026-03-17T12:00:00.000Z",
+      status: "ready",
+      checkpointTurnCount: 1,
+      checkpointRef: "refs/t3/checkpoints/thread-1/turn/1" as never,
+      files: [],
+    };
+
+    const byMessageId = buildTurnDiffSummaryByAssistantMessageId({
+      timelineEntries: [
+        {
+          kind: "message",
+          message: {
+            id: MessageId.make("assistant-a"),
+            role: "assistant",
+            text: "Working...",
+            turnId: TurnId.make("turn-1"),
+            createdAt: "2026-03-17T12:00:00.000Z",
+            streaming: false,
+          },
+        },
+        {
+          kind: "message",
+          message: {
+            id: MessageId.make("assistant-b"),
+            role: "assistant",
+            text: "Done.",
+            turnId: TurnId.make("turn-1"),
+            createdAt: "2026-03-17T12:00:01.000Z",
+            streaming: false,
+          },
+        },
+      ],
+      turnDiffSummaries: [summary],
+    });
+
+    expect(byMessageId.get(MessageId.make("assistant-a"))).toBeUndefined();
+    expect(byMessageId.get(MessageId.make("assistant-b"))).toBe(summary);
+  });
+});
+
+describe("buildRevertTurnCountByUserMessageId", () => {
+  it("uses the user message turn id when the checkpoint summary belongs to that turn", () => {
+    const userMessageId = MessageId.make("user-1");
+    const turnId = TurnId.make("turn-1");
+    const summary = {
+      turnId,
+      completedAt: "2026-03-17T12:00:00.000Z",
+      status: "ready",
+      checkpointTurnCount: 2,
+      checkpointRef: "refs/t3/checkpoints/thread-1/turn/2" as never,
+      files: [],
+    };
+
+    const byUserMessageId = buildRevertTurnCountByUserMessageId({
+      timelineEntries: [
+        {
+          kind: "message",
+          message: {
+            id: userMessageId,
+            role: "user",
+            text: "Save as a file",
+            turnId,
+            createdAt: "2026-03-17T12:00:00.000Z",
+            streaming: false,
+          },
+        },
+      ],
+      turnDiffSummaries: [summary],
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      inferredCheckpointTurnCountByTurnId: {},
+    });
+
+    expect(byUserMessageId.get(userMessageId)).toBe(1);
+  });
+
+  it("does not expose a restore action for missing checkpoints", () => {
+    const userMessageId = MessageId.make("user-1");
+    const turnId = TurnId.make("turn-1");
+
+    const byUserMessageId = buildRevertTurnCountByUserMessageId({
+      timelineEntries: [
+        {
+          kind: "message",
+          message: {
+            id: userMessageId,
+            role: "user",
+            text: "Change a file",
+            turnId,
+            createdAt: "2026-03-17T12:00:00.000Z",
+            streaming: false,
+          },
+        },
+      ],
+      turnDiffSummaries: [
+        {
+          turnId,
+          completedAt: "2026-03-17T12:00:00.000Z",
+          status: "missing",
+          checkpointTurnCount: 1,
+          files: [],
+        },
+      ],
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      inferredCheckpointTurnCountByTurnId: {},
+    });
+
+    expect(byUserMessageId.has(userMessageId)).toBe(false);
+  });
+
+  it("falls back to chronological checkpoint summaries when message ids are unavailable", () => {
+    const userMessageId = MessageId.make("user-1");
+    const turnId = TurnId.make("turn-1");
+    const summary = {
+      turnId,
+      completedAt: "2026-03-17T12:01:00.000Z",
+      status: "ready",
+      checkpointTurnCount: 1,
+      checkpointRef: "refs/t3/checkpoints/thread-1/turn/1" as never,
+      files: [{ path: "index.php", kind: "modified" }],
+    };
+
+    const byUserMessageId = buildRevertTurnCountByUserMessageId({
+      timelineEntries: [
+        {
+          kind: "message",
+          message: {
+            id: userMessageId,
+            role: "user",
+            text: "把 title 修改为：本机命令行",
+            turnId: null,
+            createdAt: "2026-03-17T12:00:00.000Z",
+            streaming: false,
+          },
+        },
+      ],
+      turnDiffSummaries: [summary],
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      inferredCheckpointTurnCountByTurnId: {},
+    });
+
+    expect(byUserMessageId.get(userMessageId)).toBe(0);
+  });
+});
 
 describe("deriveComposerSendState", () => {
   it("treats expired terminal pills as non-sendable content", () => {

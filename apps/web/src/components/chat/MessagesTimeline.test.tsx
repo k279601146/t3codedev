@@ -191,6 +191,22 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-footer="true"');
   });
 
+  it("renders a checkpoint restore button beside the user message copy action", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const userMessageId = MessageId.make("message-1");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("Change the title")]}
+        revertTurnCountByUserMessageId={new Map([[userMessageId, 0]])}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Copy link"');
+    expect(markup).toContain('aria-label="Revert to before this message"');
+    expect(markup).toContain("lucide-undo-2");
+  });
+
   it("renders context compaction entries in the normal work log", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

@@ -54,6 +54,33 @@ function writeTextFile(
   });
 }
 
+function readTextFile(
+  filePath: string,
+): Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    return yield* fileSystem.readFileString(filePath);
+  });
+}
+
+function removePath(
+  filePath: string,
+): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    yield* fileSystem.remove(filePath, { recursive: true });
+  });
+}
+
+function pathExists(
+  filePath: string,
+): Effect.Effect<boolean, PlatformError.PlatformError, FileSystem.FileSystem> {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    return yield* fileSystem.exists(filePath);
+  });
+}
+
 function git(
   cwd: string,
   args: ReadonlyArray<string>,
@@ -95,6 +122,64 @@ function buildLargeText(lineCount = 5_000): string {
 }
 
 it.layer(TestLayer)("CheckpointStoreLive", (it) => {
+  describe("restoreCheckpoint", () => {
+    it.effect("restores HEAD, staged state, worktree state, and untracked files", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const checkpointStore = yield* CheckpointStore;
+        const threadId = ThreadId.make("thread-checkpoint-restore");
+        const checkpointRef = checkpointRefForThreadTurn(threadId, 0);
+
+        yield* writeTextFile(path.join(tmp, "remove-me.txt"), "remove me\n");
+        yield* git(tmp, ["add", "."]);
+        yield* git(tmp, ["commit", "-m", "add removable file"]);
+        const checkpointHead = yield* git(tmp, ["rev-parse", "HEAD"]);
+
+        yield* writeTextFile(path.join(tmp, "README.md"), "staged readme\n");
+        yield* writeTextFile(path.join(tmp, "staged-only.txt"), "staged only\n");
+        yield* git(tmp, ["add", "README.md", "staged-only.txt"]);
+        yield* writeTextFile(path.join(tmp, "README.md"), "worktree readme\n");
+        yield* writeTextFile(path.join(tmp, "notes.txt"), "untracked note\n");
+        yield* removePath(path.join(tmp, "remove-me.txt"));
+
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef,
+        });
+
+        yield* git(tmp, ["add", "-A"]);
+        yield* git(tmp, ["commit", "-m", "later commit"]);
+        yield* writeTextFile(path.join(tmp, "README.md"), "after checkpoint\n");
+        yield* writeTextFile(path.join(tmp, "notes.txt"), "changed note\n");
+        yield* writeTextFile(path.join(tmp, "extra.txt"), "extra\n");
+        yield* writeTextFile(path.join(tmp, "staged-only.txt"), "changed staged only\n");
+
+        const restored = yield* checkpointStore.restoreCheckpoint({
+          cwd: tmp,
+          checkpointRef,
+        });
+
+        expect(restored).toBe(true);
+        expect(yield* git(tmp, ["rev-parse", "HEAD"])).toBe(checkpointHead);
+        expect(yield* readTextFile(path.join(tmp, "README.md"))).toBe("worktree readme\n");
+        expect(yield* git(tmp, ["show", ":README.md"])).toBe("staged readme");
+        expect(yield* readTextFile(path.join(tmp, "notes.txt"))).toBe("untracked note\n");
+        expect(yield* readTextFile(path.join(tmp, "staged-only.txt"))).toBe("staged only\n");
+        expect(yield* pathExists(path.join(tmp, "remove-me.txt"))).toBe(false);
+        expect(yield* pathExists(path.join(tmp, "extra.txt"))).toBe(false);
+
+        const status = yield* git(tmp, ["status", "--short"]);
+        expect(status.split("\n").filter(Boolean).toSorted()).toEqual([
+          " D remove-me.txt",
+          "?? notes.txt",
+          "A  staged-only.txt",
+          "MM README.md",
+        ]);
+      }),
+    );
+  });
+
   describe("diffCheckpoints", () => {
     it.effect("returns full oversized checkpoint diffs without truncation", () =>
       Effect.gen(function* () {

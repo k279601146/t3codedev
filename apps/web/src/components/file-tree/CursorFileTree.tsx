@@ -95,7 +95,10 @@ export function CursorFileTree({
           size="icon-xs"
           variant="ghost"
           className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
-          onClick={() => void refetch()}
+          onClick={(event) => {
+            event.stopPropagation();
+            void refetch();
+          }}
           disabled={collapsed || isFetching}
           aria-label="Refresh file tree"
         >
@@ -106,7 +109,10 @@ export function CursorFileTree({
           size="icon-xs"
           variant="ghost"
           className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
-          onClick={onRemoveProject}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemoveProject();
+          }}
           aria-label="Remove from file tree"
         >
           <XIcon className="size-3" />

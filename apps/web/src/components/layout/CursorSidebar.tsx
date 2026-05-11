@@ -83,15 +83,49 @@ export function CursorSidebar() {
   const setActiveTab = useEditorStore((state) => state.setActiveTab);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const [isProjectDropActive, setIsProjectDropActive] = useState(false);
+  const [hiddenActiveProjectKeys, setHiddenActiveProjectKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const projectDockPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const activeProjectKey = activeProject
+    ? scopedProjectKey(scopeProjectRef(activeProject.environmentId, activeProject.id))
+    : null;
   const pinnedProjects = useMemo(
     () => pinnedProjectKeys.flatMap((projectKey) => projectByKey.get(projectKey) ?? []),
     [pinnedProjectKeys, projectByKey],
+  );
+  const pinProjectInExplorer = useCallback(
+    (projectKey: string) => {
+      setHiddenActiveProjectKeys((current) => {
+        if (!current.has(projectKey)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(projectKey);
+        return next;
+      });
+      pinProject(projectKey);
+    },
+    [pinProject],
+  );
+  const removeProjectFromExplorer = useCallback(
+    (projectKey: string) => {
+      setHiddenActiveProjectKeys((current) => {
+        if (current.has(projectKey)) {
+          return current;
+        }
+        return new Set([...current, projectKey]);
+      });
+      unpinProject(projectKey);
+    },
+    [unpinProject],
   );
   const explorerProjects = useMemo(() => {
     const nextProjects = [...pinnedProjects];
     if (
       activeProject &&
+      activeProjectKey &&
+      !hiddenActiveProjectKeys.has(activeProjectKey) &&
       !nextProjects.some(
         (project) => getCursorProjectIdentity(project) === getCursorProjectIdentity(activeProject),
       )
@@ -99,7 +133,7 @@ export function CursorSidebar() {
       nextProjects.unshift(activeProject);
     }
     return dedupeCursorProjects(nextProjects);
-  }, [activeProject, pinnedProjects]);
+  }, [activeProject, activeProjectKey, hiddenActiveProjectKeys, pinnedProjects]);
 
   useEffect(() => {
     const availableProjectKeys = new Set(projectByKey.keys());
@@ -127,11 +161,20 @@ export function CursorSidebar() {
   }, [pendingPinnedProjectKeys, pinnedProjectKeys, projectByKey, setPinnedProjects]);
 
   useEffect(() => {
-    if (pinnedProjectKeys.length > 0 || !activeProject) {
+    if (pinnedProjectKeys.length > 0 || !activeProject || !activeProjectKey) {
       return;
     }
-    pinProject(scopedProjectKey(scopeProjectRef(activeProject.environmentId, activeProject.id)));
-  }, [activeProject, pinProject, pinnedProjectKeys.length]);
+    if (hiddenActiveProjectKeys.has(activeProjectKey)) {
+      return;
+    }
+    pinProjectInExplorer(activeProjectKey);
+  }, [
+    activeProject,
+    activeProjectKey,
+    hiddenActiveProjectKeys,
+    pinProjectInExplorer,
+    pinnedProjectKeys.length,
+  ]);
 
   const handleOpenFile = useCallback(
     async (project: Project, filePath: string) => {
@@ -182,10 +225,10 @@ export function CursorSidebar() {
       if (!projectKey || !projectByKey.has(projectKey)) {
         return false;
       }
-      pinProject(projectKey);
+      pinProjectInExplorer(projectKey);
       return true;
     },
-    [pinProject, projectByKey],
+    [pinProjectInExplorer, projectByKey],
   );
 
   const addExternalProjectsFromDrop = useCallback(
@@ -342,7 +385,7 @@ export function CursorSidebar() {
                     workspaceRoot={project.cwd}
                     collapsed={collapsedPinnedProjectKeys[projectKey] ?? false}
                     onToggleProject={() => togglePinnedProject(projectKey)}
-                    onRemoveProject={() => unpinProject(projectKey)}
+                    onRemoveProject={() => removeProjectFromExplorer(projectKey)}
                     onOpenFile={(filePath) => {
                       void handleOpenFile(project, filePath);
                     }}

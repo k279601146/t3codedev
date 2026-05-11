@@ -216,13 +216,13 @@ export function CursorProjectDock({
             environmentId: primaryEnvironmentId,
             rawPath,
             projects: allProjects,
-            pinToExplorer: false,
+            pinToExplorer: true,
           }),
         ),
       );
       toastManager.add({
         type: "success",
-        title: paths.length === 1 ? "Project added" : "Projects added",
+        title: paths.length === 1 ? "Project added to Explorer" : "Projects added to Explorer",
       });
     },
     [allProjects, primaryEnvironmentId],
@@ -352,7 +352,7 @@ export function CursorProjectDock({
           size="icon-xs"
           variant="ghost"
           className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
-          onClick={() => openAddProject()}
+          onClick={() => openAddProject({ pinToCursorExplorer: true })}
           aria-label="Add project"
         >
           <FolderPlusIcon className="size-3.5" />

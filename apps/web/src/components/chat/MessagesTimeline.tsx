@@ -205,6 +205,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [listRef, onIsAtEndChange, rows.length]);
 
+  const lastRow = rows.at(-1) ?? null;
+  useEffect(() => {
+    if (!lastRow) {
+      return;
+    }
+
+    const listState = listRef.current?.getState?.();
+    if (listState && !listState.isAtEnd) {
+      onIsAtEndChange(false);
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      void listRef.current?.scrollToEnd?.({ animated: false });
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeTurnInProgress, lastRow, listRef, onIsAtEndChange]);
+
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -277,7 +297,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           maintainScrollAtEndThreshold={0.1}
           maintainVisibleContentPosition
           onScroll={handleScroll}
-          className="h-full overflow-x-hidden overscroll-y-contain px-3 [scrollbar-gutter:stable] sm:px-5"
+          className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-5"
           ListHeaderComponent={TIMELINE_LIST_HEADER}
           ListFooterComponent={TIMELINE_LIST_FOOTER}
         />
@@ -331,58 +351,63 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
 
   return (
     <div className="flex justify-end">
-      <div className="group relative max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-        {userImages.length > 0 && (
-          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {userImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-              <div
-                key={image.id}
-                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-              >
-                {image.previewUrl ? (
-                  <button
-                    type="button"
-                    className="h-full w-full cursor-zoom-in"
-                    aria-label={`Preview ${image.name}`}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(userImages, image.id);
-                      if (!preview) return;
-                      ctx.onImageExpand(preview);
-                    }}
-                  >
-                    <img
-                      src={image.previewUrl}
-                      alt={image.name}
-                      className="block h-auto max-h-[220px] w-full object-cover"
-                    />
-                  </button>
-                ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                    {image.name}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <CollapsibleUserMessageBody
-          text={displayedUserMessage.visibleText}
-          terminalContexts={terminalContexts}
-          skills={ctx.skills}
-          footer={
-            <>
-              <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
-                {displayedUserMessage.copyText && (
-                  <MessageCopyButton text={displayedUserMessage.copyText} />
-                )}
-                {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
-              </div>
-              <p className="text-right text-xs text-muted-foreground/50">
-                {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
-              </p>
-            </>
-          }
-        />
+      <div className="group flex max-w-[80%] flex-col items-end">
+        <div className="w-fit max-w-full rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
+          {userImages.length > 0 && (
+            <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+              {userImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                <div
+                  key={image.id}
+                  className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                >
+                  {image.previewUrl ? (
+                    <button
+                      type="button"
+                      className="h-full w-full cursor-zoom-in"
+                      aria-label={`Preview ${image.name}`}
+                      onClick={() => {
+                        const preview = buildExpandedImagePreview(userImages, image.id);
+                        if (!preview) return;
+                        ctx.onImageExpand(preview);
+                      }}
+                    >
+                      <img
+                        src={image.previewUrl}
+                        alt={image.name}
+                        className="block h-auto max-h-[220px] w-full object-cover"
+                      />
+                    </button>
+                  ) : (
+                    <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                      {image.name}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <CollapsibleUserMessageBody
+            text={displayedUserMessage.visibleText}
+            terminalContexts={terminalContexts}
+            skills={ctx.skills}
+          />
+        </div>
+        <div
+          className="mt-1 flex min-h-6 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
+          data-user-message-actions="true"
+        >
+          {displayedUserMessage.copyText && (
+            <MessageCopyButton
+              text={displayedUserMessage.copyText}
+              size="icon-xs"
+              className="border-border/55 bg-background/80 text-muted-foreground/70 shadow-none hover:border-border/75 hover:bg-background hover:text-foreground"
+            />
+          )}
+          {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
+          <span className="px-0.5 text-xs text-muted-foreground/50">
+            {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -393,16 +418,27 @@ function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
   const activity = use(TimelineRowActivityCtx);
 
   return (
-    <Button
-      type="button"
-      size="xs"
-      variant="outline"
-      disabled={activity.isRevertingCheckpoint || activity.isWorking}
-      onClick={() => ctx.onRevertUserMessage(messageId)}
-      title="Revert to this message"
-    >
-      <Undo2Icon className="size-3" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            disabled={activity.isRevertingCheckpoint || activity.isWorking}
+            onClick={() => ctx.onRevertUserMessage(messageId)}
+            title="Revert to before this message"
+            aria-label="Revert to before this message"
+            className="border-border/55 bg-background/80 text-muted-foreground/70 shadow-none hover:border-border/75 hover:bg-background hover:text-foreground"
+          />
+        }
+      >
+        <Undo2Icon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup>
+        <p>Restore files and chat to before this message</p>
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -449,6 +485,34 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   );
 }
 
+function AssistantCopyButton({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  const activity = use(TimelineRowActivityCtx);
+  const assistantTurnStillInProgress =
+    activity.activeTurnInProgress &&
+    activity.activeTurnId !== null &&
+    row.message.turnId === activity.activeTurnId;
+  const assistantCopyState = resolveAssistantMessageCopyState({
+    text: row.message.text ?? null,
+    showCopyButton: row.showAssistantCopyButton,
+    streaming: Boolean(row.message.streaming) || assistantTurnStillInProgress,
+  });
+
+  if (!assistantCopyState.visible || !assistantCopyState.text) {
+    return null;
+  }
+
+  return (
+    <div className="opacity-0 transition-opacity duration-200 group-hover/assistant:opacity-100 focus-within:opacity-100">
+      <MessageCopyButton
+        text={assistantCopyState.text}
+        size="icon-xs"
+        variant="outline"
+        className="border-border/50 bg-background/35 text-muted-foreground/45 shadow-none hover:border-border/70 hover:bg-background/55 hover:text-muted-foreground/70"
+      />
+    </div>
+  );
+}
+
 function AssistantCompletionDivider() {
   const activity = use(TimelineRowActivityCtx);
 
@@ -459,34 +523,6 @@ function AssistantCompletionDivider() {
         {activity.completionSummary ? `Response • ${activity.completionSummary}` : "Response"}
       </span>
       <span className="h-px flex-1 bg-border" />
-    </div>
-  );
-}
-
-function AssistantCopyButton({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const activity = use(TimelineRowActivityCtx);
-  const assistantTurnStillInProgress =
-    activity.activeTurnInProgress &&
-    activity.activeTurnId !== null &&
-    row.message.turnId === activity.activeTurnId;
-  const assistantCopyState = resolveAssistantMessageCopyState({
-    text: row.message.text ?? null,
-    showCopyButton: row.showAssistantCopyButton,
-    streaming: row.message.streaming || assistantTurnStillInProgress,
-  });
-
-  if (!assistantCopyState.visible) {
-    return null;
-  }
-
-  return (
-    <div className="flex items-center opacity-0 transition-opacity duration-200  group-hover/assistant:opacity-100">
-      <MessageCopyButton
-        text={assistantCopyState.text ?? ""}
-        size="icon-xs"
-        variant="outline"
-        className="border-border/50 bg-background/35 text-muted-foreground/45 shadow-none hover:border-border/70 hover:bg-background/55 hover:text-muted-foreground/70"
-      />
     </div>
   );
 }
@@ -775,7 +811,6 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   text: string;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
-  footer?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasVisibleBody = props.text.trim().length > 0 || props.terminalContexts.length > 0;
@@ -807,30 +842,19 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
           />
         </div>
       ) : null}
-      {canCollapse || props.footer ? (
-        <div
-          className={cn(
-            "mt-1.5 flex items-center gap-2",
-            canCollapse && props.footer ? "justify-between" : "justify-end",
-          )}
-          data-user-message-footer="true"
-        >
-          {canCollapse ? (
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              aria-expanded={expanded}
-              data-scroll-anchor-ignore
-              onClick={() => setExpanded((value) => !value)}
-              className="-ml-1 h-6 rounded-md px-1.5 text-xs text-muted-foreground/72 hover:bg-muted/55 hover:text-foreground/85"
-            >
-              {expanded ? "Show less" : "Show full message"}
-            </Button>
-          ) : null}
-          {props.footer ? (
-            <div className="ml-auto flex items-center gap-2">{props.footer}</div>
-          ) : null}
+      {canCollapse ? (
+        <div className="mt-1.5 flex items-center justify-end gap-2" data-user-message-footer="true">
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            aria-expanded={expanded}
+            data-scroll-anchor-ignore
+            onClick={() => setExpanded((value) => !value)}
+            className="-ml-1 h-6 rounded-md px-1.5 text-xs text-muted-foreground/72 hover:bg-muted/55 hover:text-foreground/85"
+          >
+            {expanded ? "Show less" : "Show full message"}
+          </Button>
         </div>
       ) : null}
     </div>
