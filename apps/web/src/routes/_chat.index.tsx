@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
+import { useEffect } from "react";
 
-import { NoActiveThreadState } from "../components/NoActiveThreadState";
+import ChatView from "../components/ChatView";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { usePrimaryEnvironmentId } from "../environments/primary";
 import { useSavedEnvironmentRegistryStore } from "../environments/runtime";
+import { useUiStateStore } from "../uiStateStore";
 import { APP_DISPLAY_NAME } from "~/branding";
 
 function ChatIndexRouteView() {
@@ -13,12 +17,52 @@ function ChatIndexRouteView() {
   const savedEnvironmentCount = useSavedEnvironmentRegistryStore(
     (state) => Object.keys(state.byId).length,
   );
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const conversationDraft = useComposerDraftStore((store) => store.getConversationDraftSession());
+  const ensureConversationDraftSession = useComposerDraftStore(
+    (store) => store.ensureConversationDraftSession,
+  );
+  const setNewThreadScope = useUiStateStore((store) => store.setNewThreadScope);
+
+  useEffect(() => {
+    if (authGateState.status === "hosted-static" && savedEnvironmentCount === 0) {
+      return;
+    }
+    setNewThreadScope({ kind: "conversation" });
+    if (!primaryEnvironmentId) {
+      return;
+    }
+    ensureConversationDraftSession(primaryEnvironmentId);
+  }, [
+    authGateState.status,
+    ensureConversationDraftSession,
+    primaryEnvironmentId,
+    savedEnvironmentCount,
+    setNewThreadScope,
+  ]);
 
   if (authGateState.status === "hosted-static" && savedEnvironmentCount === 0) {
     return <HostedStaticOnboardingState />;
   }
 
-  return <NoActiveThreadState />;
+  if (!primaryEnvironmentId || !conversationDraft) {
+    return null;
+  }
+
+  if (conversationDraft.environmentId !== primaryEnvironmentId) {
+    return null;
+  }
+
+  return (
+    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+      <ChatView
+        draftId={conversationDraft.draftId}
+        environmentId={conversationDraft.environmentId}
+        threadId={conversationDraft.threadId}
+        routeKind="draft"
+      />
+    </SidebarInset>
+  );
 }
 
 export const Route = createFileRoute("/_chat/")({

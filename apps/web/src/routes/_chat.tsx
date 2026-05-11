@@ -1,16 +1,14 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { Outlet, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
-import {
-  startNewLocalThreadFromContext,
-  startNewThreadFromContext,
-} from "../lib/chatThreadActions";
+import { startNewLocalThreadFromContext } from "../lib/chatThreadActions";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { resolveShortcutCommand } from "../keybindings";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
+import { useUiStateStore } from "../uiStateStore";
 import { resolveSidebarNewThreadEnvMode } from "~/components/Sidebar.logic";
 import { useSettings } from "~/hooks/useSettings";
 import { useServerKeybindings } from "~/rpc/serverState";
@@ -21,6 +19,8 @@ function ChatRouteGlobalShortcuts() {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread, routeThreadRef } =
     useHandleNewThread();
   const keybindings = useServerKeybindings();
+  const navigate = useNavigate();
+  const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
   const terminalOpen = useTerminalStateStore((state) =>
     routeThreadRef
       ? selectThreadTerminalState(state.terminalStateByThreadKey, routeThreadRef).terminalOpen
@@ -51,6 +51,9 @@ function ChatRouteGlobalShortcuts() {
       if (command === "chat.newLocal") {
         event.preventDefault();
         event.stopPropagation();
+        if (defaultProjectRef) {
+          setNewThreadScope({ kind: "project", projectRef: defaultProjectRef });
+        }
         void startNewLocalThreadFromContext({
           activeDraftThread,
           activeThread,
@@ -66,15 +69,8 @@ function ChatRouteGlobalShortcuts() {
       if (command === "chat.new") {
         event.preventDefault();
         event.stopPropagation();
-        void startNewThreadFromContext({
-          activeDraftThread,
-          activeThread,
-          defaultProjectRef,
-          defaultThreadEnvMode: resolveSidebarNewThreadEnvMode({
-            defaultEnvMode: appSettings.defaultThreadEnvMode,
-          }),
-          handleNewThread,
-        });
+        setNewThreadScope({ kind: "conversation" });
+        void navigate({ to: "/" });
       }
     };
 
@@ -88,6 +84,8 @@ function ChatRouteGlobalShortcuts() {
     clearSelection,
     handleNewThread,
     keybindings,
+    navigate,
+    setNewThreadScope,
     defaultProjectRef,
     selectedThreadKeysSize,
     terminalOpen,

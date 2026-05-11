@@ -300,7 +300,7 @@ export function resolveThreadRowClassName(input: {
   isSelected: boolean;
 }): string {
   const baseClassName =
-    "h-6.5 w-full translate-x-0 cursor-pointer justify-start px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+    "h-7 w-full translate-x-0 cursor-pointer justify-start rounded-lg px-8 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 
   if (input.isSelected && input.isActive) {
     return cn(
@@ -320,7 +320,7 @@ export function resolveThreadRowClassName(input: {
     );
   }
 
-  return cn(baseClassName, "text-muted-foreground hover:bg-accent/70 hover:text-foreground");
+  return cn(baseClassName, "text-foreground/86 hover:bg-accent/70 hover:text-foreground");
 }
 
 export function resolveThreadStatusPill(input: {

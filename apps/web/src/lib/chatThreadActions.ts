@@ -1,4 +1,3 @@
-import { scopeProjectRef } from "@t3tools/client-runtime";
 import type { EnvironmentId, ProjectId, ScopedProjectRef } from "@t3tools/contracts";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 
@@ -37,15 +36,6 @@ export interface ChatThreadActionContext {
 export function resolveThreadActionProjectRef(
   context: ChatThreadActionContext,
 ): ScopedProjectRef | null {
-  if (context.activeThread) {
-    return scopeProjectRef(context.activeThread.environmentId, context.activeThread.projectId);
-  }
-  if (context.activeDraftThread) {
-    return scopeProjectRef(
-      context.activeDraftThread.environmentId,
-      context.activeDraftThread.projectId,
-    );
-  }
   return context.defaultProjectRef;
 }
 
@@ -81,7 +71,7 @@ export async function startNewThreadFromContext(
     return false;
   }
 
-  await startNewThreadInProjectFromContext(context, projectRef);
+  await context.handleNewThread(projectRef, buildDefaultThreadOptions(context));
   return true;
 }
 

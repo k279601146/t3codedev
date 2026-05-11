@@ -52,6 +52,8 @@ export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 
 export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
 export type DraftId = typeof DraftId.Type;
+export const CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY = "__t3code_conversation_new_thread__";
+export const CONVERSATION_DRAFT_PROJECT_ID = ProjectId.make("__t3code_conversation__");
 
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
@@ -292,6 +294,10 @@ interface ComposerDraftStoreState {
   getDraftSessionByProjectRef: (projectRef: ScopedProjectRef) => ProjectDraftSession | null;
   /** Reads mutable draft-session metadata by `DraftId`. */
   getDraftSession: (draftId: DraftId) => DraftSessionState | null;
+  /** Reads the projectless New thread draft session, when one exists. */
+  getConversationDraftSession: () => ProjectDraftSession | null;
+  /** Ensures the projectless New thread draft exists for the target environment. */
+  ensureConversationDraftSession: (environmentId: EnvironmentId) => ProjectDraftSession;
   /** Resolves a server-thread ref back to a matching draft session when one exists. */
   getDraftSessionByRef: (threadRef: ScopedThreadRef) => DraftSessionState | null;
   getDraftThreadByRef: (threadRef: ScopedThreadRef) => DraftThreadState | null;
@@ -1197,6 +1203,22 @@ function createDraftThreadState(
   };
 }
 
+function createDraftId(): DraftId {
+  return DraftId.make(
+    globalThis.crypto?.randomUUID?.() ??
+      `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+}
+
+export function isConversationDraftThread(
+  draftThread: Pick<DraftThreadState, "logicalProjectKey" | "projectId"> | null | undefined,
+): boolean {
+  return (
+    draftThread?.logicalProjectKey === CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY ||
+    draftThread?.projectId === CONVERSATION_DRAFT_PROJECT_ID
+  );
+}
+
 function scopedThreadRefsEqual(
   left: ScopedThreadRef | null | undefined,
   right: ScopedThreadRef | null | undefined,
@@ -1983,6 +2005,51 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           return null;
         },
         getDraftSession: (draftId) => get().draftThreadsByThreadKey[draftId] ?? null,
+        getConversationDraftSession: () => {
+          return get().getDraftSessionByLogicalProjectKey(CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY);
+        },
+        ensureConversationDraftSession: (environmentId) => {
+          const existing = get().getConversationDraftSession();
+          if (existing && existing.environmentId === environmentId) {
+            if (!get().getComposerDraft(existing.draftId)) {
+              get().applyStickyState(existing.draftId);
+            }
+            return existing;
+          }
+          const draftId = existing?.draftId ?? createDraftId();
+          const threadId = existing?.threadId ?? ThreadId.make(draftId);
+          get().setLogicalProjectDraftThreadId(
+            CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
+            scopeProjectRef(environmentId, CONVERSATION_DRAFT_PROJECT_ID),
+            draftId,
+            {
+              threadId,
+              ...(existing ? { createdAt: existing.createdAt } : {}),
+              runtimeMode: existing?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+              interactionMode: existing?.interactionMode ?? DEFAULT_INTERACTION_MODE,
+              branch: null,
+              worktreePath: null,
+              envMode: "local",
+            },
+          );
+          get().applyStickyState(draftId);
+          return (
+            get().getConversationDraftSession() ??
+            toProjectDraftSession(draftId, {
+              threadId,
+              environmentId,
+              projectId: CONVERSATION_DRAFT_PROJECT_ID,
+              logicalProjectKey: CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
+              createdAt: existing?.createdAt ?? new Date().toISOString(),
+              runtimeMode: existing?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+              interactionMode: existing?.interactionMode ?? DEFAULT_INTERACTION_MODE,
+              branch: null,
+              worktreePath: null,
+              envMode: "local",
+              promotedTo: null,
+            })
+          );
+        },
         getDraftSessionByRef: (threadRef) => {
           for (const draftSession of Object.values(get().draftThreadsByThreadKey)) {
             if (
@@ -2032,7 +2099,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               return state;
             }
             const nextLogicalProjectDraftThreadKeyByLogicalProjectKey: Record<string, string> = {
-              ...state.logicalProjectDraftThreadKeyByLogicalProjectKey,
+              ...Object.fromEntries(
+                Object.entries(state.logicalProjectDraftThreadKeyByLogicalProjectKey).filter(
+                  ([logicalKey, mappedDraftId]) =>
+                    logicalKey === normalizedLogicalProjectKey || mappedDraftId !== draftId,
+                ),
+              ),
               [normalizedLogicalProjectKey]: draftId,
             };
             const nextDraftThreadsByThreadKey: Record<string, DraftThreadState> = {

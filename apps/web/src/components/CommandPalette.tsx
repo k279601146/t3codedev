@@ -53,10 +53,7 @@ import {
   getSourceControlDiscoverySnapshot,
   refreshSourceControlDiscovery,
 } from "../lib/sourceControlDiscoveryState";
-import {
-  startNewThreadInProjectFromContext,
-  startNewThreadFromContext,
-} from "../lib/chatThreadActions";
+import { startNewThreadInProjectFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
   canNavigateUp,
@@ -82,6 +79,7 @@ import {
 } from "../store";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import { useUiStateStore } from "../uiStateStore";
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
@@ -406,6 +404,7 @@ function OpenCommandPaletteDialog() {
   const queryClient = useQueryClient();
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const settings = useSettings();
+  const setNewThreadScope = useUiStateStore((store) => store.setNewThreadScope);
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
@@ -684,6 +683,8 @@ function OpenCommandPaletteDialog() {
           />
         ),
         runProject: async (project) => {
+          const projectRef = scopeProjectRef(project.environmentId, project.id);
+          setNewThreadScope({ kind: "project", projectRef });
           await startNewThreadInProjectFromContext(
             {
               activeDraftThread,
@@ -692,7 +693,7 @@ function OpenCommandPaletteDialog() {
               defaultThreadEnvMode: settings.defaultThreadEnvMode,
               handleNewThread,
             },
-            scopeProjectRef(project.environmentId, project.id),
+            projectRef,
           );
         },
       }),
@@ -702,6 +703,7 @@ function OpenCommandPaletteDialog() {
       defaultProjectRef,
       handleNewThread,
       projects,
+      setNewThreadScope,
       settings.defaultThreadEnvMode,
     ],
   );
@@ -997,33 +999,18 @@ function OpenCommandPaletteDialog() {
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
   if (projects.length > 0) {
-    const activeProjectTitle = currentProjectId
-      ? (projectTitleById.get(currentProjectId) ?? null)
-      : null;
-
-    if (activeProjectTitle) {
-      actionItems.push({
-        kind: "action",
-        value: "action:new-thread",
-        searchTerms: ["new thread", "chat", "create", "draft"],
-        title: (
-          <>
-            New thread in <span className="font-semibold">{activeProjectTitle}</span>
-          </>
-        ),
-        icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: "chat.new",
-        run: async () => {
-          await startNewThreadFromContext({
-            activeDraftThread,
-            activeThread,
-            defaultProjectRef,
-            defaultThreadEnvMode: settings.defaultThreadEnvMode,
-            handleNewThread,
-          });
-        },
-      });
-    }
+    actionItems.push({
+      kind: "action",
+      value: "action:new-thread",
+      searchTerms: ["new thread", "chat", "create", "draft"],
+      title: "New thread",
+      icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.new",
+      run: async () => {
+        setNewThreadScope({ kind: "conversation" });
+        await navigate({ to: "/" });
+      },
+    });
 
     actionItems.push({
       kind: "submenu",

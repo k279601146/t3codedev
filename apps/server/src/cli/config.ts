@@ -305,7 +305,7 @@ export const resolveServerConfig = (
         normalizedFlags.autoBootstrapProjectFromCwd,
         Option.fromUndefinedOr(env.autoBootstrapProjectFromCwd),
       ),
-      () => mode === "web",
+      () => false,
     );
     const logWebSocketEvents = Option.getOrElse(
       resolveOptionPrecedence(

@@ -1,4 +1,5 @@
 import { Debouncer } from "@tanstack/react-pacer";
+import type { ScopedProjectRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
@@ -37,7 +38,15 @@ export interface UiEndpointState {
   defaultAdvertisedEndpointKey: string | null;
 }
 
-export interface UiState extends UiProjectState, UiThreadState, UiEndpointState {}
+export type NewThreadScope =
+  | { kind: "project"; projectRef: ScopedProjectRef }
+  | { kind: "conversation" };
+
+export interface UiNewThreadState {
+  newThreadScope: NewThreadScope | null;
+}
+
+export interface UiState extends UiProjectState, UiThreadState, UiEndpointState, UiNewThreadState {}
 
 export interface SyncProjectInput {
   /** Physical project key (env + cwd). Used for manual sort order. */
@@ -58,6 +67,7 @@ const initialState: UiState = {
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
+  newThreadScope: null,
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -630,6 +640,7 @@ interface UiStateStore extends UiState {
   clearThreadUi: (threadId: string) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
+  setNewThreadScope: (scope: NewThreadScope | null) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
@@ -651,6 +662,18 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setThreadChangedFilesExpanded(state, threadId, turnId, expanded)),
   setDefaultAdvertisedEndpointKey: (key) =>
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
+  setNewThreadScope: (scope) =>
+    set((state) => {
+      const current = state.newThreadScope;
+      const unchanged =
+        current === scope ||
+        (current?.kind === "conversation" && scope?.kind === "conversation") ||
+        (current?.kind === "project" &&
+          scope?.kind === "project" &&
+          current.projectRef.environmentId === scope.projectRef.environmentId &&
+          current.projectRef.projectId === scope.projectRef.projectId);
+      return unchanged ? state : { ...state, newThreadScope: scope };
+    }),
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),

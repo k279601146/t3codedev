@@ -405,6 +405,7 @@ function CursorProjectDockRow({
   const navigate = useNavigate();
   const pinProject = useCursorLayoutStore((state) => state.pinProject);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
+  const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
   const projectExpanded = useUiStateStore(
     (state) => state.projectExpandedById[project.projectKey] ?? true,
   );
@@ -482,11 +483,13 @@ function CursorProjectDockRow({
         y: event.clientY,
       }).then((member) => {
         if (member) {
-          void onNewThread(scopeProjectRef(member.environmentId, member.id));
+          const projectRef = scopeProjectRef(member.environmentId, member.id);
+          setNewThreadScope({ kind: "project", projectRef });
+          void onNewThread(projectRef);
         }
       });
     },
-    [onNewThread, project.memberProjects],
+    [onNewThread, project.memberProjects, setNewThreadScope],
   );
 
   return (
@@ -614,7 +617,7 @@ function CursorProjectDockRow({
               className="flex h-6 w-full translate-x-0 items-center justify-start rounded-lg px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
               onClick={onExpandThreadList}
             >
-              Show more
+              展开显示
             </button>
           ) : null}
           {projectExpanded && hasOverflowingThreads && isThreadListExpanded ? (
@@ -623,7 +626,7 @@ function CursorProjectDockRow({
               className="flex h-6 w-full translate-x-0 items-center justify-start rounded-lg px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
               onClick={onCollapseThreadList}
             >
-              Show less
+              收起显示
             </button>
           ) : null}
         </div>

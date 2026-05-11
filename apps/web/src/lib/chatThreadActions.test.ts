@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   resolveThreadActionProjectRef,
   startNewLocalThreadFromContext,
+  startNewThreadInProjectFromContext,
   startNewThreadFromContext,
   type ChatThreadActionContext,
 } from "./chatThreadActions";
@@ -24,7 +25,7 @@ function createContext(overrides: Partial<ChatThreadActionContext> = {}): ChatTh
 }
 
 describe("chatThreadActions", () => {
-  it("prefers the active draft thread project when resolving thread actions", () => {
+  it("uses the default project when resolving global thread actions", () => {
     const projectRef = resolveThreadActionProjectRef(
       createContext({
         activeDraftThread: {
@@ -34,10 +35,11 @@ describe("chatThreadActions", () => {
           worktreePath: "/tmp/worktree",
           envMode: "worktree",
         },
+        defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID),
       }),
     );
 
-    expect(projectRef).toEqual(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
+    expect(projectRef).toEqual(scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID));
   });
 
   it("falls back to the default project ref when there is no active thread context", () => {
@@ -50,7 +52,7 @@ describe("chatThreadActions", () => {
     expect(projectRef).toEqual(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
   });
 
-  it("starts a contextual new thread from the active draft thread", async () => {
+  it("starts a global new thread without inheriting active draft branch context", async () => {
     const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
 
     const didStart = await startNewThreadFromContext(
@@ -62,11 +64,38 @@ describe("chatThreadActions", () => {
           worktreePath: "/tmp/worktree",
           envMode: "worktree",
         },
+        defaultProjectRef: scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID),
+        defaultThreadEnvMode: "local",
         handleNewThread,
       }),
     );
 
     expect(didStart).toBe(true);
+    expect(handleNewThread).toHaveBeenCalledWith(
+      scopeProjectRef(ENVIRONMENT_ID, FALLBACK_PROJECT_ID),
+      {
+        envMode: "local",
+      },
+    );
+  });
+
+  it("keeps explicit project thread actions contextual", async () => {
+    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
+
+    await startNewThreadInProjectFromContext(
+      createContext({
+        activeDraftThread: {
+          environmentId: ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          branch: "feature/refactor",
+          worktreePath: "/tmp/worktree",
+          envMode: "worktree",
+        },
+        handleNewThread,
+      }),
+      scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID),
+    );
+
     expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
       branch: "feature/refactor",
       worktreePath: "/tmp/worktree",

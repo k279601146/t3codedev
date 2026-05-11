@@ -58,7 +58,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
+  CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
+  CONVERSATION_DRAFT_PROJECT_ID,
   finalizePromotedDraftThreadByRef,
+  isConversationDraftThread,
   markPromotedDraftThread,
   markPromotedDraftThreadByRef,
   markPromotedDraftThreads,
@@ -656,6 +659,47 @@ describe("composerDraftStore project draft thread mapping", () => {
     );
     expect(useComposerDraftStore.getState().getDraftThread(draftId)).toBeNull();
     expect(draftByKey(draftId)).toBeUndefined();
+  });
+
+  it("keeps the projectless New thread draft as a reusable composer target", () => {
+    const store = useComposerDraftStore.getState();
+
+    const conversationDraft = store.ensureConversationDraftSession(TEST_ENVIRONMENT_ID);
+    store.setPrompt(conversationDraft.draftId, "draft before project");
+
+    const reusedConversationDraft = useComposerDraftStore
+      .getState()
+      .ensureConversationDraftSession(TEST_ENVIRONMENT_ID);
+
+    expect(reusedConversationDraft.draftId).toBe(conversationDraft.draftId);
+    expect(reusedConversationDraft.logicalProjectKey).toBe(CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY);
+    expect(reusedConversationDraft.projectId).toBe(CONVERSATION_DRAFT_PROJECT_ID);
+    expect(isConversationDraftThread(reusedConversationDraft)).toBe(true);
+    expect(draftByKey(conversationDraft.draftId)?.prompt).toBe("draft before project");
+  });
+
+  it("removes the projectless New thread mapping when the draft is assigned to a project", () => {
+    const store = useComposerDraftStore.getState();
+    const conversationDraft = store.ensureConversationDraftSession(TEST_ENVIRONMENT_ID);
+    store.setPrompt(conversationDraft.draftId, "carry this prompt");
+
+    store.setLogicalProjectDraftThreadId(
+      scopedProjectKey(projectRef),
+      projectRef,
+      conversationDraft.draftId,
+      {
+        threadId: conversationDraft.threadId,
+        createdAt: conversationDraft.createdAt,
+      },
+    );
+
+    expect(useComposerDraftStore.getState().getConversationDraftSession()).toBeNull();
+    expect(useComposerDraftStore.getState().getDraftThreadByProjectRef(projectRef)).toMatchObject({
+      threadId: conversationDraft.threadId,
+      logicalProjectKey: scopedProjectKey(projectRef),
+      projectId,
+    });
+    expect(draftByKey(conversationDraft.draftId)?.prompt).toBe("carry this prompt");
   });
 
   it("keeps composer drafts when the thread is still mapped by another project", () => {
