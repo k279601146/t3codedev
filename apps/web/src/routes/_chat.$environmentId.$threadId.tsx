@@ -17,11 +17,13 @@ import {
   stripDiffSearchParams,
 } from "../diffRouteSearch";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useSettings } from "../hooks/useSettings";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { selectEnvironmentState, selectThreadExistsByRef, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
 import { resolveThreadRouteRef, buildThreadRouteParams } from "../threadRoutes";
 import { RightPanelSheet } from "../components/RightPanelSheet";
+import { CursorLayout } from "../components/layout/CursorLayout";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
 
 const DiffPanel = lazy(() => import("../components/DiffPanel"));
@@ -139,6 +141,7 @@ const DiffPanelInlineSidebar = (props: {
 };
 
 function ChatThreadRouteView() {
+  const layoutMode = useSettings((state) => state.layoutMode);
   const navigate = useNavigate();
   const threadRef = Route.useParams({
     select: (params) => resolveThreadRouteRef(params),
@@ -233,6 +236,10 @@ function ChatThreadRouteView() {
 
   if (!threadRef || !bootstrapComplete || !routeThreadExists) {
     return null;
+  }
+
+  if (layoutMode === "cursor") {
+    return <CursorLayout />;
   }
 
   const shouldRenderDiffContent = diffOpen || hasOpenedDiff;

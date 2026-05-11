@@ -1,14 +1,17 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 import ChatView from "../components/ChatView";
+import { CursorLayout } from "../components/layout/CursorLayout";
 import { threadHasStarted } from "../components/ChatView.logic";
 import { useComposerDraftStore, DraftId } from "../composerDraftStore";
 import { SidebarInset } from "../components/ui/sidebar";
 import { createThreadSelectorAcrossEnvironments } from "../storeSelectors";
 import { useStore } from "../store";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { useSettings } from "../hooks/useSettings";
 
 function DraftChatThreadRouteView() {
+  const layoutMode = useSettings((state) => state.layoutMode);
   const navigate = useNavigate();
   const { draftId: rawDraftId } = Route.useParams();
   const draftId = DraftId.make(rawDraftId);
@@ -54,6 +57,9 @@ function DraftChatThreadRouteView() {
   }, [canonicalThreadRef, draftSession, navigate]);
 
   if (canonicalThreadRef) {
+    if (layoutMode === "cursor") {
+      return <CursorLayout />;
+    }
     return (
       <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
         <ChatView
@@ -67,6 +73,10 @@ function DraftChatThreadRouteView() {
 
   if (!draftSession) {
     return null;
+  }
+
+  if (layoutMode === "cursor") {
+    return <CursorLayout />;
   }
 
   return (

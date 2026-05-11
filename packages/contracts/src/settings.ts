@@ -3,6 +3,7 @@ import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import { LayoutMode } from "./layout.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -42,6 +43,8 @@ export const SidebarThreadPreviewCount = Schema.Int.check(
 );
 export type SidebarThreadPreviewCount = typeof SidebarThreadPreviewCount.Type;
 export const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
+
+export const DEFAULT_LAYOUT_MODE: LayoutMode = "codex";
 
 export const TelemetryConsent = Schema.Struct({
   crashReporting: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -114,6 +117,7 @@ export const ClientSettingsSchema = Schema.Struct({
   language: ClientLanguage.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CLIENT_LANGUAGE)),
   ),
+  layoutMode: LayoutMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_LAYOUT_MODE))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 

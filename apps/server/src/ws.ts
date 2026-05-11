@@ -24,6 +24,8 @@ import {
   OrchestrationGetSnapshotError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  ProjectListDirectoryError,
+  ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
@@ -947,6 +949,34 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 (cause) =>
                   new ProjectSearchEntriesError({
                     message: `Failed to search workspace entries: ${cause.detail}`,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsReadFile,
+            workspaceFileSystem.readFile(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectReadFileError({
+                    message: isWorkspacePathOutsideRootError(cause) ? cause.message : cause.detail,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsListDirectory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListDirectory,
+            workspaceEntries.listDirectory(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectListDirectoryError({
+                    message: cause.detail,
                     cause,
                   }),
               ),

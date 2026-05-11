@@ -1,6 +1,7 @@
 import {
   CommandId,
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_LAYOUT_MODE,
   type DesktopBridge,
   EnvironmentId,
   type VcsStatusResult,
@@ -621,6 +622,7 @@ describe("wsApi", () => {
       },
       timestampFormat: "24-hour" as const,
       language: "system" as const,
+      layoutMode: DEFAULT_LAYOUT_MODE,
     };
     const getClientSettings = vi.fn().mockResolvedValue({
       ...clientSettings,
@@ -690,6 +692,7 @@ describe("wsApi", () => {
       },
       timestampFormat: "24-hour" as const,
       language: "system" as const,
+      layoutMode: DEFAULT_LAYOUT_MODE,
     };
 
     await api.persistence.setClientSettings(clientSettings);

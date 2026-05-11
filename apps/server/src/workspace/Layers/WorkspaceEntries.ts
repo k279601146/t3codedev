@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import { type FilesystemBrowseInput, type ProjectEntry } from "@t3tools/contracts";
+import type { ProjectDirectoryTreeNode } from "@t3tools/contracts";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
 import {
   insertRankedSearchResult,
@@ -44,6 +45,7 @@ const IGNORED_DIRECTORY_NAMES = new Set([
   "out",
   ".cache",
 ]);
+const DIRECTORY_TREE_MAX_ENTRY_COUNT = 50_000;
 
 interface WorkspaceIndex {
   scannedAt: number;
@@ -475,6 +477,91 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
     },
   );
 
+  const buildDirectoryTree = Effect.fn("WorkspaceEntries.buildDirectoryTree")(function* (
+    absolutePath: string,
+    relativePath: string,
+    depth: number,
+    entryCount: { count: number },
+  ): Effect.fn.Return<ProjectDirectoryTreeNode, WorkspaceEntriesError> {
+    const stat = yield* Effect.tryPromise({
+      try: () => fsPromises.stat(absolutePath),
+      catch: (cause) =>
+        new WorkspaceEntriesError({
+          cwd: absolutePath,
+          operation: "workspaceEntries.buildDirectoryTree.stat",
+          detail: cause instanceof Error ? cause.message : String(cause),
+          cause,
+        }),
+    });
+
+    const name =
+      path.basename(absolutePath).trim() || (relativePath.length > 0 ? relativePath : absolutePath);
+    if (!stat.isDirectory() || depth <= 0) {
+      entryCount.count += 1;
+      return {
+        path: relativePath,
+        name,
+        kind: stat.isDirectory() ? "directory" : "file",
+      };
+    }
+
+    const dirents = yield* Effect.tryPromise({
+      try: () => fsPromises.readdir(absolutePath, { withFileTypes: true }),
+      catch: (cause) =>
+        new WorkspaceEntriesError({
+          cwd: absolutePath,
+          operation: "workspaceEntries.buildDirectoryTree.readdir",
+          detail: cause instanceof Error ? cause.message : String(cause),
+          cause,
+        }),
+    });
+
+    const visibleDirents = dirents
+      .filter((dirent) => !dirent.name.startsWith(".") && dirent.name !== "node_modules")
+      .toSorted((left, right) => {
+        if (left.isDirectory() !== right.isDirectory()) {
+          return left.isDirectory() ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name);
+      });
+
+    const children: ProjectDirectoryTreeNode[] = [];
+    for (const dirent of visibleDirents) {
+      if (entryCount.count >= DIRECTORY_TREE_MAX_ENTRY_COUNT) {
+        break;
+      }
+
+      const childRelativePath = relativePath ? path.join(relativePath, dirent.name) : dirent.name;
+      const child = yield* buildDirectoryTree(
+        path.join(absolutePath, dirent.name),
+        toPosixPath(childRelativePath),
+        depth - 1,
+        entryCount,
+      );
+      children.push(child);
+    }
+
+    entryCount.count += 1;
+    return {
+      path: relativePath,
+      name,
+      kind: "directory",
+      ...(children.length > 0 ? { children } : {}),
+    };
+  });
+
+  const listDirectory: WorkspaceEntriesShape["listDirectory"] = Effect.fn(
+    "WorkspaceEntries.listDirectory",
+  )(function* (input) {
+    const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
+    const entryCount = { count: 0 };
+    const tree = yield* buildDirectoryTree(normalizedCwd, "", input.depth, entryCount);
+    return {
+      tree,
+      truncated: entryCount.count >= DIRECTORY_TREE_MAX_ENTRY_COUNT,
+    };
+  });
+
   const search: WorkspaceEntriesShape["search"] = Effect.fn("WorkspaceEntries.search")(
     function* (input) {
       const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
@@ -513,6 +600,7 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
   return {
     browse,
     invalidate,
+    listDirectory,
     search,
   } satisfies WorkspaceEntriesShape;
 });

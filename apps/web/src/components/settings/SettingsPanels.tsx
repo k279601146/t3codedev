@@ -23,7 +23,11 @@ import {
 } from "@t3tools/contracts";
 import { DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL } from "@t3tools/shared/commercialEngine";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { DEFAULT_CLIENT_LANGUAGE, DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import {
+  DEFAULT_CLIENT_LANGUAGE,
+  DEFAULT_LAYOUT_MODE,
+  DEFAULT_UNIFIED_SETTINGS,
+} from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
@@ -626,6 +630,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
         ? ["New thread mode"]
         : []),
+      ...(settings.layoutMode !== DEFAULT_UNIFIED_SETTINGS.layoutMode ? ["Layout mode"] : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
@@ -648,6 +653,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.telemetryConsent,
       settings.addProjectBaseDirectory,
       settings.defaultThreadEnvMode,
+      settings.layoutMode,
       settings.diffIgnoreWhitespace,
       settings.diffWordWrap,
       settings.automaticGitFetchInterval,
@@ -764,6 +770,45 @@ export function GeneralSettingsPanel() {
                     {option.label}
                   </SelectItem>
                 ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
+
+        <SettingsRow
+          title="Layout mode"
+          description="Switch between the default Codex layout and the Cursor-style editor layout."
+          resetAction={
+            settings.layoutMode !== DEFAULT_LAYOUT_MODE ? (
+              <SettingResetButton
+                label="layout mode"
+                onClick={() =>
+                  updateSettings({
+                    layoutMode: DEFAULT_LAYOUT_MODE,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.layoutMode}
+              onValueChange={(value) => {
+                if (value === "codex" || value === "cursor") {
+                  updateSettings({ layoutMode: value });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40" aria-label="Layout mode">
+                <SelectValue>{settings.layoutMode === "cursor" ? "Cursor" : "Codex"}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="codex">
+                  Codex
+                </SelectItem>
+                <SelectItem hideIndicator value="cursor">
+                  Cursor
+                </SelectItem>
               </SelectPopup>
             </Select>
           }

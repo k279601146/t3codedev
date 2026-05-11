@@ -53,6 +53,12 @@ import {
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
+  ProjectReadFileError,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
+  ProjectListDirectoryError,
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
@@ -103,6 +109,8 @@ export const WS_METHODS = {
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
+  projectsReadFile: "projects.readFile",
+  projectsListDirectory: "projects.listDirectory",
   projectsWriteFile: "projects.writeFile",
 
   // Shell methods
@@ -257,6 +265,18 @@ export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntr
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
   error: ProjectSearchEntriesError,
+});
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: ProjectReadFileResult,
+  error: ProjectReadFileError,
+});
+
+export const WsProjectsListDirectoryRpc = Rpc.make(WS_METHODS.projectsListDirectory, {
+  payload: ProjectListDirectoryInput,
+  success: ProjectListDirectoryResult,
+  error: ProjectListDirectoryError,
 });
 
 export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
@@ -477,6 +497,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
   WsProjectsSearchEntriesRpc,
+  WsProjectsReadFileRpc,
+  WsProjectsListDirectoryRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
