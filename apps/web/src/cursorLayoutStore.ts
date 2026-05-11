@@ -11,6 +11,7 @@ interface PersistedCursorLayoutState {
 interface CursorLayoutState {
   pinnedProjectKeys: string[];
   collapsedPinnedProjectKeys: Record<string, boolean>;
+  pendingPinnedProjectKeys: Record<string, number>;
   projectDockCollapsed: boolean;
   pinProject: (projectKey: string) => void;
   unpinProject: (projectKey: string) => void;
@@ -85,6 +86,7 @@ function persistCursorLayoutState(state: CursorLayoutState): void {
 
 export const useCursorLayoutStore = create<CursorLayoutState>((set) => ({
   ...readPersistedState(),
+  pendingPinnedProjectKeys: {},
   pinProject: (projectKey) =>
     set((state) => {
       if (state.pinnedProjectKeys.includes(projectKey)) {
@@ -92,6 +94,10 @@ export const useCursorLayoutStore = create<CursorLayoutState>((set) => ({
       }
       return {
         pinnedProjectKeys: [...state.pinnedProjectKeys, projectKey],
+        pendingPinnedProjectKeys: {
+          ...state.pendingPinnedProjectKeys,
+          [projectKey]: Date.now(),
+        },
         collapsedPinnedProjectKeys: {
           ...state.collapsedPinnedProjectKeys,
           [projectKey]: false,
@@ -101,10 +107,13 @@ export const useCursorLayoutStore = create<CursorLayoutState>((set) => ({
   unpinProject: (projectKey) =>
     set((state) => {
       const nextCollapsed = { ...state.collapsedPinnedProjectKeys };
+      const nextPending = { ...state.pendingPinnedProjectKeys };
       delete nextCollapsed[projectKey];
+      delete nextPending[projectKey];
       return {
         pinnedProjectKeys: state.pinnedProjectKeys.filter((key) => key !== projectKey),
         collapsedPinnedProjectKeys: nextCollapsed,
+        pendingPinnedProjectKeys: nextPending,
       };
     }),
   setPinnedProjects: (projectKeys) =>
@@ -116,9 +125,15 @@ export const useCursorLayoutStore = create<CursorLayoutState>((set) => ({
           retainedProjectKeys.has(key),
         ),
       );
+      const nextPending = Object.fromEntries(
+        Object.entries(state.pendingPinnedProjectKeys).filter(([key]) =>
+          retainedProjectKeys.has(key),
+        ),
+      );
       return {
         pinnedProjectKeys: nextProjectKeys,
         collapsedPinnedProjectKeys: nextCollapsed,
+        pendingPinnedProjectKeys: nextPending,
       };
     }),
   togglePinnedProject: (projectKey) =>

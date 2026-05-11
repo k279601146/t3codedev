@@ -38,7 +38,7 @@ export function CursorFileTree({
   onRemoveProject,
   onOpenFile,
 }: CursorFileTreeProps) {
-  const { data, isLoading, isFetching, refetch } = useFileTree(
+  const { data, error, isLoading, isFetching, isPending, refetch } = useFileTree(
     environmentId,
     collapsed ? null : workspaceRoot,
   );
@@ -131,10 +131,21 @@ export function CursorFileTree({
             ) : (
               <div className="px-4 py-3 text-xs text-muted-foreground">No files</div>
             )
-          ) : (
+          ) : error ? (
             <div className="px-4 py-3 text-xs text-muted-foreground">
-              {isLoading ? "Loading files..." : "No workspace files"}
+              <div>Could not load file tree.</div>
+              <button
+                type="button"
+                className="mt-1 text-foreground underline decoration-transparent underline-offset-2 hover:decoration-current"
+                onClick={() => void refetch()}
+              >
+                Retry
+              </button>
             </div>
+          ) : isLoading || isPending || isFetching ? (
+            <div className="px-4 py-3 text-xs text-muted-foreground">Loading files...</div>
+          ) : (
+            <div className="px-4 py-3 text-xs text-muted-foreground">No files found</div>
           )}
           {data?.truncated ? (
             <div className="border-t border-border/70 px-3 py-1 text-[11px] text-muted-foreground">

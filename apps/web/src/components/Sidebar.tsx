@@ -2500,7 +2500,7 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
   );
 });
 
-const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const { isMobile, setOpenMobile } = useSidebar();

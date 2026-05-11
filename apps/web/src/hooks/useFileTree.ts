@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { readEnvironmentApi } from "../environmentApi";
+import { ensureEnvironmentApi } from "../environmentApi";
 
 export function useFileTree(environmentId: EnvironmentId | null | undefined, cwd: string | null) {
   return useQuery({
@@ -10,14 +10,13 @@ export function useFileTree(environmentId: EnvironmentId | null | undefined, cwd
         return null;
       }
 
-      const api = readEnvironmentApi(environmentId);
-      if (!api) {
-        throw new Error("Workspace API is unavailable.");
-      }
-
+      const api = ensureEnvironmentApi(environmentId);
       return api.projects.listDirectory({ cwd, depth: 6 });
     },
     enabled: Boolean(environmentId && cwd),
     staleTime: 30_000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 4_000),
+    placeholderData: (previous) => previous ?? undefined,
   });
 }

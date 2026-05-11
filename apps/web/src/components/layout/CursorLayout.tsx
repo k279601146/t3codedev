@@ -1,18 +1,37 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { useParams } from "@tanstack/react-router";
-import { scopeProjectRef } from "@t3tools/client-runtime";
+import { useNavigate, useParams } from "@tanstack/react-router";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import ChatView from "../ChatView";
 import { MonacoEditorPanel } from "../editor/MonacoEditorPanel";
-import { selectProjectByRef, selectThreadByRef, useStore } from "../../store";
-import { resolveThreadRouteTarget } from "../../threadRoutes";
+import {
+  selectProjectByRef,
+  selectProjectsAcrossEnvironments,
+  selectSidebarThreadsAcrossEnvironments,
+  selectThreadByRef,
+  useStore,
+} from "../../store";
+import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useFileContent } from "../../hooks/useFileContent";
 import { useEditorStore } from "../../editorStore";
 import { useTurnDiffSummaries } from "../../hooks/useTurnDiffSummaries";
 import { SidebarInset } from "../ui/sidebar";
+import { useShallow } from "zustand/react/shallow";
+import { getLatestThreadForProject } from "../../lib/threadSort";
+import { useSettings } from "../../hooks/useSettings";
+import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { readEnvironmentApi } from "../../environmentApi";
+import {
+  getPatchDisplayPath,
+  parseUnifiedDiff,
+  reconstructOriginalFromModified,
+} from "../../lib/unifiedDiff";
 
 export function CursorLayout() {
+  const navigate = useNavigate();
+  const settings = useSettings();
+  const { handleNewThread } = useNewThreadHandler();
   const routeTarget = useParams({
     strict: false,
     select: (params) => resolveThreadRouteTarget(params),
@@ -42,56 +61,142 @@ export function CursorLayout() {
   const workspaceRoot =
     serverThread?.worktreePath ?? draftSession?.worktreePath ?? project?.cwd ?? null;
   const { fetchFile } = useFileContent(environmentId, workspaceRoot);
-  const replaceFileContents = useEditorStore((state) => state.replaceFileContents);
+  const stageExternalChange = useEditorStore((state) => state.stageExternalChange);
+  const activeEditorTab = useEditorStore((state) =>
+    state.tabs.find((tab) => tab.id === state.activeTabId),
+  );
+  const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const sidebarThreads = useStore(useShallow(selectSidebarThreadsAcrossEnvironments));
   const activeThread = useStore((state) =>
     serverThreadRef ? selectThreadByRef(state, serverThreadRef) : undefined,
   );
-  const { turnDiffSummaries } = useTurnDiffSummaries(activeThread);
+  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
+    useTurnDiffSummaries(activeThread);
+  const stagedTurnDiffKeysRef = useRef(new Set<string>());
+
+  const activeEditorProject = useMemo(() => {
+    if (!activeEditorTab) {
+      return undefined;
+    }
+    return projects.find(
+      (candidate) =>
+        candidate.environmentId === activeEditorTab.environmentId &&
+        candidate.cwd === activeEditorTab.workspaceRoot,
+    );
+  }, [activeEditorTab, projects]);
+
+  useEffect(() => {
+    if (!activeEditorProject) {
+      return;
+    }
+    if (
+      projectRef?.environmentId === activeEditorProject.environmentId &&
+      projectRef.projectId === activeEditorProject.id
+    ) {
+      return;
+    }
+
+    const latestThread = getLatestThreadForProject(
+      sidebarThreads.filter((thread) => thread.environmentId === activeEditorProject.environmentId),
+      activeEditorProject.id,
+      settings.sidebarThreadSortOrder,
+    );
+    if (latestThread) {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(scopeThreadRef(latestThread.environmentId, latestThread.id)),
+      });
+      return;
+    }
+
+    void handleNewThread(
+      scopeProjectRef(activeEditorProject.environmentId, activeEditorProject.id),
+      {
+        envMode: settings.defaultThreadEnvMode,
+      },
+    );
+  }, [
+    activeEditorProject,
+    handleNewThread,
+    navigate,
+    projectRef,
+    settings.defaultThreadEnvMode,
+    settings.sidebarThreadSortOrder,
+    sidebarThreads,
+  ]);
 
   useEffect(() => {
     if (!activeThread || !workspaceRoot || !environmentId) {
       return;
     }
 
-    const changedPaths = new Set(
-      turnDiffSummaries.flatMap((summary) => summary.files.map((file) => file.path)),
-    );
-    if (changedPaths.size === 0) {
+    const summariesToStage = turnDiffSummaries.flatMap((summary) => {
+      const checkpointTurnCount =
+        summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId];
+      if (typeof checkpointTurnCount !== "number" || checkpointTurnCount <= 0) {
+        return [];
+      }
+      const key = `${environmentId}:${activeThread.id}:${summary.turnId}:${checkpointTurnCount}`;
+      if (stagedTurnDiffKeysRef.current.has(key)) {
+        return [];
+      }
+      return [{ key, checkpointTurnCount }];
+    });
+    if (summariesToStage.length === 0) {
       return;
     }
 
-    const openTabs = useEditorStore.getState().tabs;
+    const api = readEnvironmentApi(environmentId);
+    if (!api) {
+      return;
+    }
     void Promise.all(
-      [...changedPaths].flatMap((filePath) => {
-        const openTab = openTabs.find(
-          (tab) =>
-            tab.environmentId === environmentId &&
-            tab.workspaceRoot === workspaceRoot &&
-            tab.filePath === filePath,
-        );
-        if (
-          !openTab ||
-          openTab.environmentId !== environmentId ||
-          openTab.workspaceRoot !== workspaceRoot ||
-          openTab.isDirty
-        ) {
-          return [];
+      summariesToStage.map(async ({ key, checkpointTurnCount }) => {
+        stagedTurnDiffKeysRef.current.add(key);
+        try {
+          const result = await api.orchestration.getTurnDiff({
+            threadId: activeThread.id,
+            fromTurnCount: Math.max(0, checkpointTurnCount - 1),
+            toTurnCount: checkpointTurnCount,
+            ignoreWhitespace: false,
+          });
+          const patches = parseUnifiedDiff(result.diff);
+          await Promise.all(
+            patches.flatMap((patch) => {
+              const filePath = getPatchDisplayPath(patch);
+              if (!filePath || patch.hunks.length === 0) {
+                return [];
+              }
+              return [
+                fetchFile(filePath)
+                  .catch(() => "")
+                  .then((modifiedContents) => {
+                    const originalContents = reconstructOriginalFromModified(
+                      patch,
+                      modifiedContents,
+                    );
+                    stageExternalChange(
+                      environmentId,
+                      workspaceRoot,
+                      filePath,
+                      originalContents,
+                      modifiedContents,
+                    );
+                  }),
+              ];
+            }),
+          );
+        } catch {
+          stagedTurnDiffKeysRef.current.delete(key);
         }
-
-        return [
-          fetchFile(filePath)
-            .then((contents) => {
-              replaceFileContents(environmentId, workspaceRoot, filePath, contents);
-            })
-            .catch(() => undefined),
-        ];
       }),
     );
   }, [
     activeThread,
     environmentId,
     fetchFile,
-    replaceFileContents,
+    inferredCheckpointTurnCountByTurnId,
+    stageExternalChange,
     turnDiffSummaries,
     workspaceRoot,
   ]);
@@ -120,14 +225,14 @@ export function CursorLayout() {
               threadId={threadId}
               draftId={draftId}
               routeKind="draft"
-              reserveTitleBarControlInset
+              compactHeaderActions
             />
           ) : (
             <ChatView
               environmentId={environmentId}
               threadId={threadId}
               routeKind="server"
-              reserveTitleBarControlInset
+              compactHeaderActions
             />
           )}
         </Panel>

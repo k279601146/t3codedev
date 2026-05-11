@@ -338,6 +338,7 @@ type ChatViewProps =
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
+      compactHeaderActions?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -346,6 +347,7 @@ type ChatViewProps =
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
+      compactHeaderActions?: boolean;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -608,6 +610,7 @@ export default function ChatView(props: ChatViewProps) {
     routeKind,
     onDiffPanelOpen,
     reserveTitleBarControlInset = true,
+    compactHeaderActions = false,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const routeThreadRef = useMemo(
@@ -3501,7 +3504,7 @@ export default function ChatView(props: ChatViewProps) {
       {/* Top bar */}
       <header
         className={cn(
-          "border-b border-border",
+          "sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur",
           isElectron
             ? cn(
                 "drag-region flex h-[52px] items-center px-3 sm:px-5 wco:h-[env(titlebar-area-height)]",
@@ -3537,6 +3540,7 @@ export default function ChatView(props: ChatViewProps) {
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
+          compactActions={compactHeaderActions}
         />
       </header>
 

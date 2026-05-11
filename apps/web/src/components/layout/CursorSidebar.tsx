@@ -2,7 +2,9 @@ import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime";
 import { useParams } from "@tanstack/react-router";
 import { FolderPlusIcon } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useShallow } from "zustand/react/shallow";
 import { resolveThreadRouteTarget } from "../../threadRoutes";
 import {
@@ -20,8 +22,19 @@ import { readEnvironmentApi } from "../../environmentApi";
 import { Button } from "../ui/button";
 import { useCommandPaletteStore } from "../../commandPaletteStore";
 import { cn } from "../../lib/utils";
+import { dedupeCursorProjects, getCursorProjectIdentity } from "../../lib/cursorProjects";
+import {
+  ensureCursorProjectForPath,
+  getExternalFolderPathsFromDrop,
+  hasExternalFolderDrop,
+} from "../../lib/cursorExternalProjects";
+import { usePrimaryEnvironmentId } from "../../environments/primary";
 import { CURSOR_PROJECT_DRAG_TYPE, CursorProjectDock } from "./CursorProjectDock";
 import type { Project } from "../../types";
+
+const PROJECT_DOCK_MIN_HEIGHT_PX = 112;
+const PROJECT_DOCK_MAX_HEIGHT_RATIO = 0.82;
+const PROJECT_DOCK_AUTO_RESIZE_THRESHOLD_PX = 6;
 
 export function CursorSidebar() {
   const routeTarget = useParams({
@@ -45,20 +58,22 @@ export function CursorSidebar() {
     projectRef ? selectProjectByRef(state, projectRef) : undefined,
   );
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const visibleProjects = useMemo(() => dedupeCursorProjects(projects), [projects]);
   const projectByKey = useMemo(
     () =>
       new Map(
-        projects.map((project) => [
+        visibleProjects.map((project) => [
           scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
           project,
         ]),
       ),
-    [projects],
+    [visibleProjects],
   );
   const pinnedProjectKeys = useCursorLayoutStore((state) => state.pinnedProjectKeys);
   const collapsedPinnedProjectKeys = useCursorLayoutStore(
     (state) => state.collapsedPinnedProjectKeys,
   );
+  const pendingPinnedProjectKeys = useCursorLayoutStore((state) => state.pendingPinnedProjectKeys);
   const pinProject = useCursorLayoutStore((state) => state.pinProject);
   const unpinProject = useCursorLayoutStore((state) => state.unpinProject);
   const setPinnedProjects = useCursorLayoutStore((state) => state.setPinnedProjects);
@@ -66,21 +81,50 @@ export function CursorSidebar() {
   const openAddProject = useCommandPaletteStore((state) => state.openAddProject);
   const openFile = useEditorStore((state) => state.openFile);
   const setActiveTab = useEditorStore((state) => state.setActiveTab);
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const [isProjectDropActive, setIsProjectDropActive] = useState(false);
+  const projectDockPanelRef = useRef<PanelImperativeHandle | null>(null);
   const pinnedProjects = useMemo(
     () => pinnedProjectKeys.flatMap((projectKey) => projectByKey.get(projectKey) ?? []),
     [pinnedProjectKeys, projectByKey],
   );
+  const explorerProjects = useMemo(() => {
+    const nextProjects = [...pinnedProjects];
+    if (
+      activeProject &&
+      !nextProjects.some(
+        (project) => getCursorProjectIdentity(project) === getCursorProjectIdentity(activeProject),
+      )
+    ) {
+      nextProjects.unshift(activeProject);
+    }
+    return dedupeCursorProjects(nextProjects);
+  }, [activeProject, pinnedProjects]);
 
   useEffect(() => {
     const availableProjectKeys = new Set(projectByKey.keys());
-    const retainedProjectKeys = pinnedProjectKeys.filter((projectKey) =>
-      availableProjectKeys.has(projectKey),
-    );
+    const retainedProjectKeys: string[] = [];
+    const retainedProjectIdentities = new Set<string>();
+    for (const projectKey of pinnedProjectKeys) {
+      const project = projectByKey.get(projectKey);
+      if (!project || !availableProjectKeys.has(projectKey)) {
+        const pinnedAt = pendingPinnedProjectKeys[projectKey];
+        if (typeof pinnedAt === "number" && Date.now() - pinnedAt < 15_000) {
+          retainedProjectKeys.push(projectKey);
+        }
+        continue;
+      }
+      const projectIdentity = getCursorProjectIdentity(project);
+      if (retainedProjectIdentities.has(projectIdentity)) {
+        continue;
+      }
+      retainedProjectIdentities.add(projectIdentity);
+      retainedProjectKeys.push(projectKey);
+    }
     if (retainedProjectKeys.length !== pinnedProjectKeys.length) {
       setPinnedProjects(retainedProjectKeys);
     }
-  }, [pinnedProjectKeys, projectByKey, setPinnedProjects]);
+  }, [pendingPinnedProjectKeys, pinnedProjectKeys, projectByKey, setPinnedProjects]);
 
   useEffect(() => {
     if (pinnedProjectKeys.length > 0 || !activeProject) {
@@ -144,79 +188,187 @@ export function CursorSidebar() {
     [pinProject, projectByKey],
   );
 
+  const addExternalProjectsFromDrop = useCallback(
+    async (event: React.DragEvent) => {
+      if (!primaryEnvironmentId) {
+        toastManager.add({
+          type: "error",
+          title: "Could not add dropped folder",
+          description: "No local environment is available.",
+        });
+        return false;
+      }
+
+      const paths = getExternalFolderPathsFromDrop(event);
+      if (paths.length === 0) {
+        toastManager.add({
+          type: "error",
+          title: "Could not add dropped folder",
+          description: "The desktop drag payload did not include a folder path.",
+        });
+        return false;
+      }
+
+      await Promise.all(
+        paths.map((rawPath) =>
+          ensureCursorProjectForPath({
+            environmentId: primaryEnvironmentId,
+            rawPath,
+            projects,
+            pinToExplorer: true,
+          }),
+        ),
+      );
+      toastManager.add({
+        type: "success",
+        title: paths.length === 1 ? "Project added to Explorer" : "Projects added to Explorer",
+      });
+      return true;
+    },
+    [primaryEnvironmentId, projects],
+  );
+
+  const resizeProjectDockToContent = useCallback((contentHeight: number) => {
+    const panel = projectDockPanelRef.current;
+    if (!panel || !Number.isFinite(contentHeight) || contentHeight <= 0) {
+      return;
+    }
+
+    const currentSize = panel.getSize();
+    if (currentSize.asPercentage <= 0 || currentSize.inPixels <= 0) {
+      return;
+    }
+
+    const groupHeight = currentSize.inPixels / (currentSize.asPercentage / 100);
+    if (!Number.isFinite(groupHeight) || groupHeight <= 0) {
+      return;
+    }
+
+    const maxHeight = Math.floor(groupHeight * PROJECT_DOCK_MAX_HEIGHT_RATIO);
+    const targetHeight = Math.min(
+      Math.max(Math.ceil(contentHeight), PROJECT_DOCK_MIN_HEIGHT_PX),
+      maxHeight,
+    );
+
+    if (targetHeight > currentSize.inPixels + PROJECT_DOCK_AUTO_RESIZE_THRESHOLD_PX) {
+      panel.resize(`${targetHeight}px`);
+    }
+  }, []);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div
-        className={cn(
-          "min-h-0 flex-1 overflow-y-auto border-b border-border transition-colors",
-          isProjectDropActive ? "bg-accent/30" : "",
-        )}
-        onDragEnter={(event) => {
-          if (event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE)) {
-            event.preventDefault();
-            setIsProjectDropActive(true);
-          }
-        }}
-        onDragOver={(event) => {
-          if (event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
-          }
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setIsProjectDropActive(false);
-          }
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          setIsProjectDropActive(false);
-          pinProjectFromDragEvent(event);
-        }}
-      >
-        <div className="sticky top-0 z-10 flex h-9 items-center gap-2 border-b border-border bg-background/95 px-2 backdrop-blur">
-          <div className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
-            Explorer
-          </div>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
-            onClick={() => openAddProject()}
-            aria-label="Add project"
+      <Group id="cursor-sidebar-panels" className="h-full min-h-0" orientation="vertical">
+        <Panel
+          id="cursor-explorer-panel"
+          defaultSize="46%"
+          minSize="18%"
+          className="min-h-0 overflow-hidden"
+        >
+          <div
+            className={cn(
+              "h-full min-h-0 overflow-y-auto transition-colors",
+              isProjectDropActive ? "bg-accent/30" : "",
+            )}
+            onDragEnter={(event) => {
+              if (
+                event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE) ||
+                hasExternalFolderDrop(event)
+              ) {
+                event.preventDefault();
+                setIsProjectDropActive(true);
+              }
+            }}
+            onDragOver={(event) => {
+              if (
+                event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE) ||
+                hasExternalFolderDrop(event)
+              ) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setIsProjectDropActive(false);
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsProjectDropActive(false);
+              if (pinProjectFromDragEvent(event)) {
+                return;
+              }
+              if (hasExternalFolderDrop(event)) {
+                void addExternalProjectsFromDrop(event).catch((error) => {
+                  toastManager.add({
+                    type: "error",
+                    title: "Could not add dropped folder",
+                    description:
+                      error instanceof Error ? error.message : "The folder could not be added.",
+                  });
+                });
+              }
+            }}
           >
-            <FolderPlusIcon className="size-3.5" />
-          </Button>
-        </div>
+            <div className="sticky top-0 z-10 flex h-9 items-center gap-2 border-b border-border bg-background/95 px-2 backdrop-blur">
+              <div className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+                Explorer
+              </div>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+                aria-label="Add project"
+                title="Add project to Explorer"
+                onClick={() => openAddProject({ pinToCursorExplorer: true })}
+              >
+                <FolderPlusIcon className="size-3.5" />
+              </Button>
+            </div>
 
-        {pinnedProjects.length > 0 ? (
-          pinnedProjects.map((project) => {
-            const projectKey = scopedProjectKey(scopeProjectRef(project.environmentId, project.id));
-            return (
-              <CursorFileTree
-                key={projectKey}
-                projectKey={projectKey}
-                title={project.name}
-                subtitle={project.cwd}
-                environmentId={project.environmentId}
-                workspaceRoot={project.cwd}
-                collapsed={collapsedPinnedProjectKeys[projectKey] ?? false}
-                onToggleProject={() => togglePinnedProject(projectKey)}
-                onRemoveProject={() => unpinProject(projectKey)}
-                onOpenFile={(filePath) => {
-                  void handleOpenFile(project, filePath);
-                }}
-              />
-            );
-          })
-        ) : (
-          <div className="flex min-h-32 items-center justify-center px-4 text-center text-xs text-muted-foreground">
-            Drag projects here or right-click a project below to add it to the file tree.
+            {explorerProjects.length > 0 ? (
+              explorerProjects.map((project) => {
+                const projectKey = scopedProjectKey(
+                  scopeProjectRef(project.environmentId, project.id),
+                );
+                return (
+                  <CursorFileTree
+                    key={projectKey}
+                    projectKey={projectKey}
+                    title={project.name}
+                    subtitle={project.cwd}
+                    environmentId={project.environmentId}
+                    workspaceRoot={project.cwd}
+                    collapsed={collapsedPinnedProjectKeys[projectKey] ?? false}
+                    onToggleProject={() => togglePinnedProject(projectKey)}
+                    onRemoveProject={() => unpinProject(projectKey)}
+                    onOpenFile={(filePath) => {
+                      void handleOpenFile(project, filePath);
+                    }}
+                  />
+                );
+              })
+            ) : (
+              <div className="flex min-h-32 items-center justify-center px-4 text-center text-xs text-muted-foreground">
+                Drag projects or folders here, or right-click a project below to add it to the file
+                tree.
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      <CursorProjectDock />
+        </Panel>
+        <Separator className="h-px bg-border transition-colors hover:bg-border/80" />
+        <Panel
+          id="cursor-project-dock-panel"
+          panelRef={projectDockPanelRef}
+          defaultSize="25%"
+          minSize={`${PROJECT_DOCK_MIN_HEIGHT_PX}px`}
+          maxSize={`${PROJECT_DOCK_MAX_HEIGHT_RATIO * 100}%`}
+          className="min-h-0 overflow-hidden"
+        >
+          <CursorProjectDock onContentHeightChange={resizeProjectDockToContent} />
+        </Panel>
+      </Group>
     </div>
   );
 }

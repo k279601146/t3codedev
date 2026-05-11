@@ -11,7 +11,14 @@ export interface EditorTab {
   contents: string;
   savedContents: string;
   isDirty: boolean;
+  externalChange: EditorExternalChange | null;
   cursorPosition: { line: number; column: number } | null;
+}
+
+export interface EditorExternalChange {
+  originalContents: string;
+  modifiedContents: string;
+  receivedAt: string;
 }
 
 interface OpenFileInput {
@@ -26,12 +33,22 @@ interface OpenFileInput {
 interface EditorState {
   tabs: EditorTab[];
   activeTabId: string | null;
+  externalChangesByFileKey: Record<string, EditorExternalChange>;
   openFile: (input: OpenFileInput) => string;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string | null) => void;
   updateContent: (tabId: string, contents: string) => void;
   markSaved: (tabId: string) => void;
   setCursorPosition: (tabId: string, cursorPosition: { line: number; column: number }) => void;
+  stageExternalChange: (
+    environmentId: EnvironmentId,
+    workspaceRoot: string,
+    filePath: string,
+    originalContents: string,
+    modifiedContents: string,
+  ) => void;
+  acceptExternalChange: (tabId: string) => void;
+  discardExternalChange: (tabId: string) => void;
   replaceFileContents: (
     environmentId: EnvironmentId,
     workspaceRoot: string,
@@ -51,15 +68,23 @@ function tabMatchesFile(
   );
 }
 
+function getEditorFileKey(
+  input: Pick<OpenFileInput, "environmentId" | "workspaceRoot" | "filePath">,
+): string {
+  return `${input.environmentId}:${input.workspaceRoot}:${input.filePath}`;
+}
+
 export const useEditorStore = create<EditorState>()((set, get) => ({
   tabs: [],
   activeTabId: null,
+  externalChangesByFileKey: {},
   openFile: (input) => {
     const existing = get().tabs.find((tab) => tabMatchesFile(tab, input));
     if (existing) {
       set({ activeTabId: existing.id });
       return existing.id;
     }
+    const externalChange = get().externalChangesByFileKey[getEditorFileKey(input)] ?? null;
 
     const tab: EditorTab = {
       id: crypto.randomUUID(),
@@ -71,6 +96,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       contents: input.contents,
       savedContents: input.contents,
       isDirty: false,
+      externalChange,
       cursorPosition: null,
     };
 
@@ -96,8 +122,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
               ...tab,
               contents,
               isDirty: contents !== tab.savedContents,
+              externalChange: null,
             }
           : tab,
+      ),
+      externalChangesByFileKey: Object.fromEntries(
+        Object.entries(state.externalChangesByFileKey).filter(([fileKey]) => {
+          const editedTab = state.tabs.find((tab) => tab.id === tabId);
+          return editedTab ? fileKey !== getEditorFileKey(editedTab) : true;
+        }),
       ),
     })),
   markSaved: (tabId) =>
@@ -108,21 +141,112 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
               ...tab,
               savedContents: tab.contents,
               isDirty: false,
+              externalChange: null,
             }
           : tab,
+      ),
+      externalChangesByFileKey: Object.fromEntries(
+        Object.entries(state.externalChangesByFileKey).filter(([fileKey]) => {
+          const savedTab = state.tabs.find((tab) => tab.id === tabId);
+          return savedTab ? fileKey !== getEditorFileKey(savedTab) : true;
+        }),
       ),
     })),
   setCursorPosition: (tabId, cursorPosition) =>
     set((state) => ({
       tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, cursorPosition } : tab)),
     })),
+  stageExternalChange: (
+    environmentId,
+    workspaceRoot,
+    filePath,
+    originalContents,
+    modifiedContents,
+  ) =>
+    set((state) => {
+      if (originalContents === modifiedContents) {
+        return state;
+      }
+      const change = {
+        originalContents,
+        modifiedContents,
+        receivedAt: new Date().toISOString(),
+      };
+      const fileKey = getEditorFileKey({ environmentId, workspaceRoot, filePath });
+      return {
+        externalChangesByFileKey: {
+          ...state.externalChangesByFileKey,
+          [fileKey]: change,
+        },
+        tabs: state.tabs.map((tab) => {
+          if (
+            tab.environmentId !== environmentId ||
+            tab.workspaceRoot !== workspaceRoot ||
+            tab.filePath !== filePath ||
+            tab.isDirty
+          ) {
+            return tab;
+          }
+
+          return {
+            ...tab,
+            externalChange: change,
+          };
+        }),
+      };
+    }),
+  acceptExternalChange: (tabId) =>
+    set((state) => {
+      const acceptedTab = state.tabs.find((tab) => tab.id === tabId);
+      return {
+        tabs: state.tabs.map((tab) =>
+          tab.id === tabId && tab.externalChange
+            ? {
+                ...tab,
+                contents: tab.externalChange.modifiedContents,
+                savedContents: tab.externalChange.modifiedContents,
+                isDirty: false,
+                externalChange: null,
+              }
+            : tab,
+        ),
+        externalChangesByFileKey: Object.fromEntries(
+          Object.entries(state.externalChangesByFileKey).filter(([fileKey]) =>
+            acceptedTab ? fileKey !== getEditorFileKey(acceptedTab) : true,
+          ),
+        ),
+      };
+    }),
+  discardExternalChange: (tabId) =>
+    set((state) => {
+      const discardedTab = state.tabs.find((tab) => tab.id === tabId);
+      return {
+        tabs: state.tabs.map((tab) =>
+          tab.id === tabId && tab.externalChange
+            ? {
+                ...tab,
+                contents: tab.externalChange.originalContents,
+                savedContents: tab.externalChange.originalContents,
+                isDirty: false,
+                externalChange: null,
+              }
+            : tab,
+        ),
+        externalChangesByFileKey: Object.fromEntries(
+          Object.entries(state.externalChangesByFileKey).filter(([fileKey]) =>
+            discardedTab ? fileKey !== getEditorFileKey(discardedTab) : true,
+          ),
+        ),
+      };
+    }),
   replaceFileContents: (environmentId, workspaceRoot, filePath, contents) =>
     set((state) => ({
       tabs: state.tabs.map((tab) =>
         tab.environmentId === environmentId &&
         tab.workspaceRoot === workspaceRoot &&
         tab.filePath === filePath &&
-        !tab.isDirty
+        !tab.isDirty &&
+        !tab.externalChange
           ? {
               ...tab,
               contents,

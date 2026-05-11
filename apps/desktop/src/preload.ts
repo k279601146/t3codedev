@@ -1,5 +1,5 @@
 import type { DesktopBridge } from "@t3tools/contracts";
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
 
@@ -103,6 +103,12 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       items,
       ...(position === undefined ? {} : { position }),
     }),
+  getPathForFile: (file) => {
+    if (!(file instanceof File)) {
+      return null;
+    }
+    return webUtils.getPathForFile(file) || null;
+  },
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
+import { scopedProjectKey, scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import {
   DEFAULT_MODEL,
   type EnvironmentId,
@@ -39,6 +39,7 @@ import {
 } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useCommandPaletteStore } from "../commandPaletteStore";
+import { useCursorLayoutStore } from "../cursorLayoutStore";
 import { readEnvironmentApi } from "../environmentApi";
 import { readPrimaryEnvironmentDescriptor, usePrimaryEnvironmentId } from "../environments/primary";
 import {
@@ -395,6 +396,9 @@ function OpenCommandPaletteDialog() {
   const setOpen = useCommandPaletteStore((store) => store.setOpen);
   const openIntent = useCommandPaletteStore((store) => store.openIntent);
   const clearOpenIntent = useCommandPaletteStore((store) => store.clearOpenIntent);
+  const consumePinNextAddedProjectToCursorExplorer = useCommandPaletteStore(
+    (store) => store.consumePinNextAddedProjectToCursorExplorer,
+  );
   const composerHandleRef = useComposerHandleContext();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -421,6 +425,17 @@ function OpenCommandPaletteDialog() {
   const primaryEnvironmentLabel = readPrimaryEnvironmentDescriptor()?.label ?? null;
   const savedEnvironmentRegistry = useSavedEnvironmentRegistryStore((state) => state.byId);
   const savedEnvironmentRuntimeById = useSavedEnvironmentRuntimeStore((state) => state.byId);
+  const pinProjectToCursorExplorer = useCallback(
+    (environmentId: EnvironmentId, projectId: ProjectId) => {
+      if (!consumePinNextAddedProjectToCursorExplorer()) {
+        return;
+      }
+      useCursorLayoutStore
+        .getState()
+        .pinProject(scopedProjectKey(scopeProjectRef(environmentId, projectId)));
+    },
+    [consumePinNextAddedProjectToCursorExplorer],
+  );
 
   const addProjectEnvironmentOptions = useMemo(() => {
     const options: AddProjectEnvironmentOption[] = [];
@@ -1108,6 +1123,7 @@ function OpenCommandPaletteDialog() {
         cwd,
       );
       if (existing) {
+        pinProjectToCursorExplorer(existing.environmentId, existing.id);
         const latestThread = getLatestThreadForProject(
           threads.filter((thread) => thread.environmentId === existing.environmentId),
           existing.id,
@@ -1144,6 +1160,7 @@ function OpenCommandPaletteDialog() {
           },
           createdAt: new Date().toISOString(),
         });
+        pinProjectToCursorExplorer(browseEnvironmentId, projectId);
         await handleNewThread(scopeProjectRef(browseEnvironmentId, projectId), {
           envMode: settings.defaultThreadEnvMode,
         }).catch(() => undefined);
@@ -1164,6 +1181,7 @@ function OpenCommandPaletteDialog() {
       currentProjectCwdForBrowse,
       handleNewThread,
       navigate,
+      pinProjectToCursorExplorer,
       projects,
       setOpen,
       settings.defaultThreadEnvMode,
