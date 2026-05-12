@@ -30,7 +30,7 @@ import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model"
 import { useMemo } from "react";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
-import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
+import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatAttachment } from "./types";
 import {
   type TerminalContextDraft,
   ensureInlineTerminalContextPlaceholders,
@@ -78,8 +78,8 @@ export const PersistedComposerImageAttachment = Schema.Struct({
 });
 export type PersistedComposerImageAttachment = typeof PersistedComposerImageAttachment.Type;
 
-export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"> {
-  previewUrl: string;
+export interface ComposerImageAttachment extends Omit<ChatAttachment, "previewUrl"> {
+  previewUrl?: string;
   file: File;
 }
 
@@ -932,7 +932,9 @@ function revokeDraftThreadPreviewUrls(draft: ComposerThreadDraftState | undefine
     return;
   }
   for (const image of draft.images) {
-    revokeObjectPreviewUrl(image.previewUrl);
+    if (image.previewUrl) {
+      revokeObjectPreviewUrl(image.previewUrl);
+    }
   }
 }
 
@@ -1886,15 +1888,16 @@ function hydrateImagesFromPersisted(
   return attachments.flatMap((attachment) => {
     const file = hydratePersistedComposerImageAttachment(attachment);
     if (!file) return [];
+    const type = attachment.mimeType.startsWith("image/") ? "image" : "file";
 
     return [
       {
-        type: "image" as const,
+        type,
         id: attachment.id,
         name: attachment.name,
         mimeType: attachment.mimeType,
         sizeBytes: attachment.sizeBytes,
-        previewUrl: attachment.dataUrl,
+        ...(type === "image" ? { previewUrl: attachment.dataUrl } : {}),
         file,
       } satisfies ComposerImageAttachment,
     ];
@@ -2684,13 +2687,15 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const existingDedupKeys = new Set(
               existing.images.map((image) => composerImageDedupKey(image)),
             );
-            const acceptedPreviewUrls = new Set(existing.images.map((image) => image.previewUrl));
+            const acceptedPreviewUrls = new Set(
+              existing.images.flatMap((image) => (image.previewUrl ? [image.previewUrl] : [])),
+            );
             const dedupedIncoming: ComposerImageAttachment[] = [];
             for (const image of images) {
               const dedupKey = composerImageDedupKey(image);
               if (existingIds.has(image.id) || existingDedupKeys.has(dedupKey)) {
                 // Avoid revoking a blob URL that's still referenced by an accepted image.
-                if (!acceptedPreviewUrls.has(image.previewUrl)) {
+                if (image.previewUrl && !acceptedPreviewUrls.has(image.previewUrl)) {
                   revokeObjectPreviewUrl(image.previewUrl);
                 }
                 continue;
@@ -2698,7 +2703,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               dedupedIncoming.push(image);
               existingIds.add(image.id);
               existingDedupKeys.add(dedupKey);
-              acceptedPreviewUrls.add(image.previewUrl);
+              if (image.previewUrl) {
+                acceptedPreviewUrls.add(image.previewUrl);
+              }
             }
             if (dedupedIncoming.length === 0) {
               return state;
@@ -2724,7 +2731,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return;
           }
           const removedImage = existing.images.find((image) => image.id === imageId);
-          if (removedImage) {
+          if (removedImage?.previewUrl) {
             revokeObjectPreviewUrl(removedImage.previewUrl);
           }
           set((state) => {

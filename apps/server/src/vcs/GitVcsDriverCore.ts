@@ -1,4 +1,5 @@
 import * as Cache from "effect/Cache";
+import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -878,7 +879,24 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         env: STATUS_UPSTREAM_REFRESH_ENV,
         timeoutMs: Duration.toMillis(STATUS_UPSTREAM_REFRESH_TIMEOUT),
       },
-    ).pipe(Effect.asVoid);
+    ).pipe(
+      Effect.asVoid,
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          return Effect.void;
+        }
+        return Effect.fail(
+          new GitCommandError({
+            operation: "GitVcsDriver.fetchRemoteForStatus",
+            command: ["--git-dir", gitCommonDir, "fetch", "--quiet", "--no-tags", remoteName].join(
+              " ",
+            ),
+            cwd: fetchCwd,
+            detail: Cause.pretty(cause),
+          }),
+        );
+      }),
+    );
   };
 
   const resolveGitCommonDir = Effect.fn("resolveGitCommonDir")(function* (cwd: string) {

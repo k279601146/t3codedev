@@ -47,23 +47,31 @@ export function CursorLayout() {
   const draftSession = useComposerDraftStore((state) =>
     draftId ? state.getDraftSession(draftId) : null,
   );
-  const isConversationDraft = isConversationDraftThread(draftSession);
+  const conversationDraftSession = useComposerDraftStore(
+    useShallow((state) => (routeTarget === null ? state.getConversationDraftSession() : null)),
+  );
+  const activeDraftSession = draftSession ?? conversationDraftSession;
+  const activeDraftId = draftId ?? conversationDraftSession?.draftId ?? null;
+  const isConversationDraft = isConversationDraftThread(activeDraftSession);
   const projectRef = useMemo(() => {
     if (serverThread) {
       return scopeProjectRef(serverThread.environmentId, serverThread.projectId);
     }
-    if (draftSession && !isConversationDraft) {
-      return scopeProjectRef(draftSession.environmentId, draftSession.projectId);
+    if (activeDraftSession && !isConversationDraft) {
+      return scopeProjectRef(activeDraftSession.environmentId, activeDraftSession.projectId);
     }
     return null;
-  }, [draftSession, isConversationDraft, serverThread]);
+  }, [activeDraftSession, isConversationDraft, serverThread]);
   const project = useStore((state) =>
     projectRef ? selectProjectByRef(state, projectRef) : undefined,
   );
-  const environmentId = serverThread?.environmentId ?? draftSession?.environmentId ?? null;
-  const threadId = serverThread?.id ?? draftSession?.threadId ?? null;
+  const environmentId = serverThread?.environmentId ?? activeDraftSession?.environmentId ?? null;
+  const threadId = serverThread?.id ?? activeDraftSession?.threadId ?? null;
+  const activeDraftWorkspaceRoot = isConversationDraft
+    ? null
+    : (activeDraftSession?.worktreePath ?? null);
   const workspaceRoot =
-    serverThread?.worktreePath ?? draftSession?.worktreePath ?? project?.cwd ?? null;
+    serverThread?.worktreePath ?? activeDraftWorkspaceRoot ?? project?.cwd ?? null;
   const { fetchFile } = useFileContent(environmentId, workspaceRoot);
   const stageExternalChange = useEditorStore((state) => state.stageExternalChange);
   const openFile = useEditorStore((state) => state.openFile);
@@ -95,9 +103,6 @@ export function CursorLayout() {
   }, [activeEditorTab, projects]);
 
   useEffect(() => {
-    if (isConversationDraft) {
-      return;
-    }
     if (!activeEditorProject) {
       return;
     }
@@ -130,7 +135,6 @@ export function CursorLayout() {
   }, [
     activeEditorProject,
     handleNewThread,
-    isConversationDraft,
     navigate,
     projectRef,
     settings.defaultThreadEnvMode,
@@ -289,16 +293,16 @@ export function CursorLayout() {
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
       <Group id="cursor-layout-panels" className="h-full min-h-0" orientation="horizontal">
-        <Panel defaultSize={42} minSize={28} className="min-h-0 overflow-hidden">
+        <Panel defaultSize={70} minSize={30} className="min-h-0 overflow-hidden">
           <MonacoEditorPanel environmentId={environmentId} workspaceRoot={workspaceRoot} />
         </Panel>
         <Separator className="w-px bg-border transition-colors hover:bg-border/80" />
-        <Panel defaultSize={58} minSize={34} className="min-h-0 overflow-hidden">
-          {routeTarget?.kind === "draft" && draftId ? (
+        <Panel defaultSize={30} minSize={24} className="min-h-0 overflow-hidden">
+          {activeDraftId ? (
             <ChatView
               environmentId={environmentId}
               threadId={threadId}
-              draftId={draftId}
+              draftId={activeDraftId}
               routeKind="draft"
               compactHeaderActions
             />

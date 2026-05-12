@@ -162,7 +162,7 @@ function mapSession(session: OrchestrationSession): ThreadSession {
 
 function mapMessage(environmentId: EnvironmentId, message: OrchestrationMessage): ChatMessage {
   const attachments = message.attachments?.map((attachment) => ({
-    type: "image" as const,
+    type: attachment.type,
     id: attachment.id,
     name: attachment.name,
     mimeType: attachment.mimeType,

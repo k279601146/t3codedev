@@ -9,6 +9,7 @@ import {
   FolderPlusIcon,
   LogOutIcon,
   MessageSquareIcon,
+  PanelLeftIcon,
   PinIcon,
   SearchIcon,
   SettingsIcon,
@@ -70,7 +71,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { isElectron } from "../env";
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { isMacPlatform, newCommandId } from "../lib/utils";
+import { cn, isMacPlatform, newCommandId } from "../lib/utils";
 import {
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
@@ -192,6 +193,11 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
+import {
+  ensureCursorProjectForPath,
+  getExternalFolderPathsFromDrop,
+  hasExternalFolderDrop,
+} from "../lib/cursorExternalProjects";
 const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   duration: 180,
   easing: "ease-out",
@@ -2283,6 +2289,8 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const { isMobile, setOpenMobile } = useSidebar();
+  const { updateSettings } = useUpdateSettings();
+  const layoutMode = useSettings((settings) => settings.layoutMode);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const publishedCommercialAuthState = usePublishedDesktopCommercialAuthState();
   const [commercialAuthState, setCommercialAuthState] = useState(() =>
@@ -2370,58 +2378,70 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter className="p-1.5">
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <Menu>
-            <MenuTrigger
-              render={
-                <SidebarMenuButton
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                />
-              }
-            >
-              <SettingsIcon className="size-3.5" />
-              <span className="text-xs">{t("sidebar.settings")}</span>
-            </MenuTrigger>
-            <MenuPopup align="start" side="top" className="w-64">
-              <MenuGroup>
-                <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-                  <CircleUserRoundIcon className="size-4 shrink-0" />
-                  <span className="truncate" title={accountLabel}>
-                    {accountLabel}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-                  <SettingsIcon className="size-4 shrink-0" />
-                  <span>Personal account</span>
-                </div>
-                <MenuSeparator />
-                <MenuItem onClick={handleOpenSettings}>
-                  <SlidersHorizontalIcon className="size-4" />
-                  <span>{t("sidebar.settings")}</span>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+          onClick={() =>
+            updateSettings({ layoutMode: layoutMode === "cursor" ? "sidebar" : "cursor" })
+          }
+        >
+          <PanelLeftIcon className="size-3.5" />
+          <span className="text-xs">{layoutMode === "cursor" ? "两栏" : "三栏"}</span>
+        </Button>
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              />
+            }
+          >
+            <SettingsIcon className="size-3.5" />
+            <span className="text-xs">{t("sidebar.settings")}</span>
+          </MenuTrigger>
+          <MenuPopup align="start" side="top" className="w-64">
+            <MenuGroup>
+              <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                <CircleUserRoundIcon className="size-4 shrink-0" />
+                <span className="truncate" title={accountLabel}>
+                  {accountLabel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                <SettingsIcon className="size-4 shrink-0" />
+                <span>Personal account</span>
+              </div>
+              <MenuSeparator />
+              <MenuItem onClick={handleOpenSettings}>
+                <SlidersHorizontalIcon className="size-4" />
+                <span>{t("sidebar.settings")}</span>
+              </MenuItem>
+              <MenuSeparator />
+              <AccountUsageRows rateLimits={rateLimits} />
+              <MenuItem onClick={handleOpenPlans}>
+                <span>Upgrade to Pro</span>
+                <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
+              </MenuItem>
+              <MenuItem onClick={handleOpenBilling}>
+                <span>Learn more</span>
+                <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
+              </MenuItem>
+              {canSignOut ? (
+                <MenuItem disabled={isSigningOut} onClick={handleSignOut} variant="destructive">
+                  <LogOutIcon className="size-4" />
+                  <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
                 </MenuItem>
-                <MenuSeparator />
-                <AccountUsageRows rateLimits={rateLimits} />
-                <MenuItem onClick={handleOpenPlans}>
-                  <span>Upgrade to Pro</span>
-                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
-                </MenuItem>
-                <MenuItem onClick={handleOpenBilling}>
-                  <span>Learn more</span>
-                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
-                </MenuItem>
-                {canSignOut ? (
-                  <MenuItem disabled={isSigningOut} onClick={handleSignOut} variant="destructive">
-                    <LogOutIcon className="size-4" />
-                    <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
-                  </MenuItem>
-                ) : null}
-              </MenuGroup>
-            </MenuPopup>
-          </Menu>
-        </SidebarMenuItem>
-      </SidebarMenu>
+              ) : null}
+            </MenuGroup>
+          </MenuPopup>
+        </Menu>
+      </div>
     </SidebarFooter>
   );
 });
@@ -2623,6 +2643,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const { t } = useI18n();
   const navigate = useNavigate();
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
+  const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const [isProjectDropActive, setIsProjectDropActive] = useState(false);
+  const defaultThreadEnvMode = useSettings((settings) => settings.defaultThreadEnvMode);
   const {
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
@@ -2669,6 +2693,38 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleOpenAutomation = useCallback(() => {
     void navigate({ to: "/settings/connections" });
   }, [navigate]);
+  const addExternalProjectsFromDrop = useCallback(
+    async (event: React.DragEvent) => {
+      if (!primaryEnvironmentId) {
+        throw new Error("No local environment is available.");
+      }
+      const paths = getExternalFolderPathsFromDrop(event);
+      if (paths.length === 0) {
+        throw new Error("The desktop drag payload did not include a folder path.");
+      }
+      const createdProjectIds = await Promise.all(
+        paths.map((rawPath) =>
+          ensureCursorProjectForPath({
+            environmentId: primaryEnvironmentId,
+            rawPath,
+            projects,
+            pinToExplorer: false,
+          }),
+        ),
+      );
+      const projectId = createdProjectIds[0];
+      if (projectId) {
+        const projectRef = scopeProjectRef(primaryEnvironmentId, projectId);
+        setNewThreadScope({ kind: "project", projectRef });
+        void handleNewThread(projectRef, { envMode: defaultThreadEnvMode });
+      }
+      toastManager.add({
+        type: "success",
+        title: paths.length === 1 ? "Project added" : "Projects added",
+      });
+    },
+    [defaultThreadEnvMode, handleNewThread, primaryEnvironmentId, projects, setNewThreadScope],
+  );
 
   return (
     <SidebarContent className="gap-0">
@@ -2729,7 +2785,44 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </Alert>
         </SidebarGroup>
       ) : null}
-      <SidebarGroup className="px-2 py-1">
+      <SidebarGroup
+        className={cn(
+          "px-2 py-1 transition-colors",
+          isProjectDropActive ? "rounded-lg bg-accent/30" : "",
+        )}
+        onDragEnter={(event) => {
+          if (hasExternalFolderDrop(event)) {
+            event.preventDefault();
+            setIsProjectDropActive(true);
+          }
+        }}
+        onDragOver={(event) => {
+          if (hasExternalFolderDrop(event)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setIsProjectDropActive(false);
+          }
+        }}
+        onDrop={(event) => {
+          if (!hasExternalFolderDrop(event)) {
+            return;
+          }
+          event.preventDefault();
+          setIsProjectDropActive(false);
+          void addExternalProjectsFromDrop(event).catch((error) => {
+            toastManager.add({
+              type: "error",
+              title: "Could not add dropped folder",
+              description:
+                error instanceof Error ? error.message : "The folder could not be added.",
+            });
+          });
+        }}
+      >
         <SidebarSectionTitle>
           <span className="inline-flex items-center gap-2">
             <PinIcon className="size-3 text-muted-foreground/70" />
@@ -2762,78 +2855,116 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           {t("sidebar.projects")}
         </SidebarSectionTitle>
 
-        {isManualProjectSorting ? (
-          <DndContext
-            sensors={projectDnDSensors}
-            collisionDetection={projectCollisionDetection}
-            modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-            onDragStart={handleProjectDragStart}
-            onDragEnd={handleProjectDragEnd}
-            onDragCancel={handleProjectDragCancel}
-          >
-            <SidebarMenu>
-              <SortableContext
-                items={sortedProjects.map((project) => project.projectKey)}
-                strategy={verticalListSortingStrategy}
-              >
-                {sortedProjects.map((project) => (
-                  <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
-                    {(dragHandleProps) => (
-                      <SidebarProjectItem
-                        project={project}
-                        isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                        activeRouteThreadKey={
-                          activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                        }
-                        newThreadShortcutLabel={newThreadShortcutLabel}
-                        handleNewThread={handleNewThread}
-                        archiveThread={archiveThread}
-                        deleteThread={deleteThread}
-                        threadJumpLabelByKey={threadJumpLabelByKey}
-                        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                        expandThreadListForProject={expandThreadListForProject}
-                        collapseThreadListForProject={collapseThreadListForProject}
-                        dragInProgressRef={dragInProgressRef}
-                        suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                        suppressProjectClickForContextMenuRef={
-                          suppressProjectClickForContextMenuRef
-                        }
-                        isManualProjectSorting={isManualProjectSorting}
-                        dragHandleProps={dragHandleProps}
-                      />
-                    )}
-                  </SortableProjectItem>
-                ))}
-              </SortableContext>
+        <div
+          className={cn(isProjectDropActive ? "rounded-lg bg-accent/30" : "")}
+          onDragEnter={(event) => {
+            if (hasExternalFolderDrop(event)) {
+              event.preventDefault();
+              setIsProjectDropActive(true);
+            }
+          }}
+          onDragOver={(event) => {
+            if (hasExternalFolderDrop(event)) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setIsProjectDropActive(false);
+            }
+          }}
+          onDrop={(event) => {
+            if (!hasExternalFolderDrop(event)) {
+              return;
+            }
+            event.preventDefault();
+            setIsProjectDropActive(false);
+            void addExternalProjectsFromDrop(event).catch((error) => {
+              toastManager.add({
+                type: "error",
+                title: "Could not add dropped folder",
+                description:
+                  error instanceof Error ? error.message : "The folder could not be added.",
+              });
+            });
+          }}
+        >
+          {isManualProjectSorting ? (
+            <DndContext
+              sensors={projectDnDSensors}
+              collisionDetection={projectCollisionDetection}
+              modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+              onDragStart={handleProjectDragStart}
+              onDragEnd={handleProjectDragEnd}
+              onDragCancel={handleProjectDragCancel}
+            >
+              <SidebarMenu>
+                <SortableContext
+                  items={sortedProjects.map((project) => project.projectKey)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {sortedProjects.map((project) => (
+                    <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
+                      {(dragHandleProps) => (
+                        <SidebarProjectItem
+                          project={project}
+                          isThreadListExpanded={expandedThreadListsByProject.has(
+                            project.projectKey,
+                          )}
+                          activeRouteThreadKey={
+                            activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                          }
+                          newThreadShortcutLabel={newThreadShortcutLabel}
+                          handleNewThread={handleNewThread}
+                          archiveThread={archiveThread}
+                          deleteThread={deleteThread}
+                          threadJumpLabelByKey={threadJumpLabelByKey}
+                          attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                          expandThreadListForProject={expandThreadListForProject}
+                          collapseThreadListForProject={collapseThreadListForProject}
+                          dragInProgressRef={dragInProgressRef}
+                          suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                          suppressProjectClickForContextMenuRef={
+                            suppressProjectClickForContextMenuRef
+                          }
+                          isManualProjectSorting={isManualProjectSorting}
+                          dragHandleProps={dragHandleProps}
+                        />
+                      )}
+                    </SortableProjectItem>
+                  ))}
+                </SortableContext>
+              </SidebarMenu>
+            </DndContext>
+          ) : (
+            <SidebarMenu ref={attachProjectListAutoAnimateRef}>
+              {sortedProjects.map((project) => (
+                <SidebarProjectListRow
+                  key={project.projectKey}
+                  project={project}
+                  isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
+                  activeRouteThreadKey={
+                    activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                  }
+                  newThreadShortcutLabel={newThreadShortcutLabel}
+                  handleNewThread={handleNewThread}
+                  archiveThread={archiveThread}
+                  deleteThread={deleteThread}
+                  threadJumpLabelByKey={threadJumpLabelByKey}
+                  attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                  expandThreadListForProject={expandThreadListForProject}
+                  collapseThreadListForProject={collapseThreadListForProject}
+                  dragInProgressRef={dragInProgressRef}
+                  suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                  suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+                  isManualProjectSorting={isManualProjectSorting}
+                  dragHandleProps={null}
+                />
+              ))}
             </SidebarMenu>
-          </DndContext>
-        ) : (
-          <SidebarMenu ref={attachProjectListAutoAnimateRef}>
-            {sortedProjects.map((project) => (
-              <SidebarProjectListRow
-                key={project.projectKey}
-                project={project}
-                isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                activeRouteThreadKey={
-                  activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                }
-                newThreadShortcutLabel={newThreadShortcutLabel}
-                handleNewThread={handleNewThread}
-                archiveThread={archiveThread}
-                deleteThread={deleteThread}
-                threadJumpLabelByKey={threadJumpLabelByKey}
-                attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                expandThreadListForProject={expandThreadListForProject}
-                collapseThreadListForProject={collapseThreadListForProject}
-                dragInProgressRef={dragInProgressRef}
-                suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-                isManualProjectSorting={isManualProjectSorting}
-                dragHandleProps={null}
-              />
-            ))}
-          </SidebarMenu>
-        )}
+          )}
+        </div>
 
         {projectsLength === 0 && (
           <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">

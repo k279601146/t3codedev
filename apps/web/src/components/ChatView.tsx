@@ -194,8 +194,8 @@ import {
   resolveServerConfigVersionMismatch,
 } from "../versionSkew";
 
-const IMAGE_ONLY_BOOTSTRAP_PROMPT =
-  "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
+const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =
+  "[User attached one or more files without additional text. Respond using the conversation context and the attached files.]";
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -880,11 +880,8 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeProjectRef) {
       return;
     }
-    if (routeKind === "draft" && newThreadScope?.kind === "conversation") {
-      return;
-    }
     setNewThreadScope({ kind: "project", projectRef: activeProjectRef });
-  }, [activeProjectRef, newThreadScope?.kind, routeKind, setNewThreadScope]);
+  }, [activeProjectRef, setNewThreadScope]);
 
   useEffect(() => {
     if (routeKind !== "server") {
@@ -2778,19 +2775,19 @@ export default function ChatView(props: ChatViewProps) {
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
     const turnAttachmentsPromise = Promise.all(
-      composerImagesSnapshot.map(async (image) => ({
-        type: "image" as const,
-        name: image.name,
-        mimeType: image.mimeType,
-        sizeBytes: image.sizeBytes,
-        dataUrl: await readFileAsDataUrl(image.file),
+      composerImagesSnapshot.map(async (attachment) => ({
+        type: attachment.type,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        dataUrl: await readFileAsDataUrl(attachment.file),
       })),
     );
     const optimisticAttachments = composerImagesSnapshot.map((image) => ({
-      type: "image" as const,
+      type: image.type,
       id: image.id,
       name: image.name,
       mimeType: image.mimeType,
@@ -2837,17 +2834,17 @@ export default function ChatView(props: ChatViewProps) {
 
     let turnStartSucceeded = false;
     await (async () => {
-      let firstComposerImageName: string | null = null;
+      let firstComposerAttachmentName: string | null = null;
       if (composerImagesSnapshot.length > 0) {
-        const firstComposerImage = composerImagesSnapshot[0];
-        if (firstComposerImage) {
-          firstComposerImageName = firstComposerImage.name;
+        const firstComposerAttachment = composerImagesSnapshot[0];
+        if (firstComposerAttachment) {
+          firstComposerAttachmentName = firstComposerAttachment.name;
         }
       }
       let titleSeed = trimmed;
       if (!titleSeed) {
-        if (firstComposerImageName) {
-          titleSeed = `Image: ${firstComposerImageName}`;
+        if (firstComposerAttachmentName) {
+          titleSeed = `Attachment: ${firstComposerAttachmentName}`;
         } else if (composerTerminalContextsSnapshot.length > 0) {
           titleSeed = formatTerminalContextLabel(composerTerminalContextsSnapshot[0]!);
         } else {
@@ -3560,15 +3557,17 @@ export default function ChatView(props: ChatViewProps) {
     optimisticUserMessages.length === 0 &&
     activeThread.latestTurn === null &&
     !activeThread.error;
-  const hideProjectChromeForConversationNewThread =
-    isDraftEmptyNewThread && isConversationNewThread;
-  const emptyNewThreadTitle = isConversationNewThread ? (
-    "我们该做什么？"
-  ) : (
-    <>
-      要在 <span className="font-semibold">{activeProject?.name ?? "New thread"}</span> 中构建什么？
-    </>
-  );
+  const hideProjectChromeForEmptyNewThread =
+    isDraftEmptyNewThread && (isConversationNewThread || !activeProject);
+  const emptyNewThreadTitle =
+    isConversationNewThread || !activeProject ? (
+      "我们该做什么？"
+    ) : (
+      <>
+        要在 <span className="font-semibold">{activeProject?.name ?? "New thread"}</span>{" "}
+        中构建什么？
+      </>
+    );
   const composerNode = (
     <ChatComposer
       ref={composerRef}
@@ -3659,24 +3658,20 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId={activeThread.id}
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
-          activeProjectName={
-            hideProjectChromeForConversationNewThread ? undefined : activeProject?.name
-          }
-          isGitRepo={hideProjectChromeForConversationNewThread ? false : isGitRepo}
-          openInCwd={hideProjectChromeForConversationNewThread ? null : gitCwd}
+          activeProjectName={hideProjectChromeForEmptyNewThread ? undefined : activeProject?.name}
+          isGitRepo={hideProjectChromeForEmptyNewThread ? false : isGitRepo}
+          openInCwd={hideProjectChromeForEmptyNewThread ? null : gitCwd}
           activeProjectScripts={
-            hideProjectChromeForConversationNewThread ? undefined : activeProject?.scripts
+            hideProjectChromeForEmptyNewThread ? undefined : activeProject?.scripts
           }
           preferredScriptId={
-            !hideProjectChromeForConversationNewThread && activeProject
+            !hideProjectChromeForEmptyNewThread && activeProject
               ? (lastInvokedScriptByProjectId[activeProject.id] ?? null)
               : null
           }
           keybindings={keybindings}
           availableEditors={availableEditors}
-          terminalAvailable={
-            !hideProjectChromeForConversationNewThread && activeProject !== undefined
-          }
+          terminalAvailable={!hideProjectChromeForEmptyNewThread && activeProject !== undefined}
           terminalOpen={terminalState.terminalOpen}
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
@@ -3704,8 +3699,8 @@ export default function ChatView(props: ChatViewProps) {
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-24 pt-8 sm:px-6">
-              <div className="w-full max-w-[50rem]">
-                <h1 className="text-center text-[28px] font-medium tracking-normal text-foreground sm:text-[30px]">
+              <div className="@container/new-thread w-full max-w-[50rem]">
+                <h1 className="text-balance text-center text-2xl font-medium tracking-normal text-foreground @2xl/new-thread:text-[28px]">
                   {emptyNewThreadTitle}
                 </h1>
                 <div className="mx-auto mt-8 w-full max-w-[45rem]">

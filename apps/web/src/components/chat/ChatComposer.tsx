@@ -88,7 +88,9 @@ import { toastManager } from "../ui/toast";
 import {
   BotIcon,
   CircleAlertIcon,
+  FileIcon,
   ListTodoIcon,
+  PaperclipIcon,
   type LucideIcon,
   LockIcon,
   LockOpenIcon,
@@ -113,7 +115,9 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 
-const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
+const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
+)}MB`;
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -805,6 +809,7 @@ export const ChatComposer = memo(
     const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
     const composerFormRef = useRef<HTMLFormElement>(null);
     const composerSurfaceRef = useRef<HTMLDivElement>(null);
+    const composerAttachmentInputRef = useRef<HTMLInputElement>(null);
     const composerFormHeightRef = useRef(0);
     const composerSelectLockRef = useRef(false);
     const composerMenuOpenRef = useRef(false);
@@ -1685,52 +1690,59 @@ export const ChatComposer = memo(
       return false;
     };
 
+    const openAttachmentPicker = useCallback(() => {
+      composerAttachmentInputRef.current?.click();
+    }, []);
+
     // ------------------------------------------------------------------
-    // Callbacks: images
+    // Callbacks: attachments
     // ------------------------------------------------------------------
-    const addComposerImages = (files: File[]) => {
+    const addComposerAttachments = (files: File[]) => {
       if (!activeThreadId || files.length === 0) return;
       if (pendingUserInputs.length > 0) {
         toastManager.add({
           type: "error",
-          title: "Attach images after answering plan questions.",
+          title: "Attach files after answering plan questions.",
         });
         return;
       }
-      const nextImages: ComposerImageAttachment[] = [];
-      let nextImageCount = composerImagesRef.current.length;
+      const nextAttachments: ComposerImageAttachment[] = [];
+      let nextAttachmentCount = composerImagesRef.current.length;
       let error: string | null = null;
       for (const file of files) {
-        if (!file.type.startsWith("image/")) {
-          error = `Unsupported file type for '${file.name}'. Please attach image files only.`;
-          continue;
-        }
         if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-          error = `'${file.name}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`;
+          error = `'${file.name}' exceeds the ${ATTACHMENT_SIZE_LIMIT_LABEL} attachment limit.`;
           continue;
         }
-        if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-          error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`;
+        if (nextAttachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
+          error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`;
           break;
         }
-        const previewUrl = URL.createObjectURL(file);
-        nextImages.push({
-          type: "image",
+        const isImage = file.type.startsWith("image/");
+        nextAttachments.push({
+          type: isImage ? "image" : "file",
           id: randomUUID(),
-          name: file.name || "image",
-          mimeType: file.type,
+          name: file.name || (isImage ? "image" : "file"),
+          mimeType: file.type || "application/octet-stream",
           sizeBytes: file.size,
-          previewUrl,
+          ...(isImage ? { previewUrl: URL.createObjectURL(file) } : {}),
           file,
         });
-        nextImageCount += 1;
+        nextAttachmentCount += 1;
       }
-      if (nextImages.length === 1 && nextImages[0]) {
-        addComposerImage(nextImages[0]);
-      } else if (nextImages.length > 1) {
-        addComposerImagesToDraft(nextImages);
+      if (nextAttachments.length === 1 && nextAttachments[0]) {
+        addComposerImage(nextAttachments[0]);
+      } else if (nextAttachments.length > 1) {
+        addComposerImagesToDraft(nextAttachments);
       }
       setThreadError(activeThreadId, error);
+    };
+
+    const handleAttachmentInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.currentTarget.files ?? []);
+      event.currentTarget.value = "";
+      if (files.length === 0) return;
+      addComposerAttachments(files);
     };
 
     const removeComposerImage = (imageId: string) => {
@@ -1743,10 +1755,8 @@ export const ChatComposer = memo(
     const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
       const files = Array.from(event.clipboardData.files);
       if (files.length === 0) return;
-      const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-      if (imageFiles.length === 0) return;
       event.preventDefault();
-      addComposerImages(imageFiles);
+      addComposerAttachments(files);
     };
 
     const onComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
@@ -1780,7 +1790,7 @@ export const ChatComposer = memo(
       dragDepthRef.current = 0;
       setIsDragOverComposer(false);
       const files = Array.from(event.dataTransfer.files);
-      addComposerImages(files);
+      addComposerAttachments(files);
       focusComposer();
     };
     const handleInterruptPrimaryAction = useCallback(() => {
@@ -1950,6 +1960,13 @@ export const ChatComposer = memo(
         className="mx-auto w-full min-w-0 max-w-[45rem]"
         data-chat-composer-form="true"
       >
+        <input
+          ref={composerAttachmentInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleAttachmentInputChange}
+        />
         <div
           className={cn(
             "group rounded-[22px] p-px transition-colors duration-200",
@@ -2171,7 +2188,7 @@ export const ChatComposer = memo(
                         key={image.id}
                         className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
                       >
-                        {image.previewUrl ? (
+                        {image.type === "image" && image.previewUrl ? (
                           <button
                             type="button"
                             className="h-full w-full cursor-zoom-in"
@@ -2188,6 +2205,11 @@ export const ChatComposer = memo(
                               className="h-full w-full object-cover"
                             />
                           </button>
+                        ) : image.type === "file" ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-muted-foreground/70">
+                            <FileIcon className="size-4 text-muted-foreground/70" />
+                            <span className="line-clamp-2 break-all">{image.name}</span>
+                          </div>
                         ) : (
                           <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
                             {image.name}
@@ -2266,7 +2288,7 @@ export const ChatComposer = memo(
                                   : "disconnected"
                               }`
                             : phase === "disconnected"
-                              ? "Ask for follow-up changes or attach images"
+                              ? "Ask for follow-up changes or attach files"
                               : "Ask anything, @tag files/folders, $use skills, or / for commands"
                   }
                   disabled={
@@ -2321,6 +2343,18 @@ export const ChatComposer = memo(
                 )}
               >
                 <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="shrink-0 text-muted-foreground/70 hover:text-foreground"
+                    aria-label="Attach files"
+                    title="Attach files"
+                    onClick={openAttachmentPicker}
+                  >
+                    <PaperclipIcon />
+                  </Button>
+
                   <ProviderModelPicker
                     compact={isComposerFooterCompact}
                     activeInstanceId={selectedInstanceId}

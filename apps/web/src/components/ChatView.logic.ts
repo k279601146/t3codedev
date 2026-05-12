@@ -318,7 +318,7 @@ export function resolveSendEnvMode(input: {
 export function cloneComposerImageForRetry(
   image: ComposerImageAttachment,
 ): ComposerImageAttachment {
-  if (typeof URL === "undefined" || !image.previewUrl.startsWith("blob:")) {
+  if (typeof URL === "undefined" || !image.previewUrl?.startsWith("blob:")) {
     return image;
   }
   try {

@@ -25,6 +25,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CircleAlertIcon,
+  FileIcon,
   EyeIcon,
   GlobeIcon,
   HammerIcon,
@@ -346,7 +347,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const userImages = row.message.attachments ?? [];
+  const userAttachments = row.message.attachments ?? [];
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
   const terminalContexts = displayedUserMessage.contexts;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
@@ -355,37 +356,55 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     <div className="flex justify-end">
       <div className="group flex max-w-[82%] flex-col items-end">
         <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
-          {userImages.length > 0 && (
+          {userAttachments.length > 0 && (
             <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
-              {userImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                <div
-                  key={image.id}
-                  className="overflow-hidden rounded-lg border border-border bg-background"
-                >
-                  {image.previewUrl ? (
-                    <button
-                      type="button"
-                      className="h-full w-full cursor-zoom-in"
-                      aria-label={`Preview ${image.name}`}
-                      onClick={() => {
-                        const preview = buildExpandedImagePreview(userImages, image.id);
-                        if (!preview) return;
-                        ctx.onImageExpand(preview);
-                      }}
-                    >
-                      <img
-                        src={image.previewUrl}
-                        alt={image.name}
-                        className="block h-auto max-h-[396px] w-full object-cover"
-                      />
-                    </button>
-                  ) : (
-                    <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                      {image.name}
-                    </div>
-                  )}
-                </div>
-              ))}
+              {userAttachments.map(
+                (attachment: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                  <div
+                    key={attachment.id}
+                    className="overflow-hidden rounded-lg border border-border bg-background"
+                  >
+                    {attachment.type === "image" && attachment.previewUrl ? (
+                      <button
+                        type="button"
+                        className="h-full w-full cursor-zoom-in"
+                        aria-label={`Preview ${attachment.name}`}
+                        onClick={() => {
+                          const preview = buildExpandedImagePreview(userAttachments, attachment.id);
+                          if (!preview) return;
+                          ctx.onImageExpand(preview);
+                        }}
+                      >
+                        <img
+                          src={attachment.previewUrl}
+                          alt={attachment.name}
+                          className="block h-auto max-h-[396px] w-full object-cover"
+                        />
+                      </button>
+                    ) : attachment.type === "file" ? (
+                      <a
+                        href={attachment.previewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex min-h-[96px] w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center"
+                        aria-label={`Open ${attachment.name}`}
+                      >
+                        <FileIcon className="size-5 text-muted-foreground/70" />
+                        <span className="line-clamp-2 break-all text-xs text-foreground">
+                          {attachment.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/60">
+                          {attachment.mimeType || "file"}
+                        </span>
+                      </a>
+                    ) : (
+                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                        {attachment.name}
+                      </div>
+                    )}
+                  </div>
+                ),
+              )}
             </div>
           )}
           <CollapsibleUserMessageBody

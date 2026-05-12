@@ -29,8 +29,11 @@ import {
   hasExternalFolderDrop,
 } from "../../lib/cursorExternalProjects";
 import { usePrimaryEnvironmentId } from "../../environments/primary";
+import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { useSettings } from "../../hooks/useSettings";
 import { CURSOR_PROJECT_DRAG_TYPE, CursorProjectDock } from "./CursorProjectDock";
 import type { Project } from "../../types";
+import { useUiStateStore } from "../../uiStateStore";
 
 const PROJECT_DOCK_MIN_HEIGHT_PX = 112;
 const PROJECT_DOCK_MAX_HEIGHT_RATIO = 0.82;
@@ -79,6 +82,9 @@ export function CursorSidebar() {
   const setPinnedProjects = useCursorLayoutStore((state) => state.setPinnedProjects);
   const togglePinnedProject = useCursorLayoutStore((state) => state.togglePinnedProject);
   const openAddProject = useCommandPaletteStore((state) => state.openAddProject);
+  const { handleNewThread } = useNewThreadHandler();
+  const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
+  const defaultThreadEnvMode = useSettings((settings) => settings.defaultThreadEnvMode);
   const openFile = useEditorStore((state) => state.openFile);
   const setActiveTab = useEditorStore((state) => state.setActiveTab);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -252,7 +258,7 @@ export function CursorSidebar() {
         return false;
       }
 
-      await Promise.all(
+      const createdProjectIds = await Promise.all(
         paths.map((rawPath) =>
           ensureCursorProjectForPath({
             environmentId: primaryEnvironmentId,
@@ -262,13 +268,19 @@ export function CursorSidebar() {
           }),
         ),
       );
+      const projectId = createdProjectIds[0];
+      if (projectId) {
+        const projectRef = scopeProjectRef(primaryEnvironmentId, projectId);
+        setNewThreadScope({ kind: "project", projectRef });
+        void handleNewThread(projectRef, { envMode: defaultThreadEnvMode });
+      }
       toastManager.add({
         type: "success",
         title: paths.length === 1 ? "Project added to Explorer" : "Projects added to Explorer",
       });
       return true;
     },
-    [primaryEnvironmentId, projects],
+    [defaultThreadEnvMode, handleNewThread, primaryEnvironmentId, projects, setNewThreadScope],
   );
 
   const resizeProjectDockToContent = useCallback((contentHeight: number) => {
