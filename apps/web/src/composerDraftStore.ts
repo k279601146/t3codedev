@@ -1,4 +1,5 @@
 import {
+  CONVERSATION_PROJECT_ID,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
@@ -53,7 +54,7 @@ export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
 export type DraftId = typeof DraftId.Type;
 export const CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY = "__t3code_conversation_new_thread__";
-export const CONVERSATION_DRAFT_PROJECT_ID = ProjectId.make("__t3code_conversation__");
+export const CONVERSATION_DRAFT_PROJECT_ID = CONVERSATION_PROJECT_ID;
 
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 

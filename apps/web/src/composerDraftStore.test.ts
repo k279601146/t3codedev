@@ -336,7 +336,7 @@ describe("composerDraftStore syncPersistedAttachments", () => {
         name: image.name,
         mimeType: image.mimeType,
         sizeBytes: image.sizeBytes,
-        dataUrl: image.previewUrl,
+        dataUrl: image.previewUrl ?? "",
       },
     ]);
     await Promise.resolve();

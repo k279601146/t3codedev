@@ -1,5 +1,6 @@
 import {
   CommandId,
+  CONVERSATION_PROJECT_ID,
   EventId,
   MessageId,
   type ProjectId,
@@ -165,6 +166,10 @@ const make = Effect.gen(function* () {
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
   }): Effect.fn.Return<string | undefined> {
+    if (input.thread.projectId === CONVERSATION_PROJECT_ID && !input.thread.worktreePath) {
+      return undefined;
+    }
+
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
       thread: input.thread,

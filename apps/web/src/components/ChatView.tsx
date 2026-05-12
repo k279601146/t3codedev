@@ -1,4 +1,5 @@
 import {
+  CONVERSATION_PROJECT_ID,
   type ApprovalRequestId,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
@@ -92,6 +93,7 @@ import {
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
+  type ChatAttachment,
   type SessionPhase,
   type Thread,
 } from "../types";
@@ -2735,18 +2737,11 @@ export default function ChatView(props: ChatViewProps) {
       }
       return;
     }
-    if (isConversationNewThread) {
-      setThreadError(
-        activeThread.id,
-        "\u9009\u62e9\u9879\u76ee\u540e\u5373\u53ef\u5f00\u59cb\u5bf9\u8bdd\u3002",
-      );
-      return;
-    }
-    if (!activeProject) return;
+    if (!activeProject && !isConversationNewThread) return;
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
     const baseBranchForWorktree =
-      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
+      activeProject && isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
         ? activeThreadBranch
         : null;
 
@@ -2786,14 +2781,25 @@ export default function ChatView(props: ChatViewProps) {
         dataUrl: await readFileAsDataUrl(attachment.file),
       })),
     );
-    const optimisticAttachments = composerImagesSnapshot.map((image) => ({
-      type: image.type,
-      id: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      previewUrl: image.previewUrl,
-    }));
+    const optimisticAttachments: ChatAttachment[] = composerImagesSnapshot.map((attachment) =>
+      attachment.type === "image"
+        ? {
+            type: "image",
+            id: attachment.id,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            ...(attachment.previewUrl ? { previewUrl: attachment.previewUrl } : {}),
+          }
+        : {
+            type: "file",
+            id: attachment.id,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            ...(attachment.previewUrl ? { previewUrl: attachment.previewUrl } : {}),
+          },
+    );
     // Scroll to the current end *before* adding the optimistic message.
     // This sets LegendList's internal isAtEnd=true so maintainScrollAtEnd
     // automatically pins to the new item when the data changes.
@@ -2854,7 +2860,7 @@ export default function ChatView(props: ChatViewProps) {
       const title = truncate(titleSeed);
       const threadCreateModelSelection = createModelSelection(
         ctxSelectedModelSelection.instanceId,
-        ctxSelectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL,
+        ctxSelectedModel || activeProject?.defaultModelSelection?.model || DEFAULT_MODEL,
         ctxSelectedModelSelection.options,
       );
 
@@ -2885,7 +2891,7 @@ export default function ChatView(props: ChatViewProps) {
               ...(isLocalDraftThread
                 ? {
                     createThread: {
-                      projectId: activeProject.id,
+                      projectId: activeProject?.id ?? CONVERSATION_PROJECT_ID,
                       title,
                       modelSelection: threadCreateModelSelection,
                       runtimeMode,
@@ -2899,7 +2905,7 @@ export default function ChatView(props: ChatViewProps) {
               ...(baseBranchForWorktree
                 ? {
                     prepareWorktree: {
-                      projectCwd: activeProject.cwd,
+                      projectCwd: activeProject!.cwd,
                       baseBranch: baseBranchForWorktree,
                       branch: buildTemporaryWorktreeBranchName(),
                     },

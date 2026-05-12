@@ -1,3 +1,4 @@
+import { CONVERSATION_PROJECT_ID } from "@t3tools/contracts";
 import type {
   OrchestrationCommand,
   OrchestrationProject,
@@ -38,11 +39,28 @@ export function listThreadsByProjectId(
   return readModel.threads.filter((thread) => thread.projectId === projectId);
 }
 
+export function isConversationProjectId(projectId: ProjectId): boolean {
+  return projectId === CONVERSATION_PROJECT_ID;
+}
+
 export function requireProject(input: {
   readonly readModel: OrchestrationReadModel;
   readonly command: OrchestrationCommand;
   readonly projectId: ProjectId;
 }): Effect.Effect<OrchestrationProject, OrchestrationCommandInvariantError> {
+  if (isConversationProjectId(input.projectId)) {
+    return Effect.succeed({
+      id: CONVERSATION_PROJECT_ID,
+      title: "Conversation",
+      workspaceRoot: ".",
+      repositoryIdentity: null,
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: "1970-01-01T00:00:00.000Z",
+      updatedAt: "1970-01-01T00:00:00.000Z",
+      deletedAt: null,
+    });
+  }
   const project = findProjectById(input.readModel, input.projectId);
   if (project) {
     return Effect.succeed(project);

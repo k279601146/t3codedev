@@ -32,6 +32,8 @@ export const ORCHESTRATION_WS_METHODS = {
   subscribeThread: "orchestration.subscribeThread",
 } as const;
 
+export const CONVERSATION_PROJECT_ID = ProjectId.make("__t3code_conversation__");
+
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
   "on-failure",

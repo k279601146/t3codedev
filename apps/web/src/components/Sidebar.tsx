@@ -2385,7 +2385,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
           size="sm"
           className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
           onClick={() =>
-            updateSettings({ layoutMode: layoutMode === "cursor" ? "sidebar" : "cursor" })
+            updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
           }
         >
           <PanelLeftIcon className="size-3.5" />
