@@ -13,7 +13,7 @@ import {
   useStore,
 } from "../../store";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
-import { useComposerDraftStore } from "../../composerDraftStore";
+import { isConversationDraftThread, useComposerDraftStore } from "../../composerDraftStore";
 import { useFileContent } from "../../hooks/useFileContent";
 import { getEditorLanguage, useEditorStore } from "../../editorStore";
 import { useTurnDiffSummaries } from "../../hooks/useTurnDiffSummaries";
@@ -47,15 +47,16 @@ export function CursorLayout() {
   const draftSession = useComposerDraftStore((state) =>
     draftId ? state.getDraftSession(draftId) : null,
   );
+  const isConversationDraft = isConversationDraftThread(draftSession);
   const projectRef = useMemo(() => {
     if (serverThread) {
       return scopeProjectRef(serverThread.environmentId, serverThread.projectId);
     }
-    if (draftSession) {
+    if (draftSession && !isConversationDraft) {
       return scopeProjectRef(draftSession.environmentId, draftSession.projectId);
     }
     return null;
-  }, [draftSession, serverThread]);
+  }, [draftSession, isConversationDraft, serverThread]);
   const project = useStore((state) =>
     projectRef ? selectProjectByRef(state, projectRef) : undefined,
   );
@@ -94,6 +95,9 @@ export function CursorLayout() {
   }, [activeEditorTab, projects]);
 
   useEffect(() => {
+    if (isConversationDraft) {
+      return;
+    }
     if (!activeEditorProject) {
       return;
     }
@@ -126,6 +130,7 @@ export function CursorLayout() {
   }, [
     activeEditorProject,
     handleNewThread,
+    isConversationDraft,
     navigate,
     projectRef,
     settings.defaultThreadEnvMode,

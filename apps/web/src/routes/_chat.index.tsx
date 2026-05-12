@@ -1,14 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
 import { useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 import ChatView from "../components/ChatView";
+import { CursorLayout } from "../components/layout/CursorLayout";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { useSavedEnvironmentRegistryStore } from "../environments/runtime";
+import { useSettings } from "../hooks/useSettings";
 import { useUiStateStore } from "../uiStateStore";
 import { APP_DISPLAY_NAME } from "~/branding";
 
@@ -18,10 +21,13 @@ function ChatIndexRouteView() {
     (state) => Object.keys(state.byId).length,
   );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const conversationDraft = useComposerDraftStore((store) => store.getConversationDraftSession());
+  const conversationDraft = useComposerDraftStore(
+    useShallow((store) => store.getConversationDraftSession()),
+  );
   const ensureConversationDraftSession = useComposerDraftStore(
     (store) => store.ensureConversationDraftSession,
   );
+  const layoutMode = useSettings((state) => state.layoutMode);
   const setNewThreadScope = useUiStateStore((store) => store.setNewThreadScope);
 
   useEffect(() => {
@@ -51,6 +57,10 @@ function ChatIndexRouteView() {
 
   if (conversationDraft.environmentId !== primaryEnvironmentId) {
     return null;
+  }
+
+  if (layoutMode === "cursor") {
+    return <CursorLayout />;
   }
 
   return (
