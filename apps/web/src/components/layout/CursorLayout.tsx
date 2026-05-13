@@ -3,7 +3,9 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
+import { CONVERSATION_PROJECT_ID } from "@t3tools/contracts";
 import ChatView from "../ChatView";
+import { threadHasStarted } from "../ChatView.logic";
 import { MonacoEditorPanel } from "../editor/MonacoEditorPanel";
 import {
   selectProjectByRef,
@@ -20,6 +22,7 @@ import { useTurnDiffSummaries } from "../../hooks/useTurnDiffSummaries";
 import { SidebarInset } from "../ui/sidebar";
 import { useShallow } from "zustand/react/shallow";
 import { getLatestThreadForProject } from "../../lib/threadSort";
+import { isLatestTurnSettled } from "../../session-logic";
 import { useSettings } from "../../hooks/useSettings";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { readEnvironmentApi } from "../../environmentApi";
@@ -41,20 +44,34 @@ export function CursorLayout() {
   });
   const serverThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
   const draftId = routeTarget?.kind === "draft" ? routeTarget.draftId : null;
-  const serverThread = useStore((state) =>
+  const routeServerThread = useStore((state) =>
     serverThreadRef ? selectThreadByRef(state, serverThreadRef) : undefined,
   );
   const draftSession = useComposerDraftStore((state) =>
     draftId ? state.getDraftSession(draftId) : null,
   );
+  const promotedServerThread = useStore((state) =>
+    draftSession?.promotedTo ? selectThreadByRef(state, draftSession.promotedTo) : undefined,
+  );
+  const promotedServerThreadSettled = isLatestTurnSettled(
+    promotedServerThread?.latestTurn ?? null,
+    promotedServerThread?.session ?? null,
+  );
+  const serverThread =
+    routeServerThread ??
+    (threadHasStarted(promotedServerThread) && promotedServerThreadSettled
+      ? promotedServerThread
+      : undefined);
   const conversationDraftSession = useComposerDraftStore(
     useShallow((state) => (routeTarget === null ? state.getConversationDraftSession() : null)),
   );
   const activeDraftSession = draftSession ?? conversationDraftSession;
-  const activeDraftId = draftId ?? conversationDraftSession?.draftId ?? null;
+  const activeDraftId = serverThread
+    ? null
+    : (draftId ?? conversationDraftSession?.draftId ?? null);
   const isConversationDraft = isConversationDraftThread(activeDraftSession);
   const projectRef = useMemo(() => {
-    if (serverThread) {
+    if (serverThread && serverThread.projectId !== CONVERSATION_PROJECT_ID) {
       return scopeProjectRef(serverThread.environmentId, serverThread.projectId);
     }
     if (activeDraftSession && !isConversationDraft) {

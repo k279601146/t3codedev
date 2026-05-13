@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import ChatView from "../components/ChatView";
@@ -12,11 +12,13 @@ import { useComposerDraftStore } from "../composerDraftStore";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { useSavedEnvironmentRegistryStore } from "../environments/runtime";
 import { useSettings } from "../hooks/useSettings";
+import { buildDraftThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { APP_DISPLAY_NAME } from "~/branding";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
+  const navigate = useNavigate();
   const savedEnvironmentCount = useSavedEnvironmentRegistryStore(
     (state) => Object.keys(state.byId).length,
   );
@@ -46,6 +48,20 @@ function ChatIndexRouteView() {
     savedEnvironmentCount,
     setNewThreadScope,
   ]);
+
+  useLayoutEffect(() => {
+    if (!primaryEnvironmentId || !conversationDraft) {
+      return;
+    }
+    if (conversationDraft.environmentId !== primaryEnvironmentId) {
+      return;
+    }
+    void navigate({
+      to: "/draft/$draftId",
+      params: buildDraftThreadRouteParams(conversationDraft.draftId),
+      replace: true,
+    });
+  }, [conversationDraft, navigate, primaryEnvironmentId]);
 
   if (authGateState.status === "hosted-static" && savedEnvironmentCount === 0) {
     return <HostedStaticOnboardingState />;

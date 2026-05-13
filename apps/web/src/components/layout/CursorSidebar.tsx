@@ -1,4 +1,5 @@
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime";
+import { CONVERSATION_PROJECT_ID } from "@t3tools/contracts";
 import { useParams } from "@tanstack/react-router";
 import { FolderPlusIcon } from "lucide-react";
 import type React from "react";
@@ -13,7 +14,7 @@ import {
   selectThreadByRef,
   useStore,
 } from "../../store";
-import { useComposerDraftStore } from "../../composerDraftStore";
+import { isConversationDraftThread, useComposerDraftStore } from "../../composerDraftStore";
 import { CursorFileTree } from "../file-tree/CursorFileTree";
 import { getEditorLanguage, useEditorStore } from "../../editorStore";
 import { toastManager } from "../ui/toast";
@@ -52,11 +53,12 @@ export function CursorSidebar() {
   const draftSession = useComposerDraftStore((state) =>
     draftId ? state.getDraftSession(draftId) : null,
   );
-  const projectRef = draftSession
-    ? scopeProjectRef(draftSession.environmentId, draftSession.projectId)
-    : serverThread
-      ? scopeProjectRef(serverThread.environmentId, serverThread.projectId)
-      : null;
+  const projectRef =
+    draftSession && !isConversationDraftThread(draftSession)
+      ? scopeProjectRef(draftSession.environmentId, draftSession.projectId)
+      : serverThread && serverThread.projectId !== CONVERSATION_PROJECT_ID
+        ? scopeProjectRef(serverThread.environmentId, serverThread.projectId)
+        : null;
   const activeProject = useStore((state) =>
     projectRef ? selectProjectByRef(state, projectRef) : undefined,
   );

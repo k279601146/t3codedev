@@ -9,6 +9,7 @@ import { createThreadSelectorAcrossEnvironments } from "../storeSelectors";
 import { useStore } from "../store";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useSettings } from "../hooks/useSettings";
+import { isLatestTurnSettled } from "../session-logic";
 
 function DraftChatThreadRouteView() {
   const layoutMode = useSettings((state) => state.layoutMode);
@@ -23,23 +24,30 @@ function DraftChatThreadRouteView() {
     ),
   );
   const serverThreadStarted = threadHasStarted(serverThread);
-  const canonicalThreadRef = useMemo(
-    () =>
-      draftSession?.promotedTo
-        ? serverThreadStarted
-          ? draftSession.promotedTo
-          : null
-        : serverThread
-          ? {
-              environmentId: serverThread.environmentId,
-              threadId: serverThread.id,
-            }
-          : null,
-    [draftSession?.promotedTo, serverThread, serverThreadStarted],
+  const serverThreadSettled = isLatestTurnSettled(
+    serverThread?.latestTurn ?? null,
+    serverThread?.session ?? null,
+  );
+  const canonicalThreadRef = useMemo(() => {
+    if (draftSession?.promotedTo) {
+      return serverThreadStarted ? draftSession.promotedTo : null;
+    }
+    if (draftSession) {
+      return null;
+    }
+    return serverThread
+      ? {
+          environmentId: serverThread.environmentId,
+          threadId: serverThread.id,
+        }
+      : null;
+  }, [draftSession, draftSession?.promotedTo, serverThread, serverThreadStarted]);
+  const shouldRenderCanonicalThread = Boolean(
+    canonicalThreadRef && (!draftSession || serverThreadSettled),
   );
 
   useEffect(() => {
-    if (!canonicalThreadRef) {
+    if (!canonicalThreadRef || !serverThreadSettled) {
       return;
     }
     void navigate({
@@ -47,7 +55,7 @@ function DraftChatThreadRouteView() {
       params: buildThreadRouteParams(canonicalThreadRef),
       replace: true,
     });
-  }, [canonicalThreadRef, navigate]);
+  }, [canonicalThreadRef, navigate, serverThreadSettled]);
 
   useEffect(() => {
     if (draftSession || canonicalThreadRef) {
@@ -56,7 +64,7 @@ function DraftChatThreadRouteView() {
     void navigate({ to: "/", replace: true });
   }, [canonicalThreadRef, draftSession, navigate]);
 
-  if (canonicalThreadRef) {
+  if (canonicalThreadRef && shouldRenderCanonicalThread) {
     if (layoutMode === "cursor") {
       return <CursorLayout />;
     }

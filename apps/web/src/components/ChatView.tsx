@@ -860,8 +860,11 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThreadKey, existingOpenTerminalThreadKeys, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const isConversationDraft = routeKind === "draft" && isConversationDraftThread(draftThread);
+  const isConversationThread = Boolean(
+    isConversationDraft || activeThread?.projectId === CONVERSATION_PROJECT_ID,
+  );
   const activeProjectRef =
-    activeThread && !isConversationDraft
+    activeThread && !isConversationThread
       ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
       : null;
   const activeProject = useStore(
@@ -870,7 +873,7 @@ export default function ChatView(props: ChatViewProps) {
   const newThreadScope = useUiStateStore((store) => store.newThreadScope);
   const setNewThreadScope = useUiStateStore((store) => store.setNewThreadScope);
   const isConversationNewThread =
-    routeKind === "draft" && (isConversationDraft || newThreadScope?.kind === "conversation");
+    isConversationThread || (routeKind === "draft" && newThreadScope?.kind === "conversation");
 
   useEffect(() => {
     if (isConversationDraft) {
@@ -1666,7 +1669,7 @@ export default function ChatView(props: ChatViewProps) {
       ? terminalLaunchContext
       : (storeServerTerminalLaunchContext ?? null);
   // Default true while loading to avoid toolbar flicker.
-  const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
+  const isGitRepo = activeProject ? (gitStatusQuery.data?.isRepo ?? true) : false;
   const terminalShortcutLabelOptions = useMemo(
     () => ({
       context: {
@@ -2359,7 +2362,7 @@ export default function ChatView(props: ChatViewProps) {
     });
     resetLocalDispatch();
     setExpandedImage(null);
-  }, [draftId, resetLocalDispatch, threadId]);
+  }, [activeThreadKey, resetLocalDispatch]);
 
   const closeExpandedImage = useCallback(() => {
     setExpandedImage(null);
@@ -2737,7 +2740,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       return;
     }
-    if (!activeProject && !isConversationNewThread) return;
+    if (!activeProject && !isConversationThread) return;
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
     const baseBranchForWorktree =
@@ -2747,8 +2750,9 @@ export default function ChatView(props: ChatViewProps) {
 
     // In worktree mode, require an explicit base branch so we don't silently
     // fall back to local execution when branch selection is missing.
-    const shouldCreateWorktree =
-      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
+    const shouldCreateWorktree = Boolean(
+      activeProject && isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath,
+    );
     if (shouldCreateWorktree && !activeThreadBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
@@ -3564,9 +3568,9 @@ export default function ChatView(props: ChatViewProps) {
     activeThread.latestTurn === null &&
     !activeThread.error;
   const hideProjectChromeForEmptyNewThread =
-    isDraftEmptyNewThread && (isConversationNewThread || !activeProject);
+    isDraftEmptyNewThread && (isConversationThread || !activeProject);
   const emptyNewThreadTitle =
-    isConversationNewThread || !activeProject ? (
+    isConversationThread || !activeProject ? (
       "我们该做什么？"
     ) : (
       <>

@@ -100,6 +100,7 @@ import { retainThreadDetailSubscription } from "../environments/runtime/service"
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import {
+  buildDraftThreadRouteParams,
   buildThreadRouteParams,
   resolveThreadRouteRef,
   resolveThreadRouteTarget,
@@ -2679,14 +2680,26 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     attachProjectListAutoAnimateRef,
     projectsLength,
   } = props;
+  const openConversationDraftThread = useCallback(() => {
+    setNewThreadScope({ kind: "conversation" });
+    if (primaryEnvironmentId) {
+      const conversationDraft = useComposerDraftStore
+        .getState()
+        .ensureConversationDraftSession(primaryEnvironmentId);
+      void navigate({
+        to: "/draft/$draftId",
+        params: buildDraftThreadRouteParams(conversationDraft.draftId),
+      });
+      return;
+    }
+    void navigate({ to: "/" });
+  }, [navigate, primaryEnvironmentId, setNewThreadScope]);
   const handleCreateGlobalThread = useCallback(() => {
-    setNewThreadScope({ kind: "conversation" });
-    void navigate({ to: "/" });
-  }, [navigate, setNewThreadScope]);
+    openConversationDraftThread();
+  }, [openConversationDraftThread]);
   const handleCreateConversationThread = useCallback(() => {
-    setNewThreadScope({ kind: "conversation" });
-    void navigate({ to: "/" });
-  }, [navigate, setNewThreadScope]);
+    openConversationDraftThread();
+  }, [openConversationDraftThread]);
   const handleOpenPlugins = useCallback(() => {
     void navigate({ to: "/settings/providers" });
   }, [navigate]);

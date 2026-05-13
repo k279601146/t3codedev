@@ -26,3 +26,4 @@ squashfs-root/
 dist-electron/
 .electron-runtime/
 apps/desktop/bin/
+logs/
