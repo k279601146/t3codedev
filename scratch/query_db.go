@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -17,43 +16,43 @@ func main() {
 	}
 	defer db.Close()
 
-	var userID int64
-	var groupID int64
-	err = db.QueryRow("SELECT user_id, group_id FROM api_keys WHERE key = 'sk-c73bed6997f98b075410d8d972c9d18b6bf5beeb2d4e2272a2043166ccf9d658'").Scan(&userID, &groupID)
-	if err != nil {
-		log.Fatalf("Query working key failed: %v", err)
-	}
-	fmt.Printf("Working Key: UserID=%d, GroupID=%d\n", userID, groupID)
-
-	rows, err := db.Query("SELECT id, name FROM groups")
+	fmt.Println("Account 13 Details:")
+	rows, err := db.Query("SELECT id, name, platform, base_url, model_mapping FROM accounts WHERE id = 13")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer rows.Close()
 
-	fmt.Println("\nAll Groups:")
 	for rows.Next() {
 		var id int64
-		var name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var name, platform string
+		var baseURL sql.NullString
+		var modelMapping sql.NullString
+		if err := rows.Scan(&id, &name, &platform, &baseURL, &modelMapping); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("ID=%d, Name=%s\n", id, name)
+		fmt.Printf("ID=%d, Name=%s, Platform=%s, BaseURL=%s, ModelMapping=%s\n", id, name, platform, baseURL.String, modelMapping.String)
 	}
 
-	rows, err = db.Query("SELECT group_id, COUNT(*) FROM accounts_groups GROUP BY group_id")
+	fmt.Println("\nAll Active Accounts in Group 2:")
+	rows, err = db.Query(`
+		SELECT a.id, a.name, a.platform, a.base_url 
+		FROM accounts a 
+		JOIN accounts_groups ag ON a.id = ag.account_id 
+		WHERE ag.group_id = 2 AND a.status = 'active'
+	`)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer rows.Close()
 
-	fmt.Println("\nGroup Account Counts:")
 	for rows.Next() {
-		var gid int64
-		var count int
-		if err := rows.Scan(&gid, &count); err != nil {
+		var id int64
+		var name, platform string
+		var baseURL sql.NullString
+		if err := rows.Scan(&id, &name, &platform, &baseURL); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("GroupID=%d, AccountCount=%d\n", gid, count)
+		fmt.Printf("ID=%d, Name=%s, Platform=%s, BaseURL=%s\n", id, name, platform, baseURL.String)
 	}
 }

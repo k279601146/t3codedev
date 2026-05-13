@@ -18,10 +18,9 @@ const decodeProviderStatusCache = Schema.decodeUnknownEffect(
 
 const mergeProviderModels = (
   fallbackModels: ReadonlyArray<ServerProvider["models"][number]>,
-  cachedModels: ReadonlyArray<ServerProvider["models"][number]>,
+  _cachedModels: ReadonlyArray<ServerProvider["models"][number]>,
 ): ReadonlyArray<ServerProvider["models"][number]> => {
-  const fallbackSlugs = new Set(fallbackModels.map((model) => model.slug));
-  return [...fallbackModels, ...cachedModels.filter((model) => !fallbackSlugs.has(model.slug))];
+  return fallbackModels;
 };
 
 export const orderProviderSnapshots = (

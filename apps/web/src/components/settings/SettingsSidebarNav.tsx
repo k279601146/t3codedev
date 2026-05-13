@@ -2,7 +2,6 @@ import { useCallback, type ComponentType } from "react";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
-  BotIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -25,7 +24,6 @@ import { useI18n } from "../../i18n";
 export type SettingsSectionPath =
   | "/settings/general"
   | "/settings/keybindings"
-  | "/settings/providers"
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived";
@@ -34,7 +32,6 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   labelKey:
     | "settings.general"
     | "settings.nav.keybindings"
-    | "settings.nav.providers"
     | "settings.nav.sourceControl"
     | "settings.nav.connections"
     | "settings.nav.archive";
@@ -43,7 +40,6 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 }> = [
   { labelKey: "settings.general", to: "/settings/general", icon: Settings2Icon },
   { labelKey: "settings.nav.keybindings", to: "/settings/keybindings", icon: KeyboardIcon },
-  { labelKey: "settings.nav.providers", to: "/settings/providers", icon: BotIcon },
   { labelKey: "settings.nav.sourceControl", to: "/settings/source-control", icon: GitBranchIcon },
   { labelKey: "settings.nav.connections", to: "/settings/connections", icon: Link2Icon },
   { labelKey: "settings.nav.archive", to: "/settings/archived", icon: ArchiveIcon },

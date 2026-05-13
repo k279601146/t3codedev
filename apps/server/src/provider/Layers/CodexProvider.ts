@@ -1,4 +1,5 @@
 import * as DateTime from "effect/DateTime";
+import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,14 +16,15 @@ import type {
   CodexSettings,
   ServerProvider,
   ServerProviderState,
-  ModelCapabilities,
   ServerProviderModel,
   ServerProviderSkill,
 } from "@t3tools/contracts";
 import { ServerSettingsError } from "@t3tools/contracts";
 
-import { createModelCapabilities } from "@t3tools/shared/model";
-import { resolveCommercialEngineIdeJwt } from "@t3tools/shared/commercialEngine";
+import {
+  resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineIdeJwt,
+} from "@t3tools/shared/commercialEngine";
 import { buildServerProvider, type ServerProviderDraft } from "../providerSnapshot.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { scopedSafeTeardown } from "./scopedSafeTeardown.ts";
@@ -36,6 +38,13 @@ import {
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
+const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 5_000;
+
+class CommercialModelCatalogError extends Data.TaggedError("CommercialModelCatalogError")<{
+  readonly detail: string;
+  readonly cause?: unknown;
+}> {}
+
 function getPresentation(environment: NodeJS.ProcessEnv = process.env) {
   const isBundled = resolveBundledEngineConfig(environment) !== undefined;
   return {
@@ -51,15 +60,6 @@ export interface CodexAppServerProviderSnapshot {
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
 }
-
-const REASONING_EFFORT_LABELS: Record<CodexSchema.V2ModelListResponse__ReasoningEffort, string> = {
-  none: "None",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra High",
-};
 
 function codexAccountAuthLabel(account: CodexSchema.V2GetAccountResponse["account"]) {
   if (!account) return undefined;
@@ -101,66 +101,111 @@ function codexAccountEmail(account: CodexSchema.V2GetAccountResponse["account"])
   return account.email;
 }
 
-function mapCodexModelCapabilities(
-  model: CodexSchema.V2ModelListResponse__Model,
-): ModelCapabilities {
-  const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
-    reasoningEffort === model.defaultReasoningEffort
-      ? {
-          id: reasoningEffort,
-          label: REASONING_EFFORT_LABELS[reasoningEffort],
-          isDefault: true,
-        }
-      : {
-          id: reasoningEffort,
-          label: REASONING_EFFORT_LABELS[reasoningEffort],
+const CommercialGatewayModel = Schema.Struct({
+  id: Schema.String,
+  display_name: Schema.optional(Schema.String),
+});
+
+const CommercialGatewayModelListResponse = Schema.Struct({
+  data: Schema.Array(CommercialGatewayModel),
+});
+
+function commercialGatewayModelsUrl(environment: NodeJS.ProcessEnv): string {
+  const baseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
+  return new URL("models", baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+}
+
+const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels")(function* (
+  environment: NodeJS.ProcessEnv,
+) {
+  const token = resolveCommercialEngineIdeJwt(environment);
+  const url = commercialGatewayModelsUrl(environment);
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetch(url, {
+        headers: {
+          accept: "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-  );
-  const defaultReasoning = reasoningOptions.find((option) => option.isDefault)?.id;
-  const supportsFastMode = (model.additionalSpeedTiers ?? []).includes("fast");
-  return createModelCapabilities({
-    optionDescriptors: [
-      ...(reasoningOptions.length > 0
-        ? [
-            {
-              id: "reasoningEffort",
-              label: "Reasoning",
-              type: "select" as const,
-              options: reasoningOptions,
-              ...(defaultReasoning ? { currentValue: defaultReasoning } : {}),
-            },
-          ]
-        : []),
-      ...(supportsFastMode
-        ? [
-            {
-              id: "fastMode",
-              label: "Fast Mode",
-              type: "boolean" as const,
-            },
-          ]
-        : []),
-    ],
+        signal,
+      }),
+    catch: (cause) =>
+      new CommercialModelCatalogError({
+        detail: "Failed to request model catalog.",
+        cause,
+      }),
   });
-}
 
-const toDisplayName = (model: CodexSchema.V2ModelListResponse__Model): string => {
-  // Capitalize 'gpt' to 'GPT-' and capitalize any letter following a dash
-  return model.displayName
-    .replace(/^gpt/i, "GPT") // Handle start with 'gpt' or 'GPT'
-    .replace(/-([a-z])/g, (_, c) => "-" + c.toUpperCase());
-};
+  if (!response.ok) {
+    const body = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: () => "",
+    }).pipe(Effect.orElseSucceed(() => ""));
+    return yield* new CommercialModelCatalogError({
+      detail:
+        body.trim().length > 0
+          ? `Model catalog returned HTTP ${response.status}: ${body.trim()}`
+          : `Model catalog returned HTTP ${response.status}.`,
+    });
+  }
 
-function parseCodexModelListResponse(
-  response: CodexSchema.V2ModelListResponse,
-): ReadonlyArray<ServerProviderModel> {
-  return response.data.map((model) => ({
-    slug: model.model,
-    name: toDisplayName(model),
-    isCustom: false,
-    capabilities: mapCodexModelCapabilities(model),
-  }));
-}
+  const payload = yield* Effect.tryPromise({
+    try: () => response.json(),
+    catch: (cause) =>
+      new CommercialModelCatalogError({
+        detail: "Model catalog returned invalid JSON.",
+        cause,
+      }),
+  });
+  const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayModelListResponse)(
+    payload,
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CommercialModelCatalogError({
+          detail: `Model catalog returned invalid JSON: ${cause.message}`,
+          cause,
+        }),
+    ),
+  );
+  const seen = new Set<string>();
+  const models: ServerProviderModel[] = [];
+  for (const model of decoded.data) {
+    const slug = model.id.trim();
+    if (!slug || seen.has(slug)) {
+      continue;
+    }
+    seen.add(slug);
+    const displayName = model.display_name?.trim();
+    models.push({
+      slug,
+      name: displayName && displayName.length > 0 ? displayName : slug,
+      isCustom: false,
+      capabilities: null,
+    });
+  }
+  return models;
+});
+
+const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) =>
+  requestCommercialGatewayModels(environment).pipe(
+    Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS)),
+    Effect.flatMap((models) =>
+      Option.match(models, {
+        onNone: () =>
+          Effect.logWarning("commercial model catalog request timed out", {
+            url: commercialGatewayModelsUrl(environment),
+          }).pipe(Effect.as([] as ReadonlyArray<ServerProviderModel>)),
+        onSome: (value) => Effect.succeed(value),
+      }),
+    ),
+    Effect.catch((cause) =>
+      Effect.logWarning("commercial model catalog request failed", {
+        url: commercialGatewayModelsUrl(environment),
+        detail: cause.detail,
+      }).pipe(Effect.as([] as ReadonlyArray<ServerProviderModel>)),
+    ),
+  );
 
 function appendCustomCodexModels(
   models: ReadonlyArray<ServerProviderModel>,
@@ -224,24 +269,6 @@ function parseCodexSkillsListResponse(
     return parsedSkill;
   });
 }
-
-const requestAllCodexModels = Effect.fn("requestAllCodexModels")(function* (
-  client: CodexClient.CodexAppServerClientShape,
-) {
-  const models: ServerProviderModel[] = [];
-  let cursor: string | null | undefined = undefined;
-
-  do {
-    const response: CodexSchema.V2ModelListResponse = yield* client.request(
-      "model/list",
-      cursor ? { cursor } : {},
-    );
-    models.push(...parseCodexModelListResponse(response));
-    cursor = response.nextCursor;
-  } while (cursor);
-
-  return models;
-});
 
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {
@@ -329,7 +356,9 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       client.request("skills/list", {
         cwds: [input.cwd],
       }),
-      requestAllCodexModels(client),
+      requestCommercialEngineModels(baseEnv).pipe(
+        Effect.map((models) => appendCustomCodexModels(models, input.customModels ?? [])),
+      ),
       client.request("account/rateLimits/read", undefined).pipe(Effect.option),
     ],
     { concurrency: "unbounded" },
@@ -339,7 +368,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     account: accountResponse,
     rateLimits: Option.getOrNull(rateLimits)?.rateLimits ?? null,
     version,
-    models: appendCustomCodexModels(models, input.customModels ?? []),
+    models,
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
   } satisfies CodexAppServerProviderSnapshot;
 }, scopedSafeTeardown("codex-probe"));
