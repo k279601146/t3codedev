@@ -27,7 +27,9 @@
       "Bash(findstr /v \"claude\")",
       "Bash(node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --verbose)",
       "PowerShell(bun *)",
-      "PowerShell(bun install *)"
+      "PowerShell(bun install *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell($env:T3CODE_HOME; $env:MYIDE_GATEWAY_BASE_URL; $env:MYIDE_ENGINE_PATH)"
     ]
   }
 }
