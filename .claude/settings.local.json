@@ -1,5 +1,33 @@
 {
   "permissions": {
-    "allow": ["Bash(git log *)"]
+    "allow": [
+      "Bash(git log *)",
+      "Bash(bun run *)",
+      "Bash(Select-Object -Last 80)",
+      "Bash(node -e \"require\\('electron/install'\\)\")",
+      "Bash(node install.js)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(New-Item *)",
+      "PowerShell(Get-Item *)",
+      "PowerShell(node -e \"const { execSync } = require\\('child_process'\\); const path = require\\('path'\\); const fs = require\\('fs'\\); const src = path.join\\(process.env.LOCALAPPDATA, 'electron', 'Cache', 'electron-v41.5.0-win32-x64.zip'\\); const dest = path.join\\(process.env.LOCALAPPDATA, 'electron-builder', 'Cache', 'electron', 'electron-v41.5.0-win32-x64'\\); fs.mkdirSync\\(dest, { recursive: true }\\); const extract = require\\(path.join\\('D:/workspace/t3codedev/node_modules/.bun/extract-zip@2.0.1/node_modules/extract-zip'\\)\\); extract\\(src, { dir: dest }\\).then\\(\\(\\) => console.log\\('done'\\)\\).catch\\(e => console.error\\(e\\)\\);\")",
+      "PowerShell(Remove-Item *)",
+      "PowerShell($env:ELECTRON_MIRROR = \"https://npmmirror.com/mirrors/electron/\"; node \"node_modules/.bun/electron@41.5.0/node_modules/electron/install.js\")",
+      "PowerShell(node -e \"const https = require\\('https'\\); const fs = require\\('fs'\\); const path = require\\('path'\\); const url = 'https://npmmirror.com/mirrors/electron/v41.5.0/electron-v41.5.0-win32-x64.zip'; const dest = path.join\\(process.env.LOCALAPPDATA, 'electron', 'Cache', 'electron-v41.5.0-win32-x64.zip'\\); console.log\\('Downloading to:', dest\\); const file = fs.createWriteStream\\(dest\\); function download\\(u\\) { https.get\\(u, \\(res\\) => { if \\(res.statusCode >= 300 && res.statusCode < 400 && res.headers.location\\) { download\\(res.headers.location\\); return; } console.log\\('Status:', res.statusCode\\); res.pipe\\(file\\); file.on\\('finish', \\(\\) => { file.close\\(\\); console.log\\('Done, size:', fs.statSync\\(dest\\).size\\); }\\); }\\).on\\('error', e => console.error\\(e\\)\\); } download\\(url\\);\")",
+      "Bash(node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --skip-build --verbose)",
+      "PowerShell(node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --skip-build --verbose)",
+      "PowerShell(bun run *)",
+      "Bash(dir D:\\\\workspace\\\\t3codedev\\\\apps\\\\desktop\\\\bin *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(git *)",
+      "PowerShell(Set-Content *)",
+      "Bash(tasklist /FI \"IMAGENAME eq bun.exe\" /FO CSV)",
+      "Bash(findstr /i \"bun\")",
+      "Bash(tasklist /FI \"IMAGENAME eq node.exe\" /FO CSV)",
+      "Bash(findstr /i \"node\")",
+      "Bash(findstr /v \"claude\")",
+      "Bash(node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --verbose)",
+      "PowerShell(bun *)",
+      "PowerShell(bun install *)"
+    ]
   }
 }

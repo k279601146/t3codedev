@@ -571,6 +571,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     directories: {
       buildResources: "apps/desktop/resources",
     },
+    extraResources: [
+      {
+        from: "engine-bin",
+        to: ".",
+        filter: ["**/*"],
+      },
+    ],
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
   const publishConfig = resolveGitHubPublishConfig(updateChannel);
@@ -761,6 +768,16 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
 
+  const stageEngineBinDir = path.join(stageAppDir, "engine-bin");
+  yield* fs.makeDirectory(stageEngineBinDir, { recursive: true });
+  const desktopBinDir = path.join(repoRoot, "apps/desktop/bin");
+  if (yield* fs.exists(desktopBinDir)) {
+    const binEntries = yield* fs.readDirectory(desktopBinDir);
+    for (const entry of binEntries) {
+      yield* fs.copyFile(path.join(desktopBinDir, entry), path.join(stageEngineBinDir, entry));
+    }
+  }
+
   yield* assertPlatformBuildResources(
     options.platform,
     stageResourcesDir,
@@ -806,13 +823,17 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.writeFileString(path.join(stageAppDir, "package.json"), `${stagePackageJsonString}\n`);
 
   yield* Effect.log("[desktop-artifact] Installing staged production dependencies...");
+  const installCommand =
+    process.platform === "win32"
+      ? "npm install --production --omit=optional --ignore-scripts"
+      : "bun install --production --omit optional";
   yield* runCommand(
     ChildProcess.make({
       cwd: stageAppDir,
       ...commandOutputOptions(options.verbose),
       // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
       shell: process.platform === "win32",
-    })`bun install --production --omit optional`,
+    })`${installCommand}`,
   );
 
   const buildEnv: NodeJS.ProcessEnv = {

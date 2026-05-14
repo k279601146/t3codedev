@@ -867,6 +867,8 @@ export const makeCodexSessionRuntime = (
 
     const handleRawNotification = (notification: CodexServerNotification) =>
       Effect.gen(function* () {
+        // [DEBUG] 临时：打印所有从 ai-engine.exe 收到的通知，排查 item/agentMessage/delta 是否到达
+        console.log(`[DEBUG][codex-notification] method=${notification.method}`, JSON.stringify(notification.params)?.slice(0, 200));
         const payload = notification.params;
         const route = readRouteFields(notification);
         const collabReceiverTurns = yield* Ref.get(collabReceiverTurnsRef);
