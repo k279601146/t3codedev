@@ -2580,6 +2580,7 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
+  globalThreads: readonly SidebarThreadSummary[];
 }
 
 function SidebarSectionTitle({
@@ -2679,7 +2680,177 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
+    globalThreads,
   } = props;
+  const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
+  const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
+  const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
+  const setSelectionAnchor = useThreadSelectionStore((state) => state.setAnchor);
+  const confirmThreadArchive = useSettings((s) => s.confirmThreadArchive);
+
+  const globalThreadKeys = useMemo(
+    () => globalThreads.map((t) => scopedThreadKey(scopeThreadRef(t.environmentId, t.id))),
+    [globalThreads],
+  );
+
+  const handleGlobalThreadClick = useCallback(
+    (event: React.MouseEvent, threadRef: ScopedThreadRef, orderedKeys: readonly string[]) => {
+      const isMac = isMacPlatform(navigator.platform);
+      const isModClick = isMac ? event.metaKey : event.ctrlKey;
+      const isShiftClick = event.shiftKey;
+      const threadKey = scopedThreadKey(threadRef);
+
+      if (isModClick) {
+        event.preventDefault();
+        toggleThreadSelection(threadKey);
+        return;
+      }
+
+      if (isShiftClick) {
+        event.preventDefault();
+        rangeSelectTo(threadKey, orderedKeys);
+        return;
+      }
+
+      clearSelection();
+      setSelectionAnchor(threadKey);
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
+      });
+    },
+    [navigate, clearSelection, rangeSelectTo, setSelectionAnchor, toggleThreadSelection],
+  );
+
+  const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
+  const [renamingTitle, setRenamingTitle] = useState("");
+  const renamingCommittedRef = useRef(false);
+  const renamingInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{
+    threadId: ThreadId;
+  }>({
+    onCopy: (ctx) => {
+      toastManager.add({
+        type: "success",
+        title: "Thread ID copied",
+        description: ctx.threadId,
+      });
+    },
+    onError: (error) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Failed to copy thread ID",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    },
+  });
+
+  const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
+  const appSettingsConfirmThreadDelete = useSettings((s) => s.confirmThreadDelete);
+
+  const handleGlobalThreadContextMenu = useCallback(
+    async (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
+      const api = readLocalApi();
+      if (!api) return;
+      const threadKey = scopedThreadKey(threadRef);
+      const thread = globalThreads.find(
+        (t) => scopedThreadKey(scopeThreadRef(t.environmentId, t.id)) === threadKey,
+      );
+      if (!thread) return;
+
+      const clicked = await api.contextMenu.show(
+        [
+          { id: "rename", label: "Rename thread" },
+          { id: "mark-unread", label: "Mark unread" },
+          { id: "copy-thread-id", label: "Copy Thread ID" },
+          { id: "delete", label: "Delete", destructive: true },
+        ],
+        position,
+      );
+
+      if (clicked === "rename") {
+        setRenamingThreadKey(threadKey);
+        setRenamingTitle(thread.title);
+        renamingCommittedRef.current = false;
+        return;
+      }
+
+      if (clicked === "mark-unread") {
+        markThreadUnread(threadKey, thread.latestTurn?.completedAt);
+        return;
+      }
+      if (clicked === "copy-thread-id") {
+        copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+        return;
+      }
+      if (clicked !== "delete") return;
+      if (appSettingsConfirmThreadDelete) {
+        const confirmed = await api.dialogs.confirm(
+          [
+            `Delete thread "${thread.title}"?`,
+            "This permanently clears conversation history for this thread.",
+          ].join("\n"),
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+      await deleteThread(threadRef);
+    },
+    [
+      globalThreads,
+      markThreadUnread,
+      copyThreadIdToClipboard,
+      appSettingsConfirmThreadDelete,
+      deleteThread,
+    ],
+  );
+
+  const commitRename = useCallback(
+    async (threadRef: ScopedThreadRef, newTitle: string, originalTitle: string) => {
+      const threadKey = scopedThreadKey(threadRef);
+      const finishRename = () => {
+        setRenamingThreadKey((current) => (current === threadKey ? null : current));
+        renamingCommittedRef.current = false;
+      };
+
+      const trimmed = newTitle.trim();
+      if (trimmed.length === 0) {
+        toastManager.add({
+          type: "warning",
+          title: "Thread title cannot be empty",
+        });
+        finishRename();
+        return;
+      }
+      if (trimmed === originalTitle) {
+        finishRename();
+        return;
+      }
+
+      try {
+        const api = readEnvironmentApi(threadRef.environmentId);
+        await api.thread.update(threadRef.threadId, { title: trimmed });
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to rename thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+      }
+      finishRename();
+    },
+    [],
+  );
+
+  const cancelRename = useCallback(() => {
+    setRenamingThreadKey(null);
+  }, []);
   const openConversationDraftThread = useCallback(() => {
     setNewThreadScope({ kind: "conversation" });
     if (primaryEnvironmentId) {
@@ -3007,6 +3178,46 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         >
           对话
         </SidebarSectionTitle>
+        <SidebarMenu ref={attachThreadListAutoAnimateRef}>
+          {globalThreads.map((thread) => {
+            const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+            return (
+              <SidebarThreadRow
+                key={threadKey}
+                thread={thread}
+                projectCwd={null}
+                orderedProjectThreadKeys={globalThreadKeys}
+                isActive={routeThreadKey === threadKey}
+                jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
+                appSettingsConfirmThreadArchive={confirmThreadArchive}
+                renamingThreadKey={renamingThreadKey}
+                renamingTitle={renamingTitle}
+                setRenamingTitle={setRenamingTitle}
+                renamingInputRef={renamingInputRef}
+                renamingCommittedRef={renamingCommittedRef}
+                confirmingArchiveThreadKey={null}
+                setConfirmingArchiveThreadKey={() => {}}
+                confirmArchiveButtonRefs={{ current: new Map() }}
+                handleThreadClick={handleGlobalThreadClick}
+                navigateToThread={(ref) => {
+                  clearSelection();
+                  setSelectionAnchor(scopedThreadKey(ref));
+                  void navigate({
+                    to: "/$environmentId/$threadId",
+                    params: buildThreadRouteParams(ref),
+                  });
+                }}
+                handleMultiSelectContextMenu={() => {}}
+                handleThreadContextMenu={handleGlobalThreadContextMenu}
+                clearSelection={clearSelection}
+                commitRename={commitRename}
+                cancelRename={cancelRename}
+                attemptArchiveThread={archiveThread}
+                openPrLink={openConversationDraftThread}
+              />
+            );
+          })}
+        </SidebarMenu>
       </SidebarGroup>
     </SidebarContent>
   );
@@ -3299,7 +3510,7 @@ export default function Sidebar() {
     visibleThreads,
   ]);
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
-  const visibleSidebarThreadKeys = useMemo(
+  const visibleProjectSidebarThreadKeys = useMemo(
     () =>
       sortedProjects.flatMap((project) => {
         const projectThreads = sortThreads(
@@ -3342,6 +3553,23 @@ export default function Sidebar() {
       sortedProjects,
       threadsByProjectKey,
     ],
+  );
+  const globalThreads = useMemo(() => {
+    const projectIds = new Set(projects.map((p) => p.id));
+    return sortThreads(
+      visibleThreads.filter((t) => !t.projectId || !projectIds.has(t.projectId)),
+      sidebarThreadSortOrder,
+    );
+  }, [projects, visibleThreads, sidebarThreadSortOrder]);
+
+  const visibleSidebarThreadKeys = useMemo(
+    () => [
+      ...visibleProjectSidebarThreadKeys,
+      ...globalThreads.map((thread) =>
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      ),
+    ],
+    [visibleProjectSidebarThreadKeys, globalThreads],
   );
   const threadJumpCommandByKey = useMemo(() => {
     const mapping = new Map<string, NonNullable<ReturnType<typeof threadJumpCommandForIndex>>>();
@@ -3685,6 +3913,7 @@ export default function Sidebar() {
             suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
             attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
             projectsLength={projects.length}
+            globalThreads={globalThreads}
           />
 
           <SidebarSeparator />
