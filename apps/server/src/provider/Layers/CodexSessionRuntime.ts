@@ -61,6 +61,7 @@ const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db missing rollout path for thread",
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
 ];
+const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds" as const;
 const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "not found",
   "missing thread",
@@ -762,14 +763,36 @@ export const makeCodexSessionRuntime = (
     const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const closedRef = yield* Ref.make(false);
 
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    // `~` is not shell-expanded when env vars are set via
+    // `child_process.spawn`; `expandHomePath` lets a configured
+    // `CODEX_HOME=~/.codex_work` reach codex as an absolute path.
+    const resolvedHomePath = options.homePath ? expandHomePath(options.homePath) : undefined;
+    const env = {
+      ...(options.environment ?? process.env),
+      ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
+    };
     const child =
       options.prewarmedChild ??
-      (yield* spawnCodexAppServerChild({
-        binaryPath: options.binaryPath,
-        homePath: options.homePath,
-        environment: options.environment,
-        cwd: options.cwd,
-      }).pipe(Effect.provideService(Scope.Scope, runtimeScope)));
+      (yield* spawner
+        .spawn(
+          ChildProcess.make(options.binaryPath, ["app-server"], {
+            cwd: options.cwd,
+            env,
+            forceKillAfter: CODEX_APP_SERVER_FORCE_KILL_AFTER,
+            shell: process.platform === "win32",
+          }),
+        )
+        .pipe(
+          Effect.provideService(Scope.Scope, runtimeScope),
+          Effect.mapError(
+            (cause) =>
+              new CodexErrors.CodexAppServerSpawnError({
+                command: `${options.binaryPath} app-server`,
+                cause,
+              }),
+          ),
+        ));
     if (options.prewarmedChild !== undefined) {
       yield* Scope.addFinalizer(
         runtimeScope,

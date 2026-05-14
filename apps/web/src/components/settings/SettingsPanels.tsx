@@ -1301,7 +1301,7 @@ export function GeneralSettingsPanel() {
       <CommercialGatewaySection />
 
       <SettingsSection title="About">
-        {isElectron ? (
+        {isElectron || HOSTED_APP_CHANNEL ? (
           <AboutVersionSection />
         ) : (
           <SettingsRow
