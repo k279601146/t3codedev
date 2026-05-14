@@ -950,15 +950,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
       );
 
       // This test intentionally avoids `mockCommandSpawnerLayer` so the real
-      // `probeCodexAppServerProvider` path runs â€” including the full
+      // `probeCodexAppServerProvider` path runs â€?including the full
       // `codex app-server` RPC handshake via `CodexClient.layerCommand`.
       // We point `binaryPath` at a name that cannot exist on any machine so
       // the real `ChildProcessSpawner` deterministically returns ENOENT; the
       // probe wraps that as `CodexAppServerSpawnError` and
       // `checkCodexProviderStatus` turns it into the user-visible "not
       // installed" error snapshot. If the aggregator's `syncLiveSources`
-      // breaks â€” the `codex_personal`-never-probes bug we are guarding
-      // against â€” that snapshot never lands in `getProviders` and the
+      // breaks â€?the `codex_personal`-never-probes bug we are guarding
+      // against â€?that snapshot never lands in `getProviders` and the
       // assertions below fail.
       it.effect("propagates real Codex probe failures to the aggregator at boot", () =>
         Effect.gen(function* () {
@@ -983,7 +983,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
                 // accepts + decodes them. Cast the patch to `unknown` so
                 // the `Schema.decodeSync` below does the real validation.
                 providerInstances: {
-                  // Matches the shape the user had in `.t3/dev/settings.json`
+                  // Matches the shape the user had in `.bahew/dev/settings.json`
                   // when the bug was reported: a custom enabled Codex instance
                   // pointing at a binary the server has to actually spawn.
                   codex_personal: {
@@ -1012,7 +1012,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             Layer.provideMerge(TestHttpClientLive),
             Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
             Layer.provideMerge(OpenCodeRuntimeLive),
-            // NO spawner mock â€” `ChildProcessSpawner` is supplied by the
+            // NO spawner mock â€?`ChildProcessSpawner` is supplied by the
             // outer `NodeServices.layer` on `it.layer(...)` and will
             // genuinely spawn a subprocess. The missing-binary ENOENT is
             // what exercises the same failure mode as a misconfigured
@@ -1052,8 +1052,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
       // Guards the second half of the reported bug: changing
       // `providers.codex.binaryPath` in settings must tear down the live
       // instance and rebuild it so a fresh probe runs with the new binary.
-      // This test drives the real settings stream â†’ registry reconcile â†’
-      // aggregator sync pipeline and asserts that `getProviders` reflects
+      // This test drives the real settings stream â†?registry reconcile â†?      // aggregator sync pipeline and asserts that `getProviders` reflects
       // the new probe's outcome. If `syncLiveSources` stops awaiting the
       // rebuilt instance's refresh (previous bug mode), the aggregator
       // keeps the old snapshot and this test fails.
@@ -1102,7 +1101,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             // Boot-time probe: the default codex instance is enabled with
             // `firstMissing`, so the real spawner yields ENOENT and the
             // snapshot should be `status: "error"`. What *distinguishes*
-            // the two probe runs is `checkedAt` â€” each probe stamps a
+            // the two probe runs is `checkedAt` â€?each probe stamps a
             // fresh DateTime, so we capture it and assert it advances
             // after the settings mutation.
             const initialProviders = yield* registry.getProviders;
@@ -1117,7 +1116,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             // Drive a settings change. The Hydration layer's
             // `SettingsWatcherLive` consumes this via `streamChanges`,
             // calls `reconcile`, which rebuilds the codex instance (the
-            // envelope changed because `binaryPath` differs â†’ `entryEqual`
+            // envelope changed because `binaryPath` differs â†?`entryEqual`
             // is false). The registry's `Stream.runForEach(
             // instanceRegistry.streamChanges, () => syncLiveSources)`
             // fires `syncLiveSources`, which subscribes + awaits a fresh

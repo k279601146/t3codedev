@@ -81,14 +81,14 @@ describe("commercialEngine", () => {
         OPENAI_API_KEY: "must-not-leak",
       },
       {
-        CODEX_HOME: "/home/user/.t3/engine",
+        CODEX_HOME: "/home/user/.bahew/engine",
         [COMMERCIAL_ENGINE_IDE_JWT_ENV]: "jwt-token",
       },
     );
 
     assert.equal(env.PATH, "/bin");
     assert.equal(env.HOME, "/home/user");
-    assert.equal(env.CODEX_HOME, "/home/user/.t3/engine");
+    assert.equal(env.CODEX_HOME, "/home/user/.bahew/engine");
     assert.equal(env[COMMERCIAL_ENGINE_IDE_JWT_ENV], "jwt-token");
     assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
     assert.equal(env.OPENAI_API_KEY, undefined);
