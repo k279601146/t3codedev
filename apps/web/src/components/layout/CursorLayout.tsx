@@ -59,9 +59,7 @@ export function CursorLayout() {
   );
   const serverThread =
     routeServerThread ??
-    (threadHasStarted(promotedServerThread) && promotedServerThreadSettled
-      ? promotedServerThread
-      : undefined);
+    (threadHasStarted(promotedServerThread) ? promotedServerThread : undefined);
   const conversationDraftSession = useComposerDraftStore(
     useShallow((state) => (routeTarget === null ? state.getConversationDraftSession() : null)),
   );

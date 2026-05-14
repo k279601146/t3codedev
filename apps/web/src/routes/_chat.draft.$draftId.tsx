@@ -42,9 +42,7 @@ function DraftChatThreadRouteView() {
         }
       : null;
   }, [draftSession, draftSession?.promotedTo, serverThread, serverThreadStarted]);
-  const shouldRenderCanonicalThread = Boolean(
-    canonicalThreadRef && (!draftSession || serverThreadSettled),
-  );
+  const shouldRenderCanonicalThread = Boolean(canonicalThreadRef);
 
   useEffect(() => {
     if (!canonicalThreadRef || !serverThreadSettled) {
