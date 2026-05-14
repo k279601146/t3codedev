@@ -14,6 +14,10 @@ import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shar
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import { ServerConfig } from "../config.ts";
 import { expandHomePath } from "../pathExpansion.ts";
+import {
+  resolveBundledEngineConfig,
+  buildCodexProcessEnv,
+} from "../provider/BundledEngineConfig.ts";
 import { TextGenerationError } from "@t3tools/contracts";
 import {
   type BranchNameGenerationInput,
@@ -187,11 +191,14 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       const reasoningEffort =
         getModelSelectionStringOptionValue(modelSelection, "reasoningEffort") ??
         CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT;
+      const bundledConfig = resolveBundledEngineConfig(environment);
+      const effectiveBinaryPath = bundledConfig?.binaryPath ?? codexConfig.binaryPath ?? "codex";
       const command = ChildProcess.make(
-        codexConfig.binaryPath || "codex",
+        effectiveBinaryPath,
         [
           "exec",
           "--ephemeral",
+          ...(bundledConfig ? [] : ["--no-load-config"]),
           "--skip-git-repo-check",
           "-s",
           "read-only",
@@ -210,10 +217,13 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           "-",
         ],
         {
-          env: {
-            ...environment,
-            ...(codexConfig.homePath ? { CODEX_HOME: expandHomePath(codexConfig.homePath) } : {}),
-          },
+          env: buildCodexProcessEnv({
+            baseEnv: environment,
+            resolvedHomePath: codexConfig.homePath
+              ? expandHomePath(codexConfig.homePath)
+              : undefined,
+            bundledConfig,
+          }),
           cwd,
           shell: process.platform === "win32",
           stdin: {

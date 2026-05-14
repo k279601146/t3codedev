@@ -17,7 +17,7 @@ function engineBinaryName() {
 }
 
 function makeLayer(baseDir: string, env: Record<string, string | undefined> = {}) {
-  const configLayer = DesktopConfig.layerTest({ T3CODE_HOME: baseDir, ...env });
+  const configLayer = DesktopConfig.layerTest({ BAHEW_HOME: baseDir, ...env });
   const environmentLayer = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
     homeDirectory: baseDir,

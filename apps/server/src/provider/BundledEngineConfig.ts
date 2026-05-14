@@ -23,6 +23,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
   resolveCommercialEngineWindowsSandboxMode,
+  buildCommercialEngineProcessEnv,
 } from "@t3tools/shared/commercialEngine";
 
 // ── 环境变量常量 ────────────────────────────────────────────
@@ -155,4 +156,26 @@ export function buildBundledSpawnArgs(config: BundledEngineResolvedConfig): Read
  */
 export function buildSystemSpawnArgs(): ReadonlyArray<string> {
   return ["app-server"];
+}
+
+/**
+ * 构建 Codex 进程的环境变量。
+ * 处理 CODEX_HOME 路径展开以及捆绑引擎的环境变量补丁。
+ */
+export function buildCodexProcessEnv(input: {
+  readonly baseEnv: NodeJS.ProcessEnv;
+  readonly resolvedHomePath: string | undefined;
+  readonly bundledConfig: BundledEngineResolvedConfig | undefined;
+}): Record<string, string | undefined> {
+  const patch = {
+    ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),
+    ...(input.bundledConfig?.spawnEnvPatch ?? {}),
+  };
+  if (input.bundledConfig) {
+    return buildCommercialEngineProcessEnv(input.baseEnv, patch);
+  }
+  return {
+    ...input.baseEnv,
+    ...patch,
+  };
 }

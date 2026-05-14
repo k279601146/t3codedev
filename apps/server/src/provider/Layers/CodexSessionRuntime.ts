@@ -46,6 +46,7 @@ import {
   resolveBundledEngineConfig,
   buildBundledSpawnArgs,
   buildSystemSpawnArgs,
+  buildCodexProcessEnv,
   type BundledEngineResolvedConfig,
 } from "../BundledEngineConfig.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
@@ -436,24 +437,6 @@ interface CodexThreadOpenClient {
     method: M,
     payload: CodexRpc.ClientRequestParamsByMethod[M],
   ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
-}
-
-function buildCodexProcessEnv(input: {
-  readonly baseEnv: NodeJS.ProcessEnv;
-  readonly resolvedHomePath: string | undefined;
-  readonly bundledConfig: BundledEngineResolvedConfig | undefined;
-}): Record<string, string | undefined> {
-  const patch = {
-    ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),
-    ...(input.bundledConfig?.spawnEnvPatch ?? {}),
-  };
-  if (input.bundledConfig) {
-    return buildCommercialEngineProcessEnv(input.baseEnv, patch);
-  }
-  return {
-    ...input.baseEnv,
-    ...patch,
-  };
 }
 
 export const spawnCodexAppServerChild = (input: {

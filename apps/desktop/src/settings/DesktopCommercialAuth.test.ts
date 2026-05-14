@@ -45,7 +45,7 @@ function makeLayer(baseDir: string, options?: { readonly safeStorageAvailable?: 
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ BAHEW_HOME: baseDir })),
     ),
   );
 
