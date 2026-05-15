@@ -3,6 +3,7 @@
  *
  * Resolves the active VCS driver once per checkpoint operation and delegates
  * checkpoint-specific behavior to the driver's optional checkpoint capability.
+ * Falls back to a shadow git repository for non-git workspaces.
  *
  * @module CheckpointStoreLive
  */
@@ -10,26 +11,28 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { CheckpointStore, type CheckpointStoreShape } from "../Services/CheckpointStore.ts";
-import { VcsUnsupportedOperationError } from "@t3tools/contracts";
 import { VcsDriverRegistry } from "../../vcs/VcsDriverRegistry.ts";
 import type { VcsCheckpointOps } from "../../vcs/VcsDriver.ts";
+import { ShadowGitCheckpoints } from "./ShadowGitCheckpoints.ts";
 
 const makeCheckpointStore = Effect.gen(function* () {
   const vcsRegistry = yield* VcsDriverRegistry;
+  const shadowGitCheckpoints = yield* ShadowGitCheckpoints;
 
   const resolveCheckpoints = Effect.fn("CheckpointStore.resolveCheckpoints")(function* (
     operation: string,
     cwd: string,
   ) {
-    const handle = yield* vcsRegistry.resolve({ cwd });
-    if (!handle.driver.checkpoints) {
-      return yield* new VcsUnsupportedOperationError({
-        operation,
-        kind: handle.kind,
-        detail: `${handle.kind} driver does not implement checkpoint operations.`,
-      });
+    const checkpointOps = yield* vcsRegistry.resolve({ cwd }).pipe(
+      Effect.map((handle) => handle.driver.checkpoints ?? null),
+      Effect.catch(() => Effect.succeed(null)),
+    );
+
+    if (checkpointOps) {
+      return checkpointOps satisfies VcsCheckpointOps;
     }
-    return handle.driver.checkpoints satisfies VcsCheckpointOps;
+
+    return yield* shadowGitCheckpoints.resolve(cwd);
   });
 
   const isGitRepository: CheckpointStoreShape["isGitRepository"] = (cwd) =>

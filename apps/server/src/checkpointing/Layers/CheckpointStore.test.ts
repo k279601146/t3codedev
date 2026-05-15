@@ -12,6 +12,7 @@ import { describe, expect } from "vitest";
 
 import { checkpointRefForThreadTurn } from "../Utils.ts";
 import { CheckpointStoreLive } from "./CheckpointStore.ts";
+import * as ShadowGitCheckpoints from "./ShadowGitCheckpoints.ts";
 import { CheckpointStore } from "../Services/CheckpointStore.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
@@ -26,6 +27,7 @@ const VcsProcessTestLayer = VcsProcess.layer.pipe(Layer.provide(NodeServices.lay
 const VcsDriverTestLayer = VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcessTestLayer));
 const CheckpointStoreTestLayer = CheckpointStoreLive.pipe(
   Layer.provideMerge(VcsDriverTestLayer),
+  Layer.provideMerge(ShadowGitCheckpoints.layer),
   Layer.provideMerge(NodeServices.layer),
 );
 const TestLayer = CheckpointStoreTestLayer.pipe(

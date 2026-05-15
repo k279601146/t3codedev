@@ -23,6 +23,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { CheckpointStoreLive } from "../src/checkpointing/Layers/CheckpointStore.ts";
+import * as ShadowGitCheckpoints from "../src/checkpointing/Layers/ShadowGitCheckpoints.ts";
 import { CheckpointStore } from "../src/checkpointing/Services/CheckpointStore.ts";
 import { TextGeneration, type TextGenerationShape } from "../src/textGeneration/TextGeneration.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../src/persistence/Layers/OrchestrationCommandReceipts.ts";
@@ -295,7 +296,10 @@ export const makeOrchestrationIntegrationHarness = (
           Layer.provide(providerEventLoggersLayer),
         );
 
-    const checkpointStoreLayer = CheckpointStoreLive.pipe(Layer.provide(VcsDriverRegistry.layer));
+    const checkpointStoreLayer = CheckpointStoreLive.pipe(
+      Layer.provide(VcsDriverRegistry.layer),
+      Layer.provide(ShadowGitCheckpoints.layer),
+    );
     const projectionSnapshotQueryLayer = OrchestrationProjectionSnapshotQueryLive;
     const runtimeServicesLayer = Layer.mergeAll(
       projectionSnapshotQueryLayer,

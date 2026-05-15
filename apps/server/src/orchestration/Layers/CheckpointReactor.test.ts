@@ -31,6 +31,7 @@ import * as Stream from "effect/Stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CheckpointStoreLive } from "../../checkpointing/Layers/CheckpointStore.ts";
+import * as ShadowGitCheckpoints from "../../checkpointing/Layers/ShadowGitCheckpoints.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
@@ -328,7 +329,10 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
-      Layer.provideMerge(CheckpointStoreLive.pipe(Layer.provide(VcsDriverRegistry.layer))),
+      Layer.provideMerge(CheckpointStoreLive.pipe(
+        Layer.provide(VcsDriverRegistry.layer),
+        Layer.provide(ShadowGitCheckpoints.layer),
+      )),
       Layer.provideMerge(
         WorkspaceEntriesLive.pipe(
           Layer.provide(WorkspacePathsLive),
