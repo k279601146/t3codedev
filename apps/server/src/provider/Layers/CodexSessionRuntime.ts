@@ -768,15 +768,21 @@ export const makeCodexSessionRuntime = (
     // `child_process.spawn`; `expandHomePath` lets a configured
     // `CODEX_HOME=~/.codex_work` reach codex as an absolute path.
     const resolvedHomePath = options.homePath ? expandHomePath(options.homePath) : undefined;
-    const env = {
-      ...(options.environment ?? process.env),
-      ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-    };
+    const baseEnv = options.environment ?? process.env;
+    const bundledConfig = resolveBundledEngineConfig(baseEnv);
+    const effectiveBinaryPath = bundledConfig?.binaryPath ?? options.binaryPath;
+    const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
+    const env = buildCodexProcessEnv({
+      baseEnv,
+      resolvedHomePath,
+      bundledConfig,
+    });
+
     const child =
       options.prewarmedChild ??
       (yield* spawner
         .spawn(
-          ChildProcess.make(options.binaryPath, ["app-server"], {
+          ChildProcess.make(effectiveBinaryPath, [...spawnArgs], {
             cwd: options.cwd,
             env,
             forceKillAfter: CODEX_APP_SERVER_FORCE_KILL_AFTER,
@@ -788,7 +794,7 @@ export const makeCodexSessionRuntime = (
           Effect.mapError(
             (cause) =>
               new CodexErrors.CodexAppServerSpawnError({
-                command: `${options.binaryPath} app-server`,
+                command: `${effectiveBinaryPath} ${spawnArgs.join(" ")}`,
                 cause,
               }),
           ),

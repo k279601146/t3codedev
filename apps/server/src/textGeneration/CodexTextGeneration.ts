@@ -20,6 +20,10 @@ import {
 } from "../provider/BundledEngineConfig.ts";
 import { TextGenerationError } from "@t3tools/contracts";
 import {
+  resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineIdeJwt,
+} from "@t3tools/shared/commercialEngine";
+import {
   type BranchNameGenerationInput,
   type ThreadTitleGenerationResult,
   type TextGenerationShape,
@@ -196,9 +200,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       const command = ChildProcess.make(
         effectiveBinaryPath,
         [
+          ...(bundledConfig?.spawnArgs ?? []),
           "exec",
           "--ephemeral",
-          ...(bundledConfig ? [] : ["--no-load-config"]),
           "--skip-git-repo-check",
           "-s",
           "read-only",
@@ -267,6 +271,94 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       }
     });
 
+    const runCommercialGatewayJson = Effect.fn("runCodexJson.runCommercialGatewayJson")(
+      function* () {
+        const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
+        const ideJwt = resolveCommercialEngineIdeJwt(environment);
+        if (!ideJwt) {
+          return yield* new TextGenerationError({
+            operation,
+            detail: "Commercial gateway authentication token missing (not signed in).",
+          });
+        }
+ 
+        const url = new URL(
+          "chat/completions",
+          gatewayBaseUrl.endsWith("/") ? gatewayBaseUrl : `${gatewayBaseUrl}/`,
+        ).toString();
+ 
+        const response = yield* Effect.tryPromise({
+          try: (signal) =>
+            fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${ideJwt}`,
+              },
+              body: JSON.stringify({
+                model: modelSelection.model,
+                messages: [{ role: "user", content: prompt }],
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: operation,
+                    strict: true,
+                    schema: toJsonSchemaObject(outputSchemaJson),
+                  },
+                },
+              }),
+              signal,
+            }),
+          catch: (cause) =>
+            new TextGenerationError({
+              operation,
+              detail: "Failed to request commercial gateway.",
+              cause,
+            }),
+        });
+ 
+        if (!response.ok) {
+          const body = yield* Effect.tryPromise({
+            try: () => response.text(),
+            catch: () => "",
+          }).pipe(Effect.orElseSucceed(() => ""));
+          return yield* new TextGenerationError({
+            operation,
+            detail: `Gateway returned HTTP ${response.status}: ${body}`,
+          });
+        }
+ 
+        const payload = yield* Effect.tryPromise({
+          try: () => response.json() as Promise<any>,
+          catch: (cause) =>
+            new TextGenerationError({
+              operation,
+              detail: "Gateway returned invalid JSON.",
+              cause,
+            }),
+        });
+ 
+        const content = payload.choices?.[0]?.message?.content;
+        if (typeof content !== "string") {
+          return yield* new TextGenerationError({
+            operation,
+            detail: "Gateway response missing content.",
+          });
+        }
+ 
+        yield* fileSystem.writeFileString(outputPath, content).pipe(
+          Effect.mapError(
+            (cause) =>
+              new TextGenerationError({
+                operation,
+                detail: "Failed to write output to temp file.",
+                cause,
+              }),
+          ),
+        );
+      },
+    );
+
     const cleanup = Effect.all(
       [schemaPath, outputPath, ...cleanupPaths].map((filePath) => safeUnlink(filePath)),
       {
@@ -275,19 +367,24 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     ).pipe(Effect.asVoid);
 
     return yield* Effect.gen(function* () {
-      yield* runCodexCommand().pipe(
-        Effect.scoped,
-        Effect.timeoutOption(CODEX_TIMEOUT_MS),
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
-              ),
-            onSome: () => Effect.void,
-          }),
-        ),
-      );
+      const bundledConfig = resolveBundledEngineConfig(environment);
+      if (bundledConfig) {
+        yield* runCommercialGatewayJson();
+      } else {
+        yield* runCodexCommand().pipe(
+          Effect.scoped,
+          Effect.timeoutOption(CODEX_TIMEOUT_MS),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
+                ),
+              onSome: () => Effect.void,
+            }),
+          ),
+        );
+      }
 
       const decodeOutput = Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson));
 

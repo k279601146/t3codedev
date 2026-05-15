@@ -38,6 +38,7 @@ import {
   resolveBundledEngineConfig,
   buildBundledSpawnArgs,
   buildSystemSpawnArgs,
+  buildCodexProcessEnv,
   PROVIDER_DISPLAY_NAME,
 } from "../BundledEngineConfig.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
@@ -312,11 +313,11 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       command: effectiveBinaryPath,
       args: [...spawnArgs],
       cwd: input.cwd,
-      env: {
-        ...baseEnv,
-        ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-        ...bundledConfig?.spawnEnvPatch,
-      },
+      env: buildCodexProcessEnv({
+        baseEnv,
+        resolvedHomePath,
+        bundledConfig,
+      }),
     }),
   );
   const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(

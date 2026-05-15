@@ -24,6 +24,8 @@ export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
   "SystemRoot",
   "HOMEDRIVE",
   "HOMEPATH",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
 ] as const;
 
 const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
@@ -32,6 +34,8 @@ const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
   "ComSpec",
   "PATHEXT",
   "WINDIR",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
 ] as const;
 
 export function getCommercialEngineEnvVar(env: NodeJS.ProcessEnv, key: string): string | undefined {

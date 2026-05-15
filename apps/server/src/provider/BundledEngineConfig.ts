@@ -102,6 +102,15 @@ export function resolveBundledEngineConfig(
       ...COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY,
     ]),
     CODEX_DISABLE_TELEMETRY: "true",
+    // 强制重定向内置的 OpenAI 提供商到我们的网关
+    CODEX_OPENAI_BASE_URL: gatewayBaseUrl,
+    CODEX_CHATGPT_BASE_URL: gatewayBaseUrl,
+    CODEX_MODEL_PROVIDERS_OPENAI_BASE_URL: gatewayBaseUrl,
+    CODEX_MODEL_PROVIDERS_OPENAI_REQUIRES_OPENAI_AUTH: "false",
+    CODEX_MODEL_PROVIDERS_OPENAI_ENV_KEY: ENV_IDE_JWT,
+    // 同时也设置标准的 OpenAI 环境变量，以防某些组件直接读取它们
+    OPENAI_BASE_URL: gatewayBaseUrl,
+    OPENAI_API_KEY: ideJwt || "",
   };
 
   // Windows sandbox can be upgraded by the desktop runtime after installer initialization.
@@ -166,16 +175,20 @@ export function buildCodexProcessEnv(input: {
   readonly baseEnv: NodeJS.ProcessEnv;
   readonly resolvedHomePath: string | undefined;
   readonly bundledConfig: BundledEngineResolvedConfig | undefined;
-}): Record<string, string | undefined> {
+}): Record<string, string> {
   const patch = {
     ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),
     ...(input.bundledConfig?.spawnEnvPatch ?? {}),
   };
-  if (input.bundledConfig) {
-    return buildCommercialEngineProcessEnv(input.baseEnv, patch);
-  }
-  return {
-    ...input.baseEnv,
-    ...patch,
-  };
+
+  const rawEnv = input.bundledConfig
+    ? buildCommercialEngineProcessEnv(input.baseEnv, patch)
+    : {
+        ...input.baseEnv,
+        ...patch,
+      };
+
+  return Object.fromEntries(
+    Object.entries(rawEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
 }
