@@ -641,15 +641,15 @@ const WorkGroupSection = memo(function WorkGroupSection({
   const showLiveScan = groupedEntries.some((entry) => entry.status === "running");
 
   return (
-    <div className="py-0.5 pl-1">
+    <div className="pt-2 pb-3 pl-1">
       <button
         type="button"
-        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-1 text-left text-[12px] leading-5 text-muted-foreground/72 transition-colors hover:text-foreground/78"
+        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[12px] leading-5 text-[#999999] transition-colors hover:text-foreground/78"
         aria-expanded={isExpanded}
         data-work-group-summary="true"
         onClick={() => setIsExpanded((value) => !value)}
       >
-        <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground/55" />
+        <TerminalIcon className="size-3.5 shrink-0 text-[#999999]" />
         {showLiveScan ? (
           <ShimmerScanText className="min-w-0" durationMs={2000} tone="light">
             {summary.liveLabel}

@@ -332,6 +332,12 @@ label:has(> select#reasoning-effort) select {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--foreground);
+  line-height: 1.75;
+  text-align: left;
 }
 
 .chat-markdown > :first-child {
@@ -348,7 +354,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown blockquote,
 .chat-markdown pre,
 .chat-markdown table {
-  margin: 0.65rem 0;
+  margin: 0 0 14px 0;
 }
 
 .chat-markdown ul {
@@ -403,7 +409,9 @@ label:has(> select#reasoning-effort) select {
   background: var(--muted);
   padding: 0.1rem 0.35rem;
   color: var(--foreground);
-  font-size: 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 
 .chat-markdown-file-link {
@@ -454,13 +462,15 @@ label:has(> select#reasoning-effort) select {
   border-radius: 0.75rem;
   background: var(--muted);
   padding: 0.8rem 0.9rem;
+  box-shadow: none;
 }
 
 .chat-markdown pre code {
   border: none;
   background: transparent;
   padding: 0;
-  font-size: 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
 }
 
 .markdown-file-link-tooltip-scroll {

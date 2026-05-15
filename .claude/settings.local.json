@@ -29,7 +29,9 @@
       "PowerShell(bun *)",
       "PowerShell(bun install *)",
       "PowerShell(Get-ChildItem *)",
-      "PowerShell($env:T3CODE_HOME; $env:MYIDE_GATEWAY_BASE_URL; $env:MYIDE_ENGINE_PATH)"
+      "PowerShell($env:T3CODE_HOME; $env:MYIDE_GATEWAY_BASE_URL; $env:MYIDE_ENGINE_PATH)",
+      "Bash(npx tsc *)",
+      "Bash(Select-Object -First 50)"
     ]
   }
 }
