@@ -118,6 +118,7 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CLIENT_LANGUAGE)),
   ),
   layoutMode: LayoutMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_LAYOUT_MODE))),
+  lastUsedModel: Schema.optional(TrimmedNonEmptyString),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 

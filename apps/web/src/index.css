@@ -409,7 +409,7 @@ label:has(> select#reasoning-effort) select {
   background: var(--muted);
   padding: 0.1rem 0.35rem;
   color: var(--foreground);
-  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
   font-size: 0.85em;
   white-space: nowrap;
 }
@@ -469,7 +469,7 @@ label:has(> select#reasoning-effort) select {
   border: none;
   background: transparent;
   padding: 0;
-  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
   font-size: 13px;
 }
 

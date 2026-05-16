@@ -1,4 +1,5 @@
 # codex app-server 多模型支持方案
+
 ## 用单一引擎二进制文件驱动 Claude、Gemini、GPT 全系列模型
 
 > **文档版本**：1.2  
@@ -39,6 +40,7 @@
 ```
 
 这个方案的问题：
+
 - 三套二进制，三套进程生命周期管理，三套协议适配
 - Claude CLI、Gemini CLI 的通信协议与 codex app-server 的 JSON-RPC 协议完全不同，在 apps/server 里需要分别适配
 - 更新维护成本是三倍
@@ -71,10 +73,10 @@ requires_openai_auth = true    # 不走 ChatGPT OAuth，直接用 API Key
 
 codex 有两种内置 wire_api（通信协议）：
 
-| wire_api | 说明 | 适用场景 |
-|----------|------|---------|
-| `"responses"` | OpenAI Responses API（`/v1/responses`，有状态） | **本项目统一使用此模式** |
-| `"chat"` | OpenAI Chat Completions API（`/v1/chat/completions`，无状态） | 备用，不使用 |
+| wire_api      | 说明                                                          | 适用场景                 |
+| ------------- | ------------------------------------------------------------- | ------------------------ |
+| `"responses"` | OpenAI Responses API（`/v1/responses`，有状态）               | **本项目统一使用此模式** |
+| `"chat"`      | OpenAI Chat Completions API（`/v1/chat/completions`，无状态） | 备用，不使用             |
 
 **本项目策略：全部使用 `wire_api = "responses"`，`requires_openai_auth = true`。**
 
@@ -163,14 +165,14 @@ codex 发出请求 → 模型返回 tool_call（调用文件读写/bash等工具
 
 ## 3.2 各模型的 tool_call 兼容性
 
-| 模型 | tool_call 支持 | 通过 OpenAI 兼容接口的可用性 |
-|------|--------------|--------------------------|
-| GPT-4o / GPT-4o-mini | ✅ 原生支持 | ✅ 直接可用 |
-| GPT-4.1 系列 | ✅ 原生支持 | ✅ 直接可用 |
-| Claude Sonnet 4.5 | ✅ 原生支持 | ⚠️ 需要兼容层转换 Anthropic 格式 → OpenAI 格式 |
-| Claude Opus 4 | ✅ 原生支持 | ⚠️ 需要兼容层转换 |
-| Gemini 2.5 Pro | ✅ 原生支持 | ⚠️ 需要兼容层转换 Google 格式 → OpenAI 格式 |
-| Gemini 2.5 Flash | ✅ 原生支持 | ⚠️ 需要兼容层转换 |
+| 模型                 | tool_call 支持 | 通过 OpenAI 兼容接口的可用性                   |
+| -------------------- | -------------- | ---------------------------------------------- |
+| GPT-4o / GPT-4o-mini | ✅ 原生支持    | ✅ 直接可用                                    |
+| GPT-4.1 系列         | ✅ 原生支持    | ✅ 直接可用                                    |
+| Claude Sonnet 4.5    | ✅ 原生支持    | ⚠️ 需要兼容层转换 Anthropic 格式 → OpenAI 格式 |
+| Claude Opus 4        | ✅ 原生支持    | ⚠️ 需要兼容层转换                              |
+| Gemini 2.5 Pro       | ✅ 原生支持    | ⚠️ 需要兼容层转换 Google 格式 → OpenAI 格式    |
+| Gemini 2.5 Flash     | ✅ 原生支持    | ⚠️ 需要兼容层转换                              |
 
 **结论**：Claude 和 Gemini 本身都支持 tool_call，但它们的 API 格式与 OpenAI 不同。你的 sub2api 网关需要承担**格式转换**的职责——将 codex 发出的 OpenAI Chat Completions 格式请求，转换为 Claude/Gemini 各自的 API 格式，并将响应转换回来。这正是 sub2api 已经在做的事情。
 
@@ -210,6 +212,7 @@ codex 发出请求 → 模型返回 tool_call（调用文件读写/bash等工具
 ```
 
 sub2api 对 Anthropic 的兼容层需要处理：
+
 - `tools[].function.parameters` → `tools[].input_schema`
 - `tool_calls` → `tool_use` 内容块
 - `tool` 角色消息 → Anthropic 的 `tool_result` 格式
@@ -298,6 +301,7 @@ sub2api 对 Anthropic 的兼容层需要处理：
 ```
 
 **这个架构的优点**：
+
 - ai-engine 统一使用 `wire_api = "responses"`，无需针对模型做任何区分
 - sub2api 后端自动判断上游能力，选择实际调用 `/v1/responses` 还是 `/v1/chat/completions`，对 codex 侧完全透明
 - 新增模型只需要在 sub2api 管理后台加一个渠道，IDE 客户端和引擎无需任何改动
@@ -315,17 +319,17 @@ sub2api 对 Anthropic 的兼容层需要处理：
 
 interface EngineSessionOptions {
   projectPath: string;
-  modelId: string;        // 用户选择的模型，如 "claude-sonnet-4-5"
-  jwt: string;            // 用户的 JWT（作为 API Key）
-  sessionId?: string;     // 可选，恢复历史会话
+  modelId: string; // 用户选择的模型，如 "claude-sonnet-4-5"
+  jwt: string; // 用户的 JWT（作为 API Key）
+  sessionId?: string; // 可选，恢复历史会话
 }
 
 // sub2api /v1/models 返回的模型结构
 // 注意：sub2api 只返回该 JWT（API Key）所属分组下已配置账号的平台对应模型
 // 示例响应：{"data":[{"id":"gpt-5.4","type":"model","display_name":"gpt-5.4","created_at":"..."}],"object":"list"}
 interface Sub2APIModel {
-  id: string;           // 模型 ID，直接用于请求，如 "gpt-5.4"
-  type: string;         // 固定为 "model"
+  id: string; // 模型 ID，直接用于请求，如 "gpt-5.4"
+  type: string; // 固定为 "model"
   display_name: string; // 显示名称
   created_at: string;
 }
@@ -334,23 +338,23 @@ interface Sub2APIModel {
 interface ModelConfig {
   modelId: string;
   displayName: string;
-  provider: 'openai' | 'anthropic' | 'google' | 'unknown';
+  provider: "openai" | "anthropic" | "google" | "unknown";
   contextWindow: number;
 }
 
 // 根据模型 ID 前缀推断 provider 和 context_window
 // sub2api 不返回这些信息，需要客户端自行推断（或由你在 sub2api 二次开发中扩展接口）
-function inferModelMeta(modelId: string): Omit<ModelConfig, 'modelId' | 'displayName'> {
-  if (modelId.startsWith('claude-')) {
-    return { provider: 'anthropic', contextWindow: 200_000 };
+function inferModelMeta(modelId: string): Omit<ModelConfig, "modelId" | "displayName"> {
+  if (modelId.startsWith("claude-")) {
+    return { provider: "anthropic", contextWindow: 200_000 };
   }
-  if (modelId.startsWith('gemini-')) {
-    return { provider: 'google', contextWindow: 1_000_000 };
+  if (modelId.startsWith("gemini-")) {
+    return { provider: "google", contextWindow: 1_000_000 };
   }
-  if (modelId.startsWith('gpt-') || modelId.startsWith('o1') || modelId.startsWith('o3')) {
-    return { provider: 'openai', contextWindow: 128_000 };
+  if (modelId.startsWith("gpt-") || modelId.startsWith("o1") || modelId.startsWith("o3")) {
+    return { provider: "openai", contextWindow: 128_000 };
   }
-  return { provider: 'unknown', contextWindow: 128_000 };
+  return { provider: "unknown", contextWindow: 128_000 };
 }
 
 // 运行时缓存，避免每次启动都重新请求
@@ -385,7 +389,11 @@ async function fetchAvailableModels(jwt: string, gatewayUrl: string): Promise<Mo
 }
 
 // 验证模型 ID 是否在可用列表中（启动引擎前校验）
-async function isModelAvailable(modelId: string, jwt: string, gatewayUrl: string): Promise<boolean> {
+async function isModelAvailable(
+  modelId: string,
+  jwt: string,
+  gatewayUrl: string,
+): Promise<boolean> {
   try {
     const models = await fetchAvailableModels(jwt, gatewayUrl);
     return models.some((m) => m.modelId === modelId);
@@ -396,38 +404,48 @@ async function isModelAvailable(modelId: string, jwt: string, gatewayUrl: string
 }
 
 class EngineManager {
-  private readonly GATEWAY_URL = 'https://api.yourservice.com/v1';
-  private readonly JWT_ENV_KEY = 'MYIDE_JWT'; // codex 从这个环境变量读取 JWT
+  private readonly GATEWAY_URL = "https://api.yourservice.com/v1";
+  private readonly JWT_ENV_KEY = "MYIDE_JWT"; // codex 从这个环境变量读取 JWT
 
   private buildEngineArgs(options: EngineSessionOptions, modelMeta: ModelConfig): string[] {
     const { modelId, sessionId } = options;
 
     // 基础配置参数
     const args: string[] = [
-      'serve',
-      '--no-load-config',
+      "serve",
+      "--no-load-config",
       // 核心模型配置
-      '--config', `model="${modelId}"`,
-      '--config', `model_provider="mygateway"`,
+      "--config",
+      `model="${modelId}"`,
+      "--config",
+      `model_provider="mygateway"`,
       // 自定义 provider 配置（所有模型都用同一个 mygateway，统一走 sub2api）
-      '--config', `model_providers.mygateway.name="MyIDE Gateway"`,
-      '--config', `model_providers.mygateway.base_url="${this.GATEWAY_URL}"`,
-      '--config', `model_providers.mygateway.env_key="${this.JWT_ENV_KEY}"`,
-      '--config', `model_providers.mygateway.wire_api="responses"`,
+      "--config",
+      `model_providers.mygateway.name="MyIDE Gateway"`,
+      "--config",
+      `model_providers.mygateway.base_url="${this.GATEWAY_URL}"`,
+      "--config",
+      `model_providers.mygateway.env_key="${this.JWT_ENV_KEY}"`,
+      "--config",
+      `model_providers.mygateway.wire_api="responses"`,
       // ↑ 统一使用 responses；sub2api 后端自动适配上游（/v1/responses 或 /v1/chat/completions）
-      '--config', `model_providers.mygateway.requires_openai_auth=true`,
+      "--config",
+      `model_providers.mygateway.requires_openai_auth=true`,
       // 安全配置
-      '--config', `shell_environment_policy.include_only=["PATH","HOME","LANG","TERM"]`,
-      '--config', `windows.sandbox="unelevated"`,
-      '--config', `approval_policy="on-request"`,
+      "--config",
+      `shell_environment_policy.include_only=["PATH","HOME","LANG","TERM"]`,
+      "--config",
+      `windows.sandbox="unelevated"`,
+      "--config",
+      `approval_policy="on-request"`,
     ];
 
     // 注入模型上下文窗口大小（避免 codex 使用错误的默认值）
-    args.push('--config', `model_context_window=${modelMeta.contextWindow}`);
+    args.push("--config", `model_context_window=${modelMeta.contextWindow}`);
 
     // 如果是恢复历史会话
     if (sessionId) {
-      args.push('--session', sessionId);
+      args.push("--session", sessionId);
     }
 
     return args;
@@ -440,7 +458,9 @@ class EngineManager {
     const models = await fetchAvailableModels(jwt, this.GATEWAY_URL);
     const modelMeta = models.find((m) => m.modelId === modelId);
     if (!modelMeta) {
-      throw new Error(`Model "${modelId}" is not available for your account. Available: ${models.map(m => m.modelId).join(', ')}`);
+      throw new Error(
+        `Model "${modelId}" is not available for your account. Available: ${models.map((m) => m.modelId).join(", ")}`,
+      );
     }
 
     const enginePath = engineUpdater.getActiveEnginePath();
@@ -454,16 +474,16 @@ class EngineManager {
         // 白名单环境变量
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        LANG: process.env.LANG ?? 'en_US.UTF-8',
-        TERM: 'xterm-256color',
+        LANG: process.env.LANG ?? "en_US.UTF-8",
+        TERM: "xterm-256color",
         // CODEX_HOME 隔离：每个用户一个独立目录
-        CODEX_HOME: path.join(app.getPath('userData'), 'agent-data'),
+        CODEX_HOME: path.join(app.getPath("userData"), "agent-data"),
         // JWT 作为 API Key（sub2api 凭此识别用户和分组）
         [this.JWT_ENV_KEY]: jwt,
         // 不传 OPENAI_API_KEY 和 OPENAI_BASE_URL！
         // 这些都通过 --config 参数注入，更安全
       },
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     return new SessionHandle(child, options);
@@ -489,12 +509,12 @@ class SessionManager {
   setNextModel(modelId: string) {
     this.pendingModelId = modelId;
     // 通知前端
-    notifyFrontend({ type: 'model:queued', modelId });
+    notifyFrontend({ type: "model:queued", modelId });
   }
 
   // 新建会话时使用 pendingModelId
   async createSession(projectPath: string, jwt: string): Promise<SessionHandle> {
-    const modelId = this.pendingModelId ?? userPrefs.get('defaultModelId') ?? 'claude-sonnet-4-5';
+    const modelId = this.pendingModelId ?? userPrefs.get("defaultModelId") ?? "claude-sonnet-4-5";
     this.pendingModelId = null;
 
     return engineManager.startSession({ projectPath, modelId, jwt });
@@ -510,12 +530,13 @@ async function switchModelLive(newModelId: string, engineProcess: ChildProcess):
   // 注意：这依赖 codex app-server 支持运行时配置更新
   // 如果不支持，会报错，需要回退到方式 A
   try {
-    const msg = JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'config/update',
-      params: { model: newModelId },
-      id: nextId(),
-    }) + '\n';
+    const msg =
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "config/update",
+        params: { model: newModelId },
+        id: nextId(),
+      }) + "\n";
     engineProcess.stdin?.write(msg);
     return true;
   } catch {
@@ -536,53 +557,56 @@ async function switchModelLive(newModelId: string, engineProcess: ChildProcess):
 // 获取可用模型列表
 // 直接调用 sub2api 标准接口 GET /v1/models
 // sub2api 根据 JWT 所属分组的平台配置，返回该分组下有效账号所支持的模型
-ipcMain.handle('models:list', async (_event) => {
+ipcMain.handle("models:list", async (_event) => {
   const jwt = authStore.getJwt();
-  if (!jwt) throw new Error('Not authenticated');
+  if (!jwt) throw new Error("Not authenticated");
 
   try {
     const models = await fetchAvailableModels(jwt, GATEWAY_URL);
     return models;
   } catch (err) {
-    logger.error('models:list failed', { error: err });
-    throw new Error('无法获取模型列表，请检查网络连接');
+    logger.error("models:list failed", { error: err });
+    throw new Error("无法获取模型列表，请检查网络连接");
   }
 });
 
 // 创建新会话（带模型选择）
-ipcMain.handle('session:create', async (_event, { projectPath, modelId }: { projectPath: string; modelId: string }) => {
-  // 路径安全校验
-  if (typeof projectPath !== 'string' || !path.isAbsolute(projectPath)) {
-    throw new Error('Invalid projectPath');
-  }
-  const normalized = path.normalize(projectPath);
-  if (normalized.includes('..')) throw new Error('Path traversal detected');
+ipcMain.handle(
+  "session:create",
+  async (_event, { projectPath, modelId }: { projectPath: string; modelId: string }) => {
+    // 路径安全校验
+    if (typeof projectPath !== "string" || !path.isAbsolute(projectPath)) {
+      throw new Error("Invalid projectPath");
+    }
+    const normalized = path.normalize(projectPath);
+    if (normalized.includes("..")) throw new Error("Path traversal detected");
 
-  // modelId 格式校验（防止注入 --config 参数）
-  if (typeof modelId !== 'string' || !/^[\w.-]+$/.test(modelId)) {
-    throw new Error('Invalid modelId format');
-  }
+    // modelId 格式校验（防止注入 --config 参数）
+    if (typeof modelId !== "string" || !/^[\w.-]+$/.test(modelId)) {
+      throw new Error("Invalid modelId format");
+    }
 
-  const jwt = authStore.getJwt();
-  if (!jwt) throw new Error('Not authenticated');
+    const jwt = authStore.getJwt();
+    if (!jwt) throw new Error("Not authenticated");
 
-  // 注意：模型可用性验证在 engineManager.startSession 内部完成
-  // （内部会调用 fetchAvailableModels 对比列表）
-  const session = await engineManager.startSession({
-    projectPath: normalized,
-    modelId,
-    jwt,
-  });
+    // 注意：模型可用性验证在 engineManager.startSession 内部完成
+    // （内部会调用 fetchAvailableModels 对比列表）
+    const session = await engineManager.startSession({
+      projectPath: normalized,
+      modelId,
+      jwt,
+    });
 
-  // 持久化用户的模型选择
-  userPrefs.set('lastUsedModelId', modelId);
+    // 持久化用户的模型选择
+    userPrefs.set("lastUsedModelId", modelId);
 
-  return { sessionId: session.id, modelId };
-});
+    return { sessionId: session.id, modelId };
+  },
+);
 
 // 获取用户上次使用的模型（用于默认选中）
-ipcMain.handle('models:getLastUsed', async (_event) => {
-  const saved = userPrefs.get('lastUsedModelId') as string | undefined;
+ipcMain.handle("models:getLastUsed", async (_event) => {
+  const saved = userPrefs.get("lastUsedModelId") as string | undefined;
 
   // 验证保存的模型是否仍然可用（分组/账号状态可能已变化）
   if (saved) {
@@ -599,7 +623,9 @@ ipcMain.handle('models:getLastUsed', async (_event) => {
     try {
       const models = await fetchAvailableModels(jwt, GATEWAY_URL);
       return models[0]?.modelId ?? null;
-    } catch { /* 忽略 */ }
+    } catch {
+      /* 忽略 */
+    }
   }
   return null;
 });
@@ -624,19 +650,19 @@ sub2api 需要正确配置各模型的上游渠道，并处理格式转换。这
 # 渠道 1：Claude 系列（Anthropic 格式）
 channel_anthropic:
   name: "我的 Claude 反代"
-  type: anthropic              # sub2api 会自动处理 OpenAI→Anthropic 格式转换
+  type: anthropic # sub2api 会自动处理 OpenAI→Anthropic 格式转换
   base_url: "https://your-claude-proxy.com"
   api_key: "${CLAUDE_API_KEY}"
   models:
     - claude-sonnet-4-5
-    - claude-sonnet-4-5-20251001  # model 别名映射
+    - claude-sonnet-4-5-20251001 # model 别名映射
     - claude-opus-4
     - claude-haiku-4-5
 
 # 渠道 2：Gemini 系列（Google 格式）
 channel_gemini:
   name: "我的 Gemini 反代"
-  type: gemini                 # sub2api 会自动处理 OpenAI→Gemini 格式转换
+  type: gemini # sub2api 会自动处理 OpenAI→Gemini 格式转换
   base_url: "https://your-gemini-proxy.com"
   api_key: "${GEMINI_API_KEY}"
   models:
@@ -647,7 +673,7 @@ channel_gemini:
 # 渠道 3：OpenAI 系列（直接透传）
 channel_openai:
   name: "我的 OpenAI 反代"
-  type: openai                 # 直接透传，无需格式转换
+  type: openai # 直接透传，无需格式转换
   base_url: "https://your-openai-proxy.com"
   api_key: "${OPENAI_API_KEY}"
   models:
@@ -883,7 +909,7 @@ export function ModelSelector() {
 
 ```typescript
 // apps/web/src/stores/sessionStore.ts
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface SessionStore {
   currentModelId: string;
@@ -892,7 +918,7 @@ interface SessionStore {
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
-  currentModelId: 'claude-sonnet-4-5', // 默认模型
+  currentModelId: "claude-sonnet-4-5", // 默认模型
 
   setCurrentModel: (modelId: string) => {
     set({ currentModelId: modelId });
@@ -1022,13 +1048,13 @@ MYIDE_JWT="your-jwt-here" \
 
 ## 9.2 常见问题排查
 
-| 现象 | 可能原因 | 排查方向 |
-|------|---------|---------|
-| Claude 响应正常但没有 tool_call | sub2api 的 Anthropic 格式转换有问题 | 直接用 curl 测试 sub2api 接口，检查 `choices[0].message.tool_calls` |
-| Gemini 返回 400 错误 | 模型名不对，或 sub2api 的 Gemini 渠道未配置 | 检查 sub2api 管理后台，确认 gemini 渠道存在且模型名映射正确 |
-| ai-engine 启动后立即退出 | --config 参数格式错误，或 JWT 读取失败 | 检查环境变量 MYIDE_JWT 是否传入，检查 --config 引号是否正确 |
-| 模型选择器为空 | sub2api 的 /ide/api/plan 接口报错 | 检查 JWT 是否有效，检查 sub2api 的套餐配置 |
-| 切换模型后还是用旧模型 | 会话没有重新创建，还在复用旧的 ai-engine 进程 | 确认切换模型后触发了新会话创建而不是复用旧进程 |
+| 现象                            | 可能原因                                      | 排查方向                                                            |
+| ------------------------------- | --------------------------------------------- | ------------------------------------------------------------------- |
+| Claude 响应正常但没有 tool_call | sub2api 的 Anthropic 格式转换有问题           | 直接用 curl 测试 sub2api 接口，检查 `choices[0].message.tool_calls` |
+| Gemini 返回 400 错误            | 模型名不对，或 sub2api 的 Gemini 渠道未配置   | 检查 sub2api 管理后台，确认 gemini 渠道存在且模型名映射正确         |
+| ai-engine 启动后立即退出        | --config 参数格式错误，或 JWT 读取失败        | 检查环境变量 MYIDE_JWT 是否传入，检查 --config 引号是否正确         |
+| 模型选择器为空                  | sub2api 的 /ide/api/plan 接口报错             | 检查 JWT 是否有效，检查 sub2api 的套餐配置                          |
+| 切换模型后还是用旧模型          | 会话没有重新创建，还在复用旧的 ai-engine 进程 | 确认切换模型后触发了新会话创建而不是复用旧进程                      |
 
 ---
 
@@ -1036,16 +1062,16 @@ MYIDE_JWT="your-jwt-here" \
 
 ## 工作量估算
 
-| 任务 | 位置 | 预计工时 | 说明 |
-|------|------|---------|------|
-| EngineManager 增加 modelId 参数 | apps/server | 0.5天 | 主要是重构现有的 spawn 调用 |
-| buildEngineArgs() 函数实现 | apps/server | 0.5天 | 生成多模型 --config 参数 |
-| IPC 接口扩展（models:list / session:create） | apps/server | 0.5天 | 新增 handler |
-| preload.ts 暴露新接口 | apps/desktop | 0.5天 | 白名单更新 |
-| 前端模型选择器组件 | apps/web | 1天 | 含分组、持久化、用量显示 |
-| sub2api 管理后台配置各渠道 | sub2api 后台 | 0.5天 | 纯配置操作，无代码 |
-| 验证测试（三套模型全部验证） | 全栈 | 1天 | 按验证清单逐项测试 |
-| **合计** | | **约 5 个工作日** | |
+| 任务                                         | 位置         | 预计工时          | 说明                        |
+| -------------------------------------------- | ------------ | ----------------- | --------------------------- |
+| EngineManager 增加 modelId 参数              | apps/server  | 0.5天             | 主要是重构现有的 spawn 调用 |
+| buildEngineArgs() 函数实现                   | apps/server  | 0.5天             | 生成多模型 --config 参数    |
+| IPC 接口扩展（models:list / session:create） | apps/server  | 0.5天             | 新增 handler                |
+| preload.ts 暴露新接口                        | apps/desktop | 0.5天             | 白名单更新                  |
+| 前端模型选择器组件                           | apps/web     | 1天               | 含分组、持久化、用量显示    |
+| sub2api 管理后台配置各渠道                   | sub2api 后台 | 0.5天             | 纯配置操作，无代码          |
+| 验证测试（三套模型全部验证）                 | 全栈         | 1天               | 按验证清单逐项测试          |
+| **合计**                                     |              | **约 5 个工作日** |                             |
 
 ## 实施顺序
 
@@ -1097,4 +1123,4 @@ sandbox = "unelevated"                         # Windows 沙箱策略
 
 ---
 
-*本文档覆盖了从原理到实现的完整路径。核心要点：一个 ai-engine 二进制，通过 `--config` 动态注入模型参数，sub2api 承担所有协议转换。整个改动约 5 个工作日可完成。*
+_本文档覆盖了从原理到实现的完整路径。核心要点：一个 ai-engine 二进制，通过 `--config` 动态注入模型参数，sub2api 承担所有协议转换。整个改动约 5 个工作日可完成。_

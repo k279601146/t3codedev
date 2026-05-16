@@ -114,6 +114,7 @@ import { deriveLatestContextWindowSnapshot } from "../../lib/contextWindow";
 import { formatProviderSkillDisplayName } from "../../providerSkillPresentation";
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { getPrimaryEnvironmentConnection } from "../../environments/runtime";
 
 const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
@@ -2374,6 +2375,11 @@ export const ChatComposer = memo(
                       : {})}
                     onOpenChange={(open) => {
                       setIsComposerModelPickerOpen(open);
+                      if (open) {
+                        void getPrimaryEnvironmentConnection()
+                          .client.server.refreshProviders()
+                          .catch(() => undefined);
+                      }
                     }}
                     onInstanceModelChange={onProviderModelSelect}
                   />

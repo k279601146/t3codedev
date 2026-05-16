@@ -85,9 +85,7 @@ export const make = Effect.gen(function* () {
       ...(options?.allowNonZeroExit !== undefined
         ? { allowNonZeroExit: options.allowNonZeroExit }
         : {}),
-      ...(options?.maxOutputBytes !== undefined
-        ? { maxOutputBytes: options.maxOutputBytes }
-        : {}),
+      ...(options?.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
     });
   }
 
@@ -111,34 +109,34 @@ export const make = Effect.gen(function* () {
       spawnCwd: repoDir,
     });
 
-    yield* gitShadow("ShadowGitCheckpoints.config.worktree", cwd, [
-      "config", "core.worktree", cwd,
-    ]);
+    yield* gitShadow("ShadowGitCheckpoints.config.worktree", cwd, ["config", "core.worktree", cwd]);
     yield* gitShadow("ShadowGitCheckpoints.config.user.name", cwd, [
-      "config", "user.name", "T3 Checkpointer",
+      "config",
+      "user.name",
+      "T3 Checkpointer",
     ]);
     yield* gitShadow("ShadowGitCheckpoints.config.user.email", cwd, [
-      "config", "user.email", "checkpointer@noreply",
+      "config",
+      "user.email",
+      "checkpointer@noreply",
     ]);
 
     const excludesDir = pathService.join(gitDir, "info");
     yield* fileSystem.makeDirectory(excludesDir, { recursive: true });
-    yield* fileSystem.writeFileString(
-      pathService.join(excludesDir, "exclude"),
-      DEFAULT_EXCLUDES,
-    );
+    yield* fileSystem.writeFileString(pathService.join(excludesDir, "exclude"), DEFAULT_EXCLUDES);
   });
 
   const resolve: ShadowGitCheckpointsShape["resolve"] = (cwd) =>
     Effect.gen(function* () {
       yield* ensureShadowRepo(cwd).pipe(
-        Effect.mapError((error) =>
-          new VcsProcessSpawnError({
-            operation: "ShadowGitCheckpoints.ensureShadowRepo",
-            command: "shadow-git-init",
-            cwd,
-            cause: error,
-          }),
+        Effect.mapError(
+          (error) =>
+            new VcsProcessSpawnError({
+              operation: "ShadowGitCheckpoints.ensureShadowRepo",
+              command: "shadow-git-init",
+              cwd,
+              cause: error,
+            }),
         ),
       );
 
@@ -168,12 +166,9 @@ export const make = Effect.gen(function* () {
               env: commitEnv,
             });
 
-            const writeTreeResult = yield* gitShadow(
-              operation,
-              input.cwd,
-              ["write-tree"],
-              { env: commitEnv },
-            );
+            const writeTreeResult = yield* gitShadow(operation, input.cwd, ["write-tree"], {
+              env: commitEnv,
+            });
             const treeOid = writeTreeResult.stdout.trim();
             if (treeOid.length === 0) {
               return yield* new VcsProcessExitError({
@@ -203,11 +198,7 @@ export const make = Effect.gen(function* () {
               });
             }
 
-            yield* gitShadow(operation, input.cwd, [
-              "update-ref",
-              input.checkpointRef,
-              commitOid,
-            ]);
+            yield* gitShadow(operation, input.cwd, ["update-ref", input.checkpointRef, commitOid]);
           }).pipe(Effect.ensuring(cleanupTempIndex));
         }),
 
@@ -222,17 +213,22 @@ export const make = Effect.gen(function* () {
         restoreCheckpoint: Effect.fn("ShadowGitCheckpoints.restoreCheckpoint")(function* (input) {
           const operation = "ShadowGitCheckpoints.restoreCheckpoint";
 
-          const verifyResult = yield* gitShadow(operation, input.cwd, [
-            "rev-parse", "--quiet", "--verify", input.checkpointRef,
-          ], { allowNonZeroExit: true });
+          const verifyResult = yield* gitShadow(
+            operation,
+            input.cwd,
+            ["rev-parse", "--quiet", "--verify", input.checkpointRef],
+            { allowNonZeroExit: true },
+          );
 
-          let commitRef: string | null =
-            verifyResult.exitCode === 0 ? input.checkpointRef : null;
+          let commitRef: string | null = verifyResult.exitCode === 0 ? input.checkpointRef : null;
 
           if (!commitRef && input.fallbackToHead === true) {
-            const headResult = yield* gitShadow(operation, input.cwd, [
-              "rev-parse", "--quiet", "--verify", "HEAD",
-            ], { allowNonZeroExit: true });
+            const headResult = yield* gitShadow(
+              operation,
+              input.cwd,
+              ["rev-parse", "--quiet", "--verify", "HEAD"],
+              { allowNonZeroExit: true },
+            );
             if (headResult.exitCode === 0) {
               commitRef = headResult.stdout.trim();
             }
@@ -243,7 +239,13 @@ export const make = Effect.gen(function* () {
           }
 
           yield* gitShadow(operation, input.cwd, [
-            "restore", "--source", commitRef, "--worktree", "--staged", "--", ".",
+            "restore",
+            "--source",
+            commitRef,
+            "--worktree",
+            "--staged",
+            "--",
+            ".",
           ]);
           yield* gitShadow(operation, input.cwd, ["clean", "-fd", "--", "."]);
 
@@ -255,15 +257,21 @@ export const make = Effect.gen(function* () {
 
           let fromRevision: string = input.fromCheckpointRef;
           if (input.fallbackFromToHead === true) {
-            const resolvedFrom = yield* gitShadow(operation, input.cwd, [
-              "rev-parse", "--quiet", "--verify", input.fromCheckpointRef,
-            ], { allowNonZeroExit: true });
+            const resolvedFrom = yield* gitShadow(
+              operation,
+              input.cwd,
+              ["rev-parse", "--quiet", "--verify", input.fromCheckpointRef],
+              { allowNonZeroExit: true },
+            );
             if (resolvedFrom.exitCode === 0) {
               fromRevision = resolvedFrom.stdout.trim();
             } else {
-              const headResult = yield* gitShadow(operation, input.cwd, [
-                "rev-parse", "--quiet", "--verify", "HEAD",
-              ], { allowNonZeroExit: true });
+              const headResult = yield* gitShadow(
+                operation,
+                input.cwd,
+                ["rev-parse", "--quiet", "--verify", "HEAD"],
+                { allowNonZeroExit: true },
+              );
               if (headResult.exitCode !== 0) {
                 return yield* new VcsProcessExitError({
                   operation,
@@ -277,16 +285,21 @@ export const make = Effect.gen(function* () {
             }
           }
 
-          const result = yield* gitShadow(operation, input.cwd, [
-            "diff",
-            "--patch",
-            "--no-color",
-            "--no-ext-diff",
-            "--no-textconv",
-            ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
-            `${fromRevision}^{commit}`,
-            `${input.toCheckpointRef}^{commit}`,
-          ], { allowNonZeroExit: true, maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES });
+          const result = yield* gitShadow(
+            operation,
+            input.cwd,
+            [
+              "diff",
+              "--patch",
+              "--no-color",
+              "--no-ext-diff",
+              "--no-textconv",
+              ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+              `${fromRevision}^{commit}`,
+              `${input.toCheckpointRef}^{commit}`,
+            ],
+            { allowNonZeroExit: true, maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES },
+          );
 
           if (result.exitCode !== 0) {
             return yield* new VcsProcessExitError({

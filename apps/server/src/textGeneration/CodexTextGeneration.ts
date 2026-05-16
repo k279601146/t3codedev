@@ -281,12 +281,12 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
             detail: "Commercial gateway authentication token missing (not signed in).",
           });
         }
- 
+
         const url = new URL(
           "chat/completions",
           gatewayBaseUrl.endsWith("/") ? gatewayBaseUrl : `${gatewayBaseUrl}/`,
         ).toString();
- 
+
         const response = yield* Effect.tryPromise({
           try: (signal) =>
             fetch(url, {
@@ -316,7 +316,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               cause,
             }),
         });
- 
+
         if (!response.ok) {
           const body = yield* Effect.tryPromise({
             try: () => response.text(),
@@ -327,7 +327,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
             detail: `Gateway returned HTTP ${response.status}: ${body}`,
           });
         }
- 
+
         const payload = yield* Effect.tryPromise({
           try: () => response.json() as Promise<any>,
           catch: (cause) =>
@@ -337,7 +337,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               cause,
             }),
         });
- 
+
         const content = payload.choices?.[0]?.message?.content;
         if (typeof content !== "string") {
           return yield* new TextGenerationError({
@@ -345,7 +345,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
             detail: "Gateway response missing content.",
           });
         }
- 
+
         yield* fileSystem.writeFileString(outputPath, content).pipe(
           Effect.mapError(
             (cause) =>

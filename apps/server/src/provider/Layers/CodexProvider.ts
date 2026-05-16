@@ -131,6 +131,7 @@ const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels
       fetch(url, {
         headers: {
           accept: "application/json",
+          "cache-control": "no-cache",
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
         signal,

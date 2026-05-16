@@ -329,10 +329,12 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
-      Layer.provideMerge(CheckpointStoreLive.pipe(
-        Layer.provide(VcsDriverRegistry.layer),
-        Layer.provide(ShadowGitCheckpoints.layer),
-      )),
+      Layer.provideMerge(
+        CheckpointStoreLive.pipe(
+          Layer.provide(VcsDriverRegistry.layer),
+          Layer.provide(ShadowGitCheckpoints.layer),
+        ),
+      ),
       Layer.provideMerge(
         WorkspaceEntriesLive.pipe(
           Layer.provide(WorkspacePathsLive),

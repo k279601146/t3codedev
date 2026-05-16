@@ -21,7 +21,6 @@ T3 Code 正在从一个简单的 Web GUI 演进为一款 **商业化 AI 编程�
 3. **高可靠性 (Reliability)**：具备进程崩溃自动恢复、网络抖动重试机制。
 4. **易维护性 (Maintainability)**：坚持高内聚低耦合，严禁在 `codex-core` 等核心库堆砌零散业务逻辑。
 
-
 ## Maintainability
 
 Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
@@ -54,9 +53,6 @@ Docs:
 - Codex-Monitor (Tauri, feature-complete, strong reference implementation): https://github.com/Dimillian/CodexMonitor
 
 Use these as implementation references when designing protocol handling, UX flows, and operational safeguards.
-
-
-
 
 ## 4. 安全与认证准则 (Security & Auth)
 

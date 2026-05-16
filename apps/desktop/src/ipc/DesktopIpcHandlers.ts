@@ -16,6 +16,7 @@ import {
   setSavedEnvironmentRegistry,
   setSavedEnvironmentSecret,
 } from "./methods/savedEnvironments.ts";
+import { listGatewayModels, getLastUsedModel, setLastUsedModel } from "./methods/gatewayModels.ts";
 import {
   getAdvertisedEndpoints,
   getServerExposureState,
@@ -67,6 +68,9 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(getSavedEnvironmentSecret);
   yield* ipc.handle(setSavedEnvironmentSecret);
   yield* ipc.handle(removeSavedEnvironmentSecret);
+  yield* ipc.handle(listGatewayModels);
+  yield* ipc.handle(getLastUsedModel);
+  yield* ipc.handle(setLastUsedModel);
 
   yield* ipc.handle(discoverSshHosts);
   yield* ipc.handle(ensureSshEnvironment);

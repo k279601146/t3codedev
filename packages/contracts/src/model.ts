@@ -201,3 +201,20 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
   [CURSOR_DRIVER_KIND]: "Cursor",
   [OPENCODE_DRIVER_KIND]: "OpenCode",
 };
+
+// --- Gateway Models ---
+
+export const GatewayModelEntrySchema = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: Schema.String,
+  provider: Schema.String,
+});
+export type GatewayModelEntrySchema = typeof GatewayModelEntrySchema.Type;
+
+export const GatewayModelListResultSchema = Schema.Array(GatewayModelEntrySchema);
+export type GatewayModelListResultSchema = typeof GatewayModelListResultSchema.Type;
+
+export const SetLastUsedModelInputSchema = Schema.Struct({
+  modelId: TrimmedNonEmptyString,
+});
+export type SetLastUsedModelInputSchema = typeof SetLastUsedModelInputSchema.Type;

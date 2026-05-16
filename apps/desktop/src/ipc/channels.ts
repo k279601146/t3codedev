@@ -39,4 +39,7 @@ export const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-st
 export const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
 export const SET_TAILSCALE_SERVE_ENABLED_CHANNEL = "desktop:set-tailscale-serve-enabled";
 export const GET_ADVERTISED_ENDPOINTS_CHANNEL = "desktop:get-advertised-endpoints";
+export const LIST_GATEWAY_MODELS_CHANNEL = "desktop:list-gateway-models";
+export const GET_LAST_USED_MODEL_CHANNEL = "desktop:get-last-used-model";
+export const SET_LAST_USED_MODEL_CHANNEL = "desktop:set-last-used-model";
 export const SSH_PASSWORD_PROMPT_CANCELLED_RESULT = "ssh-password-prompt-cancelled";
