@@ -83,6 +83,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     include: [
+      "@monaco-editor/react",
       "@pierre/diffs",
       "@pierre/diffs/react",
       "@pierre/diffs/worker/worker.js",
@@ -100,6 +101,7 @@ export default defineConfig({
   },
   resolve: {
     tsconfigPaths: true,
+    dedupe: ["react", "react-dom"],
   },
   server: {
     host: true,
