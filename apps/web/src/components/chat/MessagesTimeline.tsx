@@ -183,12 +183,29 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const rows = useStableRows(rawRows);
 
-  const handleScroll = useCallback(() => {
-    const state = listRef.current?.getState?.();
-    if (state) {
-      onIsAtEndChange(state.isAtEnd);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const getScrollContainer = useCallback(() => {
+    if (scrollContainerRef.current) {
+      return scrollContainerRef.current;
     }
-  }, [listRef, onIsAtEndChange]);
+    if (containerRef.current) {
+      const el = containerRef.current.querySelector(".overflow-y-auto") as HTMLDivElement | null;
+      if (el) {
+        scrollContainerRef.current = el;
+      }
+      return el;
+    }
+    return null;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const target = getScrollContainer();
+    if (!target) return;
+    const isAtEnd = target.scrollHeight - target.scrollTop - target.clientHeight < 10;
+    onIsAtEndChange(isAtEnd);
+  }, [onIsAtEndChange, getScrollContainer]);
 
   const previousRowCountRef = useRef(rows.length);
   useEffect(() => {
@@ -214,8 +231,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       return;
     }
 
-    const listState = listRef.current?.getState?.();
-    if (listState && !listState.isAtEnd) {
+    const scrollEl = getScrollContainer();
+    const isAtEnd = scrollEl
+      ? scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 10
+      : true;
+
+    if (!isAtEnd) {
       onIsAtEndChange(false);
       return;
     }
@@ -226,7 +247,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeTurnInProgress, lastRow, listRef, onIsAtEndChange]);
+  }, [activeTurnInProgress, lastRow, listRef, onIsAtEndChange, getScrollContainer]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -289,21 +310,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx.Provider value={sharedState}>
       <TimelineRowActivityCtx.Provider value={activityState}>
-        <LegendList<MessagesTimelineRow>
-          ref={listRef}
-          data={rows}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          estimatedItemSize={90}
-          initialScrollAtEnd
-          maintainScrollAtEnd
-          maintainScrollAtEndThreshold={0.1}
-          maintainVisibleContentPosition
-          onScroll={handleScroll}
-          className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-5"
-          ListHeaderComponent={TIMELINE_LIST_HEADER}
-          ListFooterComponent={TIMELINE_LIST_FOOTER}
-        />
+        <div ref={containerRef} className="h-full min-h-0 w-full min-w-0 flex-1">
+          <LegendList<MessagesTimelineRow>
+            ref={listRef}
+            data={rows}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            estimatedItemSize={90}
+            initialScrollAtEnd
+            maintainScrollAtEnd
+            maintainScrollAtEndThreshold={0.1}
+            maintainVisibleContentPosition
+            onScroll={handleScroll}
+            className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-5"
+            ListHeaderComponent={TIMELINE_LIST_HEADER}
+            ListFooterComponent={TIMELINE_LIST_FOOTER}
+          />
+        </div>
       </TimelineRowActivityCtx.Provider>
     </TimelineRowCtx.Provider>
   );

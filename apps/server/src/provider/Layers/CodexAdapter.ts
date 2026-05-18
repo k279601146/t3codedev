@@ -1588,6 +1588,20 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       }),
     );
 
+  const isImageMimeType = (mimeType: string): boolean => {
+    const lower = mimeType.toLowerCase();
+    return (
+      lower.startsWith("image/") &&
+      (lower.includes("png") ||
+        lower.includes("jpeg") ||
+        lower.includes("jpg") ||
+        lower.includes("gif") ||
+        lower.includes("webp") ||
+        lower.includes("heic") ||
+        lower.includes("heif"))
+    );
+  };
+
   const resolveAttachment = Effect.fn("resolveAttachment")(function* (
     input: ProviderSendTurnInput,
     attachment: NonNullable<ProviderSendTurnInput["attachments"]>[number],
@@ -1614,10 +1628,19 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           }),
       ),
     );
-    return {
-      type: "image" as const,
-      url: `data:${attachment.mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
-    };
+
+    if (isImageMimeType(attachment.mimeType)) {
+      return {
+        type: "image" as const,
+        url: `data:${attachment.mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+      };
+    } else {
+      return {
+        type: "text" as const,
+        name: attachment.name ?? "attachment",
+        content: Buffer.from(bytes).toString("utf-8"),
+      };
+    }
   });
 
   const sendTurn: CodexAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
@@ -1626,6 +1649,23 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       (attachment) => resolveAttachment(input, attachment),
       { concurrency: 1 },
     );
+
+    const imageAttachments: Array<{ readonly type: "image"; readonly url: string }> = [];
+    let extraTextInput = "";
+
+    for (const attachment of codexAttachments) {
+      if (attachment.type === "image") {
+        imageAttachments.push(attachment);
+      } else if (attachment.type === "text") {
+        const ext = attachment.name.split(".").pop() ?? "";
+        extraTextInput += `\n\n[Attachment: ${attachment.name}]\n\`\`\`${ext}\n${attachment.content}\n\`\`\`\n`;
+      }
+    }
+
+    let finalPrompt = input.input ?? "";
+    if (extraTextInput.length > 0) {
+      finalPrompt = finalPrompt ? `${finalPrompt}${extraTextInput}` : extraTextInput.trim();
+    }
 
     const session = yield* requireSession(input.threadId);
     const reasoningEffort =
@@ -1638,7 +1678,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         : undefined;
     return yield* session.runtime
       .sendTurn({
-        ...(input.input !== undefined ? { input: input.input } : {}),
+        ...(finalPrompt ? { input: finalPrompt } : {}),
         ...(input.modelSelection?.instanceId === boundInstanceId
           ? { model: input.modelSelection.model }
           : {}),
@@ -1649,7 +1689,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           : {}),
         ...(fastMode === true ? { serviceTier: "fast" } : {}),
         ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
-        ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
+        ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}),
       })
       .pipe(Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "turn/start", cause)));
   });

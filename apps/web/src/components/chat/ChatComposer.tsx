@@ -1707,6 +1707,53 @@ export const ChatComposer = memo(
         });
         return;
       }
+      const guessMimeType = (fileName: string): string => {
+        const ext = fileName.split(".").pop()?.toLowerCase();
+        if (!ext) return "application/octet-stream";
+
+        const imageExtensions: Record<string, string> = {
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          gif: "image/gif",
+          webp: "image/webp",
+          bmp: "image/bmp",
+          svg: "image/svg+xml",
+        };
+
+        const textExtensions: Record<string, string> = {
+          txt: "text/plain",
+          php: "text/x-php",
+          py: "text/x-python",
+          js: "text/javascript",
+          jsx: "text/javascript",
+          ts: "text/typescript",
+          tsx: "text/typescript",
+          java: "text/x-java-source",
+          cpp: "text/x-c",
+          c: "text/x-c",
+          h: "text/x-c",
+          go: "text/x-go",
+          html: "text/html",
+          htm: "text/html",
+          css: "text/css",
+          json: "application/json",
+          xml: "application/xml",
+          md: "text/markdown",
+          markdown: "text/markdown",
+          yaml: "text/yaml",
+          yml: "text/yaml",
+          sh: "text/plain",
+          bash: "text/plain",
+          rs: "text/plain",
+          sql: "text/plain",
+        };
+
+        if (ext in imageExtensions) return imageExtensions[ext]!;
+        if (ext in textExtensions) return textExtensions[ext]!;
+        return "application/octet-stream";
+      };
+
       const nextAttachments: ComposerImageAttachment[] = [];
       let nextAttachmentCount = composerImagesRef.current.length;
       let error: string | null = null;
@@ -1719,12 +1766,13 @@ export const ChatComposer = memo(
           error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`;
           break;
         }
-        const isImage = file.type.startsWith("image/");
+        const guessedMime = file.type || guessMimeType(file.name);
+        const isImage = guessedMime.startsWith("image/");
         nextAttachments.push({
           type: isImage ? "image" : "file",
           id: randomUUID(),
           name: file.name || (isImage ? "image" : "file"),
-          mimeType: file.type || "application/octet-stream",
+          mimeType: guessedMime,
           sizeBytes: file.size,
           ...(isImage ? { previewUrl: URL.createObjectURL(file) } : {}),
           file,
