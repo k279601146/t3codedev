@@ -1,0 +1,26 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="96" fill="#F7F0E4"/>
+  <ellipse cx="512" cy="682" rx="306" ry="218" fill="#D99154"/>
+  <path d="M260 454L220 244L392 354L260 454Z" fill="#D99154"/>
+  <path d="M764 454L804 244L632 354L764 454Z" fill="#D99154"/>
+  <path d="M274 392L252 292L336 348L274 392Z" fill="#F2B487"/>
+  <path d="M750 392L772 292L688 348L750 392Z" fill="#F2B487"/>
+  <circle cx="512" cy="494" r="282" fill="#E49B61"/>
+  <path d="M314 340C362 252 456 206 512 206C568 206 662 252 710 340C652 302 586 282 512 282C438 282 372 302 314 340Z" fill="#B86F3F" opacity="0.28"/>
+  <path d="M362 526C386 498 430 498 454 526" stroke="#5A3325" stroke-width="22" stroke-linecap="round"/>
+  <path d="M570 526C594 498 638 498 662 526" stroke="#5A3325" stroke-width="22" stroke-linecap="round"/>
+  <path d="M512 568C478 568 452 586 452 608C452 632 478 650 512 650C546 650 572 632 572 608C572 586 546 568 512 568Z" fill="#5A3325"/>
+  <path d="M512 646V686" stroke="#5A3325" stroke-width="16" stroke-linecap="round"/>
+  <path d="M512 686C486 716 446 722 420 696" stroke="#5A3325" stroke-width="16" stroke-linecap="round"/>
+  <path d="M512 686C538 716 578 722 604 696" stroke="#5A3325" stroke-width="16" stroke-linecap="round"/>
+  <path d="M372 604C314 584 258 580 198 594" stroke="#5A3325" stroke-width="12" stroke-linecap="round"/>
+  <path d="M374 646C316 652 266 674 214 712" stroke="#5A3325" stroke-width="12" stroke-linecap="round"/>
+  <path d="M652 604C710 584 766 580 826 594" stroke="#5A3325" stroke-width="12" stroke-linecap="round"/>
+  <path d="M650 646C708 652 758 674 810 712" stroke="#5A3325" stroke-width="12" stroke-linecap="round"/>
+  <path d="M418 338C446 316 478 304 512 304C546 304 578 316 606 338" stroke="#B86F3F" stroke-width="28" stroke-linecap="round"/>
+  <path d="M308 438C336 410 374 394 416 392" stroke="#B86F3F" stroke-width="24" stroke-linecap="round" opacity="0.55"/>
+  <path d="M716 438C688 410 650 394 608 392" stroke="#B86F3F" stroke-width="24" stroke-linecap="round" opacity="0.55"/>
+  <path d="M404 818C466 850 558 850 620 818" stroke="#B86F3F" stroke-width="26" stroke-linecap="round" opacity="0.35"/>
+  <circle cx="395" cy="574" r="22" fill="#F5C7A2" opacity="0.85"/>
+  <circle cx="629" cy="574" r="22" fill="#F5C7A2" opacity="0.85"/>
+</svg>
