@@ -29,10 +29,10 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  TerminalSquareIcon,
   LoaderCircleIcon,
   type LucideIcon,
   SquarePenIcon,
-  TerminalIcon,
   Undo2Icon,
   WrenchIcon,
   ZapIcon,
@@ -672,7 +672,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
         data-work-group-summary="true"
         onClick={() => setIsExpanded((value) => !value)}
       >
-        <TerminalIcon className="size-3.5 shrink-0 text-[#999999]" />
+        <TerminalSquareIcon className="size-3.5 shrink-0 text-[#999999]" />
         {showLiveScan ? (
           <ShimmerScanText className="min-w-0" durationMs={2000} tone="light">
             {summary.liveLabel}
@@ -1145,12 +1145,12 @@ function workEntryRawCommand(
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
-  if (workEntry.requestKind === "command") return TerminalIcon;
+  if (workEntry.requestKind === "command") return TerminalSquareIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
 
   if (workEntry.itemType === "command_execution" || workEntry.command) {
-    return TerminalIcon;
+    return TerminalSquareIcon;
   }
   if (workEntry.itemType === "file_change" || (workEntry.changedFiles?.length ?? 0) > 0) {
     return SquarePenIcon;

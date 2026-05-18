@@ -9,7 +9,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
-import { DiffIcon, EllipsisIcon, TerminalSquareIcon } from "lucide-react";
+import { PanelRightIcon, EllipsisIcon, TerminalSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -156,7 +156,7 @@ export const ChatHeader = memo(function ChatHeader({
             size="xs"
             disabled={!isGitRepo && !diffOpen}
           >
-            <DiffIcon className="size-3.5" />
+            <PanelRightIcon className="size-3.5" />
           </Toggle>
         }
       />
