@@ -8,6 +8,7 @@
   ExternalLinkIcon,
   FolderPlusIcon,
   LogOutIcon,
+  MessageSquareIcon,
   PanelLeftIcon,
   PinIcon,
   SearchIcon,
@@ -151,7 +152,6 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import {
   getSidebarThreadIdsToPrewarm,
-  getVisibleThreadsForProject,
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   resolveProjectStatusIndicator,
@@ -752,39 +752,6 @@ interface SidebarProjectThreadListProps {
   collapseThreadListForProject: (projectKey: string) => void;
 }
 
-interface SidebarThreadListToggleProps {
-  expanded: boolean;
-  hiddenThreadStatus: ThreadStatusPill | null;
-  onExpand: () => void;
-  onCollapse: () => void;
-}
-
-const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
-  props: SidebarThreadListToggleProps,
-) {
-  const { expanded, hiddenThreadStatus, onExpand, onCollapse } = props;
-  const buttonRender = useMemo(() => <button type="button" />, []);
-
-  return (
-    <SidebarMenuSubItem className="w-full">
-      <SidebarMenuSubButton
-        render={buttonRender}
-        data-thread-selection-safe
-        size="sm"
-        className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
-        onClick={expanded ? onCollapse : onExpand}
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          {!expanded && hiddenThreadStatus ? (
-            <ThreadStatusLabel status={hiddenThreadStatus} compact />
-          ) : null}
-          <span>{expanded ? "收起显示" : "展开显示"}</span>
-        </span>
-      </SidebarMenuSubButton>
-    </SidebarMenuSubItem>
-  );
-});
-
 const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   props: SidebarProjectThreadListProps,
 ) {
@@ -823,6 +790,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     expandThreadListForProject,
     collapseThreadListForProject,
   } = props;
+  const showMoreButtonRender = useMemo(() => <button type="button" />, []);
+  const showLessButtonRender = useMemo(() => <button type="button" />, []);
+
   return (
     <SidebarMenuSub
       ref={attachThreadListAutoAnimateRef}
@@ -872,28 +842,37 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         })}
 
       {projectExpanded && hasOverflowingThreads && !isThreadListExpanded && (
-        <SidebarThreadListToggle
-          expanded={false}
-          hiddenThreadStatus={hiddenThreadStatus}
-          onExpand={() => {
-            expandThreadListForProject(projectKey);
-          }}
-          onCollapse={() => {
-            collapseThreadListForProject(projectKey);
-          }}
-        />
+        <SidebarMenuSubItem className="w-full">
+          <SidebarMenuSubButton
+            render={showMoreButtonRender}
+            data-thread-selection-safe
+            size="sm"
+            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+            onClick={() => {
+              expandThreadListForProject(projectKey);
+            }}
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              {hiddenThreadStatus && <ThreadStatusLabel status={hiddenThreadStatus} compact />}
+              <span>{"\u5c55\u5f00\u663e\u793a"}</span>
+            </span>
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
       )}
       {projectExpanded && hasOverflowingThreads && isThreadListExpanded && (
-        <SidebarThreadListToggle
-          expanded
-          hiddenThreadStatus={hiddenThreadStatus}
-          onExpand={() => {
-            expandThreadListForProject(projectKey);
-          }}
-          onCollapse={() => {
-            collapseThreadListForProject(projectKey);
-          }}
-        />
+        <SidebarMenuSubItem className="w-full">
+          <SidebarMenuSubButton
+            render={showLessButtonRender}
+            data-thread-selection-safe
+            size="sm"
+            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+            onClick={() => {
+              collapseThreadListForProject(projectKey);
+            }}
+          >
+            <span>{"\u6536\u8d77\u663e\u793a"}</span>
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
       )}
     </SidebarMenuSub>
   );
@@ -2617,6 +2596,16 @@ function SidebarSectionTitle({
   );
 }
 
+function isCurrentRouteDraftNewThread(router: ReturnType<typeof useRouter>): boolean {
+  const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
+  const currentRouteTarget = resolveThreadRouteTarget(currentRouteParams);
+  if (currentRouteTarget?.kind !== "draft") {
+    return false;
+  }
+  const draftSession = useComposerDraftStore.getState().getDraftSession(currentRouteTarget.draftId);
+  return draftSession !== null && draftSession.promotedTo == null;
+}
+
 function SidebarNavButton({
   icon: Icon,
   label,
@@ -2696,49 +2685,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((state) => state.setAnchor);
   const confirmThreadArchive = useSettings((s) => s.confirmThreadArchive);
-  const [isGlobalThreadListExpanded, setIsGlobalThreadListExpanded] = useState(false);
-  const sidebarThreadPreviewCount = useSettings((s) => s.sidebarThreadPreviewCount);
-  const threadLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
 
   const globalThreadKeys = useMemo(
     () => globalThreads.map((t) => scopedThreadKey(scopeThreadRef(t.environmentId, t.id))),
     [globalThreads],
-  );
-  const globalThreadVisibility = useMemo(() => {
-    const activeThreadId =
-      routeThreadKey === null
-        ? undefined
-        : (globalThreads.find(
-            (thread) =>
-              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-          )?.id ?? undefined);
-    return getVisibleThreadsForProject({
-      threads: globalThreads,
-      activeThreadId,
-      isThreadListExpanded: isGlobalThreadListExpanded,
-      previewLimit: sidebarThreadPreviewCount,
-    });
-  }, [
-    globalThreads,
-    isGlobalThreadListExpanded,
-    routeThreadKey,
-    sidebarThreadPreviewCount,
-  ]);
-  const hiddenGlobalThreadStatus = useMemo(
-    () =>
-      resolveProjectStatusIndicator(
-        globalThreadVisibility.hiddenThreads.map((thread) => {
-          const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-          const lastVisitedAt = threadLastVisitedAtById[threadKey];
-          return resolveThreadStatusPill({
-            thread: {
-              ...thread,
-              ...(lastVisitedAt ? { lastVisitedAt } : {}),
-            },
-          });
-        }),
-      ),
-    [globalThreadVisibility.hiddenThreads, threadLastVisitedAtById],
   );
 
   const handleGlobalThreadClick = useCallback(
@@ -3236,7 +3186,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           对话
         </SidebarSectionTitle>
         <SidebarMenu ref={attachThreadListAutoAnimateRef}>
-          {globalThreadVisibility.visibleThreads.map((thread) => {
+          {globalThreads.map((thread) => {
             const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
             return (
               <SidebarThreadRow
@@ -3274,18 +3224,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               />
             );
           })}
-          {globalThreadVisibility.hasHiddenThreads ? (
-            <SidebarThreadListToggle
-              expanded={isGlobalThreadListExpanded}
-              hiddenThreadStatus={hiddenGlobalThreadStatus}
-              onExpand={() => {
-                setIsGlobalThreadListExpanded(true);
-              }}
-              onCollapse={() => {
-                setIsGlobalThreadListExpanded(false);
-              }}
-            />
-          ) : null}
         </SidebarMenu>
       </SidebarGroup>
     </SidebarContent>
