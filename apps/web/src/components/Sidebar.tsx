@@ -2718,12 +2718,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       isThreadListExpanded: isGlobalThreadListExpanded,
       previewLimit: sidebarThreadPreviewCount,
     });
-  }, [
-    globalThreads,
-    isGlobalThreadListExpanded,
-    routeThreadKey,
-    sidebarThreadPreviewCount,
-  ]);
+  }, [globalThreads, isGlobalThreadListExpanded, routeThreadKey, sidebarThreadPreviewCount]);
   const hiddenGlobalThreadStatus = useMemo(
     () =>
       resolveProjectStatusIndicator(
@@ -3989,4 +3984,3 @@ export default function Sidebar() {
     </>
   );
 }
-

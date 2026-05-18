@@ -1,4 +1,4 @@
-import {
+﻿import {
   type ChatAttachment,
   CommandId,
   EventId,
@@ -610,8 +610,12 @@ const make = Effect.gen(function* () {
     const cwd = input.worktreePath;
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
-      const { textGenerationModelSelection: modelSelection } =
-        yield* serverSettingsService.getSettings;
+      const thread = yield* resolveThread(input.threadId);
+      let modelSelection = (yield* serverSettingsService.getSettings).textGenerationModelSelection;
+
+      if (thread) {
+        modelSelection = thread.modelSelection;
+      }
 
       const generated = yield* textGeneration.generateBranchName({
         cwd,
@@ -655,8 +659,13 @@ const make = Effect.gen(function* () {
     }) {
       const attachments = input.attachments ?? [];
       yield* Effect.gen(function* () {
-        const { textGenerationModelSelection: modelSelection } =
-          yield* serverSettingsService.getSettings;
+        const thread = yield* resolveThread(input.threadId);
+        let modelSelection = (yield* serverSettingsService.getSettings)
+          .textGenerationModelSelection;
+
+        if (thread) {
+          modelSelection = thread.modelSelection;
+        }
 
         const generated = yield* textGeneration.generateThreadTitle({
           cwd: input.cwd,
@@ -666,8 +675,6 @@ const make = Effect.gen(function* () {
         });
         if (!generated) return;
 
-        const thread = yield* resolveThread(input.threadId);
-        if (!thread) return;
         if (!canReplaceThreadTitle(thread.title, input.titleSeed)) {
           return;
         }
