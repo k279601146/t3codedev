@@ -54,6 +54,7 @@ import {
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShimmerScanText } from "../ui/shimmer-scan-text";
+import { ImageGenerationShimmer } from "../ui/image-generation-shimmer";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -70,6 +71,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { rewriteMarkdownFileUriHref } from "../../markdown-links";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via useContext.
@@ -363,6 +365,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         <AssistantTimelineRow row={row} />
       ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
+      {row.kind === "image-generation" ? <ImageGenerationTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
@@ -602,6 +605,68 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
         >
           正在思考
         </ShimmerScanText>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ImageGenerationTimelineRow — first-class media card in the chat stream.
+//
+// While the model is generating an image the row renders a Skeleton-Shimmer
+// placeholder. Once the final image path is available we swap to a real
+// <img>, fade it in, and hook into ExpandedImagePreview so it shares the
+// same lightbox UX as user-uploaded images.
+// ---------------------------------------------------------------------------
+
+function ImageGenerationTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "image-generation" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const isRunning = row.status === "running";
+  const finalSrc = useMemo(() => {
+    if (!row.imagePath) return null;
+    return rewriteMarkdownFileUriHref(row.imagePath) ?? row.imagePath;
+  }, [row.imagePath]);
+  const finalName = useMemo(() => {
+    if (!row.imagePath) return row.label ?? "Generated image";
+    const segments = row.imagePath.split(/[\\/]/);
+    return segments.at(-1) || row.label || "Generated image";
+  }, [row.imagePath, row.label]);
+
+  const showFinal = !isRunning && Boolean(finalSrc);
+
+  const handleExpand = useCallback(() => {
+    if (!finalSrc) return;
+    const preview = buildExpandedImagePreview(
+      [{ id: row.id, name: finalName, previewUrl: finalSrc }],
+      row.id,
+    );
+    if (!preview) return;
+    ctx.onImageExpand(preview);
+  }, [ctx, finalName, finalSrc, row.id]);
+
+  return (
+    <div className="py-1" data-image-generation-row="true" data-image-status={row.status}>
+      <div className="max-w-[512px]">
+        {showFinal && finalSrc ? (
+          <button
+            type="button"
+            className="image-final-fade group/image-card block w-full cursor-zoom-in overflow-hidden rounded-xl border border-border/55 bg-background"
+            aria-label={`Preview ${finalName}`}
+            onClick={handleExpand}
+          >
+            <img
+              src={finalSrc}
+              alt={finalName}
+              className="block h-auto w-full object-cover transition-transform duration-300 ease-out group-hover/image-card:scale-[1.01]"
+            />
+          </button>
+        ) : (
+          <ImageGenerationShimmer label={row.label ?? "正在生成图片…"} />
+        )}
       </div>
     </div>
   );
@@ -1226,106 +1291,51 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       normalizeCompactToolLabel(heading).toLowerCase()
       ? null
       : rawPreview;
-  const rawCommand = workEntryRawCommand(workEntry);
+
+  const hasDetail = Boolean(workEntry.detail && workEntry.detail.trim().length > 0);
+  const [isDetailExpanded, setIsDetailExpanded] = useState(false);
+
+  const rawCommand = isDetailExpanded ? null : workEntryRawCommand(workEntry);
   const previewSeparator = /^[已正]/.test(heading) ? " " : " - ";
-  const displayText = preview ? `${heading}${previewSeparator}${preview}` : heading;
+  const defaultDisplayText = preview ? `${heading}${previewSeparator}${preview}` : heading;
+  const expandedDisplayText = heading === "已运行" ? "已运行命令" : heading;
+  const displayText = isDetailExpanded ? expandedDisplayText : defaultDisplayText;
+
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
   const animateText = shouldAnimateWorkEntryText(workEntry, displayText);
 
   return (
     <div className="rounded-md px-1 py-0.5">
-      <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">
+      <div
+        className={cn(
+          "flex items-center gap-2 transition-[opacity,translate] duration-200 rounded-md px-1 py-0.5",
+          hasDetail && "cursor-pointer hover:bg-muted/15 select-none"
+        )}
+        onClick={hasDetail ? () => setIsDetailExpanded((v) => !v) : undefined}
+      >
         <span
           className={cn("flex size-4 shrink-0 items-center justify-center", iconConfig.className)}
         >
           <EntryIcon className="size-3" />
         </span>
-        <div className="min-w-0 flex-1 overflow-hidden">
-          {rawCommand ? (
-            <div className="max-w-full">
-              <p
-                className={cn(
-                  "truncate text-xs leading-5",
-                  workToneClass(workEntry.tone),
-                  preview ? "text-muted-foreground/70" : "",
-                )}
-                title={displayText}
-              >
-                {animateText ? (
-                  <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
-                    <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                      {heading}
-                    </span>
-                    {preview && (
-                      <Tooltip>
-                        <TooltipTrigger
-                          closeDelay={0}
-                          delay={75}
-                          render={
-                            <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
-                              {previewSeparator}
-                              {preview}
-                            </span>
-                          }
-                        />
-                        <TooltipPopup
-                          align="start"
-                          className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
-                          side="top"
-                        >
-                          <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
-                            {rawCommand}
-                          </div>
-                        </TooltipPopup>
-                      </Tooltip>
-                    )}
-                  </ShimmerScanText>
-                ) : (
-                  <>
-                    <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                      {heading}
-                    </span>
-                    {preview && (
-                      <Tooltip>
-                        <TooltipTrigger
-                          closeDelay={0}
-                          delay={75}
-                          render={
-                            <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
-                              {previewSeparator}
-                              {preview}
-                            </span>
-                          }
-                        />
-                        <TooltipPopup
-                          align="start"
-                          className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
-                          side="top"
-                        >
-                          <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
-                            {rawCommand}
-                          </div>
-                        </TooltipPopup>
-                      </Tooltip>
-                    )}
-                  </>
-                )}
+        <div className="min-w-0 flex-1 overflow-hidden flex items-center justify-between gap-1.5">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            {isDetailExpanded ? (
+              <p className={cn("truncate text-[11px] leading-5", workToneClass(workEntry.tone))}>
+                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                  {displayText}
+                </span>
               </p>
-            </div>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                className="block min-w-0 w-full text-left"
-                title={displayText}
-                aria-label={displayText}
-              >
+            ) : rawCommand ? (
+              <div className="max-w-full">
                 <p
                   className={cn(
-                    "truncate text-[11px] leading-5",
+                    "truncate text-xs leading-5",
                     workToneClass(workEntry.tone),
                     preview ? "text-muted-foreground/70" : "",
                   )}
+                  title={displayText}
                 >
                   {animateText ? (
                     <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
@@ -1333,10 +1343,27 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                         {heading}
                       </span>
                       {preview && (
-                        <span className="text-muted-foreground/55">
-                          {previewSeparator}
-                          {preview}
-                        </span>
+                        <Tooltip>
+                          <TooltipTrigger
+                            closeDelay={0}
+                            delay={75}
+                            render={
+                              <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
+                                {previewSeparator}
+                                {preview}
+                              </span>
+                            }
+                          />
+                          <TooltipPopup
+                            align="start"
+                            className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                            side="top"
+                          >
+                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                              {rawCommand}
+                            </div>
+                          </TooltipPopup>
+                        </Tooltip>
                       )}
                     </ShimmerScanText>
                   ) : (
@@ -1345,21 +1372,88 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                         {heading}
                       </span>
                       {preview && (
-                        <span className="text-muted-foreground/55">
-                          {previewSeparator}
-                          {preview}
-                        </span>
+                        <Tooltip>
+                          <TooltipTrigger
+                            closeDelay={0}
+                            delay={75}
+                            render={
+                              <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
+                                {previewSeparator}
+                                {preview}
+                              </span>
+                            }
+                          />
+                          <TooltipPopup
+                            align="start"
+                            className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                            side="top"
+                          >
+                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                              {rawCommand}
+                            </div>
+                          </TooltipPopup>
+                        </Tooltip>
                       )}
                     </>
                   )}
                 </p>
-              </TooltipTrigger>
-              <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
-                <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
-                  {displayText}
-                </p>
-              </TooltipPopup>
-            </Tooltip>
+              </div>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  className="block min-w-0 w-full text-left"
+                  title={displayText}
+                  aria-label={displayText}
+                >
+                  <p
+                    className={cn(
+                      "truncate text-[11px] leading-5",
+                      workToneClass(workEntry.tone),
+                      preview ? "text-muted-foreground/70" : "",
+                    )}
+                  >
+                    {animateText ? (
+                      <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
+                        <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                          {heading}
+                        </span>
+                        {preview && (
+                          <span className="text-muted-foreground/55">
+                            {previewSeparator}
+                            {preview}
+                          </span>
+                        )}
+                      </ShimmerScanText>
+                    ) : (
+                      <>
+                        <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                          {heading}
+                        </span>
+                        {preview && (
+                          <span className="text-muted-foreground/55">
+                            {previewSeparator}
+                            {preview}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                </TooltipTrigger>
+                <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
+                  <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
+                    {displayText}
+                  </p>
+                </TooltipPopup>
+              </Tooltip>
+            )}
+          </div>
+          {hasDetail && (
+            <ChevronDownIcon
+              className={cn(
+                "size-3 shrink-0 text-muted-foreground/45 transition-transform duration-150",
+                isDetailExpanded && "rotate-180",
+              )}
+            />
           )}
         </div>
       </div>
@@ -1382,6 +1476,48 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               +{(workEntry.changedFiles?.length ?? 0) - 4}
             </span>
           )}
+        </div>
+      )}
+      {/* 展开的 Shell 折叠卡片 */}
+      {hasDetail && isDetailExpanded && (
+        <div className="mt-2 ml-6 rounded-xl border border-border/40 bg-muted/30 dark:bg-muted/15 p-3 flex flex-col gap-2 shadow-sm">
+          {/* 首行：标题与复制按钮 */}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold tracking-wider text-muted-foreground/60 uppercase">
+              {capitalizePhrase(workEntry.toolTitle || workEntry.label || "Shell")}
+            </span>
+            <MessageCopyButton
+              text={workEntry.detail || ""}
+              size="icon-xs"
+              className="h-6 w-6 border-transparent bg-transparent text-muted-foreground/60 shadow-none hover:bg-muted/20 hover:text-foreground"
+            />
+          </div>
+
+          {/* 第二行：命令本身 */}
+          <div className="font-mono text-xs font-semibold text-foreground/90 bg-background/40 px-2 py-1.5 rounded border border-border/20 whitespace-pre-wrap break-all flex items-center">
+            <span className="text-emerald-500 mr-1.5 font-bold select-none">$</span>
+            {workEntry.command || workEntry.rawCommand || defaultDisplayText}
+          </div>
+
+          {/* 输出内容区域 */}
+          <pre className="font-mono text-[11px] leading-relaxed text-foreground/80 bg-background/25 dark:bg-background/40 rounded-lg p-2.5 border border-border/30 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto pr-1 select-text">
+            {workEntry.detail}
+          </pre>
+
+          {/* 底部状态 */}
+          <div className="flex justify-end items-center text-[10px] font-medium">
+            {workEntry.tone === "error" ? (
+              <span className="text-rose-500/80 flex items-center gap-1">
+                <CircleAlertIcon className="size-3" />
+                失败
+              </span>
+            ) : (
+              <span className="text-emerald-500/80 flex items-center gap-1">
+                <CheckIcon className="size-3" />
+                成功
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>

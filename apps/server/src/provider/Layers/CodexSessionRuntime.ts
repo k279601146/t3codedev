@@ -1,3 +1,4 @@
+// @effect-diagnostics preferSchemaOverJson:off
 import {
   ApprovalRequestId,
   DEFAULT_MODEL,
@@ -16,6 +17,7 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { RotatingFileSink } from "@t3tools/shared/logging";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import { buildCommercialEngineProcessEnv } from "@t3tools/shared/commercialEngine";
 import * as DateTime from "effect/DateTime";
@@ -114,6 +116,7 @@ export interface CodexSessionRuntimeOptions {
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly resumeCursor?: CodexResumeCursor;
   readonly prewarmedChild?: ChildProcessSpawner.ChildProcessHandle;
+  readonly jsonRpcLogPath?: string;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -806,10 +809,34 @@ export const makeCodexSessionRuntime = (
       );
     }
 
-    const clientContext = yield* CodexClient.layerChildProcess(child).pipe(
-      Layer.build,
-      Effect.provideService(Scope.Scope, runtimeScope),
-    );
+    const rpcLogSink = options.jsonRpcLogPath
+      ? new RotatingFileSink({
+          filePath: options.jsonRpcLogPath,
+          maxBytes: 10 * 1024 * 1024,
+          maxFiles: 10,
+          throwOnError: false,
+        })
+      : undefined;
+
+    const clientContext = yield* CodexClient.layerChildProcess(child, {
+      ...(rpcLogSink
+        ? {
+            logIncoming: true,
+            logOutgoing: true,
+            logger: (event) =>
+              Effect.gen(function* () {
+                const ts = DateTime.formatIso(yield* DateTime.now);
+                const logLine = JSON.stringify({
+                  ts,
+                  dir: event.direction,
+                  stage: event.stage,
+                  data: event.payload,
+                });
+                rpcLogSink.write(`${logLine}\n`);
+              }),
+          }
+        : {}),
+    }).pipe(Layer.build, Effect.provideService(Scope.Scope, runtimeScope));
     const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
       Effect.provide(clientContext),
     );

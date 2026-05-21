@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * CodexAdapterLive - Scoped live implementation for the Codex provider adapter.
  *
@@ -25,6 +26,7 @@ import {
   ThreadId,
   ProviderSendTurnInput,
 } from "@t3tools/contracts";
+import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Clock from "effect/Clock";
@@ -89,6 +91,7 @@ export interface CodexAdapterLiveOptions {
   >;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
+  readonly jsonRpcLogPath?: string;
 }
 
 interface CodexAdapterSessionContext {
@@ -1381,6 +1384,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       : undefined);
   const managedNativeEventLogger =
     options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
+  const jsonRpcLogPath =
+    options?.jsonRpcLogPath ?? path.join(serverConfig.providerLogsDir, "jsonrpc.log");
   const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(2048);
   const warmProcessRef = yield* Ref.make<Option.Option<CodexWarmProcess>>(Option.none());
   const sessions = new Map<ThreadId, CodexAdapterSessionContext>();
@@ -1514,6 +1519,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
             ? { serviceTier: "fast" }
             : {}),
+          jsonRpcLogPath,
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;

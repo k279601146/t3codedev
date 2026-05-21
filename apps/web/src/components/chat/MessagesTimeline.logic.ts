@@ -38,6 +38,14 @@ export type MessagesTimelineRow =
       createdAt: string;
       proposedPlan: ProposedPlan;
     }
+  | {
+      kind: "image-generation";
+      id: string;
+      createdAt: string;
+      status: "running" | "completed";
+      label: string | null;
+      imagePath: string | null;
+    }
   | { kind: "working"; id: string; createdAt: string | null };
 
 export interface StableMessagesTimelineRowsState {
@@ -66,6 +74,46 @@ export function computeMessageDurationStart(
 
 export function normalizeCompactToolLabel(value: string): string {
   return value.replace(/\s+(?:complete|completed)\s*$/i, "").trim();
+}
+
+const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+
+export function isImageGenerationWorkEntry(entry: WorkLogEntry): boolean {
+  if (entry.itemType === "image_view") {
+    return true;
+  }
+  // Some adapters tag the title/label rather than itemType — fall back to a
+  // textual check so we still promote those into the dedicated card.
+  const haystack = `${entry.toolTitle ?? ""} ${entry.label ?? ""}`.toLowerCase();
+  return /image\s*(view|gen|generation|generate)/i.test(haystack);
+}
+
+function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
+  const fromChanged = entry.changedFiles?.find((path) => IMAGE_FILE_EXTENSION_PATTERN.test(path));
+  if (fromChanged) return fromChanged;
+  const detail = entry.detail?.trim();
+  if (detail && IMAGE_FILE_EXTENSION_PATTERN.test(detail)) {
+    return detail;
+  }
+  return null;
+}
+
+function toImageGenerationRow(
+  id: string,
+  entry: WorkLogEntry,
+): Extract<MessagesTimelineRow, { kind: "image-generation" }> {
+  const status = entry.status === "running" ? "running" : "completed";
+  const imagePath = pickGeneratedImagePath(entry);
+  const labelSource = entry.toolTitle ?? entry.label ?? null;
+  const label = labelSource ? normalizeCompactToolLabel(labelSource) : null;
+  return {
+    kind: "image-generation",
+    id,
+    createdAt: entry.createdAt,
+    status,
+    label,
+    imagePath,
+  };
 }
 
 export function resolveAssistantMessageCopyState({
@@ -134,11 +182,21 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "work") {
+      // Image generation entries surface as their own first-class row in the
+      // chat stream — Skeleton-Shimmer while running, final image once ready.
+      // Keep them out of the collapsible work-group so the script log box
+      // doesn't double up on the same artifact.
+      if (isImageGenerationWorkEntry(timelineEntry.entry)) {
+        nextRows.push(toImageGenerationRow(timelineEntry.id, timelineEntry.entry));
+        continue;
+      }
+
       const groupedEntries = [timelineEntry.entry];
       let cursor = index + 1;
       while (cursor < input.timelineEntries.length) {
         const nextEntry = input.timelineEntries[cursor];
         if (!nextEntry || nextEntry.kind !== "work") break;
+        if (isImageGenerationWorkEntry(nextEntry.entry)) break;
         groupedEntries.push(nextEntry.entry);
         cursor += 1;
       }
@@ -237,6 +295,16 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
+
+    case "image-generation": {
+      const bm = b as typeof a;
+      return (
+        a.createdAt === bm.createdAt &&
+        a.status === bm.status &&
+        a.label === bm.label &&
+        a.imagePath === bm.imagePath
+      );
+    }
 
     case "work":
       return Equal.equals(a.groupedEntries, (b as typeof a).groupedEntries);

@@ -56,6 +56,26 @@
       transform: translate3d(260%, 0, 0);
     }
   }
+  @keyframes image-shimmer-sweep {
+    0% {
+      transform: translate3d(-120%, 0, 0) skewX(-12deg);
+    }
+    100% {
+      transform: translate3d(220%, 0, 0) skewX(-12deg);
+    }
+  }
+  @keyframes image-final-fade-in {
+    0% {
+      opacity: 0;
+      transform: scale(0.985);
+      filter: blur(6px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+      filter: blur(0);
+    }
+  }
 }
 
 @layer base {
@@ -298,6 +318,69 @@ code {
 
 .turn-chip-strip::-webkit-scrollbar {
   display: none;
+}
+
+/* Image generation skeleton placeholder.
+   - Soft neutral background with a faint diagonal grid for depth.
+   - A diagonal highlight band sweeps across the surface on a loop. */
+.image-generation-shimmer {
+  --image-shimmer-duration: 2000ms;
+  --image-shimmer-band-color: 255 255 255;
+  --image-shimmer-band-opacity: 0.62;
+  background-image:
+    radial-gradient(120% 80% at 50% 0%, rgb(255 255 255 / 0.04), transparent 65%),
+    linear-gradient(135deg, rgb(0 0 0 / 0.015) 0%, rgb(0 0 0 / 0.04) 100%);
+  background-color: var(--muted);
+  isolation: isolate;
+}
+
+.dark .image-generation-shimmer {
+  --image-shimmer-band-opacity: 0.18;
+  background-image:
+    radial-gradient(120% 80% at 50% 0%, rgb(255 255 255 / 0.04), transparent 65%),
+    linear-gradient(135deg, rgb(255 255 255 / 0.02) 0%, rgb(255 255 255 / 0.05) 100%);
+}
+
+.image-generation-shimmer-band {
+  position: absolute;
+  inset: -10% -40%;
+  width: 55%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(var(--image-shimmer-band-color) / 0%) 18%,
+    rgb(var(--image-shimmer-band-color) / var(--image-shimmer-band-opacity)) 50%,
+    rgb(var(--image-shimmer-band-color) / 0%) 82%,
+    transparent 100%
+  );
+  filter: blur(6px);
+  transform: translate3d(-120%, 0, 0) skewX(-12deg);
+  animation: image-shimmer-sweep var(--image-shimmer-duration) cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  mix-blend-mode: screen;
+}
+
+.image-generation-shimmer-paused .image-generation-shimmer-band {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-generation-shimmer-band {
+    animation: none;
+  }
+}
+
+/* Final image swap-in: fade + subtle scale + de-blur. Pairs with the
+   shimmer placeholder of the same size to feel like the picture
+   resolves into focus rather than popping into existence. */
+.image-final-fade {
+  animation: image-final-fade-in 380ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-final-fade {
+    animation: none;
+  }
 }
 
 /* Terminal drawer scrollbar parity with chat */
