@@ -91,6 +91,24 @@ interface TimelineRowSharedState {
   onRevertUserMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  /** Turn-process collapse: per assistant-message id, is the upstream
+   *  process (work / image-gen / proposed-plan rows) collapsed? */
+  collapsedAssistantMessageIds: ReadonlySet<string>;
+  /** Assistant messages that summarize a span (own a "已处理 X ›" toggle). */
+  summaryAssistantMessageIds: ReadonlySet<string>;
+  /** Per-summary owner: human-readable elapsed label for the process span. */
+  elapsedByAssistantMessageId: ReadonlyMap<string, string>;
+  /** Member-row → owner: when a row appears in this map it is part of a
+   *  collapsible span and animates open/closed under the summary toggle. */
+  ownerAssistantMessageIdByRowId: ReadonlyMap<string, string>;
+  /** Row-id → assistant-message-id of the toggle to render *above* it.
+   *  The button sits on the FIRST member row so it visually wraps every
+   *  intermediate row + the final assistant summary that follows. */
+  summaryButtonHostByRowId: ReadonlyMap<string, string>;
+  toggleAssistantTurnCollapsed: (assistantMessageId: string) => void;
+  /** Resolves the LegendList scroll container — used by the summary
+   *  toggle to keep the button visually pinned across expand/collapse. */
+  getScrollContainer: () => HTMLElement | null;
 }
 
 interface TimelineRowActivityState {
@@ -106,6 +124,12 @@ const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+
+// Use PingFang SC explicitly for chat content so the increased font size keeps the
+// preferred Chinese-first typeface across all platforms.
+const CHAT_FONT_STACK =
+  "'PingFang SC', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif";
+const USER_MESSAGE_FONT_STYLE: React.CSSProperties = { fontFamily: CHAT_FONT_STACK };
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -183,7 +207,188 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       revertTurnCountByUserMessageId,
     ],
   );
-  const rows = useStableRows(rawRows);
+  const stableRows = useStableRows(rawRows);
+
+  // ---- Per-question collapse ---------------------------------------------
+  // We collapse by user-question, not by backend turn. A single question
+  // may produce multiple assistant messages and process bursts (e.g. image
+  // generation + retries). The whole span between two user messages
+  // collapses under one "已处理 X ›" header that anchors to the FIRST
+  // member row (so the button sits at the top of the section and visually
+  // wraps all process rows + intermediate assistant messages below it).
+  // The last assistant message in the span stays fully visible — that's
+  // the final summary text the user wants to keep reading.
+
+  const {
+    ownerAssistantMessageIdByRowId,
+    summaryAssistantMessageIds,
+    elapsedByAssistantMessageId,
+    summaryButtonHostByRowId,
+  } = useMemo(() => {
+    const owner = new Map<string, string>();
+    const summaries = new Set<string>();
+    const elapsedMap = new Map<string, string>();
+    /** rowId of a member row that should render the "已处理 X ›" header
+     *  immediately ABOVE itself. Maps from host row id → assistant
+     *  message id used as the toggle's state key. */
+    const hostByRowId = new Map<string, string>();
+
+    type Span = {
+      userKey: string;
+      lastAssistantId: string | null;
+      lastAssistantCompletedAt: string | null;
+      firstProcessAt: string | null;
+      /** All process rows + all intermediate assistant messages within
+       *  this span. They collapse together under the summary toggle. */
+      memberRowIds: string[];
+      /** Track the row id of the most recently appended assistant message
+       *  so we can demote it from "final summary" to "intermediate" when
+       *  another assistant message arrives later in the span. */
+      lastAssistantRowId: string | null;
+      hasProcessRow: boolean;
+    };
+    const spans = new Map<string, Span>();
+    const ensureSpan = (key: string): Span => {
+      let span = spans.get(key);
+      if (!span) {
+        span = {
+          userKey: key,
+          lastAssistantId: null,
+          lastAssistantCompletedAt: null,
+          firstProcessAt: null,
+          memberRowIds: [],
+          lastAssistantRowId: null,
+          hasProcessRow: false,
+        };
+        spans.set(key, span);
+      }
+      return span;
+    };
+
+    let currentSpanKey: string | null = null;
+    let spanCounter = 0;
+
+    for (const row of stableRows) {
+      if (row.kind === "message" && row.message.role === "user") {
+        spanCounter += 1;
+        currentSpanKey = `q:${row.message.id}:${spanCounter}`;
+        continue;
+      }
+      if (!currentSpanKey) {
+        currentSpanKey = `q:__preamble__`;
+      }
+      const span = ensureSpan(currentSpanKey);
+
+      if (row.kind === "message" && row.message.role === "assistant") {
+        // Every assistant message in the span is provisionally a member —
+        // we'll exclude the *final* one (the summary text) at the end so
+        // it stays visible. This guarantees the very first assistant
+        // message also gets wrapped under the "已处理 X ›" toggle.
+        span.memberRowIds.push(row.id);
+        span.lastAssistantId = row.message.id;
+        span.lastAssistantRowId = row.id;
+        span.lastAssistantCompletedAt =
+          !row.message.streaming && row.message.completedAt
+            ? row.message.completedAt
+            : null;
+        continue;
+      }
+      if (
+        row.kind === "work" ||
+        row.kind === "image-generation" ||
+        row.kind === "proposed-plan"
+      ) {
+        if (!span.firstProcessAt) span.firstProcessAt = row.createdAt;
+        span.memberRowIds.push(row.id);
+        span.hasProcessRow = true;
+      }
+    }
+
+    for (const span of spans.values()) {
+      if (!span.lastAssistantId) continue;
+      if (!span.hasProcessRow) continue;
+      // Drop the final assistant message from the member set so it stays
+      // visible as the section's summary text.
+      const memberRowIds = span.memberRowIds.filter((id) => id !== span.lastAssistantRowId);
+      if (memberRowIds.length === 0) continue;
+      summaries.add(span.lastAssistantId);
+      for (const rowId of memberRowIds) {
+        owner.set(rowId, span.lastAssistantId);
+      }
+      const firstMemberRowId = memberRowIds[0];
+      if (firstMemberRowId) {
+        hostByRowId.set(firstMemberRowId, span.lastAssistantId);
+      }
+      if (span.firstProcessAt && span.lastAssistantCompletedAt) {
+        const elapsed = formatElapsed(span.firstProcessAt, span.lastAssistantCompletedAt);
+        if (elapsed) elapsedMap.set(span.lastAssistantId, elapsed);
+      }
+    }
+
+    return {
+      ownerAssistantMessageIdByRowId: owner,
+      summaryAssistantMessageIds: summaries,
+      elapsedByAssistantMessageId: elapsedMap,
+      summaryButtonHostByRowId: hostByRowId,
+    };
+  }, [stableRows]);
+
+  /** Default collapse policy: every turn-summary owner is collapsed by
+   *  default (mirrors the screenshot — only the "已处理 X ›" button is
+   *  visible). Manual toggles are tracked as a delta on top of that
+   *  default. */
+  const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+
+  /** The active in-flight turn stays expanded automatically. We resolve its
+   *  assistant message id by looking for the assistant row whose turnId
+   *  matches the activeTurnId. */
+  const activeAssistantMessageId = useMemo(() => {
+    if (!activeTurnInProgress || activeTurnId == null) return null;
+    for (let i = stableRows.length - 1; i >= 0; i -= 1) {
+      const row = stableRows[i];
+      if (!row || row.kind !== "message") continue;
+      if (row.message.role !== "assistant") continue;
+      if (row.message.turnId === activeTurnId) return row.message.id;
+    }
+    return null;
+  }, [activeTurnId, activeTurnInProgress, stableRows]);
+
+  const toggleAssistantTurnCollapsed = useCallback((assistantMessageId: string) => {
+    setExpandedAssistantMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assistantMessageId)) next.delete(assistantMessageId);
+      else next.add(assistantMessageId);
+      return next;
+    });
+  }, []);
+
+  /** Set of summary owners that should currently be collapsed — i.e.
+   *  every owner *except* the one whose user manually expanded it,
+   *  except the active in-flight turn, and except any streaming message
+   *  whose "Worked for X" duration isn't known yet. */
+  const collapsedAssistantMessageIds = useMemo(() => {
+    const next = new Set<string>();
+    for (const id of summaryAssistantMessageIds) {
+      if (expandedAssistantMessageIds.has(id)) continue;
+      if (id === activeAssistantMessageId) continue;
+      if (!elapsedByAssistantMessageId.has(id)) continue;
+      next.add(id);
+    }
+    return next;
+  }, [
+    activeAssistantMessageId,
+    elapsedByAssistantMessageId,
+    expandedAssistantMessageIds,
+    summaryAssistantMessageIds,
+  ]);
+
+  /** Don't filter — we let collapsed member rows stay in the row list and
+   *  animate their height to zero in CSS. Removing them entirely would
+   *  cause LegendList to recycle/re-measure rows abruptly, which is what
+   *  felt jumpy. */
+  const rows = stableRows;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -263,6 +468,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
+      collapsedAssistantMessageIds,
+      summaryAssistantMessageIds,
+      elapsedByAssistantMessageId,
+      ownerAssistantMessageIdByRowId,
+      summaryButtonHostByRowId,
+      toggleAssistantTurnCollapsed,
+      getScrollContainer,
     }),
     [
       timestampFormat,
@@ -275,6 +487,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
+      collapsedAssistantMessageIds,
+      summaryAssistantMessageIds,
+      elapsedByAssistantMessageId,
+      ownerAssistantMessageIdByRowId,
+      summaryButtonHostByRowId,
+      toggleAssistantTurnCollapsed,
+      getScrollContainer,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -348,7 +567,14 @@ type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["grouped
 type TimelineRow = MessagesTimelineRow;
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
-  return (
+  const ctx = use(TimelineRowCtx);
+  const hostAssistantMessageId = ctx.summaryButtonHostByRowId.get(row.id);
+  const ownerAssistantMessageId = ctx.ownerAssistantMessageIdByRowId.get(row.id);
+  const isCollapsedMember =
+    ownerAssistantMessageId !== undefined &&
+    ctx.collapsedAssistantMessageIds.has(ownerAssistantMessageId);
+
+  const innerRow = (
     <div
       className={cn(
         "pb-4",
@@ -369,7 +595,133 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
+
+  return (
+    <>
+      {hostAssistantMessageId ? (
+        <TurnSummaryToggleHeader assistantMessageId={hostAssistantMessageId} />
+      ) : null}
+      {ownerAssistantMessageId ? (
+        <CollapsibleMember collapsed={isCollapsedMember}>{innerRow}</CollapsibleMember>
+      ) : (
+        innerRow
+      )}
+    </>
+  );
 });
+
+/** Toggle header rendered above the first member row of a collapsed span. */
+function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: string }) {
+  const ctx = use(TimelineRowCtx);
+  const isCollapsed = ctx.collapsedAssistantMessageIds.has(assistantMessageId);
+  const elapsed = ctx.elapsedByAssistantMessageId.get(assistantMessageId) ?? null;
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // FLIP-style scroll lock: when the user clicks the toggle, capture the
+  // button's pre-toggle viewport offset relative to the scroll container,
+  // then on the next frame (after the grid-row transition begins and
+  // LegendList has measured the new layout) nudge the scroll container
+  // so the button visually stays put. Without this, expanding a long
+  // span pushes the button — and everything after it — out of the
+  // viewport and the user loses their reading position.
+  const handleToggle = useCallback(() => {
+    const button = buttonRef.current;
+    const container = ctx.getScrollContainer();
+    let buttonOffsetBefore: number | null = null;
+    if (button && container) {
+      const buttonRect = button.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      buttonOffsetBefore = buttonRect.top - containerRect.top;
+    }
+    ctx.toggleAssistantTurnCollapsed(assistantMessageId);
+
+    if (buttonOffsetBefore == null || !button || !container) return;
+    // Re-pin the button after layout settles. Two frames is enough for
+    // LegendList to commit its position update + the grid-row 0fr→1fr
+    // transition's first paint.
+    let frameTwo = 0;
+    const frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        const buttonRect = button.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const delta = buttonRect.top - containerRect.top - buttonOffsetBefore!;
+        if (Math.abs(delta) > 0.5) {
+          container.scrollTop += delta;
+        }
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      if (frameTwo) window.cancelAnimationFrame(frameTwo);
+    };
+  }, [assistantMessageId, ctx]);
+
+  return (
+    <div className="pt-1 pb-1">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={handleToggle}
+        aria-expanded={!isCollapsed}
+        className="group/turn-summary inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[13px] leading-5 text-muted-foreground/70 transition-colors hover:text-foreground/85"
+        style={USER_MESSAGE_FONT_STYLE}
+        data-turn-summary-toggle="true"
+        data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
+        data-scroll-anchor-ignore
+      >
+        <span className="min-w-0 truncate">
+          {elapsed ? `已处理 ${elapsed}` : "已处理"}
+        </span>
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 -rotate-90 text-muted-foreground/55 transition-transform duration-200 group-hover/turn-summary:text-muted-foreground/85",
+            !isCollapsed && "rotate-0",
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
+/** Collapsible wrapper using the CSS Grid `1fr ↔ 0fr` trick so the inner
+ *  row's natural height animates without measuring it.
+ *
+ *  We deliberately suppress transitions on the very first render so that
+ *  switching threads or re-mounting the timeline doesn't replay the open
+ *  animation — that's where the "page is jittering" feeling comes from.
+ *  Transitions only kick in once the `collapsed` prop actually changes
+ *  while this instance is alive (i.e. the user clicked the toggle). */
+function CollapsibleMember({
+  collapsed,
+  children,
+}: {
+  collapsed: boolean;
+  children: React.ReactNode;
+}) {
+  const initialCollapsedRef = useRef(collapsed);
+  const [hasUserToggled, setHasUserToggled] = useState(false);
+  useEffect(() => {
+    if (collapsed !== initialCollapsedRef.current && !hasUserToggled) {
+      setHasUserToggled(true);
+    }
+  }, [collapsed, hasUserToggled]);
+
+  return (
+    <div
+      className={cn(
+        "grid",
+        hasUserToggled &&
+          "transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+        collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
+      )}
+      aria-hidden={collapsed}
+      data-collapsible-member="true"
+      data-collapsed={collapsed ? "true" : "false"}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  );
+}
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -451,7 +803,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             />
           )}
           {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
-          <span className="px-0.5 text-xs text-muted-foreground/50">
+          <span className="px-0.5 text-[11px] text-muted-foreground/50">
             {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
           </span>
         </div>
@@ -510,7 +862,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
         <div className="mt-1.5 flex items-center gap-2">
-          <p className="text-[10px] text-muted-foreground/30">
+          <p className="text-[11px] text-muted-foreground/40">
             {row.message.streaming ? (
               <LiveMessageMeta
                 createdAt={row.message.createdAt}
@@ -566,7 +918,7 @@ function AssistantCompletionDivider() {
   return (
     <div className="my-3 flex items-center gap-3">
       <span className="h-px flex-1 bg-border" />
-      <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
+      <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground/80">
         {activity.completionSummary ? `Response • ${activity.completionSummary}` : "Response"}
       </span>
       <span className="h-px flex-1 bg-border" />
@@ -596,10 +948,10 @@ function ProposedPlanTimelineRow({
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   return (
     <div className="py-0.5 pl-1.5" data-working-started-at={row.createdAt ?? undefined}>
-      <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
+      <div className="flex items-center gap-2 pt-1 text-[12px] text-muted-foreground/70" style={USER_MESSAGE_FONT_STYLE}>
         <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/45" />
         <ShimmerScanText
-          className="text-[11px] text-muted-foreground/72"
+          className="text-[12px] text-muted-foreground/72"
           durationMs={2000}
           tone="light"
         >
@@ -815,12 +1167,13 @@ const WorkGroupSection = memo(function WorkGroupSection({
     <div className="pt-2 pb-3 pl-1">
       <button
         type="button"
-        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[12px] leading-5 text-[#999999] transition-colors hover:text-foreground/78"
+        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-[#999999] transition-colors hover:text-foreground/78"
+        style={USER_MESSAGE_FONT_STYLE}
         aria-expanded={isExpanded}
         data-work-group-summary="true"
         onClick={() => setIsExpanded((value) => !value)}
       >
-        <TerminalSquareIcon className="size-3.5 shrink-0 text-[#999999]" />
+        <TerminalSquareIcon className="size-4 shrink-0 text-[#999999]" />
         {showLiveScan ? (
           <ShimmerScanText className="min-w-0" durationMs={2000} tone="light">
             {summary.liveLabel}
@@ -830,7 +1183,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
         )}
         <ChevronDownIcon
           className={cn(
-            "size-3 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/work-summary:text-muted-foreground/70",
+            "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/work-summary:text-muted-foreground/70",
             isExpanded && "rotate-180",
           )}
         />
@@ -1141,7 +1494,10 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
+          <div
+            className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
+            style={USER_MESSAGE_FONT_STYLE}
+          >
             {inlineNodes}
           </div>
         );
@@ -1173,7 +1529,10 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
+      <div
+        className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
+        style={USER_MESSAGE_FONT_STYLE}
+      >
         {inlineNodes}
       </div>
     );
@@ -1184,7 +1543,10 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground">
+    <div
+      className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
+      style={USER_MESSAGE_FONT_STYLE}
+    >
       <SkillInlineText text={props.text} skills={props.skills} />
     </div>
   );
@@ -1389,7 +1751,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const animateText = shouldAnimateWorkEntryText(workEntry, displayText);
 
   return (
-    <div className="rounded-md px-1 py-0.5">
+    <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
       <div
         className={cn(
           "flex items-center gap-2 transition-[opacity,translate] duration-200 rounded-md px-1 py-0.5",
@@ -1400,12 +1762,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <span
           className={cn("flex size-4 shrink-0 items-center justify-center", iconConfig.className)}
         >
-          <EntryIcon className="size-3" />
+          <EntryIcon className="size-3.5" />
         </span>
         <div className="min-w-0 flex-1 overflow-hidden flex items-center justify-between gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
             {isDetailExpanded ? (
-              <p className={cn("truncate text-[11px] leading-5", workToneClass(workEntry.tone))}>
+              <p className={cn("truncate text-[12px] leading-5", workToneClass(workEntry.tone))}>
                 <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
                   {displayText}
                 </span>
@@ -1414,7 +1776,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               <div className="max-w-full">
                 <p
                   className={cn(
-                    "truncate text-xs leading-5",
+                    "truncate text-[13px] leading-5",
                     workToneClass(workEntry.tone),
                     preview ? "text-muted-foreground/70" : "",
                   )}
@@ -1442,7 +1804,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                             className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
                             side="top"
                           >
-                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[12px] leading-4 whitespace-nowrap">
                               {rawCommand}
                             </div>
                           </TooltipPopup>
@@ -1471,7 +1833,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                             className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
                             side="top"
                           >
-                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[12px] leading-4 whitespace-nowrap">
                               {rawCommand}
                             </div>
                           </TooltipPopup>
@@ -1490,7 +1852,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 >
                   <p
                     className={cn(
-                      "truncate text-[11px] leading-5",
+                      "truncate text-[12px] leading-5",
                       workToneClass(workEntry.tone),
                       preview ? "text-muted-foreground/70" : "",
                     )}
@@ -1523,7 +1885,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   </p>
                 </TooltipTrigger>
                 <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
-                  <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
+                  <p className="whitespace-pre-wrap wrap-break-word text-[13px] leading-5">
                     {displayText}
                   </p>
                 </TooltipPopup>
@@ -1533,7 +1895,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           {hasDetail && (
             <ChevronDownIcon
               className={cn(
-                "size-3 shrink-0 text-muted-foreground/45 transition-transform duration-150",
+                "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150",
                 isDetailExpanded && "rotate-180",
               )}
             />
@@ -1547,7 +1909,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             return (
               <span
                 key={`${workEntry.id}:${filePath}`}
-                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
+                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground/75"
                 title={displayPath}
               >
                 {displayPath}
@@ -1555,7 +1917,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             );
           })}
           {(workEntry.changedFiles?.length ?? 0) > 4 && (
-            <span className="px-1 text-[10px] text-muted-foreground/55">
+            <span className="px-1 text-[11px] text-muted-foreground/55">
               +{(workEntry.changedFiles?.length ?? 0) - 4}
             </span>
           )}
@@ -1566,7 +1928,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <div className="mt-2 ml-6 rounded-xl border border-border/40 bg-muted/30 dark:bg-muted/15 p-3 flex flex-col gap-2 shadow-sm">
           {/* 首行：标题与复制按钮 */}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold tracking-wider text-muted-foreground/60 uppercase">
+            <span className="text-[11px] font-semibold tracking-wider text-muted-foreground/60 uppercase">
               {capitalizePhrase(workEntry.toolTitle || workEntry.label || "Shell")}
             </span>
             <MessageCopyButton
@@ -1577,18 +1939,18 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           </div>
 
           {/* 第二行：命令本身 */}
-          <div className="font-mono text-xs font-semibold text-foreground/90 bg-background/40 px-2 py-1.5 rounded border border-border/20 whitespace-pre-wrap break-all flex items-center">
+          <div className="font-mono text-[13px] font-semibold text-foreground/90 bg-background/40 px-2 py-1.5 rounded border border-border/20 whitespace-pre-wrap break-all flex items-center">
             <span className="text-emerald-500 mr-1.5 font-bold select-none">$</span>
             {workEntry.command || workEntry.rawCommand || defaultDisplayText}
           </div>
 
           {/* 输出内容区域 */}
-          <pre className="font-mono text-[11px] leading-relaxed text-foreground/80 bg-background/25 dark:bg-background/40 rounded-lg p-2.5 border border-border/30 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto pr-1 select-text">
+          <pre className="font-mono text-[12px] leading-relaxed text-foreground/80 bg-background/25 dark:bg-background/40 rounded-lg p-2.5 border border-border/30 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto pr-1 select-text">
             {workEntry.detail}
           </pre>
 
           {/* 底部状态 */}
-          <div className="flex justify-end items-center text-[10px] font-medium">
+          <div className="flex justify-end items-center text-[11px] font-medium">
             {workEntry.tone === "error" ? (
               <span className="text-rose-500/80 flex items-center gap-1">
                 <CircleAlertIcon className="size-3" />
