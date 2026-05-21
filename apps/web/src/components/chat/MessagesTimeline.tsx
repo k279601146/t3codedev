@@ -617,60 +617,143 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
 // placeholder. Once the final image path is available we swap to a real
 // <img>, fade it in, and hook into ExpandedImagePreview so it shares the
 // same lightbox UX as user-uploaded images.
+//
+// When a single request produces multiple images (e.g. an n=4 prompt) the
+// row spreads them in a responsive grid — each tile shimmers independently
+// and resolves to the final image as it arrives, matching the behavior of
+// ChatGPT / DALL-E / Midjourney's batch view.
 // ---------------------------------------------------------------------------
 
-function ImageGenerationTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "image-generation" }>;
-}) {
+type ImageGenerationRowKind = Extract<TimelineRow, { kind: "image-generation" }>;
+type ImageGenerationItem = ImageGenerationRowKind["items"][number];
+
+interface ResolvedImageGenerationItem {
+  readonly item: ImageGenerationItem;
+  readonly resolvedSrc: string | null;
+  readonly resolvedName: string;
+  readonly isFinal: boolean;
+}
+
+function resolveImageGenerationItem(item: ImageGenerationItem): ResolvedImageGenerationItem {
+  const resolvedSrc = item.imagePath
+    ? (rewriteMarkdownFileUriHref(item.imagePath) ?? item.imagePath)
+    : null;
+  const resolvedName = (() => {
+    if (!item.imagePath) return item.label ?? "Generated image";
+    const segments = item.imagePath.split(/[\\/]/);
+    return segments.at(-1) || item.label || "Generated image";
+  })();
+  return {
+    item,
+    resolvedSrc,
+    resolvedName,
+    isFinal: item.status !== "running" && Boolean(resolvedSrc),
+  };
+}
+
+function ImageGenerationTimelineRow({ row }: { row: ImageGenerationRowKind }) {
   const ctx = use(TimelineRowCtx);
-  const isRunning = row.status === "running";
-  const finalSrc = useMemo(() => {
-    if (!row.imagePath) return null;
-    return rewriteMarkdownFileUriHref(row.imagePath) ?? row.imagePath;
-  }, [row.imagePath]);
-  const finalName = useMemo(() => {
-    if (!row.imagePath) return row.label ?? "Generated image";
-    const segments = row.imagePath.split(/[\\/]/);
-    return segments.at(-1) || row.label || "Generated image";
-  }, [row.imagePath, row.label]);
+  const resolved = useMemo<ResolvedImageGenerationItem[]>(
+    () => row.items.map(resolveImageGenerationItem),
+    [row.items],
+  );
 
-  const showFinal = !isRunning && Boolean(finalSrc);
+  const finalItems = useMemo(
+    () => resolved.filter((entry): entry is ResolvedImageGenerationItem & { resolvedSrc: string } =>
+      entry.isFinal && entry.resolvedSrc !== null,
+    ),
+    [resolved],
+  );
 
-  const handleExpand = useCallback(() => {
-    if (!finalSrc) return;
-    const preview = buildExpandedImagePreview(
-      [{ id: row.id, name: finalName, previewUrl: finalSrc }],
-      row.id,
-    );
-    if (!preview) return;
-    ctx.onImageExpand(preview);
-  }, [ctx, finalName, finalSrc, row.id]);
+  const handleExpand = useCallback(
+    (selectedId: string) => {
+      if (finalItems.length === 0) return;
+      const preview = buildExpandedImagePreview(
+        finalItems.map((entry) => ({
+          id: entry.item.id,
+          name: entry.resolvedName,
+          previewUrl: entry.resolvedSrc,
+        })),
+        selectedId,
+      );
+      if (!preview) return;
+      ctx.onImageExpand(preview);
+    },
+    [ctx, finalItems],
+  );
+
+  const isMulti = resolved.length > 1;
+  const overallStatus = resolved.some((entry) => entry.item.status === "running")
+    ? "running"
+    : "completed";
 
   return (
-    <div className="py-1" data-image-generation-row="true" data-image-status={row.status}>
-      <div className="max-w-[512px]">
-        {showFinal && finalSrc ? (
-          <button
-            type="button"
-            className="image-final-fade group/image-card block w-full cursor-zoom-in overflow-hidden rounded-xl border border-border/55 bg-background"
-            aria-label={`Preview ${finalName}`}
-            onClick={handleExpand}
-          >
-            <img
-              src={finalSrc}
-              alt={finalName}
-              className="block h-auto w-full object-cover transition-transform duration-300 ease-out group-hover/image-card:scale-[1.01]"
-            />
-          </button>
-        ) : (
-          <ImageGenerationShimmer label={row.label ?? "正在生成图片…"} />
+    <div
+      className="py-1"
+      data-image-generation-row="true"
+      data-image-status={overallStatus}
+      data-image-count={resolved.length}
+    >
+      <div
+        className={cn(
+          "flex flex-wrap gap-3",
+          isMulti ? "max-w-[768px]" : "max-w-[512px]",
         )}
+      >
+        {resolved.map((entry) => (
+          <ImageGenerationTile
+            key={entry.item.id}
+            entry={entry}
+            tileMaxWidth={isMulti ? 248 : 512}
+            tileBasis={isMulti ? "min(248px, 100%)" : "100%"}
+            onExpand={handleExpand}
+          />
+        ))}
       </div>
     </div>
   );
 }
+
+const ImageGenerationTile = memo(function ImageGenerationTile({
+  entry,
+  tileMaxWidth,
+  tileBasis,
+  onExpand,
+}: {
+  entry: ResolvedImageGenerationItem;
+  tileMaxWidth: number;
+  tileBasis: string;
+  onExpand: (selectedId: string) => void;
+}) {
+  return (
+    <div
+      className="min-w-[180px] flex-1"
+      style={{ maxWidth: `${tileMaxWidth}px`, flexBasis: tileBasis }}
+      data-image-generation-tile="true"
+      data-image-tile-status={entry.isFinal ? "final" : "running"}
+    >
+      {entry.isFinal && entry.resolvedSrc ? (
+        <button
+          type="button"
+          className="image-final-fade group/image-card block w-full cursor-zoom-in overflow-hidden rounded-xl border border-border/55 bg-background"
+          aria-label={`Preview ${entry.resolvedName}`}
+          onClick={() => onExpand(entry.item.id)}
+        >
+          <img
+            src={entry.resolvedSrc}
+            alt={entry.resolvedName}
+            className="block h-auto w-full object-cover transition-transform duration-300 ease-out group-hover/image-card:scale-[1.01]"
+          />
+        </button>
+      ) : (
+        <ImageGenerationShimmer
+          maxWidth="100%"
+          label={entry.item.label ?? "正在生成图片…"}
+        />
+      )}
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Self-ticking labels — update their own text nodes so elapsed-time display

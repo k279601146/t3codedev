@@ -42,11 +42,17 @@ export type MessagesTimelineRow =
       kind: "image-generation";
       id: string;
       createdAt: string;
-      status: "running" | "completed";
-      label: string | null;
-      imagePath: string | null;
+      items: ReadonlyArray<ImageGenerationRowItem>;
     }
   | { kind: "working"; id: string; createdAt: string | null };
+
+export interface ImageGenerationRowItem {
+  id: string;
+  createdAt: string;
+  status: "running" | "completed";
+  label: string | null;
+  imagePath: string | null;
+}
 
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
@@ -76,38 +82,99 @@ export function normalizeCompactToolLabel(value: string): string {
   return value.replace(/\s+(?:complete|completed)\s*$/i, "").trim();
 }
 
-const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
+const IMAGE_URL_PATTERN = /\bhttps?:\/\/\S+/i;
+const DATA_URL_IMAGE_PATTERN = /\bdata:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+/i;
+const BASE64_FIELD_PATTERN = /"b64_json"\s*:\s*"([A-Za-z0-9+/=_-]+)"/i;
+const IMAGE_PROXY_HOST_PATTERN = /\b(?:images?\/proxy|\/v\d+\/images?|cdn\.openai|oaiusercontent|generations)/i;
+
+/**
+ * Tool titles / labels that exclusively belong to image-generation tools.
+ *
+ * Tightened on purpose: a previous version matched any string containing
+ * `image_gen` which caused regular shell commands (e.g. inspecting a file
+ * named `image_gen_helper.ts`) to be promoted to the image-generation row
+ * and render a Skeleton-Shimmer placeholder. Match only well-known tool
+ * names with strict word boundaries.
+ */
+const IMAGE_GENERATION_TOOL_NAME_PATTERN =
+  /^(?:image[_\s-]?generation|generate[_\s-]?image|create[_\s-]?image|dall[_\s-]?e(?:[_\s-]?\d+)?|midjourney|stable[_\s-]?diffusion|flux|imagen|gpt[_\s-]?image|sdxl)(?:[_\s-]?call)?$/i;
 
 export function isImageGenerationWorkEntry(entry: WorkLogEntry): boolean {
+  // Strongest signal: provider tagged this lifecycle item as an image view.
   if (entry.itemType === "image_view") {
     return true;
   }
-  // Some adapters tag the title/label rather than itemType — fall back to a
-  // textual check so we still promote those into the dedicated card.
-  const haystack = `${entry.toolTitle ?? ""} ${entry.label ?? ""}`.toLowerCase();
-  return /image\s*(view|gen|generation|generate)/i.test(haystack);
+
+  // Treat command/file-change/file-read tools as ordinary work entries even
+  // when their label or detail mentions "image_gen" in passing — those are
+  // nearly always shell commands like `grep image_gen ...` that should keep
+  // rendering inside the collapsible work-group log, NOT a media card.
+  if (
+    entry.itemType === "command_execution" ||
+    entry.itemType === "file_change" ||
+    entry.itemType === "web_search" ||
+    entry.requestKind === "command" ||
+    entry.requestKind === "file-read" ||
+    entry.requestKind === "file-change" ||
+    typeof entry.command === "string" ||
+    typeof entry.rawCommand === "string"
+  ) {
+    return false;
+  }
+
+  // Fall back to a strict tool-title match for adapters that surface image
+  // generation as a generic mcp/dynamic tool call. Use word-boundary regex
+  // so unrelated tool titles like "search_image_gen_history" don't match.
+  const candidates = [entry.toolTitle, entry.label].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+  return candidates.some((value) =>
+    IMAGE_GENERATION_TOOL_NAME_PATTERN.test(value.trim().toLowerCase()),
+  );
 }
 
 function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
   const fromChanged = entry.changedFiles?.find((path) => IMAGE_FILE_EXTENSION_PATTERN.test(path));
   if (fromChanged) return fromChanged;
+
   const detail = entry.detail?.trim();
-  if (detail && IMAGE_FILE_EXTENSION_PATTERN.test(detail)) {
+  if (!detail) return null;
+
+  // 1. data: URL embedded directly in the tool output.
+  const dataUrlMatch = detail.match(DATA_URL_IMAGE_PATTERN);
+  if (dataUrlMatch) return dataUrlMatch[0];
+
+  // 2. Standalone https URL — common for image-proxy adapters that return a
+  //    short permalink. Accept if it looks like a media URL or known proxy.
+  const urlMatch = detail.match(IMAGE_URL_PATTERN);
+  if (urlMatch) {
+    const url = urlMatch[0].replace(/[)\]\s.,;:'"]+$/, "");
+    if (IMAGE_FILE_EXTENSION_PATTERN.test(url) || IMAGE_PROXY_HOST_PATTERN.test(url)) {
+      return url;
+    }
+  }
+
+  // 3. Raw base64 payload returned as JSON ({ "b64_json": "..." }).
+  const b64Match = detail.match(BASE64_FIELD_PATTERN);
+  if (b64Match?.[1]) {
+    return `data:image/png;base64,${b64Match[1]}`;
+  }
+
+  // 4. Plain image filename in `detail` (legacy adapters).
+  if (IMAGE_FILE_EXTENSION_PATTERN.test(detail)) {
     return detail;
   }
+
   return null;
 }
 
-function toImageGenerationRow(
-  id: string,
-  entry: WorkLogEntry,
-): Extract<MessagesTimelineRow, { kind: "image-generation" }> {
+function toImageGenerationRowItem(id: string, entry: WorkLogEntry): ImageGenerationRowItem {
   const status = entry.status === "running" ? "running" : "completed";
   const imagePath = pickGeneratedImagePath(entry);
   const labelSource = entry.toolTitle ?? entry.label ?? null;
   const label = labelSource ? normalizeCompactToolLabel(labelSource) : null;
   return {
-    kind: "image-generation",
     id,
     createdAt: entry.createdAt,
     status,
@@ -186,8 +253,29 @@ export function deriveMessagesTimelineRows(input: {
       // chat stream — Skeleton-Shimmer while running, final image once ready.
       // Keep them out of the collapsible work-group so the script log box
       // doesn't double up on the same artifact.
+      //
+      // Consecutive image-generation entries collapse into a single row so a
+      // multi-image request (n=4 prompts, etc.) renders the shimmers side by
+      // side and each tile swaps in independently as its image arrives.
       if (isImageGenerationWorkEntry(timelineEntry.entry)) {
-        nextRows.push(toImageGenerationRow(timelineEntry.id, timelineEntry.entry));
+        const items: ImageGenerationRowItem[] = [
+          toImageGenerationRowItem(timelineEntry.id, timelineEntry.entry),
+        ];
+        let cursor = index + 1;
+        while (cursor < input.timelineEntries.length) {
+          const nextEntry = input.timelineEntries[cursor];
+          if (!nextEntry || nextEntry.kind !== "work") break;
+          if (!isImageGenerationWorkEntry(nextEntry.entry)) break;
+          items.push(toImageGenerationRowItem(nextEntry.id, nextEntry.entry));
+          cursor += 1;
+        }
+        nextRows.push({
+          kind: "image-generation",
+          id: timelineEntry.id,
+          createdAt: timelineEntry.createdAt,
+          items,
+        });
+        index = cursor - 1;
         continue;
       }
 
@@ -298,12 +386,22 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "image-generation": {
       const bm = b as typeof a;
-      return (
-        a.createdAt === bm.createdAt &&
-        a.status === bm.status &&
-        a.label === bm.label &&
-        a.imagePath === bm.imagePath
-      );
+      if (a.createdAt !== bm.createdAt) return false;
+      if (a.items.length !== bm.items.length) return false;
+      for (let index = 0; index < a.items.length; index += 1) {
+        const ai = a.items[index]!;
+        const bi = bm.items[index]!;
+        if (
+          ai.id !== bi.id ||
+          ai.createdAt !== bi.createdAt ||
+          ai.status !== bi.status ||
+          ai.label !== bi.label ||
+          ai.imagePath !== bi.imagePath
+        ) {
+          return false;
+        }
+      }
+      return true;
     }
 
     case "work":
