@@ -374,15 +374,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
-  // jumpLabel（命令面板快捷键标签）一直可见；时间默认隐藏，仅 hover/focus 行时浮现，
-  // 让标题在常态下可以占据更多宽度。
+  // jumpLabel（命令面板快捷键标签）一直可见；时间默认完全不占空间（hidden），
+  // 仅 hover/focus 行（或小屏）时显示，让标题在常态下可以根据侧栏宽度自适应占满。
   const threadMetaClassName = isConfirmingArchive
     ? "pointer-events-none opacity-0"
     : "pointer-events-none";
   const threadTimeClassName = isConfirmingArchive
-    ? "opacity-0"
+    ? "hidden"
     : !isThreadRunning
-      ? "opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100 max-sm:opacity-100"
+      ? "hidden group-hover/menu-sub-item:inline group-focus-within/menu-sub-item:inline max-sm:inline"
       : "";
   const clearConfirmingArchive = useCallback(() => {
     setConfirmingArchiveThreadKey((current) => (current === threadKey ? null : current));
