@@ -93,6 +93,7 @@ import {
   PlusIcon,
   type LucideIcon,
   LockIcon,
+  BadgeAlertIcon,
   LockOpenIcon,
   PenLineIcon,
   XIcon,
@@ -137,7 +138,7 @@ const runtimeModeConfig: Record<
   "full-access": {
     label: "Full access",
     description: "Allow commands and edits without prompts.",
-    icon: LockOpenIcon,
+    icon: BadgeAlertIcon,
   },
 };
 
@@ -216,7 +217,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                 : "Default mode — click to enter plan mode"
             }
           >
-            <BotIcon />
+            <ListTodoIcon />
             <span className="sr-only sm:not-sr-only">
               {props.interactionMode === "plan" ? "Plan" : "Build"}
             </span>

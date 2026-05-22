@@ -617,27 +617,31 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   const elapsed = ctx.elapsedByAssistantMessageId.get(assistantMessageId) ?? null;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
-  // When expanding a long span the freshly-revealed content can overflow
-  // the viewport. Pin the toggle near the *top* of the scroll container
-  // (with a small breathing offset) so the user can naturally scroll
-  // through the expanded body. We retry the scroll for several frames
-  // because LegendList's `maintainVisibleContentPosition` runs after
-  // its own commit and can otherwise overwrite our adjustment.
+  // Keep the toggle button visually pinned at its current viewport
+  // position across the expand/collapse animation. The content grows
+  // (or collapses) below it instead of pushing the button out of view.
+  // We retry the alignment for several frames because LegendList's
+  // `maintainVisibleContentPosition` runs after its own commit and can
+  // otherwise overwrite our scrollTop adjustment.
   const handleToggle = useCallback(() => {
-    const wasCollapsed = isCollapsed;
-    ctx.toggleAssistantTurnCollapsed(assistantMessageId);
-    if (!wasCollapsed) return; // collapsing — leave scroll alone
-
     const button = buttonRef.current;
     const container = ctx.getScrollContainer();
-    if (!button || !container) return;
 
-    /** Target offset from the top of the scroll viewport. Leaves a tiny
-     *  breathing gap above the button so it doesn't visually slam into
-     *  the chat header. */
-    const TARGET_TOP_PADDING = 16;
+    // Capture the button's pre-toggle viewport offset so we can pin it
+    // to the same y-coordinate after the layout commits.
+    let pinnedTopOffset: number | null = null;
+    if (button && container) {
+      const buttonRect = button.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      pinnedTopOffset = buttonRect.top - containerRect.top;
+    }
+
+    ctx.toggleAssistantTurnCollapsed(assistantMessageId);
+
+    if (pinnedTopOffset == null || !button || !container) return;
+
     const SETTLE_TOLERANCE = 1.5;
-    const MAX_ATTEMPTS = 12; // ~12 * 16ms ≈ 200ms — covers grid-row anim.
+    const MAX_ATTEMPTS = 16; // ~16 * 16ms ≈ 256ms — covers grid-row anim.
 
     let attempt = 0;
     let frameId = 0;
@@ -649,11 +653,11 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
       const buttonRect = button.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       const currentTopOffset = buttonRect.top - containerRect.top;
-      const delta = currentTopOffset - TARGET_TOP_PADDING;
+      const delta = currentTopOffset - pinnedTopOffset!;
       if (Math.abs(delta) > SETTLE_TOLERANCE) {
-        // Use direct scrollTop rather than smooth scrollTo — repeated
-        // smooth scrolls cancel each other and never converge while the
-        // grid-row transition is still resizing the rows.
+        // Direct scrollTop assignment — repeated smooth scrolls cancel
+        // each other and never converge while the grid-row transition
+        // is still resizing the rows.
         container.scrollTop += delta;
       }
       if (attempt < MAX_ATTEMPTS) {
@@ -665,7 +669,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
       cancelled = true;
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [assistantMessageId, ctx, isCollapsed]);
+  }, [assistantMessageId, ctx]);
 
   return (
     <div className="pt-1 pb-1">
