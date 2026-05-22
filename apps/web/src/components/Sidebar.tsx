@@ -374,11 +374,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
+  // jumpLabel（命令面板快捷键标签）一直可见；时间默认隐藏，仅 hover/focus 行时浮现，
+  // 让标题在常态下可以占据更多宽度。
   const threadMetaClassName = isConfirmingArchive
     ? "pointer-events-none opacity-0"
+    : "pointer-events-none";
+  const threadTimeClassName = isConfirmingArchive
+    ? "opacity-0"
     : !isThreadRunning
-      ? "pointer-events-none transition-opacity duration-150 max-sm:pr-6 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0"
-      : "pointer-events-none";
+      ? "opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100 max-sm:opacity-100"
+      : "";
   const clearConfirmingArchive = useCallback(() => {
     setConfirmingArchiveThreadKey((current) => (current === threadKey ? null : current));
   }, [setConfirmingArchiveThreadKey, threadKey]);
@@ -604,7 +609,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </span>
           )}
           <div
-            className={`flex min-w-11 justify-end ${
+            className={`flex min-w-0 justify-end transition-[min-width] duration-150 group-hover/menu-sub-item:min-w-11 group-focus-within/menu-sub-item:min-w-11 max-sm:min-w-11 ${
               isRemoteThread ? "max-sm:min-w-24" : "max-sm:min-w-20"
             }`}
           >
@@ -685,7 +690,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </span>
                 ) : (
                   <span
-                    className={`text-[12px] ${
+                    className={`text-[12px] ${threadTimeClassName} ${
                       isHighlighted
                         ? "text-foreground/72 dark:text-foreground/82"
                         : "text-muted-foreground/70"
@@ -2399,18 +2404,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
       <div className="flex items-center gap-1.5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-          onClick={() =>
-            updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
-          }
-        >
-          <PanelLeftIcon className="size-3.5" />
-          <span className="text-xs">{layoutMode === "cursor" ? "两栏" : "三栏"}</span>
-        </Button>
+        
         <Menu>
           <MenuTrigger
             render={
@@ -2460,6 +2454,18 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
               ) : null}
             </MenuGroup>
           </MenuPopup>
+          <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+          onClick={() =>
+            updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
+          }
+        >
+          <PanelLeftIcon className="size-3.5" />
+          <span className="text-xs">{layoutMode === "cursor" ? "两栏" : "Code模式"}</span>
+        </Button>
         </Menu>
       </div>
     </SidebarFooter>

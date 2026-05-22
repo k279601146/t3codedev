@@ -191,10 +191,10 @@
   --success-foreground: var(--claude-success);
   --warning: var(--claude-warning);
   --warning-foreground: var(--claude-warning);
-  --sidebar: var(--claude-bg-base);
+  --sidebar: #F8F6F3; /* sidebar 比 main 略暖暗一档，形成层级 */
   --sidebar-foreground: var(--claude-text-secondary);
   --sidebar-border: var(--claude-border-subtle);
-  --sidebar-accent: var(--claude-bg-hover);
+  --sidebar-accent: #ebe8e2; /* sidebar 内 hover/active 项 */
   --sidebar-accent-foreground: var(--claude-text-primary);
 
   /* --- Claude 专用语义 token (供工具卡片、引用、Artifact 等使用) --- */
@@ -280,10 +280,10 @@
     --success-foreground: var(--claude-success);
     --warning: var(--claude-warning);
     --warning-foreground: var(--claude-warning);
-    --sidebar: var(--claude-bg-base);
+    --sidebar: #161412; /* sidebar 比 main 更深一档 */
     --sidebar-foreground: var(--claude-text-secondary);
     --sidebar-border: var(--claude-border-subtle);
-    --sidebar-accent: var(--claude-bg-hover);
+    --sidebar-accent: #25221f;
     --sidebar-accent-foreground: var(--claude-text-primary);
 
     --claude-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.25);

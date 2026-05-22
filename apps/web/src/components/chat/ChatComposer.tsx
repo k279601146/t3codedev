@@ -90,7 +90,7 @@ import {
   CircleAlertIcon,
   FileIcon,
   ListTodoIcon,
-  PaperclipIcon,
+  PlusIcon,
   type LucideIcon,
   LockIcon,
   LockOpenIcon,
@@ -2395,13 +2395,13 @@ export const ChatComposer = memo(
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-lg"
                     className="shrink-0 text-muted-foreground/70 hover:text-foreground"
                     aria-label="Attach files"
                     title="Attach files"
                     onClick={openAttachmentPicker}
                   >
-                    <PaperclipIcon />
+                    <PlusIcon />
                   </Button>
 
                   <ProviderModelPicker
