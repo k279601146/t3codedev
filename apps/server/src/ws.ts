@@ -56,6 +56,7 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
+import { SkillsService } from "./skills/SkillsService.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
@@ -949,6 +950,75 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
             {
               "rpc.aggregate": "source-control",
+            },
+          ),
+        [WS_METHODS.skillsList]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.skillsList,
+            Effect.gen(function* () {
+              const skillsService = yield* SkillsService;
+              return yield* skillsService.list();
+            }),
+            {
+              "rpc.aggregate": "skills",
+            },
+          ),
+        [WS_METHODS.skillsCatalog]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.skillsCatalog,
+            Effect.gen(function* () {
+              const skillsService = yield* SkillsService;
+              return yield* skillsService.catalog();
+            }),
+            {
+              "rpc.aggregate": "skills",
+            },
+          ),
+        [WS_METHODS.skillsRefresh]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.skillsRefresh,
+            Effect.gen(function* () {
+              const skillsService = yield* SkillsService;
+              return yield* skillsService.catalog({ force: input.force === true });
+            }),
+            {
+              "rpc.aggregate": "skills",
+            },
+          ),
+        [WS_METHODS.skillsInstall]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.skillsInstall,
+            Effect.gen(function* () {
+              const skillsService = yield* SkillsService;
+              return yield* skillsService.install({ catalogItemId: input.catalogItemId });
+            }),
+            {
+              "rpc.aggregate": "skills",
+            },
+          ),
+        [WS_METHODS.skillsUninstall]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.skillsUninstall,
+            Effect.gen(function* () {
+              const skillsService = yield* SkillsService;
+              return yield* skillsService.uninstall({ skillName: input.skillName });
+            }),
+            {
+              "rpc.aggregate": "skills",
+            },
+          ),
+        [WS_METHODS.skillsContent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.skillsContent,
+            Effect.gen(function* () {
+              const skillsService = yield* SkillsService;
+              return yield* skillsService.content({
+                skillName: input.skillName,
+                catalogItemId: input.catalogItemId,
+              });
+            }),
+            {
+              "rpc.aggregate": "skills",
             },
           ),
         [WS_METHODS.projectsSearchEntries]: (input) =>

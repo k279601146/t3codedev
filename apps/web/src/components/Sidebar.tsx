@@ -13,6 +13,7 @@
   SearchIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -2404,7 +2405,6 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
       <div className="flex items-center gap-1.5">
-        
         <Menu>
           <MenuTrigger
             render={
@@ -2455,17 +2455,17 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             </MenuGroup>
           </MenuPopup>
           <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-          onClick={() =>
-            updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
-          }
-        >
-          <PanelLeftIcon className="size-3.5" />
-          <span className="text-xs">{layoutMode === "cursor" ? "两栏" : "Code模式"}</span>
-        </Button>
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            onClick={() =>
+              updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
+            }
+          >
+            <PanelLeftIcon className="size-3.5" />
+            <span className="text-xs">{layoutMode === "cursor" ? "两栏" : "Code模式"}</span>
+          </Button>
         </Menu>
       </div>
     </SidebarFooter>
@@ -2932,6 +2932,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleOpenPlugins = useCallback(() => {
     void navigate({ to: "/settings/providers" });
   }, [navigate]);
+  const handleOpenSkills = useCallback(() => {
+    void navigate({ to: "/skills" });
+  }, [navigate]);
   const handleOpenAutomation = useCallback(() => {
     void navigate({ to: "/settings/connections" });
   }, [navigate]);
@@ -2996,6 +2999,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               ) : null}
             </CommandDialogTrigger>
           </SidebarMenuItem>
+          <SidebarNavButton icon={SparklesIcon} label={"\u6280\u80fd"} onClick={handleOpenSkills} />
           <SidebarNavButton icon={BlocksIcon} label={"\u63d2\u4ef6"} onClick={handleOpenPlugins} />
           <SidebarNavButton
             icon={Clock3Icon}

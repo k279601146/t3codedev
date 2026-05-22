@@ -155,6 +155,14 @@ export interface WsRpcClient {
     readonly subscribeShell: RpcStreamMethod<typeof ORCHESTRATION_WS_METHODS.subscribeShell>;
     readonly subscribeThread: RpcInputStreamMethod<typeof ORCHESTRATION_WS_METHODS.subscribeThread>;
   };
+  readonly skills: {
+    readonly list: RpcUnaryNoArgMethod<typeof WS_METHODS.skillsList>;
+    readonly catalog: RpcUnaryNoArgMethod<typeof WS_METHODS.skillsCatalog>;
+    readonly refresh: RpcUnaryMethod<typeof WS_METHODS.skillsRefresh>;
+    readonly install: RpcUnaryMethod<typeof WS_METHODS.skillsInstall>;
+    readonly uninstall: RpcUnaryMethod<typeof WS_METHODS.skillsUninstall>;
+    readonly content: RpcUnaryMethod<typeof WS_METHODS.skillsContent>;
+  };
 }
 
 export function createWsRpcClient(transport: WsTransport): WsRpcClient {
@@ -324,6 +332,15 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
           listener,
           { ...options, tag: ORCHESTRATION_WS_METHODS.subscribeThread },
         ),
+    },
+    skills: {
+      list: () => transport.request((client) => client[WS_METHODS.skillsList]({})),
+      catalog: () => transport.request((client) => client[WS_METHODS.skillsCatalog]({})),
+      refresh: (input) => transport.request((client) => client[WS_METHODS.skillsRefresh](input)),
+      install: (input) => transport.request((client) => client[WS_METHODS.skillsInstall](input)),
+      uninstall: (input) =>
+        transport.request((client) => client[WS_METHODS.skillsUninstall](input)),
+      content: (input) => transport.request((client) => client[WS_METHODS.skillsContent](input)),
     },
   };
 }

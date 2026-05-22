@@ -86,7 +86,8 @@ const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^
 const IMAGE_URL_PATTERN = /\bhttps?:\/\/\S+/i;
 const DATA_URL_IMAGE_PATTERN = /\bdata:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+/i;
 const BASE64_FIELD_PATTERN = /"b64_json"\s*:\s*"([A-Za-z0-9+/=_-]+)"/i;
-const IMAGE_PROXY_HOST_PATTERN = /\b(?:images?\/proxy|\/v\d+\/images?|cdn\.openai|oaiusercontent|generations)/i;
+const IMAGE_PROXY_HOST_PATTERN =
+  /\b(?:images?\/proxy|\/v\d+\/images?|cdn\.openai|oaiusercontent|generations)/i;
 
 /**
  * Tool titles / labels that exclusively belong to image-generation tools.

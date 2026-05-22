@@ -288,16 +288,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         span.lastAssistantId = row.message.id;
         span.lastAssistantRowId = row.id;
         span.lastAssistantCompletedAt =
-          !row.message.streaming && row.message.completedAt
-            ? row.message.completedAt
-            : null;
+          !row.message.streaming && row.message.completedAt ? row.message.completedAt : null;
         continue;
       }
-      if (
-        row.kind === "work" ||
-        row.kind === "image-generation" ||
-        row.kind === "proposed-plan"
-      ) {
+      if (row.kind === "work" || row.kind === "image-generation" || row.kind === "proposed-plan") {
         if (!span.firstProcessAt) span.firstProcessAt = row.createdAt;
         span.memberRowIds.push(row.id);
         span.hasProcessRow = true;
@@ -684,9 +678,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
         data-scroll-anchor-ignore
       >
-        <span className="min-w-0 truncate">
-          {elapsed ? `已处理 ${elapsed}` : "已处理"}
-        </span>
+        <span className="min-w-0 truncate">{elapsed ? `已处理 ${elapsed}` : "已处理"}</span>
         <ChevronDownIcon
           className={cn(
             "size-3.5 shrink-0 -rotate-90 text-muted-foreground/55 transition-transform duration-200 group-hover/turn-summary:text-muted-foreground/85",
@@ -963,7 +955,10 @@ function ProposedPlanTimelineRow({
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   return (
     <div className="py-0.5 pl-1.5" data-working-started-at={row.createdAt ?? undefined}>
-      <div className="flex items-center gap-2 pt-1 text-[12px] text-muted-foreground/70" style={USER_MESSAGE_FONT_STYLE}>
+      <div
+        className="flex items-center gap-2 pt-1 text-[12px] text-muted-foreground/70"
+        style={USER_MESSAGE_FONT_STYLE}
+      >
         <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/45" />
         <ShimmerScanText
           className="text-[12px] text-muted-foreground/72"
@@ -1026,9 +1021,11 @@ function ImageGenerationTimelineRow({ row }: { row: ImageGenerationRowKind }) {
   );
 
   const finalItems = useMemo(
-    () => resolved.filter((entry): entry is ResolvedImageGenerationItem & { resolvedSrc: string } =>
-      entry.isFinal && entry.resolvedSrc !== null,
-    ),
+    () =>
+      resolved.filter(
+        (entry): entry is ResolvedImageGenerationItem & { resolvedSrc: string } =>
+          entry.isFinal && entry.resolvedSrc !== null,
+      ),
     [resolved],
   );
 
@@ -1061,12 +1058,7 @@ function ImageGenerationTimelineRow({ row }: { row: ImageGenerationRowKind }) {
       data-image-status={overallStatus}
       data-image-count={resolved.length}
     >
-      <div
-        className={cn(
-          "flex flex-wrap gap-3",
-          isMulti ? "max-w-[768px]" : "max-w-[512px]",
-        )}
-      >
+      <div className={cn("flex flex-wrap gap-3", isMulti ? "max-w-[768px]" : "max-w-[512px]")}>
         {resolved.map((entry) => (
           <ImageGenerationTile
             key={entry.item.id}
@@ -1113,10 +1105,7 @@ const ImageGenerationTile = memo(function ImageGenerationTile({
           />
         </button>
       ) : (
-        <ImageGenerationShimmer
-          maxWidth="100%"
-          label={entry.item.label ?? "正在生成图片…"}
-        />
+        <ImageGenerationShimmer maxWidth="100%" label={entry.item.label ?? "正在生成图片…"} />
       )}
     </div>
   );
@@ -1770,7 +1759,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       <div
         className={cn(
           "flex items-center gap-2 transition-[opacity,translate] duration-200 rounded-md px-1 py-0.5",
-          hasDetail && "cursor-pointer hover:bg-muted/15 select-none"
+          hasDetail && "cursor-pointer hover:bg-muted/15 select-none",
         )}
         onClick={hasDetail ? () => setIsDetailExpanded((v) => !v) : undefined}
       >

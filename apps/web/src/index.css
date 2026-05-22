@@ -191,7 +191,7 @@
   --success-foreground: var(--claude-success);
   --warning: var(--claude-warning);
   --warning-foreground: var(--claude-warning);
-  --sidebar: #F8F6F3; /* sidebar 比 main 略暖暗一档，形成层级 */
+  --sidebar: #f8f6f3; /* sidebar 比 main 略暖暗一档，形成层级 */
   --sidebar-foreground: var(--claude-text-secondary);
   --sidebar-border: var(--claude-border-subtle);
   --sidebar-accent: #ebe8e2; /* sidebar 内 hover/active 项 */
@@ -209,8 +209,7 @@
   --claude-shadow-md: 0 2px 12px rgba(31, 29, 27, 0.05);
   --claude-shadow-lg: 0 6px 24px rgba(31, 29, 27, 0.07);
   --claude-shadow-focus: 0 0 0 3px rgba(31, 29, 27, 0.06);
-  --claude-shadow-panel:
-    0 1px 6px rgba(31, 29, 27, 0.04), 0 0 0 1px var(--claude-border-subtle);
+  --claude-shadow-panel: 0 1px 6px rgba(31, 29, 27, 0.04), 0 0 0 1px var(--claude-border-subtle);
 
   --claude-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --claude-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -291,15 +290,21 @@
     --claude-shadow-md: 0 2px 12px rgba(0, 0, 0, 0.35);
     --claude-shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.4);
     --claude-shadow-focus: 0 0 0 3px rgba(255, 255, 255, 0.06);
-    --claude-shadow-panel:
-      0 1px 6px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--claude-border-subtle);
+    --claude-shadow-panel: 0 1px 6px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--claude-border-subtle);
   }
 }
 
 body {
   font-family:
-    "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI",
-    "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
+    "PingFang SC",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "Hiragino Sans GB",
+    system-ui,
+    sans-serif;
   margin: 0;
   padding: 0;
 }
@@ -529,7 +534,11 @@ label:has(> select#reasoning-effort) select {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
-  font-family: "PingFang SC", -apple-system, "Microsoft YaHei", sans-serif;
+  font-family:
+    "PingFang SC",
+    -apple-system,
+    "Microsoft YaHei",
+    sans-serif;
   font-size: 15px;
   font-weight: 400;
   color: var(--foreground);
@@ -751,7 +760,11 @@ label:has(> select#reasoning-effort) select {
 [data-slot="sidebar-container"],
 [data-slot="sidebar-inner"] {
   font-family:
-    "PingFang SC", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "Hiragino Sans GB",
+    "PingFang SC",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Microsoft YaHei",
+    "Hiragino Sans GB",
     sans-serif;
   font-size: 13.5px;
 }

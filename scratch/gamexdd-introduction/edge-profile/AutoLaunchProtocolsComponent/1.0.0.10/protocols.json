@@ -1,18 +1,11 @@
 {
   "allow": [
     {
-      "origins": [
-        "https://.get.microsoft.com",
-        "https://.apps.microsoft.com"
-      ],
+      "origins": ["https://.get.microsoft.com", "https://.apps.microsoft.com"],
       "protocol": "ms-windows-store"
     },
     {
-      "origins": [
-        "https://.onedrive.com",
-        "https://.onedrive.live.com",
-        "https://sharepoint.com"
-      ],
+      "origins": ["https://.onedrive.com", "https://.onedrive.live.com", "https://sharepoint.com"],
       "protocol": "ms-word"
     },
     {
@@ -30,11 +23,7 @@
       "protocol": "ms-word"
     },
     {
-      "origins": [
-        "https://.onedrive.com",
-        "https://.onedrive.live.com",
-        "https://sharepoint.com"
-      ],
+      "origins": ["https://.onedrive.com", "https://.onedrive.live.com", "https://sharepoint.com"],
       "protocol": "ms-excel"
     },
     {
@@ -51,11 +40,7 @@
       "protocol": "ms-excel"
     },
     {
-      "origins": [
-        "https://.onedrive.com",
-        "https://.onedrive.live.com",
-        "https://sharepoint.com"
-      ],
+      "origins": ["https://.onedrive.com", "https://.onedrive.live.com", "https://sharepoint.com"],
       "protocol": "ms-powerpoint"
     },
     {
@@ -72,11 +57,7 @@
       "protocol": "ms-powerpoint"
     },
     {
-      "origins": [
-        "https://.onedrive.com",
-        "https://.onedrive.live.com",
-        "https://sharepoint.com"
-      ],
+      "origins": ["https://.onedrive.com", "https://.onedrive.live.com", "https://sharepoint.com"],
       "protocol": "ms-visio"
     },
     {
@@ -93,26 +74,19 @@
       "protocol": "ms-visio"
     },
     {
-      "origins": [
-        "https://www.microsoft.com",
-        "https://copilot.microsoft.com"
-      ],
+      "origins": ["https://www.microsoft.com", "https://copilot.microsoft.com"],
       "protocol": "ms-copilot"
     }
   ],
   "warn": [
     {
-      "origins": [
-        "*"
-      ],
+      "origins": ["*"],
       "protocol": "ms-test-warn"
     }
   ],
   "block": [
     {
-      "origins": [
-        "*"
-      ],
+      "origins": ["*"],
       "protocol": "ms-test-block"
     }
   ]

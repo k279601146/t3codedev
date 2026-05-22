@@ -991,7 +991,7 @@ function extractToolDetail(
   if (detail && normalizedHeading !== normalizedDetail) {
     return detail;
   }
-//这里好像可以控制前端界面命令行输出的内容 null或者detail
+  //这里好像可以控制前端界面命令行输出的内容 null或者detail
   if (isCommandToolDetail(payload, heading)) {
     return detail;
   }

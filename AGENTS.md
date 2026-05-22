@@ -1,9 +1,6 @@
 # AGENTS.md - T3 Code 开发准则与架构指南
 
-## 1. 任务完成要求 (Task Completion Requirements)
 
-- 必须通过 `bun fmt` 和 `bun lint` 检查。
-- **禁止** 直接运行 `bun test` 或 `bun typecheck`。始终使用 `bun run test` (Vitest)。
 - 所有代码注释及回复必须使用 **中文**。
 
 ## 2. 项目愿景与快照 (Project Snapshot)

@@ -94,6 +94,18 @@ import {
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
+  SkillContentInput,
+  SkillContentResult,
+  SkillInstallInput,
+  SkillInstallResult,
+  SkillUninstallInput,
+  SkillUninstallResult,
+  SkillsCatalogResponse,
+  SkillsListResponse,
+  SkillsRefreshInput,
+  SkillsServiceError,
+} from "./skills.ts";
+import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
@@ -162,6 +174,14 @@ export const WS_METHODS = {
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
+
+  // Skills methods
+  skillsList: "skills.list",
+  skillsCatalog: "skills.catalog",
+  skillsRefresh: "skills.refresh",
+  skillsInstall: "skills.install",
+  skillsUninstall: "skills.uninstall",
+  skillsContent: "skills.content",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -271,6 +291,42 @@ export const WsSourceControlPublishRepositoryRpc = Rpc.make(
     error: SourceControlRepositoryError,
   },
 );
+
+export const WsSkillsListRpc = Rpc.make(WS_METHODS.skillsList, {
+  payload: Schema.Struct({}),
+  success: SkillsListResponse,
+  error: SkillsServiceError,
+});
+
+export const WsSkillsCatalogRpc = Rpc.make(WS_METHODS.skillsCatalog, {
+  payload: Schema.Struct({}),
+  success: SkillsCatalogResponse,
+  error: SkillsServiceError,
+});
+
+export const WsSkillsRefreshRpc = Rpc.make(WS_METHODS.skillsRefresh, {
+  payload: SkillsRefreshInput,
+  success: SkillsCatalogResponse,
+  error: SkillsServiceError,
+});
+
+export const WsSkillsInstallRpc = Rpc.make(WS_METHODS.skillsInstall, {
+  payload: SkillInstallInput,
+  success: SkillInstallResult,
+  error: SkillsServiceError,
+});
+
+export const WsSkillsUninstallRpc = Rpc.make(WS_METHODS.skillsUninstall, {
+  payload: SkillUninstallInput,
+  success: SkillUninstallResult,
+  error: SkillsServiceError,
+});
+
+export const WsSkillsContentRpc = Rpc.make(WS_METHODS.skillsContent, {
+  payload: SkillContentInput,
+  success: SkillContentResult,
+  error: SkillsServiceError,
+});
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
@@ -508,6 +564,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
+  WsSkillsListRpc,
+  WsSkillsCatalogRpc,
+  WsSkillsRefreshRpc,
+  WsSkillsInstallRpc,
+  WsSkillsUninstallRpc,
+  WsSkillsContentRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsListDirectoryRpc,

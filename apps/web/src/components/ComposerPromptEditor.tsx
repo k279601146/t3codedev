@@ -1622,9 +1622,9 @@ function ComposerPromptEditorInner({
           }
           placeholder={
             terminalContexts.length > 0 ? null : (
-         <div className="pointer-events-none absolute inset-0 font-sans antialiased text-[16px] leading-relaxed text-muted-foreground/45 sm:text-[15px]">
-          {placeholder}
-        </div>
+              <div className="pointer-events-none absolute inset-0 font-sans antialiased text-[16px] leading-relaxed text-muted-foreground/45 sm:text-[15px]">
+                {placeholder}
+              </div>
             )
           }
           ErrorBoundary={LexicalErrorBoundary}

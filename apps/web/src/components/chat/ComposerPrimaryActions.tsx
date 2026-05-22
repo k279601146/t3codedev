@@ -193,13 +193,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   }
 
   return (
-   <button
-  type="submit"
-  className="flex h-9 w-9 items-center justify-center rounded-sm border border-black/5 text-white shadow-sm transition-all duration-150 sm:h-8 sm:w-8
+    <button
+      type="submit"
+      className="flex h-9 w-9 items-center justify-center rounded-sm border border-black/5 text-white shadow-sm transition-all duration-150 sm:h-8 sm:w-8
     enabled:cursor-pointer enabled:bg-[#E8B5A6] enabled:hover:bg-[#DCA593] enabled:hover:scale-105
     disabled:pointer-events-none disabled:bg-[#F1CDC3] disabled:text-white/80 disabled:shadow-none"
-  {...pointerFocusProps}
-
+      {...pointerFocusProps}
       disabled={isSendBusy || isConnecting || isEnvironmentUnavailable || !hasSendableContent}
       aria-label={
         isEnvironmentUnavailable
