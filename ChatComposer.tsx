@@ -2018,7 +2018,7 @@ export const ChatComposer = memo(
         />
         <div
           className={cn(
-            "group rounded-[28px] p-px transition-colors duration-200",
+            "group rounded-[22px] p-px transition-colors duration-200",
             composerProviderState.composerFrameClassName,
           )}
           onDragEnter={onComposerDragEnter}
@@ -2030,8 +2030,8 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-[26px] border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.04)] transition-colors duration-200 has-focus-visible:border-ring/45",
-              isDragOverComposer ? "border-foreground/30 bg-accent/30" : "border-border/60",
+              "rounded-[20px] border bg-card shadow-[0_1px_0_rgba(0,0,0,0.02),0_8px_18px_rgba(0,0,0,0.03)] transition-colors duration-200 has-focus-visible:border-ring/45",
+              isDragOverComposer ? "border-foreground/30 bg-accent/30" : "border-border",
               environmentUnavailable ? "opacity-75" : null,
               composerProviderState.composerSurfaceClassName,
             )}
@@ -2203,8 +2203,8 @@ export const ChatComposer = memo(
 
             <div
               className={cn(
-                "relative px-4 pb-2 sm:px-5",
-                hasComposerHeader ? "pt-3 sm:pt-3.5" : "pt-4 sm:pt-5",
+                "relative px-3 pb-2 sm:px-4",
+                hasComposerHeader ? "pt-2.5 sm:pt-3" : "pt-3.5 sm:pt-4",
                 isComposerCollapsedMobile && "hidden",
               )}
             >
@@ -2338,7 +2338,7 @@ export const ChatComposer = memo(
                               }`
                             : phase === "disconnected"
                               ? "Ask for follow-up changes or attach files"
-                              : "Type / for skills"
+                              : "Ask anything, @tag files/folders, $use skills, or / for commands"
                   }
                   disabled={
                     isConnecting ||
@@ -2386,7 +2386,7 @@ export const ChatComposer = memo(
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
-                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-3.5",
+                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2.5 sm:px-3 sm:pb-3",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
