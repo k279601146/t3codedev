@@ -617,44 +617,55 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   const elapsed = ctx.elapsedByAssistantMessageId.get(assistantMessageId) ?? null;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
-  // FLIP-style scroll lock: when the user clicks the toggle, capture the
-  // button's pre-toggle viewport offset relative to the scroll container,
-  // then on the next frame (after the grid-row transition begins and
-  // LegendList has measured the new layout) nudge the scroll container
-  // so the button visually stays put. Without this, expanding a long
-  // span pushes the button — and everything after it — out of the
-  // viewport and the user loses their reading position.
+  // When expanding a long span the freshly-revealed content can overflow
+  // the viewport. Pin the toggle near the *top* of the scroll container
+  // (with a small breathing offset) so the user can naturally scroll
+  // through the expanded body. We retry the scroll for several frames
+  // because LegendList's `maintainVisibleContentPosition` runs after
+  // its own commit and can otherwise overwrite our adjustment.
   const handleToggle = useCallback(() => {
+    const wasCollapsed = isCollapsed;
+    ctx.toggleAssistantTurnCollapsed(assistantMessageId);
+    if (!wasCollapsed) return; // collapsing — leave scroll alone
+
     const button = buttonRef.current;
     const container = ctx.getScrollContainer();
-    let buttonOffsetBefore: number | null = null;
-    if (button && container) {
+    if (!button || !container) return;
+
+    /** Target offset from the top of the scroll viewport. Leaves a tiny
+     *  breathing gap above the button so it doesn't visually slam into
+     *  the chat header. */
+    const TARGET_TOP_PADDING = 16;
+    const SETTLE_TOLERANCE = 1.5;
+    const MAX_ATTEMPTS = 12; // ~12 * 16ms ≈ 200ms — covers grid-row anim.
+
+    let attempt = 0;
+    let frameId = 0;
+    let cancelled = false;
+
+    const align = () => {
+      if (cancelled) return;
+      attempt += 1;
       const buttonRect = button.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
-      buttonOffsetBefore = buttonRect.top - containerRect.top;
-    }
-    ctx.toggleAssistantTurnCollapsed(assistantMessageId);
-
-    if (buttonOffsetBefore == null || !button || !container) return;
-    // Re-pin the button after layout settles. Two frames is enough for
-    // LegendList to commit its position update + the grid-row 0fr→1fr
-    // transition's first paint.
-    let frameTwo = 0;
-    const frameOne = window.requestAnimationFrame(() => {
-      frameTwo = window.requestAnimationFrame(() => {
-        const buttonRect = button.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        const delta = buttonRect.top - containerRect.top - buttonOffsetBefore!;
-        if (Math.abs(delta) > 0.5) {
-          container.scrollTop += delta;
-        }
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(frameOne);
-      if (frameTwo) window.cancelAnimationFrame(frameTwo);
+      const currentTopOffset = buttonRect.top - containerRect.top;
+      const delta = currentTopOffset - TARGET_TOP_PADDING;
+      if (Math.abs(delta) > SETTLE_TOLERANCE) {
+        // Use direct scrollTop rather than smooth scrollTo — repeated
+        // smooth scrolls cancel each other and never converge while the
+        // grid-row transition is still resizing the rows.
+        container.scrollTop += delta;
+      }
+      if (attempt < MAX_ATTEMPTS) {
+        frameId = window.requestAnimationFrame(align);
+      }
     };
-  }, [assistantMessageId, ctx]);
+    frameId = window.requestAnimationFrame(align);
+    return () => {
+      cancelled = true;
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
+  }, [assistantMessageId, ctx, isCollapsed]);
 
   return (
     <div className="pt-1 pb-1">
