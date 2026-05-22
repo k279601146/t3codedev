@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GameXDD 遊戲平台介紹文檔</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 18mm 16mm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: #202124;
+        background: #f5f6f8;
+        font-family:
+          "Noto Sans SC",
+          "Microsoft YaHei",
+          "PingFang SC",
+          "Heiti TC",
+          Arial,
+          sans-serif;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .page {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto 16px;
+        padding: 18mm 16mm;
+        background: #ffffff;
+        box-shadow: 0 10px 35px rgba(20, 24, 31, 0.12);
+      }
+
+      .cover {
+        display: flex;
+        min-height: 260mm;
+        flex-direction: column;
+        justify-content: space-between;
+        color: #ffffff;
+        background:
+          linear-gradient(135deg, rgba(21, 31, 58, 0.95), rgba(34, 98, 132, 0.9)),
+          radial-gradient(circle at 85% 12%, rgba(255, 202, 97, 0.5), transparent 30%),
+          #17213c;
+      }
+
+      .brand-mark {
+        display: inline-flex;
+        width: 62px;
+        height: 62px;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid rgba(255, 255, 255, 0.56);
+        border-radius: 14px;
+        color: #ffd66e;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .cover h1 {
+        max-width: 760px;
+        margin: 30mm 0 0;
+        font-size: 36px;
+        line-height: 1.18;
+        letter-spacing: 0;
+      }
+
+      .cover .subtitle {
+        max-width: 650px;
+        margin-top: 14px;
+        color: rgba(255, 255, 255, 0.84);
+        font-size: 16px;
+      }
+
+      .cover-meta {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 32mm;
+      }
+
+      .meta-box {
+        min-height: 70px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .meta-box span {
+        display: block;
+        color: rgba(255, 255, 255, 0.64);
+        font-size: 11px;
+      }
+
+      .meta-box strong {
+        display: block;
+        margin-top: 5px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #1f6f8b;
+        color: #1b2638;
+        font-size: 22px;
+        line-height: 1.35;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin: 20px 0 8px;
+        color: #1d384f;
+        font-size: 15px;
+        line-height: 1.45;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 10px;
+      }
+
+      ul,
+      ol {
+        margin: 8px 0 12px 20px;
+        padding: 0;
+      }
+
+      li {
+        margin: 4px 0;
+      }
+
+      table {
+        width: 100%;
+        margin: 12px 0 16px;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      th,
+      td {
+        padding: 9px 10px;
+        border: 1px solid #dce3ea;
+        vertical-align: top;
+      }
+
+      th {
+        color: #19344b;
+        background: #eef5f9;
+        font-weight: 700;
+      }
+
+      .lead {
+        padding: 14px 16px;
+        border-left: 4px solid #1f6f8b;
+        color: #2d3b46;
+        background: #f1f7fa;
+        font-size: 14px;
+      }
+
+      .toc {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 18px;
+        margin-top: 20px;
+      }
+
+      .toc div {
+        padding: 10px 12px;
+        border: 1px solid #dce3ea;
+        border-radius: 8px;
+        background: #fbfcfd;
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0 16px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 3px 10px;
+        border: 1px solid #cfe1ea;
+        border-radius: 999px;
+        color: #19435b;
+        background: #f4f9fb;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .section {
+        margin-bottom: 24px;
+        break-inside: avoid;
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .card {
+        padding: 13px 14px;
+        border: 1px solid #dce3ea;
+        border-radius: 8px;
+        background: #fbfcfd;
+      }
+
+      .card h3 {
+        margin-top: 0;
+      }
+
+      .note {
+        padding: 11px 13px;
+        border: 1px solid #ead7a5;
+        border-radius: 8px;
+        color: #5b4615;
+        background: #fff8e6;
+      }
+
+      .source-list a {
+        color: #155f85;
+        text-decoration: none;
+        word-break: break-all;
+      }
+
+      .footer {
+        margin-top: 18px;
+        padding-top: 10px;
+        border-top: 1px solid #dce3ea;
+        color: #66727d;
+        font-size: 11px;
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+        }
+
+        .page {
+          width: auto;
+          min-height: auto;
+          margin: 0;
+          box-shadow: none;
+          break-after: page;
+        }
+
+        .page:last-child {
+          break-after: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="page cover">
+      <div>
+        <div class="brand-mark">GX</div>
+        <h1>GameXDD 遊戲平台<br />介紹文檔</h1>
+        <p class="subtitle">
+          基於 GameXDD 官方公開頁面整理，面向合作方、營運團隊與新用戶，快速說明平台定位、功能入口、內容矩陣、會員福利與服務保障。
+        </p>
+      </div>
+      <div class="cover-meta">
+        <div class="meta-box">
+          <span>網站</span>
+          <strong>www.gamexdd.com</strong>
+        </div>
+        <div class="meta-box">
+          <span>整理日期</span>
+          <strong>2026 年 5 月 22 日</strong>
+        </div>
+        <div class="meta-box">
+          <span>文檔類型</span>
+          <strong>平台介紹 / 商務簡報版</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="page">
+      <h2>目錄</h2>
+      <div class="toc">
+        <div>1. 平台概覽</div>
+        <div>2. 核心功能與入口</div>
+        <div>3. 遊戲內容矩陣</div>
+        <div>4. 會員與福利體系</div>
+        <div>5. 客服、條款與隱私</div>
+        <div>6. 使用者旅程與營運價值</div>
+        <div>7. 建議使用場景</div>
+        <div>8. 資料來源與聲明</div>
+      </div>
+
+      <div class="section" style="margin-top: 26px">
+        <h2>1. 平台概覽</h2>
+        <p class="lead">
+          GameXDD 是一個面向繁體中文用戶的線上遊戲平台。從公開頁面可見，網站以「遊戲內容展示、帳號會員、遊戲儲值、禮包福利、客服支援與活動公告」為主要能力，聚焦於玩家進入遊戲、獲取福利、完成儲值與獲得售後服務的完整流程。
+        </p>
+        <div class="tag-row">
+          <span class="tag">繁體中文遊戲平台</span>
+          <span class="tag">線上遊戲入口</span>
+          <span class="tag">會員中心</span>
+          <span class="tag">儲值服務</span>
+          <span class="tag">禮包福利</span>
+          <span class="tag">客服中心</span>
+        </div>
+        <p>
+          官網首頁呈現多款遊戲內容與「HOT」推薦標識，並提供「遊戲儲值」「我的遊戲」「禮包」「會員中心」「遊戲庫」「客服中心」「新聞公告」等導航入口。整體設計更接近遊戲發行或聯運平台，用戶可透過同一網站完成發現遊戲、進入遊戲、查找公告、領取福利及處理帳務問題。
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>2. 核心功能與入口</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 24%">功能模組</th>
+              <th>公開頁面呈現</th>
+              <th style="width: 30%">對用戶的價值</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>首頁與遊戲推薦</td>
+              <td>展示熱門遊戲、遊戲名稱、類型標識與進入遊戲入口。</td>
+              <td>降低新用戶找遊戲成本，讓玩家快速進入熱門內容。</td>
+            </tr>
+            <tr>
+              <td>遊戲庫</td>
+              <td>提供更完整的遊戲列表瀏覽入口。</td>
+              <td>便於按興趣探索平台已上架內容。</td>
+            </tr>
+            <tr>
+              <td>遊戲儲值</td>
+              <td>首頁導航中提供明確的儲值入口。</td>
+              <td>支撐付費轉化與玩家遊戲內消費。</td>
+            </tr>
+            <tr>
+              <td>禮包與活動</td>
+              <td>網站提供禮包入口，首頁同時呈現新聞與公告列表。</td>
+              <td>提高玩家留存，讓回訪用戶持續獲得福利與活動資訊。</td>
+            </tr>
+            <tr>
+              <td>會員中心</td>
+              <td>公開入口包含登入、註冊與會員相關頁面。</td>
+              <td>承載帳號、身份、玩家資料與跨遊戲服務體系。</td>
+            </tr>
+            <tr>
+              <td>客服中心</td>
+              <td>提供客服與常見問題入口，支援用戶尋求協助。</td>
+              <td>處理帳號、支付、遊戲問題，提升平台可信度。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer">本頁根據 GameXDD 官方網站公開頁面整理，不代表網站方背書或授權。</div>
+    </section>
+
+    <section class="page">
+      <div class="section">
+        <h2>3. 遊戲內容矩陣</h2>
+        <p>
+          從官網首頁與遊戲展示區可見，GameXDD 上架或推薦的遊戲包括《混沌戰域》《逍遙情緣》《熱血大明》《熱血封神》《龍將》《暮影戰神》《烈焰飛雪》《熱血三國 3》《七魄》《七絕》《劍俠情緣 2》《神魔遮天》《寒刀》《三國之志 2》《醉武俠》等。這些名稱呈現出平台以角色扮演、武俠、仙俠、傳奇風格、三國策略與頁遊式長線營運產品為主。
+        </p>
+        <div class="two-col">
+          <div class="card">
+            <h3>內容特徵</h3>
+            <ul>
+              <li>題材集中在武俠、仙俠、戰國、三國、封神與熱血戰鬥等中文玩家熟悉的世界觀。</li>
+              <li>多款遊戲具備長線營運屬性，適合搭配活動、公告、禮包與儲值服務。</li>
+              <li>首頁以熱門標識突出部分產品，便於平台根據營運重點調整曝光。</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>玩家吸引點</h3>
+            <ul>
+              <li>玩家可在同一平台發現多款同類型遊戲，減少重複註冊與查找成本。</li>
+              <li>禮包、公告與客服入口集中，讓回流玩家更容易接續既有遊戲進度。</li>
+              <li>平台型入口有利於跨遊戲導流與老用戶再啟動。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>4. 會員與福利體系</h2>
+        <p>
+          GameXDD 將會員中心、我的遊戲、禮包與遊戲儲值放在導航層級，說明平台並非單純資訊展示站，而是圍繞玩家帳號與遊戲服務建立的營運型站點。對玩家而言，會員體系的價值在於集中管理身份、遊戲記錄、充值與福利；對平台而言，會員體系則支撐用戶留存、付費轉化和精細化活動推送。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>體系</th>
+              <th>可能承載內容</th>
+              <th>營運價值</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>會員帳號</td>
+              <td>登入、註冊、身份識別、玩家資料管理。</td>
+              <td>建立跨遊戲的統一用戶身份，便於長期服務。</td>
+            </tr>
+            <tr>
+              <td>我的遊戲</td>
+              <td>已玩遊戲、快捷返回、帳號關聯內容。</td>
+              <td>縮短老玩家回訪路徑，提高活躍度。</td>
+            </tr>
+            <tr>
+              <td>禮包福利</td>
+              <td>新手禮包、活動福利、回歸獎勵等。</td>
+              <td>用低成本權益促進註冊、回訪與活動參與。</td>
+            </tr>
+            <tr>
+              <td>儲值服務</td>
+              <td>遊戲充值、支付指引、帳務相關服務。</td>
+              <td>承接商業化流程，是平台收入轉化的重要入口。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer">遊戲清單與功能入口基於 2026 年 5 月 22 日可訪問的公開頁面整理，實際上架內容可能隨營運調整。</div>
+    </section>
+
+    <section class="page">
+      <div class="section">
+        <h2>5. 客服、條款與隱私</h2>
+        <p>
+          官方頁面包含「客服中心」「服務條款」「隱私政策」以及「認識 GameXDD」等內容，這對遊戲平台尤為重要。玩家在註冊、遊玩、儲值或尋求售後支援時，需要明確知道平台如何處理帳號、服務規則、個人資料與問題回報。
+        </p>
+        <div class="two-col">
+          <div class="card">
+            <h3>客服支援</h3>
+            <p>
+              客服中心承擔問題分流和服務承接作用，通常覆蓋帳號登入、儲值異常、遊戲問題、活動獎勵、資料修改等場景。對付費遊戲平台而言，客服入口是否清晰會直接影響玩家信任與問題處理效率。
+            </p>
+          </div>
+          <div class="card">
+            <h3>條款與政策</h3>
+            <p>
+              服務條款與隱私政策構成平台規則說明，包含用戶權利義務、資料處理、服務使用限制、爭議處理等內容。介紹材料中應提示讀者以官方最新頁面為準。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>6. 使用者旅程與營運價值</h2>
+        <ol>
+          <li><strong>發現：</strong>用戶透過首頁熱門推薦、遊戲庫或活動公告了解平台遊戲。</li>
+          <li><strong>註冊：</strong>用戶進入會員中心完成登入或註冊，形成平台統一身份。</li>
+          <li><strong>進入遊戲：</strong>用戶從首頁、遊戲庫或我的遊戲進入具體產品。</li>
+          <li><strong>領取福利：</strong>用戶透過禮包或活動頁獲取新手、活動或回歸福利。</li>
+          <li><strong>儲值付費：</strong>用戶在需要提升遊戲體驗時使用遊戲儲值入口完成付費。</li>
+          <li><strong>客服與留存：</strong>遇到帳號、支付或遊戲問題時，透過客服中心處理並回到遊戲。</li>
+        </ol>
+        <p>
+          這一路徑說明 GameXDD 的核心不是單點遊戲展示，而是把內容、帳號、福利、支付與服務連成閉環。對營運團隊而言，這種結構便於圍繞不同遊戲做分發、活動、禮包、公告與用戶回流。
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>7. 建議使用場景</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>讀者 / 場景</th>
+              <th>可關注重點</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>新玩家</td>
+              <td>查看熱門遊戲、遊戲庫、禮包入口與客服中心，快速完成註冊並進入遊戲。</td>
+            </tr>
+            <tr>
+              <td>合作方</td>
+              <td>關注平台的遊戲矩陣、會員承接能力、活動公告能力與付費服務入口。</td>
+            </tr>
+            <tr>
+              <td>營運團隊</td>
+              <td>關注首頁曝光位、HOT 推薦、公告更新、禮包配置和客服問題閉環。</td>
+            </tr>
+            <tr>
+              <td>客服與風控</td>
+              <td>關注服務條款、隱私政策、帳務問題處理與用戶申訴路徑。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer">本文檔為介紹與整理用途，不構成法律、投資或合作承諾。</div>
+    </section>
+
+    <section class="page">
+      <div class="section">
+        <h2>8. 資料來源與聲明</h2>
+        <p>
+          本文檔依據 GameXDD 官方網站可公開訪問頁面整理，並對頁面資訊做了結構化歸納。由於遊戲上架、活動、會員規則、客服政策與法律條款可能更新，正式使用時應再次核對官方最新頁面。
+        </p>
+        <ul class="source-list">
+          <li>GameXDD 首頁：<a href="https://www.gamexdd.com/">https://www.gamexdd.com/</a></li>
+          <li>認識 GameXDD：<a href="https://www.gamexdd.com/Service/about/gamexdd">https://www.gamexdd.com/Service/about/gamexdd</a></li>
+          <li>客服中心：<a href="https://www.gamexdd.com/Service">https://www.gamexdd.com/Service</a></li>
+          <li>隱私政策：<a href="https://www.gamexdd.com/Service/about/private">https://www.gamexdd.com/Service/about/private</a></li>
+          <li>會員 / VIP 相關頁：<a href="https://www.gamexdd.com/User/vipinfo">https://www.gamexdd.com/User/vipinfo</a></li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>附錄：一句話介紹</h2>
+        <p class="lead">
+          GameXDD 是一個面向繁體中文玩家的線上遊戲平台，透過遊戲庫、會員中心、禮包福利、遊戲儲值、公告與客服中心，為玩家提供從發現遊戲到持續遊玩的完整服務入口。
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>附錄：對外簡介模板</h2>
+        <p>
+          GameXDD 聚合多款武俠、仙俠、策略與熱血題材線上遊戲，提供會員登入、遊戲入口、禮包福利、遊戲儲值、新聞公告與客服支援等服務。平台適合希望快速探索中文遊戲內容的玩家，也可作為遊戲產品營運、活動發布與玩家服務的集中入口。
+        </p>
+        <div class="note">
+          建議在正式對外發布前，由網站方確認品牌稱謂、公司資訊、版權歸屬、支付政策、客服時間與最新遊戲清單。
+        </div>
+      </div>
+
+      <div class="footer">
+        生成文件：GameXDD 遊戲平台介紹文檔。整理日期：2026 年 5 月 22 日。
+      </div>
+    </section>
+  </body>
+</html>

@@ -8,8 +8,10 @@ type ThemeSnapshot = {
 
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
+// Claude 主题为应用默认外观：未做选择时直接呈现 Claude Light（米白色暖色调）。
+const DEFAULT_THEME: Theme = "light";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
-  theme: "system",
+  theme: DEFAULT_THEME,
   systemDark: false,
 };
 const THEME_COLOR_META_NAME = "theme-color";
@@ -32,10 +34,10 @@ function getSystemDark() {
 }
 
 function getStored(): Theme {
-  if (!hasThemeStorage()) return DEFAULT_THEME_SNAPSHOT.theme;
+  if (!hasThemeStorage()) return DEFAULT_THEME;
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  return DEFAULT_THEME_SNAPSHOT.theme;
+  return DEFAULT_THEME;
 }
 
 function ensureThemeColorMetaTag(): HTMLMetaElement {

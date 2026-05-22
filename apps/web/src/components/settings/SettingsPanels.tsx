@@ -96,16 +96,16 @@ import { useI18n } from "../../i18n";
 
 const THEME_OPTIONS = [
   {
-    value: "system",
-    label: "System",
-  },
-  {
     value: "light",
-    label: "Light",
+    label: "Claude Light",
   },
   {
     value: "dark",
-    label: "Dark",
+    label: "Claude Dark",
+  },
+  {
+    value: "system",
+    label: "跟随系统",
   },
 ] as const;
 
@@ -603,7 +603,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 
   const changedSettingLabels = useMemo(
     () => [
-      ...(theme !== "system" ? ["Theme"] : []),
+      ...(theme !== "light" ? ["Theme"] : []),
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
@@ -675,7 +675,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     );
     if (!confirmed) return;
 
-    setTheme("system");
+    setTheme("light");
     updateSettings({
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       language: DEFAULT_UNIFIED_SETTINGS.language,
@@ -746,8 +746,8 @@ export function GeneralSettingsPanel() {
           title={t("settings.theme")}
           description={t("settings.themeDescription")}
           resetAction={
-            theme !== "system" ? (
-              <SettingResetButton label="theme" onClick={() => setTheme("system")} />
+            theme !== "light" ? (
+              <SettingResetButton label="theme" onClick={() => setTheme("light")} />
             ) : null
           }
           control={
@@ -761,7 +761,7 @@ export function GeneralSettingsPanel() {
             >
               <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
                 <SelectValue>
-                  {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
+                  {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "Claude Light"}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
