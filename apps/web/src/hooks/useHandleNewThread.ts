@@ -1,4 +1,4 @@
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime";
+import { scopedProjectKey, scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import { DEFAULT_RUNTIME_MODE, type ScopedProjectRef } from "@t3tools/contracts";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
@@ -17,7 +17,7 @@ import {
 } from "../logicalProject";
 import { selectProjectsAcrossEnvironments, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
-import { resolveThreadRouteTarget } from "../threadRoutes";
+import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { useSettings } from "./useSettings";
 
@@ -77,15 +77,20 @@ function useNewThreadState() {
           setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, storedDraftThread.draftId, {
             threadId: storedDraftThread.threadId,
           });
+          const storedThreadRef = scopeThreadRef(
+            storedDraftThread.environmentId,
+            storedDraftThread.threadId,
+          );
           if (
-            currentRouteTarget?.kind === "draft" &&
-            currentRouteTarget.draftId === storedDraftThread.draftId
+            currentRouteTarget?.kind === "server" &&
+            currentRouteTarget.threadRef.environmentId === storedThreadRef.environmentId &&
+            currentRouteTarget.threadRef.threadId === storedThreadRef.threadId
           ) {
             return;
           }
           await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: storedDraftThread.draftId },
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(storedThreadRef),
           });
         })();
       }
@@ -112,7 +117,13 @@ function useNewThreadState() {
           ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
           ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
         });
-        return Promise.resolve();
+        return router.navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(
+            scopeThreadRef(latestActiveDraftThread.environmentId, latestActiveDraftThread.threadId),
+          ),
+          replace: true,
+        });
       }
 
       const draftId = newDraftId();
@@ -130,8 +141,8 @@ function useNewThreadState() {
         applyStickyState(draftId);
 
         await router.navigate({
-          to: "/draft/$draftId",
-          params: { draftId },
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(scopeThreadRef(projectRef.environmentId, threadId)),
         });
       })();
     },

@@ -15,8 +15,15 @@ import {
   useStore,
 } from "../../store";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
-import { isConversationDraftThread, useComposerDraftStore } from "../../composerDraftStore";
+import {
+  CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
+  DraftId,
+  findDraftSessionEntryByRef,
+  isConversationDraftThread,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
 import { useFileContent } from "../../hooks/useFileContent";
+import { usePrimaryEnvironmentId } from "../../environments/primary";
 import { getEditorLanguage, useEditorStore } from "../../editorStore";
 import { useTurnDiffSummaries } from "../../hooks/useTurnDiffSummaries";
 import { SidebarInset } from "../ui/sidebar";
@@ -38,6 +45,7 @@ export function CursorLayout() {
   const navigate = useNavigate();
   const settings = useSettings();
   const { handleNewThread } = useNewThreadHandler();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const routeTarget = useParams({
     strict: false,
     select: (params) => resolveThreadRouteTarget(params),
@@ -50,6 +58,33 @@ export function CursorLayout() {
   const draftSession = useComposerDraftStore((state) =>
     draftId ? state.getDraftSession(draftId) : null,
   );
+  const homeConversationDraftEntry = useComposerDraftStore(
+    useShallow((state) => {
+      if (routeTarget || !primaryEnvironmentId) {
+        return [null, null] as const;
+      }
+      const rawDraftId =
+        state.logicalProjectDraftThreadKeyByLogicalProjectKey[
+          CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY
+        ] ?? null;
+      return [
+        rawDraftId,
+        rawDraftId ? (state.draftThreadsByThreadKey[rawDraftId] ?? null) : null,
+      ] as const;
+    }),
+  );
+  const homeConversationDraftSession = useMemo(
+    () =>
+      homeConversationDraftEntry[0] && homeConversationDraftEntry[1]
+        ? { draftId: DraftId.make(homeConversationDraftEntry[0]), ...homeConversationDraftEntry[1] }
+        : null,
+    [homeConversationDraftEntry],
+  );
+  const draftThreadsByThreadKey = useComposerDraftStore((state) => state.draftThreadsByThreadKey);
+  const routeDraftEntry = useMemo(
+    () => findDraftSessionEntryByRef(draftThreadsByThreadKey, serverThreadRef),
+    [draftThreadsByThreadKey, serverThreadRef],
+  );
   const promotedServerThread = useStore((state) =>
     draftSession?.promotedTo ? selectThreadByRef(state, draftSession.promotedTo) : undefined,
   );
@@ -57,16 +92,16 @@ export function CursorLayout() {
     promotedServerThread?.latestTurn ?? null,
     promotedServerThread?.session ?? null,
   );
+  const routeServerThreadStarted = threadHasStarted(routeServerThread);
   const serverThread =
-    routeServerThread ??
-    (threadHasStarted(promotedServerThread) ? promotedServerThread : undefined);
-  const conversationDraftSession = useComposerDraftStore(
-    useShallow((state) => (routeTarget === null ? state.getConversationDraftSession() : null)),
-  );
-  const activeDraftSession = draftSession ?? conversationDraftSession;
-  const activeDraftId = serverThread
-    ? null
-    : (draftId ?? conversationDraftSession?.draftId ?? null);
+    routeServerThreadStarted || routeDraftEntry === null
+      ? routeServerThread
+      : threadHasStarted(promotedServerThread)
+        ? promotedServerThread
+        : undefined;
+  const activeDraftSession =
+    draftSession ?? routeDraftEntry?.draftSession ?? homeConversationDraftSession;
+  const activeDraftId = serverThread ? null : (draftId ?? routeDraftEntry?.draftId ?? null);
   const isConversationDraft = isConversationDraftThread(activeDraftSession);
   const projectRef = useMemo(() => {
     if (serverThread && serverThread.projectId !== CONVERSATION_PROJECT_ID) {

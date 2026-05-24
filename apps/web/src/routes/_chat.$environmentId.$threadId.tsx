@@ -10,7 +10,11 @@ import {
   DiffPanelShell,
   type DiffPanelMode,
 } from "../components/DiffPanelShell";
-import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
+import {
+  findDraftSessionEntryByRef,
+  finalizePromotedDraftThreadByRef,
+  useComposerDraftStore,
+} from "../composerDraftStore";
 import {
   type DiffRouteSearch,
   parseDiffRouteSearch,
@@ -155,12 +159,13 @@ function ChatThreadRouteView() {
   const environmentHasServerThreads = useStore(
     (store) => selectEnvironmentState(store, threadRef?.environmentId ?? null).threadIds.length > 0,
   );
-  const draftThreadExists = useComposerDraftStore((store) =>
-    threadRef ? store.getDraftThreadByRef(threadRef) !== null : false,
+  const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
+  const draftThreadEntry = useMemo(
+    () => findDraftSessionEntryByRef(draftThreadsByThreadKey, threadRef),
+    [draftThreadsByThreadKey, threadRef],
   );
-  const draftThread = useComposerDraftStore((store) =>
-    threadRef ? store.getDraftThreadByRef(threadRef) : null,
-  );
+  const draftThreadExists = draftThreadEntry !== null;
+  const draftThread = draftThreadEntry?.draftSession ?? null;
   const environmentHasDraftThreads = useComposerDraftStore((store) => {
     if (!threadRef) {
       return false;
@@ -169,6 +174,7 @@ function ChatThreadRouteView() {
   });
   const routeThreadExists = threadExists || draftThreadExists;
   const serverThreadStarted = threadHasStarted(serverThread);
+  const canRenderDraftFallback = draftThread !== null && !serverThreadStarted;
   const environmentHasAnyThreads = environmentHasServerThreads || environmentHasDraftThreads;
   const diffOpen = search.diff === "1";
   const shouldUseDiffSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
@@ -248,20 +254,33 @@ function ChatThreadRouteView() {
     return (
       <>
         <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-          <ChatView
-            environmentId={threadRef.environmentId}
-            threadId={threadRef.threadId}
-            onDiffPanelOpen={markDiffOpened}
-            reserveTitleBarControlInset={!diffOpen}
-            routeKind="server"
-          />
+          {canRenderDraftFallback && draftThreadEntry ? (
+            <ChatView
+              draftId={draftThreadEntry.draftId}
+              environmentId={threadRef.environmentId}
+              threadId={threadRef.threadId}
+              onDiffPanelOpen={markDiffOpened}
+              reserveTitleBarControlInset={!diffOpen}
+              routeKind="draft"
+            />
+          ) : (
+            <ChatView
+              environmentId={threadRef.environmentId}
+              threadId={threadRef.threadId}
+              onDiffPanelOpen={markDiffOpened}
+              reserveTitleBarControlInset={!diffOpen}
+              routeKind="server"
+            />
+          )}
         </SidebarInset>
-        <DiffPanelInlineSidebar
-          diffOpen={diffOpen}
-          onCloseDiff={closeDiff}
-          onOpenDiff={openDiff}
-          renderDiffContent={shouldRenderDiffContent}
-        />
+        {canRenderDraftFallback ? null : (
+          <DiffPanelInlineSidebar
+            diffOpen={diffOpen}
+            onCloseDiff={closeDiff}
+            onOpenDiff={openDiff}
+            renderDiffContent={shouldRenderDiffContent}
+          />
+        )}
       </>
     );
   }
@@ -269,16 +288,28 @@ function ChatThreadRouteView() {
   return (
     <>
       <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-        <ChatView
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          onDiffPanelOpen={markDiffOpened}
-          routeKind="server"
-        />
+        {canRenderDraftFallback && draftThreadEntry ? (
+          <ChatView
+            draftId={draftThreadEntry.draftId}
+            environmentId={threadRef.environmentId}
+            threadId={threadRef.threadId}
+            onDiffPanelOpen={markDiffOpened}
+            routeKind="draft"
+          />
+        ) : (
+          <ChatView
+            environmentId={threadRef.environmentId}
+            threadId={threadRef.threadId}
+            onDiffPanelOpen={markDiffOpened}
+            routeKind="server"
+          />
+        )}
       </SidebarInset>
-      <RightPanelSheet open={diffOpen} onClose={closeDiff}>
-        {shouldRenderDiffContent ? <LazyDiffPanel mode="sheet" /> : null}
-      </RightPanelSheet>
+      {canRenderDraftFallback ? null : (
+        <RightPanelSheet open={diffOpen} onClose={closeDiff}>
+          {shouldRenderDiffContent ? <LazyDiffPanel mode="sheet" /> : null}
+        </RightPanelSheet>
+      )}
     </>
   );
 }

@@ -393,11 +393,17 @@ export function deriveMessagesTimelineRows(input: {
     });
   }
 
-  const hasRunningImageGeneration = nextRows.some(
-    (row) => row.kind === "image-generation" && row.items.some((item) => item.status === "running"),
-  );
+  const hasRunningWork = nextRows.some((row) => {
+    if (row.kind === "image-generation") {
+      return row.items.some((item) => item.status === "running");
+    }
+    if (row.kind === "work") {
+      return row.groupedEntries.some((entry) => entry.status === "running");
+    }
+    return false;
+  });
 
-  if (input.isWorking && !hasRunningImageGeneration) {
+  if (input.isWorking && !hasRunningWork) {
     nextRows.push({
       kind: "working",
       id: "working-indicator-row",

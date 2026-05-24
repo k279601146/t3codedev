@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import ChatView from "../components/ChatView";
@@ -8,29 +8,47 @@ import { CursorLayout } from "../components/layout/CursorLayout";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
-import { useComposerDraftStore } from "../composerDraftStore";
+import {
+  CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
+  DraftId,
+  useComposerDraftStore,
+} from "../composerDraftStore";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { useSavedEnvironmentRegistryStore } from "../environments/runtime";
 import { useSettings } from "../hooks/useSettings";
-import { buildDraftThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { APP_DISPLAY_NAME } from "~/branding";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
-  const navigate = useNavigate();
   const savedEnvironmentCount = useSavedEnvironmentRegistryStore(
     (state) => Object.keys(state.byId).length,
   );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const conversationDraft = useComposerDraftStore(
-    useShallow((store) => store.getConversationDraftSession()),
-  );
-  const ensureConversationDraftSession = useComposerDraftStore(
-    (store) => store.ensureConversationDraftSession,
-  );
   const layoutMode = useSettings((state) => state.layoutMode);
   const setNewThreadScope = useUiStateStore((store) => store.setNewThreadScope);
+  const conversationDraftEntry = useComposerDraftStore(
+    useShallow((store) => {
+      if (!primaryEnvironmentId) {
+        return [null, null] as const;
+      }
+      const rawDraftId =
+        store.logicalProjectDraftThreadKeyByLogicalProjectKey[
+          CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY
+        ] ?? null;
+      return [
+        rawDraftId,
+        rawDraftId ? (store.draftThreadsByThreadKey[rawDraftId] ?? null) : null,
+      ] as const;
+    }),
+  );
+  const conversationDraftSession = useMemo(
+    () =>
+      conversationDraftEntry[0] && conversationDraftEntry[1]
+        ? { draftId: DraftId.make(conversationDraftEntry[0]), ...conversationDraftEntry[1] }
+        : null,
+    [conversationDraftEntry],
+  );
 
   useEffect(() => {
     if (authGateState.status === "hosted-static" && savedEnvironmentCount === 0) {
@@ -40,38 +58,19 @@ function ChatIndexRouteView() {
     if (!primaryEnvironmentId) {
       return;
     }
-    ensureConversationDraftSession(primaryEnvironmentId);
+    useComposerDraftStore.getState().ensureConversationDraftSession(primaryEnvironmentId);
   }, [
     authGateState.status,
-    ensureConversationDraftSession,
     primaryEnvironmentId,
     savedEnvironmentCount,
     setNewThreadScope,
   ]);
 
-  useLayoutEffect(() => {
-    if (!primaryEnvironmentId || !conversationDraft) {
-      return;
-    }
-    if (conversationDraft.environmentId !== primaryEnvironmentId) {
-      return;
-    }
-    void navigate({
-      to: "/draft/$draftId",
-      params: buildDraftThreadRouteParams(conversationDraft.draftId),
-      replace: true,
-    });
-  }, [conversationDraft, navigate, primaryEnvironmentId]);
-
   if (authGateState.status === "hosted-static" && savedEnvironmentCount === 0) {
     return <HostedStaticOnboardingState />;
   }
 
-  if (!primaryEnvironmentId || !conversationDraft) {
-    return null;
-  }
-
-  if (conversationDraft.environmentId !== primaryEnvironmentId) {
+  if (!primaryEnvironmentId) {
     return null;
   }
 
@@ -79,12 +78,16 @@ function ChatIndexRouteView() {
     return <CursorLayout />;
   }
 
+  if (!conversationDraftSession) {
+    return null;
+  }
+
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
       <ChatView
-        draftId={conversationDraft.draftId}
-        environmentId={conversationDraft.environmentId}
-        threadId={conversationDraft.threadId}
+        draftId={conversationDraftSession.draftId}
+        environmentId={conversationDraftSession.environmentId}
+        threadId={conversationDraftSession.threadId}
         routeKind="draft"
       />
     </SidebarInset>

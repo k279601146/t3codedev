@@ -509,6 +509,24 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.localDispatch.latestTurnRequestedAt !== (latestTurn?.requestedAt ?? null) ||
     input.localDispatch.latestTurnStartedAt !== (latestTurn?.startedAt ?? null) ||
     input.localDispatch.latestTurnCompletedAt !== (latestTurn?.completedAt ?? null);
+  const orchestrationStatus = session?.orchestrationStatus ?? null;
+  const orchestrationEnded =
+    orchestrationStatus === "error" ||
+    orchestrationStatus === "interrupted" ||
+    orchestrationStatus === "stopped";
+
+  if (!latestTurnChanged && !latestTurn && session !== null && !orchestrationEnded) {
+    return false;
+  }
+
+  // 只要这一轮 turn 已经被服务端确认但还没结束，本地发送态就继续托底。
+  // 否则 session 在 starting/connecting/running 等中间态切换时会让“正在思考”
+  // 短暂消失，再由后续 running 事件显示第二次。
+  if (latestTurnChanged && latestTurn && latestTurn.completedAt == null) {
+    if (!orchestrationEnded) {
+      return false;
+    }
+  }
 
   if (input.phase === "running") {
     if (!latestTurnChanged) {

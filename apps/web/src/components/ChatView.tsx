@@ -131,7 +131,7 @@ import {
   useSavedEnvironmentRegistryStore,
   useSavedEnvironmentRuntimeStore,
 } from "../environments/runtime";
-import { buildDraftThreadRouteParams } from "../threadRoutes";
+import { buildThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -179,6 +179,7 @@ import {
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
   shouldWriteThreadErrorToCurrentServerThread,
+  threadHasStarted,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -370,6 +371,7 @@ interface TerminalLaunchContext {
 type PersistentTerminalLaunchContext = Pick<TerminalLaunchContext, "cwd" | "worktreePath">;
 
 function useLocalDispatchState(input: {
+  threadKey: string | null;
   activeThread: Thread | undefined;
   activeLatestTurn: Thread["latestTurn"] | null;
   phase: SessionPhase;
@@ -377,7 +379,41 @@ function useLocalDispatchState(input: {
   activePendingUserInput: ApprovalRequestId | null;
   threadError: string | null | undefined;
 }) {
-  const [localDispatch, setLocalDispatch] = useState<LocalDispatchSnapshot | null>(null);
+  const [localDispatch, setLocalDispatchState] = useState<LocalDispatchSnapshot | null>(() =>
+    input.threadKey ? (LOCAL_DISPATCH_BY_THREAD_KEY.get(input.threadKey) ?? null) : null,
+  );
+  const localDispatchRef = useRef(localDispatch);
+  localDispatchRef.current = localDispatch;
+
+  const setLocalDispatch = useCallback(
+    (
+      next:
+        | LocalDispatchSnapshot
+        | null
+        | ((current: LocalDispatchSnapshot | null) => LocalDispatchSnapshot | null),
+    ) => {
+      const current = localDispatchRef.current;
+      const resolved = typeof next === "function" ? next(current) : next;
+      localDispatchRef.current = resolved;
+      if (input.threadKey) {
+        if (resolved) {
+          LOCAL_DISPATCH_BY_THREAD_KEY.set(input.threadKey, resolved);
+        } else {
+          LOCAL_DISPATCH_BY_THREAD_KEY.delete(input.threadKey);
+        }
+      }
+      setLocalDispatchState(resolved);
+    },
+    [input.threadKey],
+  );
+
+  useEffect(() => {
+    const nextLocalDispatch = input.threadKey
+      ? (LOCAL_DISPATCH_BY_THREAD_KEY.get(input.threadKey) ?? null)
+      : null;
+    localDispatchRef.current = nextLocalDispatch;
+    setLocalDispatchState(nextLocalDispatch);
+  }, [input.threadKey]);
 
   const beginLocalDispatch = useCallback(
     (options?: { preparingWorktree?: boolean }) => {
@@ -391,12 +427,12 @@ function useLocalDispatchState(input: {
         return createLocalDispatchSnapshot(input.activeThread, options);
       });
     },
-    [input.activeThread],
+    [input.activeThread, setLocalDispatch],
   );
 
   const resetLocalDispatch = useCallback(() => {
     setLocalDispatch(null);
-  }, []);
+  }, [setLocalDispatch]);
 
   const serverAcknowledgedLocalDispatch = useMemo(
     () =>
@@ -435,6 +471,9 @@ function useLocalDispatchState(input: {
     isSendBusy: localDispatch !== null && !serverAcknowledgedLocalDispatch,
   };
 }
+
+const LOCAL_DISPATCH_BY_THREAD_KEY = new Map<string, LocalDispatchSnapshot>();
+const OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY = new Map<string, ChatMessage[]>();
 
 interface PersistentThreadTerminalDrawerProps {
   threadRef: { environmentId: EnvironmentId; threadId: ThreadId };
@@ -688,6 +727,12 @@ export default function ChatView(props: ChatViewProps) {
         ? store.getDraftSession(draftId)
         : null,
   );
+  const promotedServerThread = useStore(
+    useMemo(
+      () => createThreadSelectorByRef(routeKind === "draft" ? (draftThread?.promotedTo ?? null) : null),
+      [draftThread?.promotedTo, routeKind],
+    ),
+  );
   const promptRef = useRef("");
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>([]);
@@ -695,9 +740,25 @@ export default function ChatView(props: ChatViewProps) {
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  const [optimisticUserMessages, setOptimisticUserMessagesState] = useState<ChatMessage[]>(
+    () => OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [],
+  );
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
   optimisticUserMessagesRef.current = optimisticUserMessages;
+  const setOptimisticUserMessages = useCallback(
+    (next: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => {
+      const current = optimisticUserMessagesRef.current;
+      const resolved = typeof next === "function" ? next(current) : next;
+      optimisticUserMessagesRef.current = resolved;
+      if (resolved.length > 0) {
+        OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.set(routeThreadKey, resolved);
+      } else {
+        OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.delete(routeThreadKey);
+      }
+      setOptimisticUserMessagesState(resolved);
+    },
+    [routeThreadKey],
+  );
   const [localDraftErrorsByDraftId, setLocalDraftErrorsByDraftId] = useState<
     Record<string, string | null>
   >({});
@@ -814,8 +875,14 @@ export default function ChatView(props: ChatViewProps) {
         : undefined,
     [draftThread, fallbackDraftProject?.defaultModelSelection, localDraftError, threadId],
   );
-  const isServerThread = routeKind === "server" && serverThread !== undefined;
-  const activeThread = isServerThread ? serverThread : localDraftThread;
+  const activeServerThread =
+    routeKind === "server"
+      ? serverThread
+      : threadHasStarted(promotedServerThread)
+        ? promotedServerThread
+        : undefined;
+  const isServerThread = activeServerThread !== undefined;
+  const activeThread = activeServerThread ?? localDraftThread;
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode =
     composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
@@ -862,6 +929,10 @@ export default function ChatView(props: ChatViewProps) {
     });
   }, [activeThreadKey, existingOpenTerminalThreadKeys, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
+  const promotedServerThreadSettled = isLatestTurnSettled(
+    promotedServerThread?.latestTurn ?? null,
+    promotedServerThread?.session ?? null,
+  );
   const isConversationDraft = routeKind === "draft" && isConversationDraftThread(draftThread);
   const isConversationThread = Boolean(
     isConversationDraft || activeThread?.projectId === CONVERSATION_PROJECT_ID,
@@ -897,6 +968,28 @@ export default function ChatView(props: ChatViewProps) {
     }
     return retainThreadDetailSubscription(environmentId, threadId);
   }, [environmentId, routeKind, threadId]);
+
+  useEffect(() => {
+    if (
+      routeKind !== "draft" ||
+      !draftThread?.promotedTo ||
+      !threadHasStarted(promotedServerThread) ||
+      !promotedServerThreadSettled
+    ) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(draftThread.promotedTo),
+      replace: true,
+    });
+  }, [
+    draftThread?.promotedTo,
+    navigate,
+    promotedServerThread,
+    promotedServerThreadSettled,
+    routeKind,
+  ]);
 
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.
@@ -1066,8 +1159,10 @@ export default function ChatView(props: ChatViewProps) {
         );
         if (routeKind !== "draft" || draftId !== storedDraftSession.draftId) {
           await navigate({
-            to: "/draft/$draftId",
-            params: buildDraftThreadRouteParams(storedDraftSession.draftId),
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(
+              scopeThreadRef(storedDraftSession.environmentId, storedDraftSession.threadId),
+            ),
           });
         }
         return storedDraftSession.threadId;
@@ -1100,8 +1195,8 @@ export default function ChatView(props: ChatViewProps) {
         ...input,
       });
       await navigate({
-        to: "/draft/$draftId",
-        params: buildDraftThreadRouteParams(nextDraftId),
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(scopeThreadRef(activeProject.environmentId, nextThreadId)),
       });
       return nextThreadId;
     },
@@ -1381,6 +1476,7 @@ export default function ChatView(props: ChatViewProps) {
     isPreparingWorktree,
     isSendBusy,
   } = useLocalDispatchState({
+    threadKey: activeThreadKey,
     activeThread,
     activeLatestTurn,
     phase,
@@ -1394,6 +1490,12 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.session ?? null,
     localDispatchStartedAt,
   );
+  useEffect(() => {
+    const nextOptimisticMessages = OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [];
+    optimisticUserMessagesRef.current = nextOptimisticMessages;
+    setOptimisticUserMessagesState(nextOptimisticMessages);
+  }, [routeThreadKey]);
+
   useEffect(() => {
     attachmentPreviewHandoffByMessageIdRef.current = attachmentPreviewHandoffByMessageId;
   }, [attachmentPreviewHandoffByMessageId]);
@@ -2354,15 +2456,8 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThread?.id, activeThread?.messages, handoffAttachmentPreviews, optimisticUserMessages]);
 
   useEffect(() => {
-    setOptimisticUserMessages((existing) => {
-      for (const message of existing) {
-        revokeUserMessagePreviewUrls(message);
-      }
-      return [];
-    });
-    resetLocalDispatch();
     setExpandedImage(null);
-  }, [activeThreadKey, resetLocalDispatch]);
+  }, [activeThreadKey]);
 
   const closeExpandedImage = useCallback(() => {
     setExpandedImage(null);
@@ -2868,16 +2963,6 @@ export default function ChatView(props: ChatViewProps) {
         ctxSelectedModelSelection.options,
       );
 
-      // Auto-title from first message
-      if (isFirstMessage && isServerThread) {
-        await api.orchestration.dispatchCommand({
-          type: "thread.meta.update",
-          commandId: newCommandId(),
-          threadId: threadIdForSend,
-          title,
-        });
-      }
-
       if (isServerThread) {
         await persistThreadSettingsForNextTurn({
           threadId: threadIdForSend,
@@ -2937,6 +3022,16 @@ export default function ChatView(props: ChatViewProps) {
         createdAt: messageCreatedAt,
       });
       turnStartSucceeded = true;
+      // 首发标题更新不能挡在 turn.start 前面，否则标题事件会先刷新线程壳，
+      // 聊天区容易在正式 turn 状态到达前短暂空白。
+      if (isFirstMessage && isServerThread) {
+        void api.orchestration.dispatchCommand({
+          type: "thread.meta.update",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          title,
+        });
+      }
     })().catch(async (err: unknown) => {
       if (
         !turnStartSucceeded &&
@@ -3561,14 +3656,14 @@ export default function ChatView(props: ChatViewProps) {
     return null;
   }
 
-  const isDraftEmptyNewThread =
-    routeKind === "draft" &&
+  const isEmptyNewThread =
+    (routeKind === "draft" || isConversationThread) &&
     activeThread.messages.length === 0 &&
     optimisticUserMessages.length === 0 &&
     activeThread.latestTurn === null &&
     !activeThread.error;
   const hideProjectChromeForEmptyNewThread =
-    isDraftEmptyNewThread && (isConversationThread || !activeProject);
+    isEmptyNewThread && (isConversationThread || !activeProject);
   const emptyNewThreadTitle =
     isConversationThread || !activeProject ? (
       "我们该做什么？"
@@ -3705,7 +3800,7 @@ export default function ChatView(props: ChatViewProps) {
           onDismiss={() => setThreadError(activeThread.id, null)}
         />
       </div>
-      {isDraftEmptyNewThread ? (
+      {isEmptyNewThread ? (
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-24 pt-8 sm:px-6">

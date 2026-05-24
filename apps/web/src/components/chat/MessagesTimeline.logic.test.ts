@@ -325,6 +325,33 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.kind)).toEqual(["image-generation"]);
   });
 
+  it("suppresses the generic thinking row while a running work entry is visible", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "thinking-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "thinking",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Thinking",
+            tone: "thinking",
+            status: "running",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["work"]);
+    expect(rows.some((row) => row.id === "working-indicator-row")).toBe(false);
+  });
+
   it("uses completed image base64 even when the provider item status still says generating", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

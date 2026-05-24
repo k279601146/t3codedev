@@ -263,6 +263,11 @@ interface ProjectDraftSession extends DraftSessionState {
   draftId: DraftId;
 }
 
+export interface DraftSessionEntry {
+  draftId: DraftId;
+  draftSession: DraftThreadState;
+}
+
 /**
  * App-facing composer identity:
  * - `DraftId` for pre-thread draft sessions
@@ -3113,6 +3118,24 @@ export function markPromotedDraftThreadsByRef(serverThreadRefs: Iterable<ScopedT
   for (const threadRef of serverThreadRefs) {
     markPromotedDraftThreadByRef(threadRef);
   }
+}
+
+export function findDraftSessionEntryByRef(
+  draftThreadsByThreadKey: Record<string, DraftThreadState>,
+  threadRef: ScopedThreadRef | null | undefined,
+): DraftSessionEntry | null {
+  if (!threadRef) {
+    return null;
+  }
+  for (const [draftId, draftSession] of Object.entries(draftThreadsByThreadKey)) {
+    if (
+      draftSession.environmentId === threadRef.environmentId &&
+      draftSession.threadId === threadRef.threadId
+    ) {
+      return { draftId: DraftId.make(draftId), draftSession };
+    }
+  }
+  return null;
 }
 
 export function finalizePromotedDraftThreadByRef(threadRef: ScopedThreadRef): void {

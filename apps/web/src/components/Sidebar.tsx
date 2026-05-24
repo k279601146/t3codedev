@@ -100,7 +100,6 @@ import { retainThreadDetailSubscription } from "../environments/runtime/service"
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import {
-  buildDraftThreadRouteParams,
   buildThreadRouteParams,
   resolveThreadRouteRef,
   resolveThreadRouteTarget,
@@ -2909,26 +2908,16 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const cancelRename = useCallback(() => {
     setRenamingThreadKey(null);
   }, []);
-  const openConversationDraftThread = useCallback(() => {
+  const openConversationThread = useCallback(() => {
     setNewThreadScope({ kind: "conversation" });
-    if (primaryEnvironmentId) {
-      const conversationDraft = useComposerDraftStore
-        .getState()
-        .ensureConversationDraftSession(primaryEnvironmentId);
-      void navigate({
-        to: "/draft/$draftId",
-        params: buildDraftThreadRouteParams(conversationDraft.draftId),
-      });
-      return;
-    }
     void navigate({ to: "/" });
-  }, [navigate, primaryEnvironmentId, setNewThreadScope]);
+  }, [navigate, setNewThreadScope]);
   const handleCreateGlobalThread = useCallback(() => {
-    openConversationDraftThread();
-  }, [openConversationDraftThread]);
+    openConversationThread();
+  }, [openConversationThread]);
   const handleCreateConversationThread = useCallback(() => {
-    openConversationDraftThread();
-  }, [openConversationDraftThread]);
+    openConversationThread();
+  }, [openConversationThread]);
   const handleOpenPlugins = useCallback(() => {
     void navigate({ to: "/settings/providers" });
   }, [navigate]);
@@ -3275,7 +3264,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 commitRename={commitRename}
                 cancelRename={cancelRename}
                 attemptArchiveThread={archiveThread}
-                openPrLink={openConversationDraftThread}
+                openPrLink={openConversationThread}
               />
             );
           })}
