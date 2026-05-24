@@ -282,6 +282,91 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("正在运行");
     expect(markup).toContain("bun typecheck");
     expect(markup).toContain("shimmer-scan");
+    expect(markup).toContain("running-status-shimmer");
+  });
+
+  it.each([
+    [
+      "thinking",
+      {
+        label: "Thinking",
+        tone: "thinking" as const,
+        status: "running" as const,
+      },
+      "正在思考",
+    ],
+    [
+      "file-change",
+      {
+        label: "Edited files",
+        tone: "tool" as const,
+        requestKind: "file-change" as const,
+        changedFiles: ["C:/repo/apps/web/src/App.tsx"],
+        status: "running" as const,
+      },
+      "正在编辑",
+    ],
+    [
+      "file-change via changedFiles",
+      {
+        label: "Edited files",
+        tone: "tool" as const,
+        changedFiles: ["C:/repo/apps/web/src/App.tsx"],
+        status: "running" as const,
+      },
+      "正在编辑",
+    ],
+  ])("shows %s running work with the shimmer status treatment", async (_name, entry, label) => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              ...entry,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain(label);
+    expect(markup).toContain("running-status-shimmer");
+    expect(markup).toContain("shimmer-scan");
+  });
+
+  it("shows running image generation with shimmer wording instead of the raw tool label", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Image view",
+              tone: "tool",
+              itemType: "image_view",
+              status: "running",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("正在生成图片");
+    expect(markup).toContain("image-generation-shimmer");
+    expect(markup).not.toContain(">Image view<");
   });
 
   it("renders the live working row with shimmer styling", async () => {
@@ -297,5 +382,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("正在思考");
     expect(markup).toContain("shimmer-scan");
+    expect(markup).toContain("running-status-shimmer");
+    expect(markup).not.toContain("animate-spin");
   });
 });

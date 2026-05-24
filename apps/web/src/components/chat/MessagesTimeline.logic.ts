@@ -59,6 +59,32 @@ export interface StableMessagesTimelineRowsState {
   result: MessagesTimelineRow[];
 }
 
+export function isCommandWorkEntry(
+  entry: Pick<WorkLogEntry, "requestKind" | "itemType" | "command">,
+): boolean {
+  return (
+    entry.requestKind === "command" || entry.itemType === "command_execution" || !!entry.command
+  );
+}
+
+export function resolveRunningWorkEntryStatusLabel(
+  workEntry: Pick<
+    WorkLogEntry,
+    "status" | "requestKind" | "itemType" | "command" | "tone" | "changedFiles"
+  >,
+): string | null {
+  if (workEntry.status !== "running") {
+    return null;
+  }
+  if (isCommandWorkEntry(workEntry)) return "正在运行";
+  if (workEntry.tone === "thinking") return "正在思考";
+  if (workEntry.requestKind === "file-change" || (workEntry.changedFiles?.length ?? 0) > 0) {
+    return "正在编辑";
+  }
+  if (workEntry.itemType === "image_view") return "正在生成图片";
+  return null;
+}
+
 export function computeMessageDurationStart(
   messages: ReadonlyArray<TimelineDurationMessage>,
 ): Map<string, string> {
@@ -196,8 +222,9 @@ function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
 function toImageGenerationRowItem(id: string, entry: WorkLogEntry): ImageGenerationRowItem {
   const imagePath = pickGeneratedImagePath(entry);
   const status = entry.status === "running" && !imagePath ? "running" : "completed";
+  const runningLabel = resolveRunningWorkEntryStatusLabel(entry);
   const labelSource = entry.toolTitle ?? entry.label ?? null;
-  const label = labelSource ? normalizeCompactToolLabel(labelSource) : null;
+  const label = runningLabel ?? (labelSource ? normalizeCompactToolLabel(labelSource) : null);
   return {
     id,
     createdAt: entry.createdAt,
@@ -367,8 +394,7 @@ export function deriveMessagesTimelineRows(input: {
   }
 
   const hasRunningImageGeneration = nextRows.some(
-    (row) =>
-      row.kind === "image-generation" && row.items.some((item) => item.status === "running"),
+    (row) => row.kind === "image-generation" && row.items.some((item) => item.status === "running"),
   );
 
   if (input.isWorking && !hasRunningImageGeneration) {

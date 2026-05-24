@@ -215,7 +215,7 @@ describe("deriveMessagesTimelineRows", () => {
           entry: {
             id: "image-start",
             createdAt: "2026-01-01T00:00:00Z",
-            label: "Image view",
+            label: "正在生成图片",
             tone: "tool",
             itemType: "image_view",
             status: "running",
@@ -242,7 +242,7 @@ describe("deriveMessagesTimelineRows", () => {
             id: "image-start-entry",
             createdAt: "2026-01-01T00:00:00Z",
             status: "running",
-            label: "Image view",
+            label: "正在生成图片",
             imagePath: null,
           },
         ],
@@ -324,7 +324,6 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.map((row) => row.kind)).toEqual(["image-generation"]);
   });
-
 
   it("uses completed image base64 even when the provider item status still says generating", () => {
     const rows = deriveMessagesTimelineRows({

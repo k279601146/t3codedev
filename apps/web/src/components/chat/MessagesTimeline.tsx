@@ -29,10 +29,9 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
-  TerminalSquareIcon,
-  LoaderCircleIcon,
   type LucideIcon,
   SquarePenIcon,
+  TerminalSquareIcon,
   Undo2Icon,
   WrenchIcon,
   ZapIcon,
@@ -46,8 +45,10 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  isCommandWorkEntry,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
+  resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
@@ -955,20 +956,53 @@ function ProposedPlanTimelineRow({
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   return (
     <div className="py-0.5 pl-1.5" data-working-started-at={row.createdAt ?? undefined}>
-      <div
-        className="flex items-center gap-2 pt-1 text-[12px] text-muted-foreground/70"
-        style={USER_MESSAGE_FONT_STYLE}
-      >
-        <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/45" />
-        <ShimmerScanText
-          className="text-[12px] text-muted-foreground/72"
-          durationMs={2000}
-          tone="light"
-        >
-          正在思考
-        </ShimmerScanText>
-      </div>
+      <RunningStatusShimmer label="正在思考" />
     </div>
+  );
+}
+
+function RunningStatusShimmer({ label, className }: { label: string; className?: string }) {
+  return (
+<span
+  className={cn(
+    "inline-flex min-w-0 max-w-full items-center py-1",
+    className
+  )}
+  style={{
+    ...USER_MESSAGE_FONT_STYLE,
+    // 强制覆盖字号，确保清晰可见
+    fontSize: '14px', 
+  }}
+  aria-busy="true"
+>
+  {/* 使用纯原生 CSS 注入动画与渐变，确保绝对兼容 */}
+  <span 
+    style={{
+      display: 'inline-block',
+      fontWeight: 500,
+      letterSpacing: '0.05em',
+      // 1. 设置渐变背景：深灰 -> 极亮白 -> 深灰
+      backgroundImage: 'linear-gradient(90deg, #71717a 0%, #fafafa 50%, #71717a 100%)',
+      backgroundSize: '200% 100%',
+      // 2. 核心：将背景裁剪到文字上
+      WebkitBackgroundClip: 'text',
+      backgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      // 3. 注入原生的扫光动画（无限循环）
+      animation: 'textShimmerMoving 2.5s linear infinite',
+    }}
+  >
+    {label}
+
+    {/* 注入全局动画的关键帧（只在组件渲染时生效，不污染全局） */}
+    <style>{`
+      @keyframes textShimmerMoving {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+    `}</style>
+  </span>
+</span>
   );
 }
 
@@ -1209,9 +1243,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
       >
         <TerminalSquareIcon className="size-4 shrink-0 text-[#999999]" />
         {showLiveScan ? (
-          <ShimmerScanText className="min-w-0" durationMs={2000} tone="light">
-            {summary.liveLabel}
-          </ShimmerScanText>
+          <RunningStatusShimmer className="-my-0.5" label={summary.liveLabel} />
         ) : (
           <span className="min-w-0 truncate">{summary.label}</span>
         )}
@@ -1271,26 +1303,13 @@ function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
   };
 }
 
-function isCommandWorkEntry(entry: TimelineWorkEntry): boolean {
-  return (
-    entry.requestKind === "command" || entry.itemType === "command_execution" || !!entry.command
-  );
-}
-
 function runningWorkEntryLabel(entry: TimelineWorkEntry): string {
+  const statusLabel = resolveRunningWorkEntryStatusLabel(entry);
   if (isCommandWorkEntry(entry)) {
     const preview = workEntryPreview(entry, undefined);
-    return preview ? `正在运行 ${preview}` : "正在运行命令";
+    return preview ? `${statusLabel ?? "正在运行"} ${preview}` : "正在运行命令";
   }
-  if (entry.tone === "thinking") {
-    return "正在思考";
-  }
-  if (entry.requestKind === "file-change" || (entry.changedFiles?.length ?? 0) > 0) {
-    return "正在编辑文件";
-  }
-  if (entry.itemType === "image_view") {
-    return "正在生成图片";
-  }
+  if (statusLabel) return statusLabel;
   return `正在处理 ${toolWorkEntryHeading(entry)}`;
 }
 
@@ -1722,14 +1741,8 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
-  if (workEntry.status === "running") {
-    if (isCommandWorkEntry(workEntry)) return "正在运行";
-    if (workEntry.tone === "thinking") return "正在思考";
-    if (workEntry.requestKind === "file-change" || (workEntry.changedFiles?.length ?? 0) > 0) {
-      return "正在编辑";
-    }
-    if (workEntry.itemType === "image_view") return "正在生成图片";
-  }
+  const runningStatusLabel = resolveRunningWorkEntryStatusLabel(workEntry);
+  if (runningStatusLabel) return runningStatusLabel;
   if (isCommandWorkEntry(workEntry)) return "已运行";
   if (workEntry.requestKind === "file-read") return "已读取";
   if (workEntry.requestKind === "file-change" || (workEntry.changedFiles?.length ?? 0) > 0) {
@@ -1817,34 +1830,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   title={displayText}
                 >
                   {animateText ? (
-                    <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
-                      <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                        {heading}
-                      </span>
-                      {preview && (
-                        <Tooltip>
-                          <TooltipTrigger
-                            closeDelay={0}
-                            delay={75}
-                            render={
-                              <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
-                                {previewSeparator}
-                                {preview}
-                              </span>
-                            }
-                          />
-                          <TooltipPopup
-                            align="start"
-                            className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
-                            side="top"
-                          >
-                            <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[12px] leading-4 whitespace-nowrap">
-                              {rawCommand}
-                            </div>
-                          </TooltipPopup>
-                        </Tooltip>
-                      )}
-                    </ShimmerScanText>
+                    <RunningStatusShimmer label={displayText} />
                   ) : (
                     <>
                       <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
@@ -1892,17 +1878,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     )}
                   >
                     {animateText ? (
-                      <ShimmerScanText className="max-w-full" durationMs={2000} tone="light">
-                        <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                          {heading}
-                        </span>
-                        {preview && (
-                          <span className="text-muted-foreground/55">
-                            {previewSeparator}
-                            {preview}
-                          </span>
-                        )}
-                      </ShimmerScanText>
+                      <RunningStatusShimmer label={displayText} />
                     ) : (
                       <>
                         <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
