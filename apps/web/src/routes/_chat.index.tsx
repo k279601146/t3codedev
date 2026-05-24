@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import ChatView from "../components/ChatView";
@@ -8,11 +8,7 @@ import { CursorLayout } from "../components/layout/CursorLayout";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
-import {
-  CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
-  DraftId,
-  useComposerDraftStore,
-} from "../composerDraftStore";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { useSavedEnvironmentRegistryStore } from "../environments/runtime";
 import { useSettings } from "../hooks/useSettings";
@@ -27,27 +23,12 @@ function ChatIndexRouteView() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const layoutMode = useSettings((state) => state.layoutMode);
   const setNewThreadScope = useUiStateStore((store) => store.setNewThreadScope);
-  const conversationDraftEntry = useComposerDraftStore(
-    useShallow((store) => {
-      if (!primaryEnvironmentId) {
-        return [null, null] as const;
-      }
-      const rawDraftId =
-        store.logicalProjectDraftThreadKeyByLogicalProjectKey[
-          CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY
-        ] ?? null;
-      return [
-        rawDraftId,
-        rawDraftId ? (store.draftThreadsByThreadKey[rawDraftId] ?? null) : null,
-      ] as const;
-    }),
-  );
-  const conversationDraftSession = useMemo(
-    () =>
-      conversationDraftEntry[0] && conversationDraftEntry[1]
-        ? { draftId: DraftId.make(conversationDraftEntry[0]), ...conversationDraftEntry[1] }
+  const conversationDraftSession = useComposerDraftStore(
+    useShallow((store) =>
+      primaryEnvironmentId
+        ? store.getConversationDraftSessionForEnvironment(primaryEnvironmentId)
         : null,
-    [conversationDraftEntry],
+    ),
   );
 
   useEffect(() => {

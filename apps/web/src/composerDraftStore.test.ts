@@ -678,6 +678,45 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(draftByKey(conversationDraft.draftId)?.prompt).toBe("draft before project");
   });
 
+  it("creates a fresh projectless New thread after the previous one is promoted", () => {
+    const store = useComposerDraftStore.getState();
+    const conversationDraft = store.ensureConversationDraftSession(TEST_ENVIRONMENT_ID);
+    const promotedThreadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, conversationDraft.threadId);
+
+    store.markDraftThreadPromoting(conversationDraft.draftId, promotedThreadRef);
+
+    expect(useComposerDraftStore.getState().getReusableConversationDraftSession()).toBeNull();
+
+    const nextConversationDraft = useComposerDraftStore
+      .getState()
+      .ensureConversationDraftSession(TEST_ENVIRONMENT_ID);
+
+    expect(nextConversationDraft.draftId).not.toBe(conversationDraft.draftId);
+    expect(nextConversationDraft.threadId).not.toBe(conversationDraft.threadId);
+    expect(nextConversationDraft.logicalProjectKey).toBe(CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY);
+    expect(nextConversationDraft.projectId).toBe(CONVERSATION_DRAFT_PROJECT_ID);
+    expect(useComposerDraftStore.getState().getReusableConversationDraftSession()?.draftId).toBe(
+      nextConversationDraft.draftId,
+    );
+  });
+
+  it("keeps a promoted projectless New thread readable during the UI handoff", () => {
+    const store = useComposerDraftStore.getState();
+    const conversationDraft = store.ensureConversationDraftSession(TEST_ENVIRONMENT_ID);
+    const promotedThreadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, conversationDraft.threadId);
+
+    store.markDraftThreadPromoting(conversationDraft.draftId, promotedThreadRef);
+
+    expect(
+      useComposerDraftStore
+        .getState()
+        .getConversationDraftSessionForEnvironment(TEST_ENVIRONMENT_ID),
+    ).toMatchObject({
+      draftId: conversationDraft.draftId,
+      promotedTo: promotedThreadRef,
+    });
+  });
+
   it("removes the projectless New thread mapping when the draft is assigned to a project", () => {
     const store = useComposerDraftStore.getState();
     const conversationDraft = store.ensureConversationDraftSession(TEST_ENVIRONMENT_ID);

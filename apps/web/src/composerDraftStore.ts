@@ -300,8 +300,14 @@ interface ComposerDraftStoreState {
   getDraftSessionByProjectRef: (projectRef: ScopedProjectRef) => ProjectDraftSession | null;
   /** Reads mutable draft-session metadata by `DraftId`. */
   getDraftSession: (draftId: DraftId) => DraftSessionState | null;
-  /** Reads the projectless New thread draft session, when one exists. */
+  /** 读取无项目的新对话草稿会话；包括已经进入正式线程交接期的草稿。 */
   getConversationDraftSession: () => ProjectDraftSession | null;
+  /** 按环境读取无项目的新对话草稿会话；包括正式线程交接期。 */
+  getConversationDraftSessionForEnvironment: (
+    environmentId: EnvironmentId,
+  ) => ProjectDraftSession | null;
+  /** 只读取仍可复用编辑的无项目新对话草稿。 */
+  getReusableConversationDraftSession: () => ProjectDraftSession | null;
   /** Ensures the projectless New thread draft exists for the target environment. */
   ensureConversationDraftSession: (environmentId: EnvironmentId) => ProjectDraftSession;
   /** Resolves a server-thread ref back to a matching draft session when one exists. */
@@ -2015,27 +2021,42 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         },
         getDraftSession: (draftId) => get().draftThreadsByThreadKey[draftId] ?? null,
         getConversationDraftSession: () => {
-          return get().getDraftSessionByLogicalProjectKey(CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY);
+          const draftId =
+            get().logicalProjectDraftThreadKeyByLogicalProjectKey[
+              CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY
+            ];
+          if (!draftId) {
+            return null;
+          }
+          const draftThread = get().draftThreadsByThreadKey[draftId];
+          return draftThread ? toProjectDraftSession(DraftId.make(draftId), draftThread) : null;
+        },
+        getConversationDraftSessionForEnvironment: (environmentId) => {
+          const existing = get().getConversationDraftSession();
+          return existing?.environmentId === environmentId ? existing : null;
+        },
+        getReusableConversationDraftSession: () => {
+          const existing = get().getConversationDraftSession();
+          return isDraftThreadPromoting(existing) ? null : existing;
         },
         ensureConversationDraftSession: (environmentId) => {
-          const existing = get().getConversationDraftSession();
+          const existing = get().getReusableConversationDraftSession();
           if (existing && existing.environmentId === environmentId) {
             if (!get().getComposerDraft(existing.draftId)) {
               get().applyStickyState(existing.draftId);
             }
             return existing;
           }
-          const draftId = existing?.draftId ?? createDraftId();
-          const threadId = existing?.threadId ?? ThreadId.make(draftId);
+          const draftId = createDraftId();
+          const threadId = ThreadId.make(draftId);
           get().setLogicalProjectDraftThreadId(
             CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
             scopeProjectRef(environmentId, CONVERSATION_DRAFT_PROJECT_ID),
             draftId,
             {
               threadId,
-              ...(existing ? { createdAt: existing.createdAt } : {}),
-              runtimeMode: existing?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-              interactionMode: existing?.interactionMode ?? DEFAULT_INTERACTION_MODE,
+              runtimeMode: DEFAULT_RUNTIME_MODE,
+              interactionMode: DEFAULT_INTERACTION_MODE,
               branch: null,
               worktreePath: null,
               envMode: "local",
@@ -2049,9 +2070,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               environmentId,
               projectId: CONVERSATION_DRAFT_PROJECT_ID,
               logicalProjectKey: CONVERSATION_DRAFT_LOGICAL_PROJECT_KEY,
-              createdAt: existing?.createdAt ?? new Date().toISOString(),
-              runtimeMode: existing?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-              interactionMode: existing?.interactionMode ?? DEFAULT_INTERACTION_MODE,
+              createdAt: new Date().toISOString(),
+              runtimeMode: DEFAULT_RUNTIME_MODE,
+              interactionMode: DEFAULT_INTERACTION_MODE,
               branch: null,
               worktreePath: null,
               envMode: "local",

@@ -69,7 +69,6 @@ import {
   type CodexSessionRuntimeShape,
 } from "./CodexSessionRuntime.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
-import { resolveBundledEngineConfig } from "../BundledEngineConfig.ts";
 const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerProcessExitedError);
 const isCodexAppServerTransportError = Schema.is(CodexErrors.CodexAppServerTransportError);
 const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
@@ -109,7 +108,7 @@ interface CodexWarmProcess {
 }
 
 const CODEX_WARM_PROCESS_EXIT_POLL_MS = 1;
-const CODEX_WARM_PROCESS_MAX_AGE_MS = 15_000;
+const CODEX_WARM_PROCESS_MAX_AGE_MS = 120_000;
 
 function isRecoverableRuntimeSessionStatus(status: ProviderSession["status"]): boolean {
   return status === "closed" || status === "error";
@@ -1372,9 +1371,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("codex");
   const fileSystem = yield* FileSystem.FileSystem;
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const adapterScope = yield* Scope.Scope;
   const serverConfig = yield* Effect.service(ServerConfig);
-  const usesBundledEngine =
-    resolveBundledEngineConfig(options?.environment ?? process.env) !== undefined;
+  const defaultCwd = path.join(serverConfig.stateDir, "conversation-workspace");
+  yield* fileSystem.makeDirectory(defaultCwd, { recursive: true }).pipe(Effect.ignore);
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -1399,7 +1399,17 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
   const isWarmProcessReusable = Effect.fn("codexAdapter.isWarmProcessReusable")(function* (
     warmProcess: CodexWarmProcess,
+    cwd: string,
   ) {
+    if (warmProcess.cwd !== cwd) {
+      yield* Effect.logDebug("codex warm process cwd mismatch before reuse", {
+        warmCwd: warmProcess.cwd,
+        requestedCwd: cwd,
+      });
+      yield* closeWarmProcess(warmProcess);
+      return false;
+    }
+
     const ageMs = (yield* Clock.currentTimeMillis) - warmProcess.createdAtMs;
     if (ageMs > CODEX_WARM_PROCESS_MAX_AGE_MS) {
       yield* Effect.logDebug("codex warm process expired before reuse", {
@@ -1473,17 +1483,15 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       return undefined;
     }
     const warmProcess = yield* Ref.getAndSet(warmProcessRef, Option.none());
-    if (!usesBundledEngine) {
-      yield* warmStandby(cwd).pipe(Effect.forkScoped, Effect.asVoid);
-    }
+    yield* warmStandby(cwd).pipe(Effect.forkIn(adapterScope), Effect.asVoid);
     if (Option.isNone(warmProcess)) {
       return undefined;
     }
-    const reusable = yield* isWarmProcessReusable(warmProcess.value);
+    const reusable = yield* isWarmProcessReusable(warmProcess.value, cwd);
     return reusable ? warmProcess.value.child : undefined;
   });
 
-  yield* warmStandby(process.cwd()).pipe(Effect.forkScoped, Effect.asVoid);
+  yield* warmStandby(defaultCwd).pipe(Effect.forkScoped, Effect.asVoid);
 
   const startSession: CodexAdapterShape["startSession"] = (input) =>
     Effect.scoped(
@@ -1504,7 +1512,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         const runtimeInput: CodexSessionRuntimeOptions = {
           threadId: input.threadId,
           providerInstanceId: boundInstanceId,
-          cwd: input.cwd ?? process.cwd(),
+          cwd: input.cwd ?? defaultCwd,
           binaryPath: codexConfig.binaryPath,
           ...(options?.environment ? { environment: options.environment } : {}),
           ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),

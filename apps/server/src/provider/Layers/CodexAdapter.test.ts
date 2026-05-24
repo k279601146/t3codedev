@@ -57,6 +57,7 @@ const asThreadId = (value: string): ThreadId => ThreadId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asEventId = (value: string): EventId => EventId.make(value);
 const asItemId = (value: string): ProviderItemId => ProviderItemId.make(value);
+const testConversationWorkspace = () => path.join(process.cwd(), "userdata", "conversation-workspace");
 
 class FakeCodexRuntime implements CodexSessionRuntimeShape {
   private readonly eventQueue = Effect.runSync(Queue.unbounded<ProviderEvent>());
@@ -278,7 +279,8 @@ validationLayer("CodexAdapterLive validation", (it) => {
 
       assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
         binaryPath: "codex",
-        cwd: process.cwd(),
+        cwd: testConversationWorkspace(),
+        jsonRpcLogPath: path.join(process.cwd(), "userdata", "logs", "provider", "jsonrpc.log"),
         model: "gpt-5.3-codex",
         providerInstanceId: ProviderInstanceId.make("codex"),
         serviceTier: "fast",

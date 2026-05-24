@@ -1,4 +1,5 @@
 ﻿import {
+  CONVERSATION_PROJECT_ID,
   type ChatAttachment,
   CommandId,
   EventId,
@@ -7,6 +8,7 @@
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
+  type ProviderRuntimeEvent,
   ThreadId,
   type ProviderSession,
   type RuntimeMode,
@@ -18,8 +20,10 @@ import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
@@ -40,6 +44,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { ProjectWorkspaceConfig } from "../../workspace/ProjectWorkspaceConfig.ts";
+import { ServerConfig } from "../../config.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
@@ -55,6 +60,16 @@ type ProviderIntentEvent = Extract<
       | "thread.session-stop-requested";
   }
 >;
+
+interface DeferredFirstTurnEnhancement {
+  readonly threadId: ThreadId;
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
+  readonly cwd: string;
+  readonly messageText: string;
+  readonly attachments?: ReadonlyArray<ChatAttachment>;
+  readonly titleSeed?: string;
+}
 
 function toNonEmptyProviderInput(value: string | undefined): string | undefined {
   const normalized = value?.trim();
@@ -187,11 +202,15 @@ const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
   const projectWorkspaceConfig = yield* ProjectWorkspaceConfig;
+  const serverConfig = yield* ServerConfig;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
     lookup: () => Effect.succeed(true),
   });
+  const deferredFirstTurnEnhancements = new Map<ThreadId, DeferredFirstTurnEnhancement>();
 
   const hasHandledTurnStartRecently = (key: string) =>
     Cache.getOption(handledTurnStartKeys, key).pipe(
@@ -201,6 +220,22 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+
+  const resolveProviderWorkspaceCwd = Effect.fn("resolveProviderWorkspaceCwd")(function* (input: {
+    readonly thread: {
+      readonly projectId: ProjectId;
+      readonly worktreePath: string | null;
+    };
+    readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
+  }) {
+    if (input.thread.projectId === CONVERSATION_PROJECT_ID && !input.thread.worktreePath) {
+      const cwd = path.join(serverConfig.stateDir, "conversation-workspace");
+      yield* fileSystem.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
+      return cwd;
+    }
+
+    return resolveThreadWorkspaceCwd(input);
+  });
 
   const appendProviderFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -397,7 +432,7 @@ const make = Effect.gen(function* () {
       }
     }
     const project = yield* resolveProject(thread.projectId);
-    const effectiveCwd = resolveThreadWorkspaceCwd({
+    const effectiveCwd = yield* resolveProviderWorkspaceCwd({
       thread,
       projects: project ? [project] : [],
     });
@@ -537,7 +572,7 @@ const make = Effect.gen(function* () {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
     const project = yield* resolveProject(thread.projectId);
-    const effectiveCwd = resolveThreadWorkspaceCwd({
+    const effectiveCwd = yield* resolveProviderWorkspaceCwd({
       thread,
       projects: project ? [project] : [],
     });
@@ -675,7 +710,7 @@ const make = Effect.gen(function* () {
         });
         if (!generated) return;
 
-        if (!canReplaceThreadTitle(thread.title, input.titleSeed)) {
+        if (!thread || !canReplaceThreadTitle(thread.title, input.titleSeed)) {
           return;
         }
 
@@ -728,30 +763,23 @@ const make = Effect.gen(function* () {
     if (isFirstUserMessageTurn) {
       const project = yield* resolveProject(thread.projectId);
       const generationCwd =
-        resolveThreadWorkspaceCwd({
+        (yield* resolveProviderWorkspaceCwd({
           thread,
           projects: project ? [project] : [],
-        }) ?? process.cwd();
+        })) ?? serverConfig.cwd;
       const generationInput = {
         messageText: message.text,
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
       };
 
-      yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
+      deferredFirstTurnEnhancements.set(event.payload.threadId, {
         threadId: event.payload.threadId,
         branch: thread.branch,
         worktreePath: thread.worktreePath,
+        cwd: generationCwd,
         ...generationInput,
-      }).pipe(Effect.forkScoped);
-
-      if (canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
-        yield* maybeGenerateThreadTitleForFirstTurn({
-          threadId: event.payload.threadId,
-          cwd: generationCwd,
-          ...generationInput,
-        }).pipe(Effect.forkScoped);
-      }
+      });
     }
 
     const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
@@ -811,6 +839,35 @@ const make = Effect.gen(function* () {
     yield* providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+  });
+
+  const processDeferredFirstTurnEnhancement = Effect.fn(
+    "processDeferredFirstTurnEnhancement",
+  )(function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
+    const pending = deferredFirstTurnEnhancements.get(event.threadId);
+    if (!pending) {
+      return;
+    }
+    deferredFirstTurnEnhancements.delete(event.threadId);
+
+    yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
+      threadId: pending.threadId,
+      branch: pending.branch,
+      worktreePath: pending.worktreePath,
+      messageText: pending.messageText,
+      ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
+    }).pipe(Effect.forkScoped);
+
+    const thread = yield* resolveThread(pending.threadId);
+    if (thread && canReplaceThreadTitle(thread.title, pending.titleSeed)) {
+      yield* maybeGenerateThreadTitleForFirstTurn({
+        threadId: pending.threadId,
+        cwd: pending.cwd,
+        messageText: pending.messageText,
+        ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
+        ...(pending.titleSeed !== undefined ? { titleSeed: pending.titleSeed } : {}),
+      }).pipe(Effect.forkScoped);
+    }
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -1026,10 +1083,18 @@ const make = Effect.gen(function* () {
         return yield* worker.enqueue(event);
       }
     });
+    const processRuntimeEvent = Effect.fn("processRuntimeEvent")(function* (
+      event: ProviderRuntimeEvent,
+    ) {
+      if (event.type === "turn.completed") {
+        yield* processDeferredFirstTurnEnhancement(event);
+      }
+    });
 
     yield* Effect.forkScoped(
       Stream.runForEach(orchestrationEngine.streamDomainEvents, processEvent),
     );
+    yield* Effect.forkScoped(Stream.runForEach(providerService.streamEvents, processRuntimeEvent));
   });
 
   return {

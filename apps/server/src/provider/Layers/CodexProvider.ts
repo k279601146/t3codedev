@@ -45,6 +45,7 @@ const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnErro
 
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
 const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 5_000;
+const COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS = 5_000;
 
 class CommercialModelCatalogError extends Data.TaggedError("CommercialModelCatalogError")<{
   readonly detail: string;
@@ -116,9 +117,54 @@ const CommercialGatewayModelListResponse = Schema.Struct({
   data: Schema.Array(CommercialGatewayModel),
 });
 
+const CommercialGatewayAccountResponse = Schema.Struct({
+  data: Schema.Struct({
+    user: Schema.optional(
+      Schema.Struct({
+        balance: Schema.Number,
+      }),
+    ),
+    balance: Schema.optional(Schema.Number),
+  }),
+});
+
 function commercialGatewayModelsUrl(environment: NodeJS.ProcessEnv): string {
   const baseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
   return new URL("models", baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+}
+
+function commercialGatewayAccountUrl(environment: NodeJS.ProcessEnv): string {
+  const baseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
+  return new URL("/ide/auth/me", new URL(baseUrl).origin).toString();
+}
+
+function formatCommercialCreditBalance(balance: number): string {
+  const normalized = Number.isFinite(balance) ? balance : 0;
+  return `$${normalized.toFixed(8).replace(/\.?0+$/, "")}`;
+}
+
+function mergeCommercialBalanceIntoRateLimits(
+  rateLimits: CodexAppServerProviderSnapshot["rateLimits"],
+  balance: number | null,
+): CodexAppServerProviderSnapshot["rateLimits"] {
+  if (balance === null) {
+    return rateLimits;
+  }
+
+  const credits = rateLimits?.credits ?? {};
+  return {
+    ...(rateLimits ?? {}),
+    credits: {
+      ...credits,
+      balance: formatCommercialCreditBalance(balance),
+      hasCredits: balance > 0,
+      unlimited: false,
+    },
+  };
+}
+
+function isCommercialEngineConfigured(environment: NodeJS.ProcessEnv): boolean {
+  return Boolean(resolveBundledEngineConfig(environment) && resolveCommercialEngineIdeJwt(environment));
 }
 
 const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels")(function* (
@@ -194,6 +240,67 @@ const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels
   return models;
 });
 
+const requestCommercialGatewayBalance = Effect.fn("requestCommercialGatewayBalance")(function* (
+  environment: NodeJS.ProcessEnv,
+) {
+  const token = resolveCommercialEngineIdeJwt(environment);
+  if (!token) {
+    return null;
+  }
+
+  const url = commercialGatewayAccountUrl(environment);
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetch(url, {
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+          "cache-control": "no-cache",
+        },
+        signal,
+      }),
+    catch: (cause) =>
+      new CommercialModelCatalogError({
+        detail: "Failed to request account balance.",
+        cause,
+      }),
+  });
+
+  if (!response.ok) {
+    const body = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: () => "",
+    }).pipe(Effect.orElseSucceed(() => ""));
+    return yield* new CommercialModelCatalogError({
+      detail:
+        body.trim().length > 0
+          ? `Account balance returned HTTP ${response.status}: ${body.trim()}`
+          : `Account balance returned HTTP ${response.status}.`,
+    });
+  }
+
+  const payload = yield* Effect.tryPromise({
+    try: () => response.json(),
+    catch: (cause) =>
+      new CommercialModelCatalogError({
+        detail: "Account balance returned invalid JSON.",
+        cause,
+      }),
+  });
+  const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayAccountResponse)(
+    payload,
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CommercialModelCatalogError({
+          detail: `Account balance returned invalid JSON: ${cause.message}`,
+          cause,
+        }),
+    ),
+  );
+  return decoded.data.user?.balance ?? decoded.data.balance ?? null;
+});
+
 const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) =>
   requestCommercialGatewayModels(environment).pipe(
     Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS)),
@@ -213,6 +320,28 @@ const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) =>
       }).pipe(Effect.as([] as ReadonlyArray<ServerProviderModel>)),
     ),
   );
+
+const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) =>
+  isCommercialEngineConfigured(environment)
+    ? requestCommercialGatewayBalance(environment).pipe(
+        Effect.timeoutOption(Duration.millis(COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS)),
+        Effect.flatMap((balance) =>
+          Option.match(balance, {
+            onNone: () =>
+              Effect.logWarning("commercial account balance request timed out", {
+                url: commercialGatewayAccountUrl(environment),
+              }).pipe(Effect.as(null)),
+            onSome: (value) => Effect.succeed(value),
+          }),
+        ),
+        Effect.catch((cause) =>
+          Effect.logWarning("commercial account balance request failed", {
+            url: commercialGatewayAccountUrl(environment),
+            detail: cause.detail,
+          }).pipe(Effect.as(null)),
+        ),
+      )
+    : Effect.succeed(null);
 
 function appendCustomCodexModels(
   models: ReadonlyArray<ServerProviderModel>,
@@ -352,7 +481,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     } satisfies CodexAppServerProviderSnapshot;
   }
 
-  const [skillsResponse, models, rateLimits] = yield* Effect.all(
+  const [skillsResponse, models, rateLimits, commercialBalance] = yield* Effect.all(
     [
       client.request("skills/list", {
         cwds: [input.cwd],
@@ -361,13 +490,18 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
         Effect.map((models) => appendCustomCodexModels(models, input.customModels ?? [])),
       ),
       client.request("account/rateLimits/read", undefined).pipe(Effect.option),
+      requestCommercialEngineBalance(baseEnv),
     ],
     { concurrency: "unbounded" },
+  );
+  const resolvedRateLimits = mergeCommercialBalanceIntoRateLimits(
+    Option.getOrNull(rateLimits)?.rateLimits ?? null,
+    commercialBalance,
   );
 
   return {
     account: accountResponse,
-    rateLimits: Option.getOrNull(rateLimits)?.rateLimits ?? null,
+    rateLimits: resolvedRateLimits,
     version,
     models,
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
