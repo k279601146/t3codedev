@@ -3803,12 +3803,12 @@ export default function ChatView(props: ChatViewProps) {
       {isEmptyNewThread ? (
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-24 pt-8 sm:px-6">
-              <div className="@container/new-thread w-full max-w-[50rem]">
-                <h1 className="text-balance text-center text-2xl font-medium tracking-normal text-foreground @2xl/new-thread:text-[28px]">
+            <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-28 pt-6 sm:px-6">
+              <div className="@container/new-thread w-full max-w-[52rem] -translate-y-6">
+                <h1 className="text-balance text-center text-[26px] font-medium leading-tight tracking-normal text-foreground @2xl/new-thread:text-[30px]">
                   {emptyNewThreadTitle}
                 </h1>
-                <div className="mx-auto mt-8 w-full max-w-[45rem]">
+                <div className="mx-auto mt-9 w-full max-w-[46rem]">
                   <div className="relative isolate">
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     <div className="relative z-10">{composerNode}</div>

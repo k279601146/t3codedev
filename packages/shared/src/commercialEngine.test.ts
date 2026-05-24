@@ -10,6 +10,7 @@ import {
   buildCommercialEngineProcessEnv,
   generateCommercialEngineTomlConfig,
   resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineIdeApiBaseUrlCandidates,
   resolveCommercialEngineIdeJwt,
   resolveCommercialEngineWindowsSandboxMode,
 } from "./commercialEngine.ts";
@@ -29,6 +30,15 @@ describe("commercialEngine", () => {
       resolveCommercialEngineGatewayBaseUrl({}),
       DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
     );
+  });
+
+  it("derives IDE API candidates from the gateway URL", () => {
+    assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://api.example.com/v1"), [
+      "https://api.example.com",
+    ]);
+    assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("http://localhost:3000/v1"), [
+      "http://localhost:3000",
+    ]);
   });
 
   it("only resolves the IDE JWT environment variable as the AI bearer token", () => {

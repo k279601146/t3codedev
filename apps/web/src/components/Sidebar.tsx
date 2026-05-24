@@ -2328,7 +2328,6 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     codexProvider?.auth.email ??
     codexProvider?.auth.label ??
     "T3 Code account";
-  const rateLimits = codexProvider?.auth.rateLimits ?? null;
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2436,7 +2435,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                 <span>{t("sidebar.settings")}</span>
               </MenuItem>
               <MenuSeparator />
-              <AccountUsageRows rateLimits={rateLimits} />
+              <AccountUsageRows />
               <MenuItem onClick={handleOpenPlans}>
                 <span>Upgrade to Pro</span>
                 <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
@@ -2471,88 +2470,80 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   );
 });
 
-type AccountRateLimits = NonNullable<ServerProvider["auth"]["rateLimits"]>;
-type AccountRateLimitWindow = NonNullable<AccountRateLimits["primary"]>;
+type CommercialAccountUsage = Awaited<
+  ReturnType<NonNullable<NonNullable<Window["desktopBridge"]>["getCommercialAccountUsage"]>>
+>;
 
-function AccountUsageRows({ rateLimits }: { rateLimits: AccountRateLimits | null }) {
-  const primary = rateLimits?.primary ?? null;
-  const secondary = rateLimits?.secondary ?? null;
-  const credits = rateLimits?.credits ?? null;
-  const usedPercent = primary?.usedPercent ?? secondary?.usedPercent ?? 0;
-  const balanceLabel = credits?.unlimited
-    ? "Unlimited"
-    : credits?.balance
-      ? credits.balance
-      : credits?.hasCredits === false
-        ? "0"
-        : `${Math.max(0, Math.min(100, usedPercent))}%`;
+function AccountUsageRows() {
+  const [usage, setUsage] = useState<CommercialAccountUsage | undefined>(undefined);
+
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    if (!bridge?.getCommercialAccountUsage) {
+      return;
+    }
+
+    let disposed = false;
+    void bridge
+      .getCommercialAccountUsage()
+      .then((value) => {
+        if (!disposed) {
+          setUsage(value);
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setUsage(null);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   return (
     <div className="px-2 py-1.5 text-xs">
       <div className="flex items-center gap-2 text-foreground">
         <GaugeIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="font-medium">Remaining credits</span>
-        <span className="ml-auto text-muted-foreground">{balanceLabel}</span>
+        <span className="font-medium">已使用 Token</span>
+        <span className="ml-auto tabular-nums text-muted-foreground">
+          {formatUsageTokens(usage === undefined ? undefined : usage?.totalTokens)}
+        </span>
       </div>
       <div className="mt-1.5 space-y-1 pl-6 text-muted-foreground">
-        {primary ? (
-          <AccountUsageWindowRow label={formatRateLimitWindowLabel(primary)} window={primary} />
-        ) : null}
-        {secondary ? (
-          <AccountUsageWindowRow label={formatRateLimitWindowLabel(secondary)} window={secondary} />
-        ) : null}
-        {!primary && !secondary ? <div>Usage details unavailable</div> : null}
+        <div className="flex items-center gap-2">
+          <span>账户余额</span>
+          <span className="ml-auto tabular-nums">
+            {formatAccountBalance(usage === undefined ? undefined : usage?.balance)}
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
-function AccountUsageWindowRow({
-  label,
-  window,
-}: {
-  label: string;
-  window: AccountRateLimitWindow;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="font-medium text-foreground">{label}</span>
-      <span className="ml-auto tabular-nums">
-        {Math.max(0, Math.min(100, window.usedPercent))}% {formatRateLimitReset(window.resetsAt)}
-      </span>
-    </div>
-  );
+function formatAccountBalance(balance: number | null | undefined): string {
+  if (balance === undefined) {
+    return "加载中";
+  }
+  if (balance === null || !Number.isFinite(balance)) {
+    return "--";
+  }
+  return `$${balance.toFixed(8).replace(/\.?0+$/, "")}`;
 }
 
-function formatRateLimitWindowLabel(window: AccountRateLimitWindow): string {
-  const minutes = window.windowDurationMins;
-  if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0) {
-    return "Current";
+function formatUsageTokens(tokens: number | null | undefined): string {
+  if (tokens === undefined) {
+    return "加载中";
   }
-
-  if (minutes < 60) {
-    return `${Math.round(minutes)} min`;
+  if (tokens === null || !Number.isFinite(tokens)) {
+    return "--";
   }
-
-  if (minutes < 60 * 24) {
-    const hours = minutes / 60;
-    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+  if (tokens <= 0) {
+    return "0";
   }
-
-  const days = minutes / (60 * 24);
-  return `${Number.isInteger(days) ? days : days.toFixed(1)} days`;
-}
-
-function formatRateLimitReset(resetsAt: number | null | undefined): string {
-  if (typeof resetsAt !== "number" || !Number.isFinite(resetsAt) || resetsAt <= 0) {
-    return "";
-  }
-
-  const timestampMs = resetsAt < 10_000_000_000 ? resetsAt * 1000 : resetsAt;
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(timestampMs));
+  return Math.round(tokens).toLocaleString();
 }
 
 function resolveAccountActionUrl(baseUrl: string | null | undefined, path: string): string {
@@ -2925,7 +2916,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     void navigate({ to: "/skills" });
   }, [navigate]);
   const handleOpenAutomation = useCallback(() => {
-    void navigate({ to: "/settings/connections" });
+    void navigate({ to: "/automations" });
   }, [navigate]);
   const addExternalProjectsFromDrop = useCallback(
     async (event: React.DragEvent) => {

@@ -214,6 +214,15 @@ export type GatewayModelEntrySchema = typeof GatewayModelEntrySchema.Type;
 export const GatewayModelListResultSchema = Schema.Array(GatewayModelEntrySchema);
 export type GatewayModelListResultSchema = typeof GatewayModelListResultSchema.Type;
 
+export const CommercialAccountUsageSchema = Schema.Struct({
+  balance: Schema.NullOr(Schema.Number),
+  totalTokens: Schema.Number,
+  todayTokens: Schema.NullOr(Schema.Number),
+  totalActualCost: Schema.NullOr(Schema.Number),
+  todayActualCost: Schema.NullOr(Schema.Number),
+});
+export type CommercialAccountUsageSchema = typeof CommercialAccountUsageSchema.Type;
+
 export const SetLastUsedModelInputSchema = Schema.Struct({
   modelId: TrimmedNonEmptyString,
 });

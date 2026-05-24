@@ -21,7 +21,6 @@ import {
   type ProviderInstanceId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
-import { DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL } from "@t3tools/shared/commercialEngine";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import {
   DEFAULT_CLIENT_LANGUAGE,
@@ -412,7 +411,6 @@ function AboutVersionSection() {
 
 function CommercialGatewaySection() {
   const [authState, setAuthState] = useState<DesktopCommercialAuthState | null>(null);
-  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL);
   const [webAccessToken, setWebAccessToken] = useState("");
   const [isWorking, setIsWorking] = useState(false);
 
@@ -428,7 +426,6 @@ function CommercialGatewaySection() {
       .then((state) => {
         if (disposed) return;
         setAuthState(state);
-        setGatewayBaseUrl(state.gatewayBaseUrl);
       })
       .catch((error: unknown) => {
         toastManager.add(
@@ -449,12 +446,10 @@ function CommercialGatewaySection() {
     setIsWorking(true);
     void bridge
       .signInCommercialAuth({
-        gatewayBaseUrl,
         webAccessToken,
       })
       .then((state) => {
         setAuthState(state);
-        setGatewayBaseUrl(state.gatewayBaseUrl);
         setWebAccessToken("");
         toastManager.add(
           stackedThreadToast({
@@ -476,7 +471,7 @@ function CommercialGatewaySection() {
       .finally(() => {
         setIsWorking(false);
       });
-  }, [bridge, gatewayBaseUrl, webAccessToken]);
+  }, [bridge, webAccessToken]);
 
   const handleSignOut = useCallback(() => {
     if (!bridge?.signOutCommercialAuth) return;
@@ -485,7 +480,6 @@ function CommercialGatewaySection() {
       .signOutCommercialAuth()
       .then((state) => {
         setAuthState(state);
-        setGatewayBaseUrl(state.gatewayBaseUrl);
       })
       .catch((error: unknown) => {
         toastManager.add(
@@ -506,7 +500,7 @@ function CommercialGatewaySection() {
   }
 
   const signedIn = authState?.signedIn ?? false;
-  const canSignIn = gatewayBaseUrl.trim().length > 0 && webAccessToken.trim().length > 0;
+  const canSignIn = webAccessToken.trim().length > 0;
 
   return (
     <SettingsSection title="Commercial Gateway">
@@ -558,16 +552,11 @@ function CommercialGatewaySection() {
       />
       <SettingsRow
         title="Gateway URL"
-        description="OpenAI-compatible sub2api endpoint."
+        description="Configured by the desktop process deployment environment."
         control={
-          <DraftInput
-            className="w-full sm:w-80"
-            value={gatewayBaseUrl}
-            onCommit={setGatewayBaseUrl}
-            placeholder="http://localhost:3000/v1"
-            spellCheck={false}
-            aria-label="Commercial gateway URL"
-          />
+          <span className="max-w-full truncate text-xs font-medium text-muted-foreground sm:max-w-80">
+            {authState?.gatewayBaseUrl ?? "Unavailable"}
+          </span>
         }
       />
       {!signedIn ? (

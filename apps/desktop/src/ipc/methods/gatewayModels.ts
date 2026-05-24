@@ -1,6 +1,13 @@
-import { GatewayModelListResultSchema, SetLastUsedModelInputSchema } from "@t3tools/contracts";
+import {
+  CommercialAccountUsageSchema,
+  GatewayModelListResultSchema,
+  SetLastUsedModelInputSchema,
+} from "@t3tools/contracts";
 import { resilientFetch } from "@t3tools/shared/Net";
-import { resolveCommercialEngineGatewayBaseUrl } from "@t3tools/shared/commercialEngine";
+import {
+  resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineIdeApiBaseUrlCandidates,
+} from "@t3tools/shared/commercialEngine";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -52,6 +59,42 @@ export const listGatewayModels = makeIpcMethod({
   }),
 });
 
+export const getCommercialAccountUsage = makeIpcMethod({
+  channel: IpcChannels.GET_COMMERCIAL_ACCOUNT_USAGE_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.NullOr(CommercialAccountUsageSchema),
+  handler: Effect.fn("desktop.ipc.gatewayModels.getCommercialAccountUsage")(function* () {
+    const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+    const credentials = yield* commercialAuth.getCredentials;
+
+    if (Option.isNone(credentials)) {
+      return null;
+    }
+
+    const { gatewayBaseUrl, ideJwt } = credentials.value;
+    const accountUsage = yield* requestCommercialAccountUsageSnapshot(
+      gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl(),
+      ideJwt,
+    );
+
+    if (accountUsage === null) {
+      return null;
+    }
+
+    const { account, usage } = accountUsage;
+
+    return {
+      balance:
+        readNumber(account, ["data", "user", "balance"]) ??
+        readNumber(account, ["data", "balance"]),
+      totalTokens: readNumber(usage, ["data", "total_tokens"]) ?? 0,
+      todayTokens: readNumber(usage, ["data", "today_tokens"]),
+      totalActualCost: readNumber(usage, ["data", "total_actual_cost"]),
+      todayActualCost: readNumber(usage, ["data", "today_actual_cost"]),
+    };
+  }),
+});
+
 export const getLastUsedModel = makeIpcMethod({
   channel: IpcChannels.GET_LAST_USED_MODEL_CHANNEL,
   payload: Schema.Void,
@@ -83,6 +126,81 @@ interface GatewayModelsNetworkError {
 
 function GatewayModelsNetworkError(options: { cause: unknown }): GatewayModelsNetworkError {
   return { _tag: "GatewayModelsNetworkError", cause: options.cause };
+}
+
+function requestCommercialAccountUsageSnapshot(
+  gatewayBaseUrl: string,
+  ideJwt: string,
+): Effect.Effect<{ account: unknown; usage: unknown } | null, never> {
+  return Effect.gen(function* () {
+    for (const baseUrl of resolveCommercialEngineIdeApiBaseUrlCandidates(gatewayBaseUrl)) {
+      const accountUrl = new URL("/ide/auth/me", baseUrl).toString();
+      const usageUrl = new URL("/ide/api/usage", baseUrl).toString();
+      const result = yield* requestCommercialAccountUsageFromBaseUrl(accountUrl, usageUrl, ideJwt);
+      if (result !== null) return result;
+    }
+
+    return null;
+  });
+}
+
+function requestCommercialAccountUsageFromBaseUrl(
+  accountUrl: string,
+  usageUrl: string,
+  ideJwt: string,
+): Effect.Effect<{ account: unknown; usage: unknown } | null, never> {
+  return Effect.all(
+    [requestGatewayJson(accountUrl, ideJwt), requestGatewayJson(usageUrl, ideJwt)],
+    { concurrency: "unbounded" },
+  ).pipe(
+    Effect.map(([account, usage]) => ({ account, usage })),
+    Effect.catch(() => Effect.succeed(null)),
+  );
+}
+
+function requestGatewayJson(
+  url: string,
+  ideJwt: string,
+): Effect.Effect<unknown, GatewayModelsNetworkError> {
+  return Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        resilientFetch(url, {
+          headers: {
+            Authorization: `Bearer ${ideJwt}`,
+            "Content-Type": "application/json",
+          },
+          maxRetries: 2,
+          timeoutMs: 10_000,
+        }),
+      catch: (cause) => GatewayModelsNetworkError({ cause }),
+    });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!response.ok || !contentType.toLowerCase().includes("application/json")) {
+      return yield* Effect.fail(
+        GatewayModelsNetworkError({
+          cause: new Error(`Gateway returned ${response.status} ${contentType || "unknown"}.`),
+        }),
+      );
+    }
+
+    return yield* Effect.tryPromise({
+      try: () => response.json() as Promise<unknown>,
+      catch: (cause) => GatewayModelsNetworkError({ cause }),
+    });
+  });
+}
+
+function readNumber(value: unknown, path: readonly string[]): number | null {
+  let current = value;
+  for (const segment of path) {
+    if (typeof current !== "object" || current === null || !(segment in current)) {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return typeof current === "number" && Number.isFinite(current) ? current : null;
 }
 
 interface RawModelEntry {

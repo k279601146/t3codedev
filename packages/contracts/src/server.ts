@@ -84,6 +84,16 @@ export const ServerProviderAuth = Schema.Struct({
           }),
         ),
       ),
+      usage: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            totalTokens: Schema.Number,
+            todayTokens: Schema.optional(Schema.NullOr(Schema.Number)),
+            totalActualCost: Schema.optional(Schema.NullOr(Schema.Number)),
+            todayActualCost: Schema.optional(Schema.NullOr(Schema.Number)),
+          }),
+        ),
+      ),
       planType: Schema.optional(Schema.NullOr(Schema.String)),
       rateLimitReachedType: Schema.optional(Schema.NullOr(Schema.String)),
     }),

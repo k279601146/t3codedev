@@ -56,6 +56,10 @@ interface CommercialAuthStorageDocument {
   readonly userLabel?: string | null;
 }
 
+function resolveConfiguredGatewayBaseUrl(): string {
+  return normalizeGatewayBaseUrl(resolveCommercialEngineGatewayBaseUrl(process.env));
+}
+
 const CommercialAuthDocumentSchema = Schema.Struct({
   version: Schema.optionalKey(Schema.Number),
   gatewayBaseUrl: Schema.optionalKey(Schema.String),
@@ -175,9 +179,10 @@ function resolveAuthTokenEndpoint(gatewayBaseUrl: string): string {
 }
 
 function normalizeDocument(document: CommercialAuthStorageDocument): CommercialAuthDocument {
+  const configuredGatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
   const baseDocument = {
     version: document.version ?? 1,
-    gatewayBaseUrl: document.gatewayBaseUrl?.trim() || resolveCommercialEngineGatewayBaseUrl({}),
+    gatewayBaseUrl: document.gatewayBaseUrl?.trim() || configuredGatewayBaseUrl,
     authenticatedAt: document.authenticatedAt ?? null,
     tokenExpiresAt: document.tokenExpiresAt ?? null,
     userLabel: document.userLabel ?? null,
@@ -201,7 +206,7 @@ function readDocument(
         onNone: () =>
           Effect.succeed({
             version: 1,
-            gatewayBaseUrl: DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+            gatewayBaseUrl: resolveConfiguredGatewayBaseUrl(),
             authenticatedAt: null,
             tokenExpiresAt: null,
             userLabel: null,
@@ -212,7 +217,7 @@ function readDocument(
             Effect.catch(() =>
               Effect.succeed({
                 version: 1,
-                gatewayBaseUrl: DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+                gatewayBaseUrl: resolveConfiguredGatewayBaseUrl(),
                 authenticatedAt: null,
                 tokenExpiresAt: null,
                 userLabel: null,
@@ -539,7 +544,7 @@ function exchangeWebTokenForIDEToken(
 ): Effect.Effect<IDETokenExchangeResult, DesktopCommercialAuthExchangeError> {
   return Effect.tryPromise({
     try: async () => {
-      const gatewayBaseUrl = normalizeGatewayBaseUrl(input.gatewayBaseUrl);
+      const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
       const webAccessToken = input.webAccessToken.trim();
       if (webAccessToken.length === 0) {
         throw new Error("Web access token is required.");
@@ -660,10 +665,9 @@ export const layer = Layer.effect(
         });
       }).pipe(Effect.withSpan("desktop.commercialAuth.getCredentials")),
       signIn: Effect.fn("desktop.commercialAuth.signIn")(function* (input) {
-        const gatewayBaseUrl = normalizeGatewayBaseUrl(input.gatewayBaseUrl);
+        const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
         const exchanged = yield* exchangeWebTokenForIDEToken({
           ...input,
-          gatewayBaseUrl,
         });
 
         if (!(yield* safeStorage.isEncryptionAvailable)) {
@@ -692,7 +696,7 @@ export const layer = Layer.effect(
         return toState(document);
       }),
       signInWithBrowser: Effect.fn("desktop.commercialAuth.signInWithBrowser")(function* (input) {
-        const gatewayBaseUrl = normalizeGatewayBaseUrl(input.gatewayBaseUrl);
+        const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
         const codeVerifier = makePKCEVerifier();
         const codeChallenge = makePKCEChallenge(codeVerifier);
         const authorization = yield* Effect.tryPromise({
@@ -800,14 +804,12 @@ export const layerTest = (input?: {
         signIn: (request) =>
           Ref.updateAndGet(stateRef, (previous) => ({
             ...previous,
-            gatewayBaseUrl: request.gatewayBaseUrl,
             signedIn: true,
             authenticatedAt: "2026-05-10T00:00:00.000Z",
           })),
         signInWithBrowser: (request) =>
           Ref.updateAndGet(stateRef, (previous) => ({
             ...previous,
-            gatewayBaseUrl: request.gatewayBaseUrl,
             signedIn: true,
             authenticatedAt: "2026-05-10T00:00:00.000Z",
           })),

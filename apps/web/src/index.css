@@ -127,19 +127,19 @@
    ========================================================================= */
 :root {
   color-scheme: light;
-  --radius: 0.75rem;
+  --radius: 0.625rem;
 
   /* --- Claude 原始 token (Refined Minimalism / 精致极简) ---
      底色看似纯白，实则带极淡暖灰底色，配合大面积留白与克制的色彩 */
-  --claude-bg-base: #fafaf9; /* 看似纯白的暖灰底（New Neutralism） */
+  --claude-bg-base: #fbfbfa; /* 看似纯白的暖灰底（New Neutralism） */
   --claude-bg-surface: #ffffff; /* 卡片/输入框：纯白 */
-  --claude-bg-hover: #f3f1ee; /* hover：用户气泡 / 悬浮 */
-  --claude-bg-active: #ebe8e3; /* 按压/选中 */
-  --claude-bg-subtle: #f7f5f2; /* 工具卡片内极浅暖灰 */
+  --claude-bg-hover: #f2f2f0; /* hover：用户气泡 / 悬浮 */
+  --claude-bg-active: #e9e8e5; /* 按压/选中 */
+  --claude-bg-subtle: #f6f6f4; /* 工具卡片内极浅暖灰 */
 
   --claude-text-primary: #1f1d1b;
-  --claude-text-secondary: #6b665f;
-  --claude-text-tertiary: #a39d95;
+  --claude-text-secondary: #6b6863;
+  --claude-text-tertiary: #9f9b94;
 
   --claude-accent: #d97757; /* Claude 品牌橙（仅用于关键 CTA） */
   --claude-accent-hover: #c4673f;
@@ -156,8 +156,8 @@
   --claude-citation-border: #d2dceb;
   --claude-citation-text: #3b5ea0;
 
-  --claude-border-subtle: #ece9e3; /* 极淡分割线，几乎看不见 */
-  --claude-border-default: #ddd8d0;
+  --claude-border-subtle: #e8e6e1; /* 极淡分割线，几乎看不见 */
+  --claude-border-default: #d8d5cf;
 
   --claude-success: #4a9b6f;
   --claude-warning: #c4873a;
@@ -191,17 +191,17 @@
   --success-foreground: var(--claude-success);
   --warning: var(--claude-warning);
   --warning-foreground: var(--claude-warning);
-  --sidebar: #f8f6f3; /* sidebar 比 main 略暖暗一档，形成层级 */
+  --sidebar: #f6f5f2; /* sidebar 比 main 略暖暗一档，形成层级 */
   --sidebar-foreground: var(--claude-text-secondary);
   --sidebar-border: var(--claude-border-subtle);
-  --sidebar-accent: #ebe8e2; /* sidebar 内 hover/active 项 */
+  --sidebar-accent: #ebe9e4; /* sidebar 内 hover/active 项 */
   --sidebar-accent-foreground: var(--claude-text-primary);
 
   /* --- Claude 专用语义 token (供工具卡片、引用、Artifact 等使用) --- */
   --claude-radius-sm: 6px;
   --claude-radius-md: 12px;
-  --claude-radius-lg: 18px;
-  --claude-radius-xl: 24px;
+  --claude-radius-lg: 16px;
+  --claude-radius-xl: 22px;
   --claude-radius-full: 9999px;
 
   --claude-shadow-xs: 0 1px 2px rgba(31, 29, 27, 0.03);
@@ -209,7 +209,7 @@
   --claude-shadow-md: 0 2px 12px rgba(31, 29, 27, 0.05);
   --claude-shadow-lg: 0 6px 24px rgba(31, 29, 27, 0.07);
   --claude-shadow-focus: 0 0 0 3px rgba(31, 29, 27, 0.06);
-  --claude-shadow-panel: 0 1px 6px rgba(31, 29, 27, 0.04), 0 0 0 1px var(--claude-border-subtle);
+  --claude-shadow-panel: 0 1px 2px rgba(31, 29, 27, 0.035), 0 8px 24px rgba(31, 29, 27, 0.045), 0 0 0 1px var(--claude-border-subtle);
 
   --claude-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --claude-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);

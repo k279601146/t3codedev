@@ -1,8 +1,7 @@
 import type { DesktopCommercialAuthState } from "@t3tools/contracts";
-import { DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL } from "@t3tools/shared/commercialEngine";
 import { CheckIcon, ExternalLinkIcon, LoaderIcon, LogInIcon, XIcon } from "lucide-react";
 import type React from "react";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
 import {
@@ -59,7 +58,7 @@ export function useDesktopCommercialAuthGate(enabled: boolean): CommercialAuthGa
         setState({
           status: "requires-sign-in",
           authState: {
-            gatewayBaseUrl: DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+            gatewayBaseUrl: "",
             signedIn: false,
             authenticatedAt: null,
             tokenExpiresAt: null,
@@ -109,21 +108,13 @@ export function CommercialGatewayLoginGate({
 }) {
   const { t } = useI18n();
   const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
-  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(
-    () => authState?.gatewayBaseUrl ?? DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
-  );
   const [webAccessToken, setWebAccessToken] = useState("");
   const [isBrowserSignIn, setIsBrowserSignIn] = useState(false);
   const [isTokenSignIn, setIsTokenSignIn] = useState(false);
   const [showTokenFallback, setShowTokenFallback] = useState(false);
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
   const browserSignInRequestIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (authState?.gatewayBaseUrl) {
-      setGatewayBaseUrl(authState.gatewayBaseUrl);
-    }
-  }, [authState?.gatewayBaseUrl]);
+  const registerGatewayBaseUrl = authState?.gatewayBaseUrl ?? "";
 
   useEffect(() => {
     setCurrentErrorMessage(errorMessage ?? "");
@@ -132,8 +123,6 @@ export function CommercialGatewayLoginGate({
   const canBrowserSignIn = Boolean(bridge?.signInCommercialAuthWithBrowser);
   const canTokenSignIn = Boolean(bridge?.signInCommercialAuth) && webAccessToken.trim().length > 0;
   const isWorking = isBrowserSignIn || isTokenSignIn;
-
-  const normalizedGateway = useMemo(() => gatewayBaseUrl.trim(), [gatewayBaseUrl]);
 
   const handleBrowserSignIn = useCallback(() => {
     if (!bridge?.signInCommercialAuthWithBrowser) return;
@@ -152,7 +141,7 @@ export function CommercialGatewayLoginGate({
     setIsBrowserSignIn(true);
     setCurrentErrorMessage("");
     void bridge
-      .signInCommercialAuthWithBrowser({ gatewayBaseUrl: normalizedGateway, requestId })
+      .signInCommercialAuthWithBrowser({ requestId })
       .then((nextState) => {
         if (browserSignInRequestIdRef.current !== requestId) return;
         publishDesktopCommercialAuthState(nextState);
@@ -168,7 +157,7 @@ export function CommercialGatewayLoginGate({
           setIsBrowserSignIn(false);
         }
       });
-  }, [bridge, isBrowserSignIn, normalizedGateway, onAuthenticated]);
+  }, [bridge, isBrowserSignIn, onAuthenticated]);
 
   const handleTokenSignIn = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -178,7 +167,6 @@ export function CommercialGatewayLoginGate({
       setCurrentErrorMessage("");
       void bridge
         .signInCommercialAuth({
-          gatewayBaseUrl: normalizedGateway,
           webAccessToken,
         })
         .then((nextState) => {
@@ -193,7 +181,7 @@ export function CommercialGatewayLoginGate({
           setIsTokenSignIn(false);
         });
     },
-    [bridge, normalizedGateway, onAuthenticated, webAccessToken],
+    [bridge, onAuthenticated, webAccessToken],
   );
 
   return (
@@ -236,17 +224,6 @@ export function CommercialGatewayLoginGate({
           </Button>
         </div>
 
-        <label className="mt-5 w-full text-left text-xs font-medium text-neutral-500">
-          Gateway
-          <Input
-            className="mt-2 rounded-full border-neutral-200 bg-white text-left dark:border-white/12 dark:bg-neutral-950"
-            nativeInput
-            onChange={(event) => setGatewayBaseUrl(event.currentTarget.value)}
-            spellCheck={false}
-            value={gatewayBaseUrl}
-          />
-        </label>
-
         {showTokenFallback ? (
           <form className="mt-4 w-full space-y-3" onSubmit={handleTokenSignIn}>
             <Input
@@ -275,18 +252,18 @@ export function CommercialGatewayLoginGate({
           </p>
         ) : null}
 
-        <button
-          className="mt-5 cursor-pointer text-sm text-neutral-500 underline-offset-4 hover:text-neutral-800 hover:underline dark:text-neutral-400 dark:hover:text-neutral-100"
-          onClick={() => {
-            const registerUrl = resolveRegisterUrl(
-              normalizedGateway || DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
-            );
-            void window.desktopBridge?.openExternal(registerUrl);
-          }}
-          type="button"
-        >
-          {t("auth.register")}
-        </button>
+        {registerGatewayBaseUrl ? (
+          <button
+            className="mt-5 cursor-pointer text-sm text-neutral-500 underline-offset-4 hover:text-neutral-800 hover:underline dark:text-neutral-400 dark:hover:text-neutral-100"
+            onClick={() => {
+              const registerUrl = resolveRegisterUrl(registerGatewayBaseUrl);
+              void window.desktopBridge?.openExternal(registerUrl);
+            }}
+            type="button"
+          >
+            {t("auth.register")}
+          </button>
+        ) : null}
       </section>
     </main>
   );
@@ -324,7 +301,7 @@ function resolveRegisterUrl(gatewayBaseUrl: string): string {
     url.hash = "";
     return url.toString();
   } catch {
-    return "http://localhost:3000/register";
+    return "";
   }
 }
 

@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   cancelCommercialAuthBrowserSignIn: (input) =>
     ipcRenderer.invoke(IpcChannels.CANCEL_COMMERCIAL_AUTH_BROWSER_SIGN_IN_CHANNEL, input),
   signOutCommercialAuth: () => ipcRenderer.invoke(IpcChannels.SIGN_OUT_COMMERCIAL_AUTH_CHANNEL),
+  getCommercialAccountUsage: () =>
+    ipcRenderer.invoke(IpcChannels.GET_COMMERCIAL_ACCOUNT_USAGE_CHANNEL),
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),

@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV } from "@t3tools/shared/commercialEngine";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -88,118 +89,142 @@ const withFetch = <A, E, R>(fetchImpl: typeof fetch, effect: Effect.Effect<A, E,
       }),
   );
 
+const withGatewayBaseUrl = <A, E, R>(gatewayBaseUrl: string, effect: Effect.Effect<A, E, R>) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const previous = process.env[COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV];
+      process.env[COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV] = gatewayBaseUrl;
+      return previous;
+    }),
+    () => effect,
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) {
+          delete process.env[COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV];
+        } else {
+          process.env[COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV] = previous;
+        }
+      }),
+  );
+
 describe("DesktopCommercialAuth", () => {
   it.effect("exchanges a web token and persists only an encrypted IDE JWT", () =>
-    withCommercialAuth(
-      withFetch(
-        (async (url, init) => {
-          assert.equal(url, "http://localhost:8080/ide/auth/token");
-          const headers = init?.headers as Record<string, string> | undefined;
-          assert.equal(headers?.Authorization, "Bearer web-jwt");
-          return new Response(
-            JSON.stringify({
-              code: 0,
-              message: "success",
-              data: {
-                access_token: "ide-jwt",
-                expires_in: 3600,
-                user: { email: "dev@example.com" },
-              },
-            }),
-            { status: 200 },
-          );
-        }) as typeof fetch,
-        Effect.gen(function* () {
-          const environment = yield* DesktopEnvironment.DesktopEnvironment;
-          const fileSystem = yield* FileSystem.FileSystem;
-          const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+    withGatewayBaseUrl(
+      "http://localhost:8080/v1",
+      withCommercialAuth(
+        withFetch(
+          (async (url, init) => {
+            assert.equal(url, "http://localhost:8080/ide/auth/token");
+            const headers = init?.headers as Record<string, string> | undefined;
+            assert.equal(headers?.Authorization, "Bearer web-jwt");
+            return new Response(
+              JSON.stringify({
+                code: 0,
+                message: "success",
+                data: {
+                  access_token: "ide-jwt",
+                  expires_in: 3600,
+                  user: { email: "dev@example.com" },
+                },
+              }),
+              { status: 200 },
+            );
+          }) as typeof fetch,
+          Effect.gen(function* () {
+            const environment = yield* DesktopEnvironment.DesktopEnvironment;
+            const fileSystem = yield* FileSystem.FileSystem;
+            const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
 
-          const state = yield* auth.signIn({
-            gatewayBaseUrl: "http://localhost:8080/v1",
-            webAccessToken: "web-jwt",
-          });
+            const state = yield* auth.signIn({
+              webAccessToken: "web-jwt",
+            });
 
-          assert.isTrue(state.signedIn);
-          assert.equal(state.gatewayBaseUrl, "http://localhost:8080/v1");
-          assert.equal(state.userLabel, "dev@example.com");
-          assert.deepEqual(
-            yield* auth.getCredentials,
-            Option.some({
-              gatewayBaseUrl: "http://localhost:8080/v1",
-              ideJwt: "ide-jwt",
-            }),
-          );
+            assert.isTrue(state.signedIn);
+            assert.equal(state.gatewayBaseUrl, "http://localhost:8080/v1");
+            assert.equal(state.userLabel, "dev@example.com");
+            assert.deepEqual(
+              yield* auth.getCredentials,
+              Option.some({
+                gatewayBaseUrl: "http://localhost:8080/v1",
+                ideJwt: "ide-jwt",
+              }),
+            );
 
-          const persisted = yield* fileSystem.readFileString(environment.commercialAuthPath);
-          assert.include(persisted, "http://localhost:8080/v1");
-          assert.include(persisted, "ZW5jOmlkZS1qd3Q=");
-          assert.equal(persisted.includes("ide-jwt"), false);
-          assert.equal(persisted.includes("web-jwt"), false);
-        }),
+            const persisted = yield* fileSystem.readFileString(environment.commercialAuthPath);
+            assert.include(persisted, "http://localhost:8080/v1");
+            assert.include(persisted, "ZW5jOmlkZS1qd3Q=");
+            assert.equal(persisted.includes("ide-jwt"), false);
+            assert.equal(persisted.includes("web-jwt"), false);
+          }),
+        ),
       ),
     ),
   );
 
   it.effect("signs out without forgetting the gateway URL", () =>
-    withCommercialAuth(
-      withFetch(
-        (async () =>
-          new Response(
-            JSON.stringify({
-              data: { access_token: "ide-jwt", expires_in: 3600 },
-            }),
-            { status: 200 },
-          )) as typeof fetch,
-        Effect.gen(function* () {
-          const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
-          yield* auth.signIn({
-            gatewayBaseUrl: "https://api.example.com/v1",
-            webAccessToken: "web-jwt",
-          });
+    withGatewayBaseUrl(
+      "https://api.example.com/v1",
+      withCommercialAuth(
+        withFetch(
+          (async () =>
+            new Response(
+              JSON.stringify({
+                data: { access_token: "ide-jwt", expires_in: 3600 },
+              }),
+              { status: 200 },
+            )) as typeof fetch,
+          Effect.gen(function* () {
+            const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+            yield* auth.signIn({
+              webAccessToken: "web-jwt",
+            });
 
-          const state = yield* auth.signOut;
-          assert.equal(state.gatewayBaseUrl, "https://api.example.com/v1");
-          assert.isFalse(state.signedIn);
-          assert.isTrue(Option.isNone(yield* auth.getCredentials));
-        }),
+            const state = yield* auth.signOut;
+            assert.equal(state.gatewayBaseUrl, "https://api.example.com/v1");
+            assert.isFalse(state.signedIn);
+            assert.isTrue(Option.isNone(yield* auth.getCredentials));
+          }),
+        ),
       ),
     ),
   );
 
   it.effect("retries transient gateway token exchange failures", () =>
-    withCommercialAuth(
-      withFetch(
-        (() => {
-          let attempts = 0;
-          return (async () => {
-            attempts += 1;
-            if (attempts === 1) {
-              return new Response("busy", { status: 503 });
-            }
-            return new Response(
-              JSON.stringify({
-                data: { access_token: "ide-jwt", expires_in: 3600 },
-              }),
-              { status: 200 },
-            );
-          }) as typeof fetch;
-        })(),
-        Effect.gen(function* () {
-          const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
-          const state = yield* auth.signIn({
-            gatewayBaseUrl: "https://api.example.com/v1",
-            webAccessToken: "web-jwt",
-          });
+    withGatewayBaseUrl(
+      "https://api.example.com/v1",
+      withCommercialAuth(
+        withFetch(
+          (() => {
+            let attempts = 0;
+            return (async () => {
+              attempts += 1;
+              if (attempts === 1) {
+                return new Response("busy", { status: 503 });
+              }
+              return new Response(
+                JSON.stringify({
+                  data: { access_token: "ide-jwt", expires_in: 3600 },
+                }),
+                { status: 200 },
+              );
+            }) as typeof fetch;
+          })(),
+          Effect.gen(function* () {
+            const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+            const state = yield* auth.signIn({
+              webAccessToken: "web-jwt",
+            });
 
-          assert.isTrue(state.signedIn);
-          assert.deepEqual(
-            yield* auth.getCredentials,
-            Option.some({
-              gatewayBaseUrl: "https://api.example.com/v1",
-              ideJwt: "ide-jwt",
-            }),
-          );
-        }),
+            assert.isTrue(state.signedIn);
+            assert.deepEqual(
+              yield* auth.getCredentials,
+              Option.some({
+                gatewayBaseUrl: "https://api.example.com/v1",
+                ideJwt: "ide-jwt",
+              }),
+            );
+          }),
+        ),
       ),
     ),
   );

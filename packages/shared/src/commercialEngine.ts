@@ -29,13 +29,22 @@ export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
 ] as const;
 
 const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
-  ...COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY,
+  "PATH",
+  "HOME",
+  "LANG",
+  "TERM",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "TEMP",
+  "TMP",
+  "SystemRoot",
+  "HOMEDRIVE",
+  "HOMEPATH",
   "Path",
   "ComSpec",
   "PATHEXT",
   "WINDIR",
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
 ] as const;
 
 export function getCommercialEngineEnvVar(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -72,6 +81,19 @@ export function resolveCommercialEngineGatewayBaseUrl(
     getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV) ||
     DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL
   );
+}
+
+export function resolveCommercialEngineIdeApiBaseUrl(gatewayBaseUrl: string): string {
+  const url = new URL(gatewayBaseUrl);
+  url.hash = "";
+  url.search = "";
+  url.pathname = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+export function resolveCommercialEngineIdeApiBaseUrlCandidates(gatewayBaseUrl: string): string[] {
+  const primary = resolveCommercialEngineIdeApiBaseUrl(gatewayBaseUrl);
+  return [primary];
 }
 
 export function resolveCommercialEngineIdeJwt(
