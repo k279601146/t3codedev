@@ -205,6 +205,200 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it("renders an image-generation shimmer row as soon as the image task starts", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-start-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-start",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view",
+            tone: "tool",
+            itemType: "image_view",
+            status: "running",
+            generatedImage: {
+              status: "in_progress",
+            },
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toEqual([
+      {
+        kind: "image-generation",
+        id: "image-start-entry",
+        createdAt: "2026-01-01T00:00:00Z",
+        items: [
+          {
+            id: "image-start-entry",
+            createdAt: "2026-01-01T00:00:00Z",
+            status: "running",
+            label: "Image view",
+            imagePath: null,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps image-generation started events instead of the generic working row", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-start-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-start",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view started",
+            tone: "tool",
+            itemType: "image_view",
+            status: "running",
+            generatedImage: {
+              status: "in_progress",
+            },
+          },
+        },
+        {
+          id: "thinking-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "thinking",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Thinking",
+            tone: "thinking",
+            status: "running",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows[0]?.kind).toBe("image-generation");
+    expect(rows[1]?.kind).toBe("work");
+  });
+
+  it("suppresses the generic thinking row while an image-generation shimmer is running", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-start-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-start",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view",
+            tone: "tool",
+            itemType: "image_view",
+            status: "running",
+            generatedImage: {
+              id: "ig_1",
+              status: "in_progress",
+              type: "imageGeneration",
+            },
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["image-generation"]);
+  });
+
+
+  it("uses completed image base64 even when the provider item status still says generating", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-complete-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-complete",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view",
+            tone: "tool",
+            itemType: "image_view",
+            status: "completed",
+            generatedImage: {
+              result: "a".repeat(512),
+              status: "generating",
+            },
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const row = rows[0];
+    expect(row?.kind).toBe("image-generation");
+    if (row?.kind !== "image-generation") return;
+    expect(row.items[0]?.status).toBe("completed");
+    expect(row.items[0]?.imagePath).toBe(`data:image/png;base64,${"a".repeat(512)}`);
+  });
+
+  it("falls back to the generated image saved path when base64 is unavailable", () => {
+    const savedPath =
+      "C:\\Users\\Administrator\\.bahew\\agent-data\\generated_images\\thread\\image.png";
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-saved-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-saved",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view",
+            tone: "tool",
+            itemType: "image_view",
+            status: "completed",
+            generatedImage: {
+              result: "",
+              savedPath,
+              status: "generating",
+            },
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const row = rows[0];
+    expect(row?.kind).toBe("image-generation");
+    if (row?.kind !== "image-generation") return;
+    expect(row.items[0]?.status).toBe("completed");
+    expect(row.items[0]?.imagePath).toBe(savedPath);
+  });
+
   it("only enables assistant copy for the terminal assistant message in a turn", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

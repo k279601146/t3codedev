@@ -60,6 +60,14 @@ export interface WorkLogEntry {
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   status?: "running" | "completed";
+  generatedImage?: {
+    id?: string;
+    result?: string;
+    savedPath?: string;
+    status?: string;
+    type?: string;
+    revisedPrompt?: string;
+  };
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -488,7 +496,7 @@ export function deriveWorkLogEntries(
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
-    .filter((activity) => activity.kind !== "tool.started")
+    .filter((activity) => activity.kind !== "tool.started" || isImageGenerationStartActivity(activity))
     .filter((activity) => activity.kind !== "task.started")
     .filter((activity) => activity.kind !== "context-window.updated")
     .filter((activity) => activity.summary !== "Checkpoint captured")
@@ -509,6 +517,17 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
       ? (activity.payload as Record<string, unknown>)
       : null;
   return typeof payload?.detail === "string" && payload.detail.startsWith("ExitPlanMode:");
+}
+
+function isImageGenerationStartActivity(activity: OrchestrationThreadActivity): boolean {
+  if (activity.kind !== "tool.started") {
+    return false;
+  }
+  const payload =
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  return extractWorkLogItemType(payload) === "image_view" || isRawImageGenerationPayload(payload);
 }
 
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
@@ -553,12 +572,15 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
           : activity.tone,
     activityKind: activity.kind,
     status:
-      activity.kind === "task.progress" || activity.kind === "tool.updated"
+      activity.kind === "task.progress" ||
+      activity.kind === "tool.updated" ||
+      activity.kind === "tool.started"
         ? "running"
         : "completed",
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  const generatedImage = extractGeneratedImageArtifact(payload);
   if (detail) {
     entry.detail = detail;
   }
@@ -579,6 +601,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (requestKind) {
     entry.requestKind = requestKind;
+  }
+  if (generatedImage) {
+    entry.generatedImage = generatedImage;
   }
   if (toolCallId) {
     entry.toolCallId = toolCallId;
@@ -609,10 +634,10 @@ function shouldCollapseToolLifecycleEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {
-  if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
+  if (!isToolLifecycleWorkActivityKind(previous.activityKind)) {
     return false;
   }
-  if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
+  if (!isToolLifecycleWorkActivityKind(next.activityKind)) {
     return false;
   }
   if (previous.activityKind === "tool.completed") {
@@ -630,6 +655,12 @@ function shouldCollapseToolLifecycleEntries(
   );
 }
 
+function isToolLifecycleWorkActivityKind(
+  kind: DerivedWorkLogEntry["activityKind"],
+): kind is "tool.started" | "tool.updated" | "tool.completed" {
+  return kind === "tool.started" || kind === "tool.updated" || kind === "tool.completed";
+}
+
 function mergeDerivedWorkLogEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
@@ -644,6 +675,8 @@ function mergeDerivedWorkLogEntries(
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
   const status = next.status ?? previous.status;
+  const generatedImage = mergeGeneratedImageArtifact(previous.generatedImage, next.generatedImage);
+  const imageToolCallId = next.toolCallId ?? previous.toolCallId;
   return {
     ...previous,
     ...next,
@@ -655,8 +688,21 @@ function mergeDerivedWorkLogEntries(
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
-    ...(toolCallId ? { toolCallId } : {}),
+    ...(imageToolCallId ? { toolCallId: imageToolCallId } : toolCallId ? { toolCallId } : {}),
     ...(status ? { status } : {}),
+    ...(generatedImage ? { generatedImage } : {}),
+  };
+}
+
+function mergeGeneratedImageArtifact(
+  previous: WorkLogEntry["generatedImage"],
+  next: WorkLogEntry["generatedImage"],
+): WorkLogEntry["generatedImage"] {
+  if (!previous) return next;
+  if (!next) return previous;
+  return {
+    ...previous,
+    ...next,
   };
 }
 
@@ -672,7 +718,7 @@ function mergeChangedFiles(
 }
 
 function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
-  if (entry.activityKind !== "tool.updated" && entry.activityKind !== "tool.completed") {
+  if (!isToolLifecycleWorkActivityKind(entry.activityKind)) {
     return undefined;
   }
   if (entry.toolCallId) {
@@ -904,7 +950,48 @@ function extractToolTitle(payload: Record<string, unknown> | null): string | nul
 
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
-  return asTrimmedString(data?.toolCallId);
+  const item = asRecord(data?.item) ?? asRecord(payload?.item);
+  return (
+    asTrimmedString(data?.toolCallId) ??
+    asTrimmedString(payload?.toolCallId) ??
+    asTrimmedString(payload?.itemId) ??
+    asTrimmedString(data?.itemId) ??
+    asTrimmedString(item?.id)
+  );
+}
+
+function extractGeneratedImageArtifact(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["generatedImage"] | undefined {
+  if (extractWorkLogItemType(payload) !== "image_view") {
+    return undefined;
+  }
+
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item) ?? asRecord(payload?.item);
+  if (!item) {
+    return undefined;
+  }
+
+  const result = asTrimmedString(item.result);
+  const savedPath = asTrimmedString(item.savedPath);
+  const status = asTrimmedString(item.status);
+  const id = asTrimmedString(item.id);
+  const type = asTrimmedString(item.type);
+  const revisedPrompt = asTrimmedString(item.revisedPrompt);
+
+  if (!id && !result && !savedPath && !status && !type && !revisedPrompt) {
+    return undefined;
+  }
+
+  return {
+    ...(id ? { id } : {}),
+    ...(result ? { result } : {}),
+    ...(savedPath ? { savedPath } : {}),
+    ...(status ? { status } : {}),
+    ...(type ? { type } : {}),
+    ...(revisedPrompt ? { revisedPrompt } : {}),
+  };
 }
 
 function normalizeInlinePreview(value: string): string {
@@ -1034,7 +1121,29 @@ function extractWorkLogItemType(
   if (typeof payload?.itemType === "string" && isToolLifecycleItemType(payload.itemType)) {
     return payload.itemType;
   }
+  if (isRawImageGenerationPayload(payload)) {
+    return "image_view";
+  }
   return undefined;
+}
+
+function isRawImageGenerationPayload(payload: Record<string, unknown> | null): boolean {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item) ?? asRecord(payload?.item);
+  const itemId =
+    asTrimmedString(payload?.itemId) ??
+    asTrimmedString(data?.itemId) ??
+    asTrimmedString(item?.id);
+  if (itemId?.startsWith("ig_")) {
+    return true;
+  }
+  if (!item) {
+    return false;
+  }
+  return (
+    asTrimmedString(item.type) === "imageGeneration" &&
+    asTrimmedString(item.status) === "in_progress"
+  );
 }
 
 function extractWorkLogRequestKind(

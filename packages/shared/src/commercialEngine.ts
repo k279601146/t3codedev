@@ -116,6 +116,9 @@ wire_api = ${tomlString(COMMERCIAL_ENGINE_WIRE_API)}
 env_key = ${tomlString(COMMERCIAL_ENGINE_IDE_JWT_ENV)}
 requires_openai_auth = false
 
+[model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}.capabilities]
+image_generation = true
+
 [features]
 image_generation = true
 

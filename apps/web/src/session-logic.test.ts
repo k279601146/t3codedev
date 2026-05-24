@@ -30,6 +30,7 @@ function makeActivity(overrides: {
   tone?: OrchestrationThreadActivity["tone"];
   payload?: Record<string, unknown>;
   turnId?: string;
+  itemId?: string;
   sequence?: number;
 }): OrchestrationThreadActivity {
   const payload = overrides.payload ?? {};
@@ -41,6 +42,7 @@ function makeActivity(overrides: {
     tone: overrides.tone ?? "tool",
     payload,
     turnId: overrides.turnId ? TurnId.make(overrides.turnId) : null,
+    ...(overrides.itemId ? { itemId: overrides.itemId } : {}),
     ...(overrides.sequence !== undefined ? { sequence: overrides.sequence } : {}),
   };
 }
@@ -589,6 +591,169 @@ describe("deriveWorkLogEntries", () => {
 
     const entries = deriveWorkLogEntries(activities, undefined);
     expect(entries.map((entry) => entry.id)).toEqual(["tool-complete"]);
+  });
+
+  it("keeps image-generation started entries so the shimmer appears immediately", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "image-start",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        summary: "Image view started",
+        kind: "tool.started",
+        payload: {
+          itemType: "image_view",
+          data: {
+            item: {
+              id: "ig_1",
+              result: "",
+              status: "in_progress",
+              type: "imageGeneration",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries).toMatchObject([
+      {
+        id: "image-start",
+        itemType: "image_view",
+        status: "running",
+        generatedImage: {
+          status: "in_progress",
+        },
+      },
+    ]);
+  });
+
+  it("detects raw Codex imageGeneration started payloads without a precomputed itemType", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "raw-image-start",
+        itemId: "ig_1",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        summary: "Image view started",
+        kind: "tool.started",
+        payload: {
+          itemId: "ig_1",
+          data: {
+            item: {
+              id: "ig_1",
+              result: "",
+              revisedPrompt: null,
+              status: "in_progress",
+              type: "imageGeneration",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries).toMatchObject([
+      {
+        id: "raw-image-start",
+        itemType: "image_view",
+        status: "running",
+        generatedImage: {
+          id: "ig_1",
+          status: "in_progress",
+          type: "imageGeneration",
+        },
+      },
+    ]);
+  });
+
+  it("uses ig-prefixed item ids as a fast image-generation signal", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "ig-prefix-start",
+        itemId: "ig_1",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        summary: "Image view started",
+        kind: "tool.started",
+        payload: {
+          itemId: "ig_1",
+          data: {
+            item: {
+              id: "ig_1",
+              result: "",
+              status: "in_progress",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries[0]).toMatchObject({
+      itemType: "image_view",
+      status: "running",
+      generatedImage: {
+        id: "ig_1",
+        status: "in_progress",
+      },
+    });
+  });
+
+  it("collapses image-generation started and completed entries by provider item id", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "image-start",
+        itemId: "ig_1",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        summary: "Image view started",
+        kind: "tool.started",
+        payload: {
+          itemType: "image_view",
+          itemId: "ig_1",
+          data: {
+            item: {
+              id: "ig_1",
+              result: "",
+              status: "in_progress",
+              type: "imageGeneration",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "image-complete",
+        itemId: "ig_1",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        summary: "Image view",
+        kind: "tool.completed",
+        payload: {
+          itemType: "image_view",
+          itemId: "ig_1",
+          data: {
+            item: {
+              id: "ig_1",
+              result: "a".repeat(512),
+              status: "generating",
+              type: "imageGeneration",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: "image-complete",
+      itemType: "image_view",
+      status: "completed",
+      generatedImage: {
+        result: "a".repeat(512),
+        status: "generating",
+      },
+    });
   });
 
   it("omits task.started but shows task.progress and task.completed", () => {

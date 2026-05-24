@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
@@ -55,6 +55,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
 
   const item = preview.images[preview.index];
   if (!item) return null;
+  const downloadName = item.name.trim().length > 0 ? item.name : "generated-image.png";
 
   return (
     <div
@@ -82,16 +83,27 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         </Button>
       )}
       <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          className="absolute right-2 top-2"
-          onClick={onClose}
-          aria-label="Close image preview"
-        >
-          <XIcon />
-        </Button>
+        <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            className="bg-black/35 text-white/90 hover:bg-black/50 hover:text-white"
+            aria-label="Download image"
+            render={<a href={item.src} download={downloadName} />}
+          >
+            <DownloadIcon />
+          </Button>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            className="bg-black/35 text-white/90 hover:bg-black/50 hover:text-white"
+            onClick={onClose}
+            aria-label="Close image preview"
+          >
+            <XIcon />
+          </Button>
+        </div>
         <img
           src={item.src}
           alt={item.name}

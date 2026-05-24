@@ -86,6 +86,7 @@ const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^
 const IMAGE_URL_PATTERN = /\bhttps?:\/\/\S+/i;
 const DATA_URL_IMAGE_PATTERN = /\bdata:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+/i;
 const BASE64_FIELD_PATTERN = /"b64_json"\s*:\s*"([A-Za-z0-9+/=_-]+)"/i;
+const IMAGE_BASE64_PATTERN = /^[A-Za-z0-9+/=_-]{512,}$/;
 const IMAGE_PROXY_HOST_PATTERN =
   /\b(?:images?\/proxy|\/v\d+\/images?|cdn\.openai|oaiusercontent|generations)/i;
 
@@ -136,6 +137,28 @@ export function isImageGenerationWorkEntry(entry: WorkLogEntry): boolean {
 }
 
 function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
+  const artifact = entry.generatedImage;
+  const result = artifact?.result?.trim();
+
+  if (result) {
+    const dataUrlMatch = result.match(DATA_URL_IMAGE_PATTERN);
+    if (dataUrlMatch) return dataUrlMatch[0];
+
+    const b64Match = result.match(BASE64_FIELD_PATTERN);
+    if (b64Match?.[1]) {
+      return `data:image/png;base64,${b64Match[1]}`;
+    }
+
+    const unquotedResult = result.replace(/^[`'"\u201c\u201d]+|[`'"\u201c\u201d]+$/g, "").trim();
+    if (IMAGE_BASE64_PATTERN.test(unquotedResult)) {
+      return `data:image/png;base64,${unquotedResult}`;
+    }
+  }
+
+  if (artifact?.savedPath && IMAGE_FILE_EXTENSION_PATTERN.test(artifact.savedPath)) {
+    return artifact.savedPath;
+  }
+
   const fromChanged = entry.changedFiles?.find((path) => IMAGE_FILE_EXTENSION_PATTERN.test(path));
   if (fromChanged) return fromChanged;
 
@@ -171,8 +194,8 @@ function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
 }
 
 function toImageGenerationRowItem(id: string, entry: WorkLogEntry): ImageGenerationRowItem {
-  const status = entry.status === "running" ? "running" : "completed";
   const imagePath = pickGeneratedImagePath(entry);
+  const status = entry.status === "running" && !imagePath ? "running" : "completed";
   const labelSource = entry.toolTitle ?? entry.label ?? null;
   const label = labelSource ? normalizeCompactToolLabel(labelSource) : null;
   return {
@@ -343,7 +366,12 @@ export function deriveMessagesTimelineRows(input: {
     });
   }
 
-  if (input.isWorking) {
+  const hasRunningImageGeneration = nextRows.some(
+    (row) =>
+      row.kind === "image-generation" && row.items.some((item) => item.status === "running"),
+  );
+
+  if (input.isWorking && !hasRunningImageGeneration) {
     nextRows.push({
       kind: "working",
       id: "working-indicator-row",

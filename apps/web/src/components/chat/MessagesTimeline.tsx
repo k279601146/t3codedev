@@ -1058,13 +1058,13 @@ function ImageGenerationTimelineRow({ row }: { row: ImageGenerationRowKind }) {
       data-image-status={overallStatus}
       data-image-count={resolved.length}
     >
-      <div className={cn("flex flex-wrap gap-3", isMulti ? "max-w-[768px]" : "max-w-[512px]")}>
+      <div className={cn("flex flex-wrap gap-3", isMulti ? "max-w-[636px]" : "max-w-[424px]")}>
         {resolved.map((entry) => (
           <ImageGenerationTile
             key={entry.item.id}
             entry={entry}
-            tileMaxWidth={isMulti ? 248 : 512}
-            tileBasis={isMulti ? "min(248px, 100%)" : "100%"}
+            tileMaxWidth={isMulti ? 204 : 424}
+            tileBasis={isMulti ? "min(204px, 100%)" : "100%"}
             onExpand={handleExpand}
           />
         ))}
@@ -1084,24 +1084,54 @@ const ImageGenerationTile = memo(function ImageGenerationTile({
   tileBasis: string;
   onExpand: (selectedId: string) => void;
 }) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const src = entry.resolvedSrc;
+  const showFinalImage = entry.isFinal && Boolean(src);
+
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [src]);
+
   return (
     <div
       className="min-w-[180px] flex-1"
       style={{ maxWidth: `${tileMaxWidth}px`, flexBasis: tileBasis }}
       data-image-generation-tile="true"
-      data-image-tile-status={entry.isFinal ? "final" : "running"}
+      data-image-tile-status={showFinalImage && imageLoaded ? "final" : "running"}
     >
-      {entry.isFinal && entry.resolvedSrc ? (
+      {showFinalImage && src ? (
         <button
           type="button"
-          className="image-final-fade group/image-card block w-full cursor-zoom-in overflow-hidden rounded-xl border border-border/55 bg-background"
+          className={cn(
+            "group/image-card relative block w-full overflow-hidden rounded-xl border border-border/55 bg-background",
+            imageLoaded ? "cursor-zoom-in" : "cursor-default",
+          )}
           aria-label={`Preview ${entry.resolvedName}`}
-          onClick={() => onExpand(entry.item.id)}
+          aria-busy={imageLoaded ? undefined : true}
+          disabled={!imageLoaded}
+          onClick={() => {
+            if (imageLoaded) {
+              onExpand(entry.item.id);
+            }
+          }}
         >
+          <ImageGenerationShimmer
+            maxWidth="100%"
+            label={entry.item.label ?? "正在生成图片…"}
+            className={cn(
+              "absolute inset-0 z-10 max-w-none border-0 transition-opacity duration-150 ease-out",
+              imageLoaded ? "pointer-events-none opacity-0" : "opacity-100",
+            )}
+            paused={imageLoaded}
+          />
           <img
-            src={entry.resolvedSrc}
+            src={src}
             alt={entry.resolvedName}
-            className="block h-auto w-full object-cover transition-transform duration-300 ease-out group-hover/image-card:scale-[1.01]"
+            className={cn(
+              "block h-auto w-full object-cover opacity-0 transition-[opacity,transform] duration-300 ease-out",
+              imageLoaded && "opacity-100 group-hover/image-card:scale-[1.01]",
+            )}
+            onLoad={() => setImageLoaded(true)}
           />
         </button>
       ) : (
