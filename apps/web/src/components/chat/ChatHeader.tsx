@@ -35,15 +35,15 @@ interface ChatHeaderProps {
   terminalAvailable: boolean;
   terminalOpen: boolean;
   terminalToggleShortcutLabel: string | null;
-  diffToggleShortcutLabel: string | null;
+  rightPanelToggleShortcutLabel: string | null;
   gitCwd: string | null;
-  diffOpen: boolean;
+  rightPanelOpen: boolean;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
   onToggleTerminal: () => void;
-  onToggleDiff: () => void;
+  onToggleRightPanel: () => void;
   compactActions?: boolean;
 }
 
@@ -74,15 +74,15 @@ export const ChatHeader = memo(function ChatHeader({
   terminalAvailable,
   terminalOpen,
   terminalToggleShortcutLabel,
-  diffToggleShortcutLabel,
+  rightPanelToggleShortcutLabel,
   gitCwd,
-  diffOpen,
+  rightPanelOpen,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
   onToggleTerminal,
-  onToggleDiff,
+  onToggleRightPanel,
   compactActions = false,
 }: ChatHeaderProps) {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -143,29 +143,26 @@ export const ChatHeader = memo(function ChatHeader({
       </TooltipPopup>
     </Tooltip>
   );
-  const diffToggle = (
+  const rightPanelToggle = (
     <Tooltip>
       <TooltipTrigger
         render={
           <Toggle
             className="size-6 shrink-0 rounded-md"
-            pressed={diffOpen}
-            onPressedChange={onToggleDiff}
-            aria-label="Toggle diff panel"
+            pressed={rightPanelOpen}
+            onPressedChange={onToggleRightPanel}
+            aria-label="Toggle right panel"
             variant="outline"
             size="xs"
-            disabled={!isGitRepo && !diffOpen}
           >
             <PanelRightIcon className="size-3.5" />
           </Toggle>
         }
       />
       <TooltipPopup side="bottom">
-        {!isGitRepo && !diffOpen
-          ? "Diff panel is unavailable because this project is not a git repository."
-          : diffToggleShortcutLabel
-            ? `Toggle diff panel (${diffToggleShortcutLabel})`
-            : "Toggle diff panel"}
+        {rightPanelToggleShortcutLabel
+          ? `Toggle right panel (${rightPanelToggleShortcutLabel})`
+          : "Toggle right panel"}
       </TooltipPopup>
     </Tooltip>
   );
@@ -215,8 +212,8 @@ export const ChatHeader = memo(function ChatHeader({
               <MenuPopup align="end" className="w-56">
                 <div className="space-y-2 p-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Diff</span>
-                    {diffToggle}
+                    <span className="text-xs text-muted-foreground">右侧栏</span>
+                    {rightPanelToggle}
                   </div>
                   {projectScriptsControl ? (
                     <div className="flex items-center justify-between gap-2">
@@ -246,7 +243,7 @@ export const ChatHeader = memo(function ChatHeader({
             {openInPicker}
             {gitActions}
             {terminalToggle}
-            {diffToggle}
+            {rightPanelToggle}
           </>
         )}
       </div>

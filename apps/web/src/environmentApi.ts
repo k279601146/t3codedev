@@ -33,6 +33,7 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
     vcs: {
       pull: rpcClient.vcs.pull,
       refreshStatus: rpcClient.vcs.refreshStatus,
+      diffWorkingTree: rpcClient.vcs.diffWorkingTree,
       onStatus: (input, callback, options) => rpcClient.vcs.onStatus(input, callback, options),
       listRefs: rpcClient.vcs.listRefs,
       createWorktree: rpcClient.vcs.createWorktree,

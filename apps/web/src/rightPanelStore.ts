@@ -16,13 +16,12 @@ export const RIGHT_PANEL_SURFACES = [
 export type RightPanelSurface = (typeof RIGHT_PANEL_SURFACES)[number];
 
 export const RIGHT_PANEL_DEFAULT_WIDTH_PX = 480;
-export const RIGHT_PANEL_MIN_WIDTH_PX = 360;
-export const RIGHT_PANEL_MAX_WIDTH_PX = 680;
+export const RIGHT_PANEL_MIN_WIDTH_PX = 280;
+export const RIGHT_PANEL_MAX_WIDTH_PX = 960;
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel:v1";
 
 interface PersistedRightPanelState {
-  open?: boolean;
   activeSurface?: RightPanelSurface;
   widthPx?: number;
   lastSurfaceByThreadKey?: Record<string, RightPanelSurface>;
@@ -146,7 +145,6 @@ export const useRightPanelStore = create<RightPanelState>()(
       name: RIGHT_PANEL_STORAGE_KEY,
       storage: createJSONStorage(createRightPanelStorage),
       partialize: (state): PersistedRightPanelState => ({
-        open: state.open,
         activeSurface: state.activeSurface,
         widthPx: state.widthPx,
         lastSurfaceByThreadKey: state.lastSurfaceByThreadKey,
@@ -155,7 +153,7 @@ export const useRightPanelStore = create<RightPanelState>()(
         const parsed = persisted as PersistedRightPanelState;
         return {
           ...current,
-          open: parsed.open === true,
+          open: false,
           activeSurface: isRightPanelSurface(parsed.activeSurface)
             ? parsed.activeSurface
             : current.activeSurface,

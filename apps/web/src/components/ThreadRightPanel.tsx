@@ -1,5 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
   BotIcon,
   FileIcon,
   FileImageIcon,
@@ -8,6 +10,7 @@ import {
   Maximize2Icon,
   PanelRightCloseIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
   SquareTerminalIcon,
   TextSearchIcon,
@@ -19,8 +22,8 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { cn } from "~/lib/utils";
 import { useFileContent } from "../hooks/useFileContent";
 import { useFileTree } from "../hooks/useFileTree";
+import { rewriteMarkdownFileUriHref } from "../markdown-links";
 import type { ActivePlanState, LatestProposedPlanState } from "../session-logic";
-import type { ChatAttachment } from "../types";
 import type { RightPanelSurface } from "../rightPanelStore";
 import DiffPanel, { DiffWorkerPoolProvider } from "./DiffPanel";
 import PlanSidebar from "./PlanSidebar";
@@ -28,26 +31,35 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 
+export type RightPanelArtifact = {
+  id: string;
+  name: string;
+  type: "image" | "file";
+  previewUrl?: string | undefined;
+  filePath?: string | undefined;
+  mimeType?: string | undefined;
+};
+
 type RightPanelTab = {
   id: string;
   surface: RightPanelSurface;
   title: string;
   icon: ReactNode;
   filePath?: string | undefined;
-  imageUrl?: string | undefined;
+  artifactId?: string | undefined;
 };
 
 interface ThreadRightPanelProps {
   activePlan: ActivePlanState | null;
   activeProposedPlan: LatestProposedPlanState | null;
   activeSurface: RightPanelSurface;
+  artifacts?: RightPanelArtifact[] | undefined;
   environmentId: EnvironmentId;
   hasArtifacts: boolean;
   isGitRepo: boolean;
   markdownCwd: string | undefined;
   mode: "sidebar" | "sheet";
   planLabel: string;
-  previewAttachments: ChatAttachment[];
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   onClose: () => void;
@@ -69,7 +81,7 @@ function surfaceTitle(surface: RightPanelSurface): string {
     case "terminal":
       return "终端";
     case "summary":
-      return "摘要";
+      return "侧边聊天";
     case "home":
       return "主页";
   }
@@ -96,14 +108,13 @@ function surfaceIcon(surface: RightPanelSurface): ReactNode {
 }
 
 function createTab(surface: RightPanelSurface, input?: Partial<RightPanelTab>): RightPanelTab {
-  const title = input?.title ?? surfaceTitle(surface);
   return {
     id: input?.id ?? `${surface}:${Date.now()}:${Math.random().toString(16).slice(2)}`,
     surface,
-    title,
+    title: input?.title ?? surfaceTitle(surface),
     icon: input?.icon ?? surfaceIcon(surface),
     ...(input?.filePath ? { filePath: input.filePath } : {}),
-    ...(input?.imageUrl ? { imageUrl: input.imageUrl } : {}),
+    ...(input?.artifactId ? { artifactId: input.artifactId } : {}),
   };
 }
 
@@ -116,7 +127,7 @@ function HomeTile(props: {
   return (
     <button
       type="button"
-      className="flex h-32 flex-col items-center justify-center rounded-xl bg-muted/60 px-4 text-center transition-colors hover:bg-muted"
+      className="flex min-h-28 flex-col items-center justify-center rounded-xl bg-muted/60 px-3 py-4 text-center transition-colors hover:bg-muted"
       onClick={props.onClick}
     >
       <span className="mb-3 text-muted-foreground">{props.icon}</span>
@@ -146,23 +157,28 @@ function FilePanel(props: {
 }) {
   const [query, setQuery] = useState("");
   const [openDirectories, setOpenDirectories] = useState<ReadonlySet<string>>(() => new Set());
+  const [loadedFile, setLoadedFile] = useState<{ path: string; content: string } | null>(null);
   const { fetchFile } = useFileContent(props.environmentId, props.workspaceRoot ?? null);
   const treeQuery = useFileTree(props.environmentId, props.workspaceRoot ?? null);
   const root = treeQuery.data?.tree ?? null;
-  const fileContentQuery = useMemo(() => {
-    if (!props.filePath) return null;
-    return fetchFile(props.filePath).catch(() => null);
-  }, [fetchFile, props.filePath]);
-  const [loadedFile, setLoadedFile] = useState<{ path: string; content: string } | null>(null);
 
-  useMemo(() => {
-    if (!props.filePath || !fileContentQuery) return;
-    void fileContentQuery.then((content) => {
-      if (content !== null) {
-        setLoadedFile({ path: props.filePath!, content });
-      }
-    });
-  }, [fileContentQuery, props.filePath]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!props.filePath) {
+      setLoadedFile(null);
+      return;
+    }
+    void fetchFile(props.filePath)
+      .then((content) => {
+        if (!cancelled) setLoadedFile(content === null ? null : { path: props.filePath!, content });
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedFile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchFile, props.filePath]);
 
   const visibleNodes = useMemo(() => {
     const children = root?.children ?? [];
@@ -189,11 +205,11 @@ function FilePanel(props: {
           <EmptyState
             icon={<FolderOpenIcon className="size-7" />}
             title="打开文件"
-            description="从工作区目录树中选择文件。"
+            description="从工作区目录树或产物列表中选择文件后，这里会显示内容预览。"
           />
         )}
       </div>
-      <div className="flex w-72 shrink-0 flex-col">
+      <div className="flex w-[min(18rem,45%)] min-w-40 shrink-0 flex-col">
         <div className="border-b border-border/60 p-2">
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -253,11 +269,8 @@ function FileTreeRow(props: {
         className="flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
         style={{ paddingLeft: 8 + props.depth * 14 }}
         onClick={() => {
-          if (isDirectory) {
-            props.onToggleDirectory(props.node.path);
-          } else {
-            props.onOpenFile(props.node.path);
-          }
+          if (isDirectory) props.onToggleDirectory(props.node.path);
+          else props.onOpenFile(props.node.path);
         }}
       >
         {isDirectory ? (
@@ -283,23 +296,26 @@ function FileTreeRow(props: {
   );
 }
 
-function ImagePanel(props: { attachment: ChatAttachment | undefined }) {
-  if (!props.attachment?.previewUrl) {
+function ImagePanel(props: { artifact: RightPanelArtifact | undefined }) {
+  const src = props.artifact?.previewUrl
+    ? (rewriteMarkdownFileUriHref(props.artifact.previewUrl) ?? props.artifact.previewUrl)
+    : undefined;
+  if (!props.artifact || !src) {
     return (
       <EmptyState
         icon={<FileImageIcon className="size-7" />}
-        title="没有图片"
-        description="线程里出现可预览图片后，可以从首页推荐或标签页打开。"
+        title="没有可预览图片"
+        description="线程里出现 AI 生成图片或上传图片后，可以从主页产物列表打开。"
       />
     );
   }
   return (
     <ScrollArea className="h-full">
       <div className="p-4">
-        <div className="mb-3 truncate text-xs text-muted-foreground">{props.attachment.name}</div>
+        <div className="mb-3 truncate text-xs text-muted-foreground">{props.artifact.name}</div>
         <img
-          src={props.attachment.previewUrl}
-          alt={props.attachment.name}
+          src={src}
+          alt={props.artifact.name}
           className="w-full rounded-lg border border-border/60 object-contain"
         />
       </div>
@@ -312,13 +328,13 @@ function BrowserPanel() {
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
         <Button size="icon-xs" variant="ghost" className="size-7 rounded-md" disabled>
-          ←
+          <ArrowLeftIcon className="size-3.5" />
         </Button>
         <Button size="icon-xs" variant="ghost" className="size-7 rounded-md" disabled>
-          →
+          <ArrowRightIcon className="size-3.5" />
         </Button>
         <Button size="icon-xs" variant="ghost" className="size-7 rounded-md" disabled>
-          ↻
+          <RefreshCwIcon className="size-3.5" />
         </Button>
         <div className="flex h-8 flex-1 items-center justify-center rounded-lg bg-muted/50 text-xs text-muted-foreground">
           输入 URL
@@ -351,28 +367,80 @@ function BrowserPanel() {
   );
 }
 
+function ArtifactList(props: {
+  artifacts: RightPanelArtifact[];
+  onOpenArtifact: (artifact: RightPanelArtifact) => void;
+}) {
+  if (props.artifacts.length === 0) {
+    return <div className="text-xs text-muted-foreground">暂无产物</div>;
+  }
+  return (
+    <div className="space-y-1">
+      {props.artifacts.map((artifact) => (
+        <button
+          key={artifact.id}
+          type="button"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-muted/60"
+          onClick={() => props.onOpenArtifact(artifact)}
+        >
+          <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
+            {artifact.type === "image" ? (
+              <FileImageIcon className="size-5 text-muted-foreground" />
+            ) : (
+              <FileIcon className="size-5 text-muted-foreground" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-foreground">{artifact.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {artifact.type === "image" ? "图片" : "文件"}
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function ThreadRightPanel({
   activePlan,
   activeProposedPlan,
   activeSurface,
+  artifacts,
   environmentId,
   hasArtifacts,
   isGitRepo,
   markdownCwd,
   mode,
   planLabel,
-  previewAttachments,
   timestampFormat,
   workspaceRoot,
   onClose,
   onSurfaceChange,
 }: ThreadRightPanelProps) {
-  const recommendedImage = previewAttachments.find(
-    (attachment) => attachment.type === "image" && attachment.previewUrl,
-  );
+  const panelArtifacts = artifacts ?? [];
   const [tabs, setTabs] = useState<RightPanelTab[]>(() => [createTab(activeSurface)]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0]?.id ?? "");
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? createTab("home");
+  const firstImageArtifact = panelArtifacts.find((artifact) => artifact.type === "image");
+
+  useEffect(() => {
+    let nextActiveTabId: string | null = null;
+    setTabs((current) => {
+      const existingTab = current.find((tab) => tab.surface === activeSurface);
+      if (existingTab) {
+        nextActiveTabId = existingTab.id;
+        return current;
+      }
+
+      const tab = createTab(activeSurface);
+      nextActiveTabId = tab.id;
+      return [...current, tab];
+    });
+    if (nextActiveTabId !== null) {
+      setActiveTabId(nextActiveTabId);
+    }
+  }, [activeSurface]);
 
   const openTab = (surface: RightPanelSurface, input?: Partial<RightPanelTab>) => {
     const tab = createTab(surface, input);
@@ -384,11 +452,13 @@ export function ThreadRightPanel({
   const closeTab = (tabId: string) => {
     setTabs((current) => {
       const next = current.filter((tab) => tab.id !== tabId);
+      const fallback = next.length > 0 ? next : [createTab("home")];
       if (activeTabId === tabId) {
-        setActiveTabId(next.at(-1)?.id ?? "");
-        onSurfaceChange(next.at(-1)?.surface ?? "home");
+        const nextActive = fallback.at(-1)!;
+        setActiveTabId(nextActive.id);
+        onSurfaceChange(nextActive.surface);
       }
-      return next.length > 0 ? next : [createTab("home")];
+      return fallback;
     });
   };
 
@@ -400,11 +470,31 @@ export function ThreadRightPanel({
     });
   };
 
+  const openArtifact = (artifact: RightPanelArtifact) => {
+    if (artifact.type === "image") {
+      openTab("image", {
+        title: artifact.name,
+        artifactId: artifact.id,
+        icon: <FileImageIcon className="size-3.5" />,
+      });
+      return;
+    }
+    openTab("file", {
+      title: artifact.name,
+      filePath: artifact.filePath,
+      artifactId: artifact.id,
+      icon: <FileIcon className="size-3.5" />,
+    });
+  };
+
+  const activeArtifact =
+    panelArtifacts.find((artifact) => artifact.id === activeTab.artifactId) ?? firstImageArtifact;
+
   const content =
     activeTab.surface === "home" ? (
       <ScrollArea className="h-full">
         <div className="flex min-h-full flex-col justify-center p-6">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-3">
             <HomeTile
               icon={<FolderOpenIcon className="size-6" />}
               title="文件"
@@ -414,48 +504,36 @@ export function ThreadRightPanel({
             <HomeTile
               icon={<BotIcon className="size-6" />}
               title="侧边聊天"
-              description="发起侧边对话"
+              description="查看计划与活动"
               onClick={() => openTab("summary", { title: planLabel })}
             />
+            {isGitRepo ? (
+              <HomeTile
+                icon={<TextSearchIcon className="size-6" />}
+                title="审查"
+                description="查看代码变更"
+                onClick={() => openTab("review")}
+              />
+            ) : null}
             <HomeTile
               icon={<GlobeIcon className="size-6" />}
               title="浏览器"
-              description="打开网站"
+              description="打开网站预览"
               onClick={() => openTab("browser")}
             />
             <HomeTile
               icon={<SquareTerminalIcon className="size-6" />}
               title="终端"
-              description="启动交互式 shell"
+              description="打开终端入口"
               onClick={() => openTab("terminal")}
             />
           </div>
           <div className="mt-8">
-            <div className="mb-3 text-xs font-semibold text-muted-foreground">推荐</div>
-            {recommendedImage ? (
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-muted/60"
-                onClick={() =>
-                  openTab("image", {
-                    title: recommendedImage.name,
-                    imageUrl: recommendedImage.previewUrl,
-                    icon: <FileImageIcon className="size-3.5" />,
-                  })
-                }
-              >
-                <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                  <FileImageIcon className="size-5 text-muted-foreground" />
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-foreground">
-                    {recommendedImage.name}
-                  </div>
-                  <div className="text-xs text-muted-foreground">图片</div>
-                </div>
-              </button>
+            <div className="mb-3 text-xs font-semibold text-muted-foreground">产物</div>
+            {hasArtifacts ? (
+              <ArtifactList artifacts={panelArtifacts} onOpenArtifact={openArtifact} />
             ) : (
-              <div className="text-xs text-muted-foreground">暂无推荐内容</div>
+              <div className="text-xs text-muted-foreground">暂无产物</div>
             )}
           </div>
         </div>
@@ -480,12 +558,7 @@ export function ThreadRightPanel({
         onOpenFile={openFile}
       />
     ) : activeTab.surface === "image" || activeTab.surface === "artifacts" ? (
-      <ImagePanel
-        attachment={
-          previewAttachments.find((attachment) => attachment.previewUrl === activeTab.imageUrl) ??
-          recommendedImage
-        }
-      />
+      <ImagePanel artifact={activeArtifact} />
     ) : activeTab.surface === "browser" ? (
       <BrowserPanel />
     ) : activeTab.surface === "summary" ? (

@@ -7,6 +7,8 @@ import type {
   GitPullRequestRefInput,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
+  VcsDiffWorkingTreeInput,
+  VcsDiffWorkingTreeResult,
   VcsInitInput,
   VcsListRefsInput,
   VcsListRefsResult,
@@ -594,6 +596,7 @@ export interface EnvironmentApi {
     init: (input: VcsInitInput) => Promise<void>;
     pull: (input: VcsPullInput) => Promise<VcsPullResult>;
     refreshStatus: (input: VcsStatusInput) => Promise<VcsStatusResult>;
+    diffWorkingTree: (input: VcsDiffWorkingTreeInput) => Promise<VcsDiffWorkingTreeResult>;
     onStatus: (
       input: VcsStatusInput,
       callback: (status: VcsStatusResult) => void,

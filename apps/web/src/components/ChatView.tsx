@@ -188,6 +188,7 @@ import {
   threadHasStarted,
   waitForStartedServerThread,
 } from "./ChatView.logic";
+import { isImageGenerationWorkEntry, pickGeneratedImagePath } from "./chat/MessagesTimeline.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
 import {
@@ -198,7 +199,7 @@ import {
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { RightPanelSheet } from "./RightPanelSheet";
-import ThreadRightPanel from "./ThreadRightPanel";
+import ThreadRightPanel, { type RightPanelArtifact } from "./ThreadRightPanel";
 import { Button } from "./ui/button";
 import {
   buildVersionMismatchDismissalKey,
@@ -209,6 +210,7 @@ import {
 
 const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more files without additional text. Respond using the conversation context and the attached files.]";
+const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -691,7 +693,6 @@ export default function ChatView(props: ChatViewProps) {
     (store) => store.setStickyModelSelection,
   );
   const timestampFormat = settings.timestampFormat;
-  const autoOpenPlanSidebar = settings.autoOpenPlanSidebar;
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -791,8 +792,6 @@ export default function ChatView(props: ChatViewProps) {
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   // 记录用户是否针对当前 turn 主动关闭过摘要面板。
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
-  // 新线程跳转后是否自动打开摘要面板，用于“在新线程中实现计划”。
-  const planSidebarOpenOnNextThreadRef = useRef(false);
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
@@ -1481,22 +1480,6 @@ export default function ChatView(props: ChatViewProps) {
   );
   const planSidebarLabel = sidebarProposedPlan || interactionMode === "plan" ? "Plan" : "Tasks";
   const hasSummaryPanelContent = Boolean(activePlan || sidebarProposedPlan);
-  const hasArtifactPanelContent = useMemo(
-    () =>
-      Boolean(
-        activeThread?.messages.some((message) =>
-          message.attachments?.some((attachment) => Boolean(attachment.previewUrl)),
-        ),
-      ),
-    [activeThread?.messages],
-  );
-  const previewAttachments = useMemo(
-    () =>
-      (activeThread?.messages ?? []).flatMap((message) =>
-        (message.attachments ?? []).filter((attachment) => Boolean(attachment.previewUrl)),
-      ),
-    [activeThread?.messages],
-  );
   const showPlanFollowUpPrompt =
     pendingUserInputs.length === 0 &&
     interactionMode === "plan" &&
@@ -1731,6 +1714,72 @@ export default function ChatView(props: ChatViewProps) {
   );
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
+  const rightPanelArtifacts = useMemo<RightPanelArtifact[]>(() => {
+    const artifacts: RightPanelArtifact[] = [];
+    const seen = new Set<string>();
+
+    const addArtifact = (artifact: RightPanelArtifact) => {
+      if (seen.has(artifact.id)) return;
+      seen.add(artifact.id);
+      artifacts.push(artifact);
+    };
+
+    const toFileArtifact = (filePath: string): RightPanelArtifact => {
+      const segments = filePath.split(/[\\/]/);
+      const isImage = IMAGE_ARTIFACT_EXTENSION_PATTERN.test(filePath);
+      return {
+        id: `file:${filePath}`,
+        name: segments.at(-1) || filePath,
+        type: isImage ? "image" : "file",
+        filePath,
+        ...(isImage ? { previewUrl: filePath } : {}),
+      };
+    };
+
+    for (const message of timelineMessages) {
+      for (const attachment of message.attachments ?? []) {
+        if (!attachment.previewUrl) continue;
+        addArtifact({
+          id: `attachment:${attachment.id}`,
+          name: attachment.name,
+          type: attachment.type,
+          previewUrl: attachment.previewUrl,
+          mimeType: attachment.mimeType,
+        });
+      }
+    }
+
+    for (const entry of workLogEntries) {
+      if (isImageGenerationWorkEntry(entry)) {
+        const imagePath = pickGeneratedImagePath(entry);
+        if (imagePath) {
+          const segments = imagePath.split(/[\\/]/);
+          addArtifact({
+            id: `generated-image:${imagePath}`,
+            name: segments.at(-1) || entry.label || "Generated image",
+            type: "image",
+            previewUrl: imagePath,
+            filePath:
+              imagePath.startsWith("data:") || /^https?:\/\//i.test(imagePath) ? undefined : imagePath,
+            mimeType: "image/png",
+          });
+        }
+      }
+
+      for (const filePath of entry.changedFiles ?? []) {
+        addArtifact(toFileArtifact(filePath));
+      }
+    }
+
+    for (const summary of turnDiffSummaries) {
+      for (const file of summary.files) {
+        addArtifact(toFileArtifact(file.path));
+      }
+    }
+
+    return artifacts;
+  }, [timelineMessages, turnDiffSummaries, workLogEntries]);
+  const hasArtifactPanelContent = rightPanelArtifacts.length > 0;
   const turnDiffSummaryByAssistantMessageId = useMemo(
     () => buildTurnDiffSummaryByAssistantMessageId({ timelineEntries, turnDiffSummaries }),
     [timelineEntries, turnDiffSummaries],
@@ -1777,8 +1826,6 @@ export default function ChatView(props: ChatViewProps) {
       })
     : null;
   const gitStatusQuery = useGitStatus({ environmentId, cwd: gitCwd });
-  const hasReviewPanelChanges =
-    diffOpen || gitStatusQuery.data?.hasWorkingTreeChanges === true || turnDiffSummaries.length > 0;
   const keybindings = useServerKeybindings();
   const availableEditors = useServerAvailableEditors();
   // Prefer an instance-id match so a custom Codex instance (e.g.
@@ -1842,39 +1889,21 @@ export default function ChatView(props: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "terminal.close", terminalShortcutLabelOptions),
     [keybindings, terminalShortcutLabelOptions],
   );
-  const diffPanelShortcutLabel = useMemo(
+  const rightPanelShortcutLabel = useMemo(
     () => shortcutLabelForCommand(keybindings, "diff.toggle", nonTerminalShortcutLabelOptions),
     [keybindings, nonTerminalShortcutLabelOptions],
   );
-  const onToggleDiff = useCallback(() => {
-    if (!isServerThread) {
+  const onToggleRightPanel = useCallback(() => {
+    if (rightPanelOpen) {
+      closeRightPanel();
       return;
     }
-    if (!diffOpen) {
-      onDiffPanelOpen?.();
-      openRightPanelSurface("review", activeThreadKey);
-    }
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: {
-        environmentId,
-        threadId,
-      },
-      replace: true,
-      search: (previous) => {
-        const rest = stripDiffSearchParams(previous);
-        return diffOpen ? { ...rest, diff: undefined } : { ...rest, diff: "1" };
-      },
-    });
+    openRightPanelSurface("home", activeThreadKey);
   }, [
     activeThreadKey,
-    diffOpen,
-    environmentId,
-    isServerThread,
-    navigate,
-    onDiffPanelOpen,
+    closeRightPanel,
     openRightPanelSurface,
-    threadId,
+    rightPanelOpen,
   ]);
 
   const envLocked = Boolean(
@@ -2437,14 +2466,8 @@ export default function ChatView(props: ChatViewProps) {
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
-    if (planSidebarOpenOnNextThreadRef.current) {
-      planSidebarOpenOnNextThreadRef.current = false;
-      openRightPanelSurface("home", activeThreadKey);
-    } else {
-      planSidebarOpenOnNextThreadRef.current = false;
-    }
     planSidebarDismissedForTurnRef.current = null;
-  }, [activeThread?.id, activeThreadKey, openRightPanelSurface]);
+  }, [activeThread?.id]);
 
   useEffect(() => {
     setIsRevertingCheckpoint(false);
@@ -2694,7 +2717,7 @@ export default function ChatView(props: ChatViewProps) {
       if (command === "diff.toggle") {
         event.preventDefault();
         event.stopPropagation();
-        onToggleDiff();
+        onToggleRightPanel();
         return;
       }
 
@@ -2726,7 +2749,7 @@ export default function ChatView(props: ChatViewProps) {
     runProjectScript,
     splitTerminal,
     keybindings,
-    onToggleDiff,
+    onToggleRightPanel,
     toggleTerminalVisibility,
   ]);
 
@@ -3386,11 +3409,6 @@ export default function ChatView(props: ChatViewProps) {
             : {}),
           createdAt: messageCreatedAt,
         });
-        // 执行计划时主动打开摘要面板，用来展示后续步骤追踪。
-        if (nextInteractionMode === "default" && autoOpenPlanSidebar) {
-          planSidebarDismissedForTurnRef.current = null;
-          openRightPanelSurface("summary", activeThreadKey);
-        }
         sendInFlightRef.current = false;
       } catch (err) {
         setOptimisticUserMessages((existing) =>
@@ -3416,7 +3434,6 @@ export default function ChatView(props: ChatViewProps) {
       runtimeMode,
       setComposerDraftInteractionMode,
       setThreadError,
-      autoOpenPlanSidebar,
       activeThreadKey,
       environmentId,
       openRightPanelSurface,
@@ -3512,8 +3529,6 @@ export default function ChatView(props: ChatViewProps) {
         return waitForStartedServerThread(scopeThreadRef(activeThread.environmentId, nextThreadId));
       })
       .then(() => {
-        // 新线程加载后自动打开摘要面板。
-        planSidebarOpenOnNextThreadRef.current = autoOpenPlanSidebar;
         return navigate({
           to: "/$environmentId/$threadId",
           params: {
@@ -3555,7 +3570,6 @@ export default function ChatView(props: ChatViewProps) {
     navigate,
     resetLocalDispatch,
     runtimeMode,
-    autoOpenPlanSidebar,
     environmentId,
   ]);
 
@@ -3772,6 +3786,44 @@ export default function ChatView(props: ChatViewProps) {
         中构建什么？
       </>
     );
+  const inlineRightPanel =
+    rightPanelOpen && !shouldUseRightPanelSheet ? (
+      <div
+        className="relative h-full shrink-0"
+        style={{
+          width: rightPanelWidthPx || RIGHT_PANEL_DEFAULT_WIDTH_PX,
+          minWidth: RIGHT_PANEL_MIN_WIDTH_PX,
+          maxWidth: RIGHT_PANEL_MAX_WIDTH_PX,
+        }}
+      >
+        <div
+          className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-border"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整右侧面板宽度"
+          onPointerDown={onRightPanelResizePointerDown}
+          onPointerMove={onRightPanelResizePointerMove}
+          onPointerUp={onRightPanelResizePointerUp}
+          onPointerCancel={onRightPanelResizePointerUp}
+        />
+        <ThreadRightPanel
+          activePlan={activePlan}
+          activeProposedPlan={sidebarProposedPlan}
+          activeSurface={rightPanelSurface}
+          environmentId={environmentId}
+          hasArtifacts={hasArtifactPanelContent}
+          isGitRepo={isGitRepo}
+          markdownCwd={gitCwd ?? undefined}
+          mode="sidebar"
+          planLabel={planSidebarLabel}
+          artifacts={rightPanelArtifacts}
+          timestampFormat={timestampFormat}
+          workspaceRoot={activeWorkspaceRoot}
+          onClose={closeThreadRightPanel}
+          onSurfaceChange={selectRightPanelSurface}
+        />
+      </div>
+    ) : null;
   const composerNode = (
     <ChatComposer
       ref={composerRef}
@@ -3878,15 +3930,15 @@ export default function ChatView(props: ChatViewProps) {
           terminalAvailable={!hideProjectChromeForEmptyNewThread && activeProject !== undefined}
           terminalOpen={terminalState.terminalOpen}
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
-          diffToggleShortcutLabel={diffPanelShortcutLabel}
+          rightPanelToggleShortcutLabel={rightPanelShortcutLabel}
           gitCwd={gitCwd}
-          diffOpen={diffOpen}
+          rightPanelOpen={rightPanelOpen}
           onRunProjectScript={runProjectScript}
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
-          onToggleDiff={onToggleDiff}
+          onToggleRightPanel={onToggleRightPanel}
           compactActions={compactHeaderActions}
         />
       </header>
@@ -3948,6 +4000,7 @@ export default function ChatView(props: ChatViewProps) {
               </div>
             </main>
           </div>
+          {inlineRightPanel}
         </div>
       ) : (
         <>
@@ -4056,44 +4109,7 @@ export default function ChatView(props: ChatViewProps) {
               ) : null}
             </div>
             {/* end chat column */}
-
-            {rightPanelOpen && !shouldUseRightPanelSheet ? (
-              <div
-                className="relative h-full shrink-0"
-                style={{
-                  width: rightPanelWidthPx || RIGHT_PANEL_DEFAULT_WIDTH_PX,
-                  minWidth: RIGHT_PANEL_MIN_WIDTH_PX,
-                  maxWidth: RIGHT_PANEL_MAX_WIDTH_PX,
-                }}
-              >
-                <div
-                  className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-border"
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="调整右侧面板宽度"
-                  onPointerDown={onRightPanelResizePointerDown}
-                  onPointerMove={onRightPanelResizePointerMove}
-                  onPointerUp={onRightPanelResizePointerUp}
-                  onPointerCancel={onRightPanelResizePointerUp}
-                />
-                <ThreadRightPanel
-                  activePlan={activePlan}
-                  activeProposedPlan={sidebarProposedPlan}
-                  activeSurface={rightPanelSurface}
-                  environmentId={environmentId}
-                  hasArtifacts={hasArtifactPanelContent}
-                  isGitRepo={isGitRepo}
-                  markdownCwd={gitCwd ?? undefined}
-                  mode="sidebar"
-                  planLabel={planSidebarLabel}
-                  previewAttachments={previewAttachments}
-                  timestampFormat={timestampFormat}
-                  workspaceRoot={activeWorkspaceRoot}
-                  onClose={closeThreadRightPanel}
-                  onSurfaceChange={selectRightPanelSurface}
-                />
-              </div>
-            ) : null}
+            {inlineRightPanel}
           </div>
           {/* end horizontal flex container */}
         </>
@@ -4128,7 +4144,7 @@ export default function ChatView(props: ChatViewProps) {
             markdownCwd={gitCwd ?? undefined}
             mode="sheet"
             planLabel={planSidebarLabel}
-            previewAttachments={previewAttachments}
+            artifacts={rightPanelArtifacts}
             timestampFormat={timestampFormat}
             workspaceRoot={activeWorkspaceRoot}
             onClose={closeThreadRightPanel}

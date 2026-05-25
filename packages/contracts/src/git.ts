@@ -104,6 +104,13 @@ export const VcsStatusInput = Schema.Struct({
 });
 export type VcsStatusInput = typeof VcsStatusInput.Type;
 
+export const VcsDiffWorkingTreeInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  staged: Schema.optional(Schema.Boolean),
+  ignoreWhitespace: Schema.optional(Schema.Boolean),
+});
+export type VcsDiffWorkingTreeInput = typeof VcsDiffWorkingTreeInput.Type;
+
 export const VcsPullInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
 });
@@ -234,6 +241,11 @@ export const VcsStatusResult = Schema.Struct({
   ...VcsStatusRemoteShape,
 });
 export type VcsStatusResult = typeof VcsStatusResult.Type;
+
+export const VcsDiffWorkingTreeResult = Schema.Struct({
+  diff: Schema.String,
+});
+export type VcsDiffWorkingTreeResult = typeof VcsDiffWorkingTreeResult.Type;
 
 export const VcsStatusStreamEvent = Schema.Union([
   Schema.TaggedStruct("snapshot", {

@@ -162,7 +162,7 @@ export function isImageGenerationWorkEntry(entry: WorkLogEntry): boolean {
   );
 }
 
-function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
+export function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
   const artifact = entry.generatedImage;
   const result = artifact?.result?.trim();
 

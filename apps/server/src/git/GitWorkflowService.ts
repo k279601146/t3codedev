@@ -11,6 +11,8 @@ import {
   type VcsCreateRefResult,
   type VcsCreateWorktreeInput,
   type VcsCreateWorktreeResult,
+  type VcsDiffWorkingTreeInput,
+  type VcsDiffWorkingTreeResult,
   type VcsListRefsInput,
   type VcsListRefsResult,
   type GitManagerServiceError,
@@ -42,6 +44,9 @@ export interface GitWorkflowServiceShape {
   readonly remoteStatus: (
     input: VcsStatusInput,
   ) => Effect.Effect<VcsStatusRemoteResult | null, GitManagerServiceError>;
+  readonly diffWorkingTree: (
+    input: VcsDiffWorkingTreeInput,
+  ) => Effect.Effect<VcsDiffWorkingTreeResult, GitCommandError>;
   readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
   readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
   readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
@@ -263,6 +268,38 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
       detectGitRepositoryForStatus("GitWorkflowService.remoteStatus", input.cwd).pipe(
         Effect.flatMap((isGitRepository) =>
           isGitRepository ? gitManager.remoteStatus(input) : Effect.succeed(null),
+        ),
+      ),
+    diffWorkingTree: (input) =>
+      ensureGitCommand("GitWorkflowService.diffWorkingTree", input.cwd).pipe(
+        Effect.andThen(
+          git.execute({
+            operation: "GitWorkflowService.diffWorkingTree",
+            cwd: input.cwd,
+            args: [
+              "diff",
+              "--patch",
+              "--no-color",
+              "--no-ext-diff",
+              "--no-textconv",
+              ...(input.staged === true ? ["--cached"] : []),
+              ...(input.ignoreWhitespace === true ? ["--ignore-all-space"] : []),
+            ],
+            allowNonZeroExit: true,
+            maxOutputBytes: 2 * 1024 * 1024,
+          }),
+        ),
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.succeed({ diff: result.stdout })
+            : Effect.fail(
+                new GitCommandError({
+                  operation: "GitWorkflowService.diffWorkingTree",
+                  command: "git diff",
+                  cwd: input.cwd,
+                  detail: result.stderr.trim() || "git diff failed.",
+                }),
+              ),
         ),
       ),
     invalidateLocalStatus: gitManager.invalidateLocalStatus,
