@@ -2031,8 +2031,8 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-[21px] border bg-card shadow-[var(--claude-shadow-panel)] transition-colors duration-200 has-focus-visible:border-ring/55 has-focus-visible:shadow-[var(--claude-shadow-focus)]",
-              isDragOverComposer ? "border-foreground/30 bg-accent/30" : "border-border/80",
+              "rounded-[20px] border bg-background/95 transition-colors duration-200 has-focus-visible:border-ring/45",
+              isDragOverComposer ? "border-foreground/25 bg-accent/20" : "border-border/45",
               environmentUnavailable ? "opacity-75" : null,
               composerProviderState.composerSurfaceClassName,
             )}
@@ -2057,14 +2057,14 @@ export const ChatComposer = memo(
           >
             {!isComposerCollapsedMobile &&
               (activePendingApproval ? (
-                <div className="rounded-t-[17px] border-b border-border/65 bg-muted/20">
+                <div className="rounded-t-[18px] bg-muted/15">
                   <ComposerPendingApprovalPanel
                     approval={activePendingApproval}
                     pendingCount={pendingApprovals.length}
                   />
                 </div>
               ) : pendingUserInputs.length > 0 ? (
-                <div className="rounded-t-[17px] border-b border-border/65 bg-muted/20">
+                <div className="rounded-t-[18px] bg-muted/15">
                   <ComposerPendingUserInputPanel
                     pendingUserInputs={pendingUserInputs}
                     respondingRequestIds={respondingRequestIds}
@@ -2075,7 +2075,7 @@ export const ChatComposer = memo(
                   />
                 </div>
               ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-                <div className="rounded-t-[17px] border-b border-border/65 bg-muted/20">
+                <div className="rounded-t-[18px] bg-muted/15">
                   <ComposerPlanFollowUpBanner
                     key={activeProposedPlan.id}
                     planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
@@ -2085,7 +2085,7 @@ export const ChatComposer = memo(
 
             {isComposerCollapsedMobile && activePendingApproval ? (
               <div
-                className="rounded-t-[17px] border-b border-border/65 bg-muted/20"
+                className="rounded-t-[18px] bg-muted/15"
                 data-chat-composer-collapsed-controls="true"
               >
                 <ComposerPendingApprovalPanel
@@ -2102,7 +2102,7 @@ export const ChatComposer = memo(
               </div>
             ) : isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
               <div
-                className="rounded-t-[17px] border-b border-border/65 bg-muted/20"
+                className="rounded-t-[18px] bg-muted/15"
                 data-chat-composer-collapsed-controls="true"
               >
                 <ComposerPendingUserInputPanel
@@ -2117,7 +2117,7 @@ export const ChatComposer = memo(
                   <div
                     data-chat-composer-mobile-pending-compact="true"
                     className={cn(
-                      "flex min-w-0 items-center gap-2 rounded-lg border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
+                      "flex min-w-0 items-center gap-2 rounded-lg bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
                       !activePendingProgress?.activeQuestion?.multiSelect && "p-0",
                     )}
                   >
@@ -2204,8 +2204,8 @@ export const ChatComposer = memo(
 
             <div
               className={cn(
-                "relative px-4 pb-2 sm:px-5",
-                hasComposerHeader ? "pt-3 sm:pt-3.5" : "pt-4 sm:pt-5",
+                "relative px-4 pb-1.5 sm:px-5",
+                hasComposerHeader ? "pt-3 sm:pt-3.5" : "pt-3.5 sm:pt-4",
                 isComposerCollapsedMobile && "hidden",
               )}
             >
@@ -2387,7 +2387,7 @@ export const ChatComposer = memo(
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
-                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-3.5",
+                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-2.5 sm:px-4 sm:pb-3",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
