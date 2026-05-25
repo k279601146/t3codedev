@@ -134,7 +134,7 @@ function requestCommercialAccountUsageSnapshot(
 ): Effect.Effect<{ account: unknown; usage: unknown } | null, never> {
   return Effect.gen(function* () {
     for (const baseUrl of resolveCommercialEngineIdeApiBaseUrlCandidates(gatewayBaseUrl)) {
-      const accountUrl = new URL("/ide/auth/me", baseUrl).toString();
+      const accountUrl = new URL("/api/v1/auth/me", baseUrl).toString();
       const usageUrl = new URL("/ide/api/usage", baseUrl).toString();
       const result = yield* requestCommercialAccountUsageFromBaseUrl(accountUrl, usageUrl, ideJwt);
       if (result !== null) return result;

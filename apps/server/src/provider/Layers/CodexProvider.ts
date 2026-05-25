@@ -146,7 +146,7 @@ function commercialGatewayModelsUrl(environment: NodeJS.ProcessEnv): string {
 function commercialGatewayAccountUrl(environment: NodeJS.ProcessEnv): string {
   const baseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
   return new URL(
-    "/ide/auth/me",
+    "/api/v1/auth/me",
     resolveCommercialEngineIdeApiBaseUrlCandidates(baseUrl)[0],
   ).toString();
 }
