@@ -132,7 +132,6 @@ import {
 } from "../environments/runtime";
 import { buildThreadRouteParams } from "../threadRoutes";
 import {
-  chooseDefaultRightPanelSurface,
   RIGHT_PANEL_DEFAULT_WIDTH_PX,
   RIGHT_PANEL_MAX_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
@@ -789,8 +788,6 @@ export default function ChatView(props: ChatViewProps) {
   const setRightPanelSurface = useRightPanelStore((state) => state.setActiveSurface);
   const setRightPanelWidthPx = useRightPanelStore((state) => state.setWidthPx);
   const closeRightPanel = useRightPanelStore((state) => state.close);
-  const restoreRightPanelThreadSurface = useRightPanelStore((state) => state.restoreThreadSurface);
-  const toggleRightPanelSurface = useRightPanelStore((state) => state.toggleSurface);
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   // 记录用户是否针对当前 turn 主动关闭过摘要面板。
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
@@ -1490,6 +1487,13 @@ export default function ChatView(props: ChatViewProps) {
         activeThread?.messages.some((message) =>
           message.attachments?.some((attachment) => Boolean(attachment.previewUrl)),
         ),
+      ),
+    [activeThread?.messages],
+  );
+  const previewAttachments = useMemo(
+    () =>
+      (activeThread?.messages ?? []).flatMap((message) =>
+        (message.attachments ?? []).filter((attachment) => Boolean(attachment.previewUrl)),
       ),
     [activeThread?.messages],
   );
@@ -2337,7 +2341,7 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     planSidebarDismissedForTurnRef.current = null;
-    openRightPanelSurface("summary", activeThreadKey);
+    openRightPanelSurface("home", activeThreadKey);
   }, [
     activePlan?.turnId,
     activeThreadKey,
@@ -2435,67 +2439,12 @@ export default function ChatView(props: ChatViewProps) {
     setShowScrollToBottom(false);
     if (planSidebarOpenOnNextThreadRef.current) {
       planSidebarOpenOnNextThreadRef.current = false;
-      openRightPanelSurface("summary", activeThreadKey);
+      openRightPanelSurface("home", activeThreadKey);
     } else {
       planSidebarOpenOnNextThreadRef.current = false;
-      restoreRightPanelThreadSurface(activeThreadKey);
     }
     planSidebarDismissedForTurnRef.current = null;
-  }, [activeThread?.id, activeThreadKey, openRightPanelSurface, restoreRightPanelThreadSurface]);
-
-  // Auto-open the plan sidebar when plan/todo steps arrive for the current turn.
-  // Don't auto-open for plans carried over from a previous turn (the user can open manually).
-  useEffect(() => {
-    if (!autoOpenPlanSidebar) return;
-    if (!activePlan) return;
-    if (summaryPanelOpen) return;
-    const latestTurnId = activeLatestTurn?.turnId ?? null;
-    if (latestTurnId && activePlan.turnId !== latestTurnId) return;
-    const turnKey = activePlan.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
-    if (planSidebarDismissedForTurnRef.current === turnKey) return;
-    openRightPanelSurface("summary", activeThreadKey);
-  }, [
-    activePlan,
-    activeLatestTurn?.turnId,
-    activeThreadKey,
-    autoOpenPlanSidebar,
-    openRightPanelSurface,
-    sidebarProposedPlan?.turnId,
-    summaryPanelOpen,
-  ]);
-
-  useEffect(() => {
-    if (!diffOpen || !isServerThread) return;
-    openRightPanelSurface("review", activeThreadKey);
-  }, [activeThreadKey, diffOpen, isServerThread, openRightPanelSurface]);
-
-  useEffect(() => {
-    if (rightPanelOpen) return;
-    if (!isServerThread) return;
-    const nextSurface = chooseDefaultRightPanelSurface({
-      diffOpen,
-      hasReviewChanges: hasReviewPanelChanges,
-      hasSummary: hasSummaryPanelContent,
-      hasArtifacts: hasArtifactPanelContent,
-      terminalOpen: Boolean(terminalState.terminalOpen),
-    });
-    if (nextSurface === "review" && !diffOpen && !hasReviewPanelChanges) return;
-    if (nextSurface === "summary" && !autoOpenPlanSidebar) return;
-    if (nextSurface === "summary" && planSidebarDismissedForTurnRef.current !== null) return;
-    if (nextSurface === "browser" || nextSurface === "terminal") return;
-    openRightPanelSurface(nextSurface, activeThreadKey);
-  }, [
-    activeThreadKey,
-    autoOpenPlanSidebar,
-    diffOpen,
-    hasArtifactPanelContent,
-    hasReviewPanelChanges,
-    hasSummaryPanelContent,
-    isServerThread,
-    openRightPanelSurface,
-    rightPanelOpen,
-    terminalState.terminalOpen,
-  ]);
+  }, [activeThread?.id, activeThreadKey, openRightPanelSurface]);
 
   useEffect(() => {
     setIsRevertingCheckpoint(false);
@@ -3705,6 +3654,7 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
       onDiffPanelOpen?.();
+      openRightPanelSurface("review", activeThreadKey);
       void navigate({
         to: "/$environmentId/$threadId",
         params: {
@@ -3719,7 +3669,15 @@ export default function ChatView(props: ChatViewProps) {
         },
       });
     },
-    [environmentId, isServerThread, navigate, onDiffPanelOpen, threadId],
+    [
+      activeThreadKey,
+      environmentId,
+      isServerThread,
+      navigate,
+      onDiffPanelOpen,
+      openRightPanelSurface,
+      threadId,
+    ],
   );
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
@@ -4128,6 +4086,7 @@ export default function ChatView(props: ChatViewProps) {
                   markdownCwd={gitCwd ?? undefined}
                   mode="sidebar"
                   planLabel={planSidebarLabel}
+                  previewAttachments={previewAttachments}
                   timestampFormat={timestampFormat}
                   workspaceRoot={activeWorkspaceRoot}
                   onClose={closeThreadRightPanel}
@@ -4169,6 +4128,7 @@ export default function ChatView(props: ChatViewProps) {
             markdownCwd={gitCwd ?? undefined}
             mode="sheet"
             planLabel={planSidebarLabel}
+            previewAttachments={previewAttachments}
             timestampFormat={timestampFormat}
             workspaceRoot={activeWorkspaceRoot}
             onClose={closeThreadRightPanel}

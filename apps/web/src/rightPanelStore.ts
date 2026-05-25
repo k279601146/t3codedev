@@ -3,11 +3,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { resolveStorage } from "./lib/storage";
 
 export const RIGHT_PANEL_SURFACES = [
+  "home",
   "review",
-  "summary",
+  "file",
+  "image",
   "artifacts",
   "browser",
   "terminal",
+  "summary",
 ] as const;
 
 export type RightPanelSurface = (typeof RIGHT_PANEL_SURFACES)[number];
@@ -104,7 +107,7 @@ export const useRightPanelStore = create<RightPanelState>()(
   persist(
     (set) => ({
       open: false,
-      activeSurface: "summary",
+      activeSurface: "home",
       widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
       lastSurfaceByThreadKey: {},
       close: () => set({ open: false }),
