@@ -500,6 +500,31 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
         args: ["C:\\workspace"],
       });
 
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-file-manager-test-" });
+      const filePath = path.join(dir, "codex_app_plugin_intro.pdf");
+      yield* fs.writeFileString(filePath, "pdf");
+      const launchFile = yield* resolveEditorLaunch(
+        { cwd: filePath, editor: "file-manager" },
+        "win32",
+        { PATH: "" },
+      );
+      assert.deepEqual(launchFile, {
+        command: "explorer",
+        args: [`/select,${filePath}`],
+      });
+
+      const launchSlashFile = yield* resolveEditorLaunch(
+        { cwd: filePath.replaceAll("\\", "/"), editor: "file-manager" },
+        "win32",
+        { PATH: "" },
+      );
+      assert.deepEqual(launchSlashFile, {
+        command: "explorer",
+        args: [`/select,${filePath}`],
+      });
+
       const launch3 = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "file-manager" },
         "linux",
@@ -639,6 +664,46 @@ it.layer(NodeServices.layer)("launchEditorProcess", (it) => {
       assert.deepEqual(spawnedCommand.options, {
         detached: true,
         shell: process.platform === "win32",
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      assert.equal(didUnref, true);
+    }),
+  );
+
+  it.effect("launches Windows file manager without shell argument rewriting", () =>
+    Effect.gen(function* () {
+      let spawnedCommand: ChildProcess.StandardCommand | undefined;
+      let didUnref = false;
+      const expectedArgs = [String.raw`/select,D:\workspace\testimg\output\pdf\codex_app_plugin_intro.pdf`];
+
+      const spawnerLayer = Layer.mock(ChildProcessSpawner.ChildProcessSpawner, {
+        spawn: (command) =>
+          Effect.sync(() => {
+            assert.equal(ChildProcess.isStandardCommand(command), true);
+            if (!ChildProcess.isStandardCommand(command)) {
+              throw new Error("Expected a standard command");
+            }
+            spawnedCommand = command;
+            return makeMockDetachedHandle(() => {
+              didUnref = true;
+            });
+          }),
+      });
+
+      const result = yield* launchEditorProcess({
+        command: "explorer",
+        args: expectedArgs,
+      }).pipe(Effect.provide(spawnerLayer), Effect.result);
+
+      assertSuccess(result, undefined);
+      assert.ok(spawnedCommand);
+      assert.equal(spawnedCommand.command, "explorer");
+      assert.deepEqual(spawnedCommand.args, expectedArgs);
+      assert.deepEqual(spawnedCommand.options, {
+        detached: true,
+        shell: false,
         stdin: "ignore",
         stdout: "ignore",
         stderr: "ignore",

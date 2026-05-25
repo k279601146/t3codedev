@@ -13,6 +13,8 @@ import {
   type LaunchEditorInput,
 } from "@t3tools/contracts";
 import { isCommandAvailable, type CommandAvailabilityOptions } from "@t3tools/shared/shell";
+import * as NodeFs from "node:fs";
+import * as NodePath from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
@@ -184,6 +186,43 @@ function fileManagerCommandForPlatform(platform: NodeJS.Platform): string {
   }
 }
 
+function stripTargetPosition(target: string): string {
+  return Option.match(parseTargetPathAndPosition(target), {
+    onNone: () => target,
+    onSome: ({ path }) => path,
+  });
+}
+
+function isExistingFilePath(target: string): boolean {
+  try {
+    return NodeFs.statSync(stripTargetPosition(target)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function normalizeWindowsExplorerPath(target: string): string {
+  return target.replaceAll("/", "\\");
+}
+
+function resolveFileManagerArgs(target: string, platform: NodeJS.Platform): ReadonlyArray<string> {
+  if (platform !== "win32") {
+    return [target];
+  }
+
+  const pathTarget = normalizeWindowsExplorerPath(stripTargetPosition(target));
+  if (!isExistingFilePath(pathTarget)) {
+    return [pathTarget];
+  }
+
+  return [`/select,${pathTarget}`];
+}
+
+function isWindowsFileManagerCommand(command: string): boolean {
+  const commandName = NodePath.basename(command).toLowerCase();
+  return commandName === "explorer" || commandName === "explorer.exe";
+}
+
 export function resolveBrowserLaunch(
   target: string,
   platform: NodeJS.Platform = process.platform,
@@ -294,7 +333,10 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
     return yield* new ExternalLauncherError({ message: `Unsupported editor: ${input.editor}` });
   }
 
-  return { command: fileManagerCommandForPlatform(platform), args: [input.cwd] };
+  return {
+    command: fileManagerCommandForPlatform(platform),
+    args: resolveFileManagerArgs(input.cwd, platform),
+  };
 });
 
 const launchAndUnref = Effect.fn("externalLauncher.launchAndUnref")(function* (
@@ -328,13 +370,14 @@ export const launchEditorProcess = Effect.fn("externalLauncher.launchEditorProce
   }
 
   const isWin32 = process.platform === "win32";
+  const shouldUseWindowsShell = isWin32 && !isWindowsFileManagerCommand(launch.command);
   yield* launchAndUnref(
     {
       command: launch.command,
-      args: isWin32 ? launch.args.map((arg) => `"${arg}"`) : [...launch.args],
+      args: shouldUseWindowsShell ? launch.args.map((arg) => `"${arg}"`) : [...launch.args],
       options: {
         detached: true,
-        shell: isWin32,
+        shell: shouldUseWindowsShell,
         stdin: "ignore",
         stdout: "ignore",
         stderr: "ignore",

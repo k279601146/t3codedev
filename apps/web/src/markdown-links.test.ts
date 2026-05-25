@@ -47,6 +47,15 @@ describe("resolveMarkdownFileLinkTarget", () => {
     );
   });
 
+  it("resolves relative file paths against Windows cwd", () => {
+    expect(
+      resolveMarkdownFileLinkTarget(
+        "output/pdf/codex_app_plugin_intro.pdf",
+        "D:\\workspace\\t3codedev",
+      ),
+    ).toBe("D:\\workspace\\t3codedev\\output\\pdf\\codex_app_plugin_intro.pdf");
+  });
+
   it("does not treat filename line references as external schemes", () => {
     expect(resolveMarkdownFileLinkTarget("script.ts:10", "/Users/julius/project")).toBe(
       "/Users/julius/project/script.ts:10",

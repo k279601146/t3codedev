@@ -77,6 +77,61 @@ describe("ChatMarkdown", () => {
     }
   });
 
+  it("opens relative Markdown file links from the Windows workspace root", async () => {
+    const screen = await render(
+      <ChatMarkdown
+        text="[codex_app_plugin_intro.pdf](output/pdf/codex_app_plugin_intro.pdf)"
+        cwd="D:\\workspace\\testimg"
+      />,
+    );
+
+    try {
+      const link = page.getByRole("link", { name: "codex_app_plugin_intro.pdf" });
+      await expect.element(link).toBeInTheDocument();
+      await expect
+        .element(link)
+        .toHaveAttribute(
+          "href",
+          "D:\\workspace\\testimg\\output\\pdf\\codex_app_plugin_intro.pdf",
+        );
+
+      await link.click();
+
+      await vi.waitFor(() => {
+        expect(openInPreferredEditorMock).toHaveBeenCalledWith(
+          expect.anything(),
+          "D:\\workspace\\testimg\\output\\pdf\\codex_app_plugin_intro.pdf",
+        );
+      });
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("preserves absolute Windows slash paths from generated file links", async () => {
+    const targetPath = "D:/workspace/testimg/output/pdf/codex_app_plugin_intro.pdf";
+    const screen = await render(
+      <ChatMarkdown
+        text={`[codex_app_plugin_intro.pdf](${targetPath})`}
+        cwd="D:\\workspace\\testimg"
+      />,
+    );
+
+    try {
+      const link = page.getByRole("link", { name: "codex_app_plugin_intro.pdf" });
+      await expect.element(link).toBeInTheDocument();
+      await expect.element(link).toHaveAttribute("href", targetPath);
+
+      await link.click();
+
+      await vi.waitFor(() => {
+        expect(openInPreferredEditorMock).toHaveBeenCalledWith(expect.anything(), targetPath);
+      });
+    } finally {
+      await screen.unmount();
+    }
+  });
+
   it("shows column information inline when present", async () => {
     const filePath =
       "/Users/yashsingh/p/sco/claude-code-extract/src/utils/permissions/PermissionRule.ts";
