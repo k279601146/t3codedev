@@ -172,7 +172,7 @@ export const ChatHeader = memo(function ChatHeader({
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
         <SidebarTrigger className="size-7 shrink-0 md:hidden" />
         <h2
-          className="min-w-0 shrink truncate text-[13px] font-medium text-foreground sm:text-sm"
+          className="min-w-0 shrink truncate text-[13px] font-medium leading-5 text-foreground sm:text-sm"
           title={activeThreadTitle}
         >
           {activeThreadTitle}
@@ -180,13 +180,16 @@ export const ChatHeader = memo(function ChatHeader({
         {activeProjectName && (
           <Badge
             variant="outline"
-            className="min-w-0 shrink overflow-hidden px-1.5 py-0 text-[10px]"
+            className="min-w-0 shrink overflow-hidden rounded-md border-border/70 bg-muted/45 px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
           >
             <span className="min-w-0 truncate">{activeProjectName}</span>
           </Badge>
         )}
         {activeProjectName && !isGitRepo && (
-          <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-amber-700">
+          <Badge
+            variant="outline"
+            className="shrink-0 rounded-md border-amber-200/80 bg-amber-50 px-1.5 py-0 text-[10px] font-normal text-amber-700"
+          >
             No Git
           </Badge>
         )}

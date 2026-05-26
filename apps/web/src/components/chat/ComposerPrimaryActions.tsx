@@ -126,7 +126,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     return (
       <button
         type="button"
-        className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-black/5 bg-neutral-950 text-white shadow-sm transition-all duration-150 hover:bg-neutral-900 hover:scale-105 dark:bg-neutral-50 dark:text-neutral-950 dark:hover:bg-white sm:h-8 sm:w-8"
+        className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-black/5 bg-neutral-950 text-white shadow-sm transition-[background-color,transform,box-shadow] duration-150 hover:scale-[1.03] hover:bg-neutral-900 dark:bg-neutral-50 dark:text-neutral-950 dark:hover:bg-white sm:h-8 sm:w-8"
         {...pointerFocusProps}
         onClick={onInterrupt}
         aria-label="Stop generation"
@@ -195,9 +195,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   return (
     <button
       type="submit"
-      className="flex h-9 w-9 items-center justify-center rounded-sm border border-black/5 text-white shadow-sm transition-all duration-150 sm:h-8 sm:w-8
-    enabled:cursor-pointer enabled:bg-[#E8B5A6] enabled:hover:bg-[#DCA593] enabled:hover:scale-105
-    disabled:pointer-events-none disabled:bg-[#F1CDC3] disabled:text-white/80 disabled:shadow-none"
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-black/5 text-white shadow-sm transition-[background-color,transform,box-shadow] duration-150 sm:h-8 sm:w-8
+    enabled:cursor-pointer enabled:bg-neutral-950 enabled:hover:scale-[1.03] enabled:hover:bg-neutral-800
+    disabled:pointer-events-none disabled:bg-neutral-300 disabled:text-white/85 disabled:shadow-none dark:enabled:bg-neutral-50 dark:enabled:text-neutral-950 dark:enabled:hover:bg-white dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400"
       {...pointerFocusProps}
       disabled={isSendBusy || isConnecting || isEnvironmentUnavailable || !hasSendableContent}
       aria-label={

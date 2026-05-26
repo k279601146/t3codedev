@@ -1760,7 +1760,9 @@ export default function ChatView(props: ChatViewProps) {
             type: "image",
             previewUrl: imagePath,
             filePath:
-              imagePath.startsWith("data:") || /^https?:\/\//i.test(imagePath) ? undefined : imagePath,
+              imagePath.startsWith("data:") || /^https?:\/\//i.test(imagePath)
+                ? undefined
+                : imagePath,
             mimeType: "image/png",
           });
         }
@@ -1899,12 +1901,7 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     openRightPanelSurface("home", activeThreadKey);
-  }, [
-    activeThreadKey,
-    closeRightPanel,
-    openRightPanelSurface,
-    rightPanelOpen,
-  ]);
+  }, [activeThreadKey, closeRightPanel, openRightPanelSurface, rightPanelOpen]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -3899,7 +3896,7 @@ export default function ChatView(props: ChatViewProps) {
       {/* Top bar */}
       <header
         className={cn(
-          "relative z-30 shrink-0 border-b border-border bg-background",
+          "relative z-30 shrink-0 border-b border-border/70 bg-background/95 backdrop-blur",
           isElectron
             ? cn(
                 "drag-region flex h-[40px] items-center px-3 sm:px-4 wco:h-[env(titlebar-area-height)]",
@@ -3956,10 +3953,10 @@ export default function ChatView(props: ChatViewProps) {
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-28 pt-6 sm:px-6">
               <div className="@container/new-thread w-full max-w-[52rem] -translate-y-6">
-                <h1 className="text-balance text-center text-[26px] font-medium leading-tight tracking-normal text-foreground @2xl/new-thread:text-[30px]">
+                <h1 className="text-balance text-center text-[27px] font-semibold leading-[1.18] tracking-normal text-foreground @2xl/new-thread:text-[31px]">
                   {emptyNewThreadTitle}
                 </h1>
-                <div className="mx-auto mt-9 w-full max-w-[46rem]">
+                <div className="mx-auto mt-10 w-full max-w-[46rem]">
                   <div className="relative isolate">
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     <div className="relative z-10">{composerNode}</div>

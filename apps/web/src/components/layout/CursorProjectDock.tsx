@@ -294,7 +294,7 @@ export function CursorProjectDock({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden bg-background transition-colors",
+        "flex h-full min-h-0 flex-col overflow-hidden bg-sidebar transition-colors",
         isDropActive ? "bg-accent/30" : "",
       )}
       onDragEnter={(event) => {
@@ -329,12 +329,12 @@ export function CursorProjectDock({
         });
       }}
     >
-      <div ref={headerRef} className="flex h-9 min-h-9 items-center gap-2 px-2">
+      <div ref={headerRef} className="flex h-10 min-h-10 items-center gap-2 px-3">
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "Expand projects" : "Collapse projects"}
         >
@@ -344,14 +344,14 @@ export function CursorProjectDock({
             <ChevronDownIcon className="size-3.5" />
           )}
         </Button>
-        <div className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+        <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
           Projects
         </div>
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           onClick={() => openAddProject({ pinToCursorExplorer: true })}
           aria-label="Add project"
         >
@@ -360,7 +360,7 @@ export function CursorProjectDock({
       </div>
 
       {collapsed ? null : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           <div ref={listContentRef}>
             {sidebarProjects.length > 0 ? (
               sidebarProjects.map((project) => (
@@ -498,7 +498,7 @@ function CursorProjectDockRow({
         <button
           type="button"
           draggable
-          className="flex h-7 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-lg px-2 py-1.5 pr-8 text-left text-xs outline-none transition-colors hover:bg-accent hover:text-sidebar-accent-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground"
+          className="flex h-8 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-lg px-2 py-1.5 pr-8 text-left text-xs outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring group-hover/project-header:bg-sidebar-accent group-hover/project-header:text-sidebar-accent-foreground"
           onClick={() => toggleProject(project.projectKey)}
           onDragStart={(event) => {
             event.dataTransfer.effectAllowed = "copy";
@@ -544,7 +544,7 @@ function CursorProjectDockRow({
           )}
           <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-xs font-medium text-foreground/90">
+            <span className="truncate text-[13px] font-medium text-foreground/90">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -583,7 +583,7 @@ function CursorProjectDockRow({
       </div>
 
       {shouldShowThreadPanel ? (
-        <div className="mx-1 my-0 w-full translate-x-0 overflow-hidden px-1.5 py-0">
+        <div className="mx-1 my-0 w-full translate-x-0 overflow-hidden px-1.5 py-0.5">
           {visibleProjectThreads.length === 0 && projectExpanded ? (
             <div className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60">
               <span>No threads yet</span>

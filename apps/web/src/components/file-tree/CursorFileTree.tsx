@@ -70,13 +70,13 @@ export function CursorFileTree({
   const renderedNodes = useMemo(() => root?.children ?? [], [root?.children]);
 
   return (
-    <section className="border-b border-border last:border-b-0" data-project-key={projectKey}>
-      <div className="flex min-h-10 items-center gap-1 border-b border-border/70 px-2">
+    <section className="border-b border-border/60 last:border-b-0" data-project-key={projectKey}>
+      <div className="flex min-h-12 items-center gap-1 border-b border-border/50 px-3">
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           onClick={onToggleProject}
           aria-label={collapsed ? "Expand project tree" : "Collapse project tree"}
         >
@@ -87,14 +87,14 @@ export function CursorFileTree({
           )}
         </Button>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium text-foreground">{title}</div>
-          <div className="truncate text-[11px] text-muted-foreground">{subtitle}</div>
+          <div className="truncate text-[13px] font-medium leading-5 text-foreground">{title}</div>
+          <div className="truncate text-[11px] leading-4 text-muted-foreground/75">{subtitle}</div>
         </div>
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           onClick={(event) => {
             event.stopPropagation();
             void refetch();
@@ -108,7 +108,7 @@ export function CursorFileTree({
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           onClick={(event) => {
             event.stopPropagation();
             onRemoveProject();
@@ -120,7 +120,7 @@ export function CursorFileTree({
       </div>
 
       {collapsed ? null : (
-        <div className="py-1">
+        <div className="py-1.5">
           {root ? (
             renderedNodes.length > 0 ? (
               renderedNodes.map((node) => (
@@ -188,10 +188,10 @@ function CursorFileTreeNode({
       <button
         type="button"
         className={cn(
-          "flex h-7 w-full items-center gap-1.5 text-left text-xs outline-none transition-colors",
+          "flex h-7 w-full items-center gap-1.5 text-left text-[13px] outline-none transition-colors",
           isSelected
-            ? "bg-accent/70 text-foreground"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            ? "bg-sidebar-accent text-foreground"
+            : "text-muted-foreground hover:bg-sidebar-accent/75 hover:text-foreground",
         )}
         style={{ paddingLeft: 10 + depth * 12 }}
         onClick={() => {

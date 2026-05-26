@@ -313,7 +313,7 @@ export function CursorSidebar() {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <Group id="cursor-sidebar-panels" className="h-full min-h-0" orientation="vertical">
         <Panel
           id="cursor-explorer-panel"
@@ -367,15 +367,15 @@ export function CursorSidebar() {
               }
             }}
           >
-            <div className="sticky top-0 z-10 flex h-9 items-center gap-2 border-b border-border bg-background/95 px-2 backdrop-blur">
-              <div className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+            <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-border/60 bg-sidebar/95 px-3 backdrop-blur">
+              <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
                 Explorer
               </div>
               <Button
                 type="button"
                 size="icon-xs"
                 variant="ghost"
-                className="size-6 rounded-sm text-muted-foreground hover:text-foreground"
+                className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                 aria-label="Add project"
                 title="Add project to Explorer"
                 onClick={() => openAddProject({ pinToCursorExplorer: true })}
@@ -407,14 +407,14 @@ export function CursorSidebar() {
                 );
               })
             ) : (
-              <div className="flex min-h-32 items-center justify-center px-4 text-center text-xs text-muted-foreground">
+              <div className="flex min-h-32 items-center justify-center px-5 text-center text-xs leading-5 text-muted-foreground">
                 Drag projects or folders here, or right-click a project below to add it to the file
                 tree.
               </div>
             )}
           </div>
         </Panel>
-        <Separator className="h-px bg-border transition-colors hover:bg-border/80" />
+        <Separator className="h-px bg-border/60 transition-colors hover:bg-border" />
         <Panel
           id="cursor-project-dock-panel"
           panelRef={projectDockPanelRef}

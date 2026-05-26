@@ -2007,7 +2007,7 @@ export const ChatComposer = memo(
       <form
         ref={composerFormRef}
         onSubmit={submitComposer}
-        className="mx-auto w-full min-w-0 max-w-[45rem]"
+        className="mx-auto w-full min-w-0 max-w-[45.5rem]"
         data-chat-composer-form="true"
       >
         <input
@@ -2019,7 +2019,7 @@ export const ChatComposer = memo(
         />
         <div
           className={cn(
-            "group rounded-[22px] p-px transition-colors duration-200",
+            "group rounded-[18px] p-px transition-colors duration-200",
             composerProviderState.composerFrameClassName,
           )}
           onDragEnter={onComposerDragEnter}
@@ -2031,8 +2031,8 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-[20px] border bg-background/95 transition-colors duration-200 has-focus-visible:border-ring/45",
-              isDragOverComposer ? "border-foreground/25 bg-accent/20" : "border-border/45",
+              "rounded-[17px] border bg-card/98 shadow-[var(--t3-shadow-composer)] transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65 has-focus-visible:shadow-[var(--claude-shadow-panel)]",
+              isDragOverComposer ? "border-foreground/25 bg-accent/20" : "border-border/80",
               environmentUnavailable ? "opacity-75" : null,
               composerProviderState.composerSurfaceClassName,
             )}
@@ -2204,7 +2204,7 @@ export const ChatComposer = memo(
 
             <div
               className={cn(
-                "relative px-4 pb-1.5 sm:px-5",
+                "relative px-4 pb-2 sm:px-5",
                 hasComposerHeader ? "pt-3 sm:pt-3.5" : "pt-3.5 sm:pt-4",
                 isComposerCollapsedMobile && "hidden",
               )}
@@ -2387,7 +2387,7 @@ export const ChatComposer = memo(
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
-                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-2.5 sm:px-4 sm:pb-3",
+                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-3.5",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}

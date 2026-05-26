@@ -20,16 +20,16 @@ function defineT3MonacoThemes(monaco: Monaco) {
     rules: [],
     colors: {
       "editor.background": "#ffffff",
-      "editor.foreground": "#262626",
+      "editor.foreground": "#1f2328",
       "editorLineNumber.foreground": "#a3a3a3",
       "editorLineNumber.activeForeground": "#525252",
-      "editor.selectionBackground": "#d4d4d8",
-      "editor.inactiveSelectionBackground": "#e5e5e5",
-      "editor.lineHighlightBackground": "#f5f5f5",
+      "editor.selectionBackground": "#d9e8ff",
+      "editor.inactiveSelectionBackground": "#eef2f7",
+      "editor.lineHighlightBackground": "#f7f7f8",
       "editorCursor.foreground": "#171717",
       "editorGutter.background": "#ffffff",
       "editorWidget.background": "#ffffff",
-      "editorWidget.border": "#e5e5e5",
+      "editorWidget.border": "#e8e8eb",
       "diffEditor.insertedTextBackground": "#16a34a22",
       "diffEditor.removedTextBackground": "#dc262622",
     },
@@ -188,7 +188,7 @@ export function MonacoEditorPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-card">
       <EditorTabs />
       {activeTab.externalChange ? (
         <div className="flex min-h-9 items-center gap-2 border-b border-border bg-muted/30 px-3 text-xs text-muted-foreground">

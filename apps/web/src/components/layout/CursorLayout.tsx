@@ -333,12 +333,16 @@ export function CursorLayout() {
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-      <Group id="cursor-layout-panels" className="h-full min-h-0" orientation="horizontal">
-        <Panel defaultSize={70} minSize={30} className="min-h-0 overflow-hidden">
+      <Group
+        id="cursor-layout-panels"
+        className="h-full min-h-0 bg-background"
+        orientation="horizontal"
+      >
+        <Panel defaultSize={70} minSize={30} className="min-h-0 overflow-hidden bg-card">
           <MonacoEditorPanel environmentId={environmentId} workspaceRoot={workspaceRoot} />
         </Panel>
-        <Separator className="w-px bg-border transition-colors hover:bg-border/80" />
-        <Panel defaultSize={30} minSize={24} className="min-h-0 overflow-hidden">
+        <Separator className="w-px bg-border/70 transition-colors hover:bg-border" />
+        <Panel defaultSize={30} minSize={24} className="min-h-0 overflow-hidden bg-background">
           {activeDraftId ? (
             <ChatView
               environmentId={environmentId}

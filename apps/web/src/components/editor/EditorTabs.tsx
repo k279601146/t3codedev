@@ -8,7 +8,7 @@ export function EditorTabs() {
   const closeTab = useEditorStore((state) => state.closeTab);
 
   return (
-    <div className="flex h-10 min-h-10 items-stretch overflow-x-auto border-b border-border bg-background">
+    <div className="flex h-10 min-h-10 items-stretch overflow-x-auto border-b border-border/70 bg-card">
       {tabs.length === 0 ? (
         <div className="flex items-center px-3 text-xs text-muted-foreground">
           Open a file from the tree
@@ -22,10 +22,10 @@ export function EditorTabs() {
             role="button"
             tabIndex={0}
             className={[
-              "group flex h-full min-w-0 max-w-56 cursor-pointer items-center gap-2 border-r border-border px-3 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "group flex h-full min-w-0 max-w-56 cursor-pointer items-center gap-2 border-r border-border/70 px-3 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               isActive
                 ? "bg-background text-foreground"
-                : "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                : "bg-muted/25 text-muted-foreground hover:bg-muted/70 hover:text-foreground",
             ].join(" ")}
             onClick={() => setActiveTab(tab.id)}
             onKeyDown={(event) => {
