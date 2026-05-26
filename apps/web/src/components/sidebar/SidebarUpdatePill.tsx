@@ -1,6 +1,12 @@
-import { DownloadIcon, RotateCwIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import {
+  DownloadIcon,
+  LoaderCircleIcon,
+  RotateCwIcon,
+  TriangleAlertIcon,
+  XIcon,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isElectron } from "../../env";
 import {
   setDesktopUpdateStateQueryData,
@@ -19,7 +25,227 @@ import {
   shouldToastDesktopUpdateActionResult,
 } from "../desktopUpdate.logic";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
+function getUpdatePercent(state: Parameters<typeof resolveDesktopUpdateButtonAction>[0] | null) {
+  if (!state) return 0;
+  if (state.status === "downloaded") return 100;
+  if (typeof state.downloadPercent === "number") {
+    return Math.max(0, Math.min(100, Math.floor(state.downloadPercent)));
+  }
+  return state.status === "downloading" ? 0 : 0;
+}
+
+function getUpdateDialogStatusLabel(
+  state: Parameters<typeof resolveDesktopUpdateButtonAction>[0] | null,
+) {
+  if (!state) return "准备下载";
+  if (state.status === "downloaded") return "准备安装";
+  if (state.status === "downloading") return `下载中 ${getUpdatePercent(state)}%`;
+  if (state.status === "error") return "更新失败";
+  return "准备下载";
+}
+
+function getInstallVersion(state: Parameters<typeof resolveDesktopUpdateButtonAction>[0] | null) {
+  return state?.downloadedVersion ?? state?.availableVersion ?? null;
+}
+
+export function SidebarAppUpdateButton() {
+  const queryClient = useQueryClient();
+  const state = useDesktopUpdateState().data ?? null;
+  const [open, setOpen] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const downloadStartedForVersionRef = useRef<string | null>(null);
+  const installStartedForVersionRef = useRef<string | null>(null);
+
+  const action = state ? resolveDesktopUpdateButtonAction(state) : "none";
+  const visible = isElectron && (action !== "none" || state?.status === "downloading");
+  const percent = getUpdatePercent(state);
+  const targetVersion = getInstallVersion(state);
+
+  const installUpdate = useCallback(
+    (version: string | null) => {
+      const bridge = window.desktopBridge;
+      if (!bridge || installing) return;
+      const installKey = version ?? "unknown";
+      if (installStartedForVersionRef.current === installKey) return;
+      installStartedForVersionRef.current = installKey;
+      setInstalling(true);
+      void bridge
+        .installUpdate()
+        .then((result) => {
+          setDesktopUpdateStateQueryData(queryClient, result.state);
+          if (!result.accepted) {
+            installStartedForVersionRef.current = null;
+            setInstalling(false);
+            return;
+          }
+          if (!shouldToastDesktopUpdateActionResult(result)) return;
+          const actionError = getDesktopUpdateActionError(result);
+          if (!actionError) return;
+          installStartedForVersionRef.current = null;
+          setInstalling(false);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "无法安装更新",
+              description: actionError,
+            }),
+          );
+        })
+        .catch((error) => {
+          installStartedForVersionRef.current = null;
+          setInstalling(false);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "无法安装更新",
+              description: error instanceof Error ? error.message : "安装更新时发生未知错误。",
+            }),
+          );
+        });
+    },
+    [installing, queryClient],
+  );
+
+  useEffect(() => {
+    if (!open || !state) return;
+    const bridge = window.desktopBridge;
+    if (!bridge) return;
+
+    if (state.status === "downloaded") {
+      installUpdate(targetVersion);
+      return;
+    }
+
+    if (action !== "download") return;
+    const downloadKey = targetVersion ?? "unknown";
+    if (downloadStartedForVersionRef.current === downloadKey) return;
+    downloadStartedForVersionRef.current = downloadKey;
+
+    void bridge
+      .downloadUpdate()
+      .then((result) => {
+        setDesktopUpdateStateQueryData(queryClient, result.state);
+        if (result.completed) {
+          installUpdate(getInstallVersion(result.state));
+          return;
+        }
+        if (!shouldToastDesktopUpdateActionResult(result)) return;
+        const actionError = getDesktopUpdateActionError(result);
+        if (!actionError) return;
+        downloadStartedForVersionRef.current = null;
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "无法下载更新",
+            description: actionError,
+          }),
+        );
+      })
+      .catch((error) => {
+        downloadStartedForVersionRef.current = null;
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "无法开始下载更新",
+            description: error instanceof Error ? error.message : "开始下载时发生未知错误。",
+          }),
+        );
+      });
+  }, [action, installUpdate, open, queryClient, state, targetVersion]);
+
+  if (!visible) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label="下载应用更新"
+              className="no-drag-region inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setOpen(true)}
+            >
+              {state?.status === "downloading" || installing ? (
+                <LoaderCircleIcon className="size-4 animate-spin" />
+              ) : (
+                <DownloadIcon className="size-4" />
+              )}
+            </button>
+          }
+        />
+        <TooltipPopup side="bottom">发现新版本</TooltipPopup>
+      </Tooltip>
+      <DialogPopup className="max-w-xl" showCloseButton={!installing}>
+        <DialogHeader>
+          <DialogTitle>发现新版本</DialogTitle>
+          <DialogDescription>
+            {targetVersion
+              ? `T3 Code ${targetVersion} 已发布，当前版本为 ${state?.currentVersion ?? "未知"}。`
+              : "T3 Code 有新版本可用。"}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogPanel>
+          <div className="rounded-lg border bg-muted/20 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold">
+                {installing ? "正在安装" : getUpdateDialogStatusLabel(state)}
+              </div>
+              <div className="font-mono text-xs text-muted-foreground">
+                {installing ? "100%" : `${percent}%`}
+              </div>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300"
+                style={{ width: `${installing ? 100 : percent}%` }}
+              />
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {installing
+                ? "下载完成，正在启动安装程序。"
+                : state?.status === "error"
+                  ? (state.message ?? "更新失败，请稍后重试。")
+                  : "正在下载更新，完成后会自动安装。"}
+            </p>
+          </div>
+        </DialogPanel>
+        <DialogFooter>
+          <Button size="sm" disabled>
+            {installing ? (
+              <>
+                <LoaderCircleIcon className="size-4 animate-spin" />
+                正在安装
+              </>
+            ) : state?.status === "downloading" ? (
+              <>
+                <LoaderCircleIcon className="size-4 animate-spin" />
+                下载中 {percent}%
+              </>
+            ) : (
+              <>
+                <LoaderCircleIcon className="size-4 animate-spin" />
+                准备下载
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogPopup>
+    </Dialog>
+  );
+}
 
 export function SidebarUpdatePill() {
   const queryClient = useQueryClient();

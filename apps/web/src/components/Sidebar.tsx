@@ -167,7 +167,7 @@ import {
   ThreadStatusPill,
 } from "./Sidebar.logic";
 import { sortThreads } from "../lib/threadSort";
-import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
+import { SidebarAppUpdateButton } from "./sidebar/SidebarUpdatePill";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { CommandDialogTrigger } from "./ui/command";
 import { readEnvironmentApi } from "../environmentApi";
@@ -2276,7 +2276,7 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron: boolean;
 }) {
   const wordmark = (
-    <div className="flex min-w-0 flex-1 items-center">
+    <div className="flex min-w-0 flex-1 items-center gap-1">
       <SidebarTrigger className="shrink-0 md:hidden" />
       <Tooltip>
         <TooltipTrigger
@@ -2300,6 +2300,7 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
           Version {APP_VERSION}
         </TooltipPopup>
       </Tooltip>
+      <SidebarAppUpdateButton />
     </div>
   );
 
@@ -2409,7 +2410,6 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
     <SidebarFooter className="p-1.5">
       <SidebarProviderUpdatePill />
-      <SidebarUpdatePill />
       <div className="flex items-center gap-1.5">
         <Menu>
           <MenuTrigger
@@ -2432,7 +2432,10 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                   <CircleUserRoundIcon className="size-5" />
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-foreground" title={accountLabel}>
+                  <div
+                    className="truncate text-sm font-semibold text-foreground"
+                    title={accountLabel}
+                  >
                     {accountLabel}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">{accountPlanLabel}</div>
@@ -2487,9 +2490,7 @@ type CommercialAccountUsage = Awaited<
   ReturnType<NonNullable<NonNullable<Window["desktopBridge"]>["getCommercialAccountUsage"]>>
 >;
 
-type CommercialUsageLike = NonNullable<
-  NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]
->;
+type CommercialUsageLike = NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]>;
 
 function AccountUsageCard(props: {
   providerUsage: CommercialUsageLike | null;
