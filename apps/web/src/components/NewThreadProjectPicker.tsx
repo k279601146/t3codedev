@@ -8,6 +8,7 @@ import { selectProjectsAcrossEnvironments, useStore } from "../store";
 import type { Project } from "../types";
 import { cn } from "~/lib/utils";
 import { ProjectFavicon } from "./ProjectFavicon";
+import { AddProjectMenu } from "./AddProjectMenu";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
@@ -41,12 +42,10 @@ function projectRefEquals(left: ScopedProjectRef | null, right: ScopedProjectRef
 export function NewThreadProjectPicker({
   activeProjectRef,
   className,
-  onAddProject,
   onProjectSelect,
 }: {
   activeProjectRef: ScopedProjectRef | null;
   className?: string;
-  onAddProject: () => void;
   onProjectSelect: (projectRef: ScopedProjectRef) => void;
 }) {
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
@@ -56,11 +55,6 @@ export function NewThreadProjectPicker({
     () => projects.filter((project) => projectMatchesQuery(project, query)),
     [projects, query],
   );
-
-  const handleAddProject = () => {
-    setOpen(false);
-    onAddProject();
-  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -127,14 +121,19 @@ export function NewThreadProjectPicker({
           )}
         </div>
         <div className="border-t border-border/70 py-1">
-          <button
-            type="button"
-            className="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-foreground/88 transition-colors hover:bg-accent hover:text-foreground"
-            onClick={handleAddProject}
-          >
-            <FolderPlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{ADD_PROJECT_LABEL}</span>
-          </button>
+          <AddProjectMenu
+            title={ADD_PROJECT_LABEL}
+            pinToCursorExplorer
+            trigger={
+              <button
+                type="button"
+                className="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-foreground/88 transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <FolderPlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{ADD_PROJECT_LABEL}</span>
+              </button>
+            }
+          />
         </div>
       </PopoverPopup>
     </Popover>

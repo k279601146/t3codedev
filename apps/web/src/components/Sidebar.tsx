@@ -200,6 +200,7 @@ import {
   getExternalFolderPathsFromDrop,
   hasExternalFolderDrop,
 } from "../lib/cursorExternalProjects";
+import { AddProjectMenu } from "./AddProjectMenu";
 const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   duration: 180,
   easing: "ease-out",
@@ -2570,7 +2571,6 @@ interface SidebarProjectsContentProps {
   projectGroupingMode: SidebarProjectGroupingMode;
   threadPreviewCount: SidebarThreadPreviewCount;
   updateSettings: ReturnType<typeof useUpdateSettings>["updateSettings"];
-  openAddProject: () => void;
   isManualProjectSorting: boolean;
   projectDnDSensors: ReturnType<typeof useSensors>;
   projectCollisionDetection: CollisionDetection;
@@ -2660,7 +2660,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     desktopUpdateButtonAction,
     desktopUpdateButtonDisabled,
     handleDesktopUpdateButtonClick,
-    openAddProject,
     isManualProjectSorting,
     projectDnDSensors,
     projectCollisionDetection,
@@ -3063,17 +3062,22 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
-                    type="button"
-                    aria-label={t("sidebar.addProject")}
-                    data-testid="sidebar-add-project-trigger"
-                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={openAddProject}
+                  <AddProjectMenu
+                    title={t("sidebar.addProject")}
+                    pinToCursorExplorer={false}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={t("sidebar.addProject")}
+                        data-testid="sidebar-add-project-trigger"
+                        className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                      >
+                        <FolderPlusIcon className="size-3.5" />
+                      </button>
+                    }
                   />
                 }
-              >
-                <FolderPlusIcon className="size-3.5" />
-              </TooltipTrigger>
+              />
               <TooltipPopup side="right">{t("sidebar.addProject")}</TooltipPopup>
             </Tooltip>
           }
@@ -3301,7 +3305,6 @@ export default function Sidebar() {
   });
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const keybindings = useServerKeybindings();
-  const openAddProjectCommandPalette = useCommandPaletteStore((store) => store.openAddProject);
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -3939,7 +3942,6 @@ export default function Sidebar() {
             projectGroupingMode={sidebarProjectGroupingMode}
             threadPreviewCount={sidebarThreadPreviewCount}
             updateSettings={updateSettings}
-            openAddProject={openAddProjectCommandPalette}
             isManualProjectSorting={isManualProjectSorting}
             projectDnDSensors={projectDnDSensors}
             projectCollisionDetection={projectCollisionDetection}

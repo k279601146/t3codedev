@@ -1,4 +1,5 @@
 import type { DesktopCommercialAuthState } from "@t3tools/contracts";
+import { resolveCommercialEngineGatewayBaseUrl } from "@t3tools/shared/commercialEngine";
 import { CheckIcon, ExternalLinkIcon, LoaderIcon, LogInIcon, XIcon } from "lucide-react";
 import type React from "react";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
@@ -114,7 +115,8 @@ export function CommercialGatewayLoginGate({
   const [showTokenFallback, setShowTokenFallback] = useState(false);
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
   const browserSignInRequestIdRef = useRef<string | null>(null);
-  const registerGatewayBaseUrl = authState?.gatewayBaseUrl ?? "";
+  const gatewayBaseUrl = authState?.gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
+  const registerGatewayBaseUrl = gatewayBaseUrl;
 
   useEffect(() => {
     setCurrentErrorMessage(errorMessage ?? "");
@@ -141,7 +143,7 @@ export function CommercialGatewayLoginGate({
     setIsBrowserSignIn(true);
     setCurrentErrorMessage("");
     void bridge
-      .signInCommercialAuthWithBrowser({ requestId })
+      .signInCommercialAuthWithBrowser({ gatewayBaseUrl, requestId })
       .then((nextState) => {
         if (browserSignInRequestIdRef.current !== requestId) return;
         publishDesktopCommercialAuthState(nextState);
@@ -157,7 +159,7 @@ export function CommercialGatewayLoginGate({
           setIsBrowserSignIn(false);
         }
       });
-  }, [bridge, isBrowserSignIn, onAuthenticated]);
+  }, [bridge, gatewayBaseUrl, isBrowserSignIn, onAuthenticated]);
 
   const handleTokenSignIn = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -167,6 +169,7 @@ export function CommercialGatewayLoginGate({
       setCurrentErrorMessage("");
       void bridge
         .signInCommercialAuth({
+          gatewayBaseUrl,
           webAccessToken,
         })
         .then((nextState) => {
@@ -181,7 +184,7 @@ export function CommercialGatewayLoginGate({
           setIsTokenSignIn(false);
         });
     },
-    [bridge, onAuthenticated, webAccessToken],
+    [bridge, gatewayBaseUrl, onAuthenticated, webAccessToken],
   );
 
   return (

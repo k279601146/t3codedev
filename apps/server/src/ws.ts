@@ -26,6 +26,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   ProjectListDirectoryError,
   ProjectReadFileError,
+  ProjectCreateBlankError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
@@ -61,6 +62,7 @@ import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
+import { createBlankProjectDirectory } from "./workspace/BlankProjectDirectory.ts";
 import { VcsStatusBroadcaster } from "./vcs/VcsStatusBroadcaster.ts";
 import { VcsProvisioningService } from "./vcs/VcsProvisioningService.ts";
 import { GitWorkflowService } from "./git/GitWorkflowService.ts";
@@ -1077,6 +1079,24 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 });
               }),
             ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsCreateBlank]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsCreateBlank,
+            Effect.tryPromise({
+              try: async () => ({
+                workspaceRoot: await createBlankProjectDirectory(input.name),
+              }),
+              catch: (cause) =>
+                new ProjectCreateBlankError({
+                  message:
+                    cause instanceof Error
+                      ? `创建空白项目失败：${cause.message}`
+                      : "创建空白项目失败。",
+                  cause,
+                }),
+            }),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>

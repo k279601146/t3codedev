@@ -53,6 +53,7 @@ export async function ensureCursorProjectForPath(input: {
   rawPath: string;
   projects: ReadonlyArray<Project>;
   pinToExplorer: boolean;
+  createWorkspaceRootIfMissing?: boolean;
 }): Promise<Project["id"]> {
   const workspaceRoot = resolveProjectPathForDispatch(input.rawPath);
   if (!workspaceRoot) {
@@ -84,7 +85,7 @@ export async function ensureCursorProjectForPath(input: {
     projectId,
     title: inferProjectTitleFromPath(workspaceRoot),
     workspaceRoot,
-    createWorkspaceRootIfMissing: false,
+    createWorkspaceRootIfMissing: input.createWorkspaceRootIfMissing === true,
     defaultModelSelection: {
       instanceId: ProviderInstanceId.make("codex"),
       model: DEFAULT_MODEL,

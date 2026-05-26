@@ -5,6 +5,7 @@ const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 const PROJECT_LIST_DIRECTORY_MAX_DEPTH = 8;
 const PROJECT_READ_FILE_MAX_LENGTH = 512;
+const PROJECT_NAME_MAX_LENGTH = 120;
 
 export const ProjectSearchEntriesInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -109,6 +110,24 @@ export type ProjectListDirectoryResult = typeof ProjectListDirectoryResult.Type;
 
 export class ProjectListDirectoryError extends Schema.TaggedErrorClass<ProjectListDirectoryError>()(
   "ProjectListDirectoryError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+export const ProjectCreateBlankInput = Schema.Struct({
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_NAME_MAX_LENGTH)),
+});
+export type ProjectCreateBlankInput = typeof ProjectCreateBlankInput.Type;
+
+export const ProjectCreateBlankResult = Schema.Struct({
+  workspaceRoot: TrimmedNonEmptyString,
+});
+export type ProjectCreateBlankResult = typeof ProjectCreateBlankResult.Type;
+
+export class ProjectCreateBlankError extends Schema.TaggedErrorClass<ProjectCreateBlankError>()(
+  "ProjectCreateBlankError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect),

@@ -196,7 +196,13 @@ function createClient() {
     },
     projects: {
       searchEntries: vi.fn(async () => []),
+      readFile: vi.fn(async () => ({ contents: "", relativePath: "", sizeBytes: 0 })),
+      listDirectory: vi.fn(async () => ({
+        tree: { kind: "directory", name: "root", path: "" },
+        truncated: false,
+      })),
       writeFile: vi.fn(async () => undefined),
+      createBlank: vi.fn(async () => ({ workspaceRoot: "/tmp/未命名项目" })),
     },
     shell: {
       openInEditor: vi.fn(async () => undefined),

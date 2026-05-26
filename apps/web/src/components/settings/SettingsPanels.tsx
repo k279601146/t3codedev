@@ -446,6 +446,7 @@ function CommercialGatewaySection() {
     setIsWorking(true);
     void bridge
       .signInCommercialAuth({
+        gatewayBaseUrl: authState?.gatewayBaseUrl ?? "",
         webAccessToken,
       })
       .then((state) => {

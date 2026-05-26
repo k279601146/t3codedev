@@ -21,7 +21,6 @@ import { toastManager } from "../ui/toast";
 import { useCursorLayoutStore } from "../../cursorLayoutStore";
 import { readEnvironmentApi } from "../../environmentApi";
 import { Button } from "../ui/button";
-import { useCommandPaletteStore } from "../../commandPaletteStore";
 import { cn } from "../../lib/utils";
 import { dedupeCursorProjects, getCursorProjectIdentity } from "../../lib/cursorProjects";
 import {
@@ -35,6 +34,7 @@ import { useSettings } from "../../hooks/useSettings";
 import { CURSOR_PROJECT_DRAG_TYPE, CursorProjectDock } from "./CursorProjectDock";
 import type { Project } from "../../types";
 import { useUiStateStore } from "../../uiStateStore";
+import { AddProjectMenu } from "../AddProjectMenu";
 
 const PROJECT_DOCK_MIN_HEIGHT_PX = 112;
 const PROJECT_DOCK_MAX_HEIGHT_RATIO = 0.82;
@@ -83,7 +83,6 @@ export function CursorSidebar() {
   const unpinProject = useCursorLayoutStore((state) => state.unpinProject);
   const setPinnedProjects = useCursorLayoutStore((state) => state.setPinnedProjects);
   const togglePinnedProject = useCursorLayoutStore((state) => state.togglePinnedProject);
-  const openAddProject = useCommandPaletteStore((state) => state.openAddProject);
   const { handleNewThread } = useNewThreadHandler();
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
   const defaultThreadEnvMode = useSettings((settings) => settings.defaultThreadEnvMode);
@@ -371,17 +370,21 @@ export function CursorSidebar() {
               <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
                 Explorer
               </div>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                aria-label="Add project"
-                title="Add project to Explorer"
-                onClick={() => openAddProject({ pinToCursorExplorer: true })}
-              >
-                <FolderPlusIcon className="size-3.5" />
-              </Button>
+              <AddProjectMenu
+                title="添加项目到资源管理器"
+                pinToCursorExplorer
+                trigger={
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                    aria-label="添加项目"
+                  >
+                    <FolderPlusIcon className="size-3.5" />
+                  </Button>
+                }
+              />
             </div>
 
             {explorerProjects.length > 0 ? (

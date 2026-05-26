@@ -16,7 +16,6 @@ import type React from "react";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { useCommandPaletteStore } from "../../commandPaletteStore";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { readEnvironmentApi } from "../../environmentApi";
 import { newCommandId } from "../../lib/utils";
@@ -63,6 +62,7 @@ import {
   useSavedEnvironmentRuntimeStore,
 } from "../../environments/runtime";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { AddProjectMenu } from "../AddProjectMenu";
 
 export const CURSOR_PROJECT_DRAG_TYPE = "application/x-t3code-project-key";
 const PROJECT_DOCK_LIST_PADDING_PX = 8;
@@ -152,7 +152,6 @@ export function CursorProjectDock({
   }));
   const savedEnvironmentRegistry = useSavedEnvironmentRegistryStore((state) => state.byId);
   const savedEnvironmentRuntimeById = useSavedEnvironmentRuntimeStore((state) => state.byId);
-  const openAddProject = useCommandPaletteStore((state) => state.openAddProject);
   const collapsed = useCursorLayoutStore((state) => state.projectDockCollapsed);
   const setCollapsed = useCursorLayoutStore((state) => state.setProjectDockCollapsed);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -347,16 +346,21 @@ export function CursorProjectDock({
         <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
           Projects
         </div>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-          onClick={() => openAddProject({ pinToCursorExplorer: true })}
-          aria-label="Add project"
-        >
-          <FolderPlusIcon className="size-3.5" />
-        </Button>
+        <AddProjectMenu
+          title="添加项目"
+          pinToCursorExplorer
+          trigger={
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="添加项目"
+            >
+              <FolderPlusIcon className="size-3.5" />
+            </Button>
+          }
+        />
       </div>
 
       {collapsed ? null : (

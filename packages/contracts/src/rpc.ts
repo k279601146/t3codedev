@@ -64,6 +64,9 @@ import {
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
+  ProjectCreateBlankError,
+  ProjectCreateBlankInput,
+  ProjectCreateBlankResult,
 } from "./project.ts";
 import {
   TerminalClearInput,
@@ -128,6 +131,7 @@ export const WS_METHODS = {
   projectsReadFile: "projects.readFile",
   projectsListDirectory: "projects.listDirectory",
   projectsWriteFile: "projects.writeFile",
+  projectsCreateBlank: "projects.createBlank",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -353,6 +357,12 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
+});
+
+export const WsProjectsCreateBlankRpc = Rpc.make(WS_METHODS.projectsCreateBlank, {
+  payload: ProjectCreateBlankInput,
+  success: ProjectCreateBlankResult,
+  error: ProjectCreateBlankError,
 });
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
@@ -583,6 +593,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsReadFileRpc,
   WsProjectsListDirectoryRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsCreateBlankRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeVcsStatusRpc,

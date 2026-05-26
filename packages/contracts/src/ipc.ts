@@ -31,6 +31,8 @@ import type {
   ProjectListDirectoryResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
+  ProjectCreateBlankInput,
+  ProjectCreateBlankResult,
 } from "./project.ts";
 import type { ProviderInstanceId } from "./providerInstance.ts";
 import type {
@@ -572,6 +574,7 @@ export interface EnvironmentApi {
     readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
     listDirectory: (input: ProjectListDirectoryInput) => Promise<ProjectListDirectoryResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    createBlank: (input: ProjectCreateBlankInput) => Promise<ProjectCreateBlankResult>;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;
