@@ -798,6 +798,10 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(button).toBeEnabled();
     await button.click();
     expect(desktopBridge.checkForUpdate).toHaveBeenCalled();
+    await expect.element(page.getByText("已是最新版本")).toBeInTheDocument();
+    await expect
+      .element(page.getByText("Automatic updates are not available because no update feed is configured."))
+      .not.toBeInTheDocument();
   });
 
   it("creates and shows a pairing link when network access is enabled", async () => {

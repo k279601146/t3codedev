@@ -33,6 +33,7 @@ import * as Equal from "effect/Equal";
 import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
 import {
   getDesktopUpdateButtonTooltip,
+  getDesktopUpdateCheckToast,
   getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
@@ -279,13 +280,13 @@ function AboutVersionSection() {
       .checkForUpdate()
       .then((result) => {
         setDesktopUpdateStateQueryData(queryClient, result.state);
-        if (!result.checked) {
+        const checkToast = getDesktopUpdateCheckToast(result);
+        if (checkToast) {
           toastManager.add(
             stackedThreadToast({
-              type: "error",
-              title: "Could not check for updates",
-              description:
-                result.state.message ?? "Automatic updates are not available in this build.",
+              type: checkToast.type,
+              title: checkToast.title,
+              description: checkToast.description,
             }),
           );
         }
@@ -294,8 +295,8 @@ function AboutVersionSection() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not check for updates",
-            description: error instanceof Error ? error.message : "Update check failed.",
+            title: "无法检查更新",
+            description: error instanceof Error ? error.message : "更新检查失败，请稍后重试。",
           }),
         );
       });

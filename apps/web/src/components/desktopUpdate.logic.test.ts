@@ -6,6 +6,7 @@ import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
+  getDesktopUpdateCheckToast,
   getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
@@ -157,6 +158,55 @@ describe("getDesktopUpdateActionError", () => {
 });
 
 describe("desktop update UI helpers", () => {
+  it("shows an up-to-date toast when manual checking reaches the latest version", () => {
+    expect(
+      getDesktopUpdateCheckToast({
+        checked: true,
+        state: { ...baseState, status: "up-to-date" },
+      }),
+    ).toEqual({
+      type: "success",
+      title: "已是最新版本",
+      description: "T3 Code 1.0.0 已是最新版本。",
+    });
+  });
+
+  it("treats unavailable automatic updates as up to date for manual settings checks", () => {
+    expect(
+      getDesktopUpdateCheckToast({
+        checked: false,
+        state: {
+          ...baseState,
+          enabled: false,
+          status: "disabled",
+          message: "Automatic updates are not available in this build.",
+        },
+      }),
+    ).toEqual({
+      type: "success",
+      title: "已是最新版本",
+      description: "T3 Code 1.0.0 已是最新版本。",
+    });
+  });
+
+  it("keeps real update check failures visible", () => {
+    expect(
+      getDesktopUpdateCheckToast({
+        checked: true,
+        state: {
+          ...baseState,
+          status: "error",
+          message: "network timeout",
+          errorContext: "check",
+        },
+      }),
+    ).toEqual({
+      type: "error",
+      title: "无法检查更新",
+      description: "network timeout",
+    });
+  });
+
   it("toasts only for actionable updater errors", () => {
     expect(
       shouldToastDesktopUpdateActionResult({

@@ -1,4 +1,8 @@
-import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
+import type {
+  DesktopUpdateActionResult,
+  DesktopUpdateCheckResult,
+  DesktopUpdateState,
+} from "@t3tools/contracts";
 
 export type DesktopUpdateButtonAction = "download" | "install" | "none";
 
@@ -92,6 +96,40 @@ export function getDesktopUpdateActionError(result: DesktopUpdateActionResult): 
 
 export function shouldToastDesktopUpdateActionResult(result: DesktopUpdateActionResult): boolean {
   return getDesktopUpdateActionError(result) !== null;
+}
+
+export type DesktopUpdateCheckToast = {
+  readonly type: "error" | "success";
+  readonly title: string;
+  readonly description: string;
+};
+
+export function getDesktopUpdateCheckToast(
+  result: DesktopUpdateCheckResult,
+): DesktopUpdateCheckToast | null {
+  const state = result.state;
+
+  if (state.status === "up-to-date" || state.status === "disabled") {
+    return {
+      type: "success",
+      title: "已是最新版本",
+      description: `T3 Code ${state.currentVersion} 已是最新版本。`,
+    };
+  }
+
+  if (state.status === "error") {
+    return {
+      type: "error",
+      title: "无法检查更新",
+      description: state.message ?? "更新检查失败，请稍后重试。",
+    };
+  }
+
+  if (!result.checked) {
+    return null;
+  }
+
+  return null;
 }
 
 export function shouldHighlightDesktopUpdateError(state: DesktopUpdateState | null): boolean {
