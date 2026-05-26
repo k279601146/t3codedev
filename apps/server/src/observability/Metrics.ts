@@ -54,6 +54,14 @@ export const providerTurnDuration = Metric.timer("t3_provider_turn_duration", {
   description: "Provider turn request duration.",
 });
 
+export const providerFirstAssistantDeltaLatency = Metric.timer(
+  "t3_provider_first_assistant_delta_latency",
+  {
+    description:
+      "Time from orchestration turn-start request to the first assistant text delta received by the provider runtime ingestion pipeline.",
+  },
+);
+
 export const providerRuntimeEventsTotal = Metric.counter("t3_provider_runtime_events_total", {
   description: "Total canonical provider runtime events processed.",
 });

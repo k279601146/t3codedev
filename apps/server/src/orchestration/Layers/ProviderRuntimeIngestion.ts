@@ -18,10 +18,12 @@ import {
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
+import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
@@ -36,6 +38,10 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import {
+  metricAttributes,
+  providerFirstAssistantDeltaLatency,
+} from "../../observability/Metrics.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
@@ -615,6 +621,8 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
+  const turnStartRequestedAtByThread = new Map<ThreadId, number>();
+  const firstAssistantDeltaRecordedByThread = new Set<ThreadId>();
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
@@ -1326,6 +1334,29 @@ const make = Effect.gen(function* () {
         event.type === "turn.proposed.delta" ? event.payload.delta : undefined;
 
       if (assistantDelta && assistantDelta.length > 0) {
+        if (!firstAssistantDeltaRecordedByThread.has(thread.id)) {
+          const requestedAtMs = turnStartRequestedAtByThread.get(thread.id);
+          if (requestedAtMs !== undefined) {
+            const observedAtMs = yield* Clock.currentTimeMillis;
+            yield* Metric.update(
+              Metric.withAttributes(
+                providerFirstAssistantDeltaLatency,
+                metricAttributes({
+                  provider: event.provider,
+                  eventType: event.type,
+                }),
+              ),
+              Duration.millis(Math.max(0, observedAtMs - requestedAtMs)),
+            );
+            yield* Effect.logInfo("provider first assistant delta observed", {
+              threadId: thread.id,
+              provider: event.provider,
+              latencyMs: Math.max(0, observedAtMs - requestedAtMs),
+            });
+          }
+          firstAssistantDeltaRecordedByThread.add(thread.id);
+        }
+
         const turnId = toTurnId(event.turnId);
         const assistantMessageId = yield* getOrCreateAssistantMessageId({
           threadId: thread.id,
@@ -1626,7 +1657,11 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
-  const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;
+  const processDomainEvent = (event: TurnStartRequestedDomainEvent) =>
+    Effect.gen(function* () {
+      turnStartRequestedAtByThread.set(event.payload.threadId, yield* Clock.currentTimeMillis);
+      firstAssistantDeltaRecordedByThread.delete(event.payload.threadId);
+    });
 
   const processInput = (input: RuntimeIngestionInput) =>
     input.source === "runtime" ? processRuntimeEvent(input.event) : processDomainEvent(input.event);

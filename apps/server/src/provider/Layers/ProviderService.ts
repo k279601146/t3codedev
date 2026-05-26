@@ -34,6 +34,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as Stream from "effect/Stream";
+import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import {
   increment,
@@ -212,15 +213,25 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const directory = yield* ProviderSessionDirectory;
   const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+  const canonicalEventLogWorker = yield* makeDrainableWorker((event: ProviderRuntimeEvent) =>
+    canonicalEventLogger
+      ? canonicalEventLogger.write(event, event.threadId).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("provider canonical event log write failed", {
+              eventId: event.eventId,
+              eventType: event.type,
+              threadId: event.threadId,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+        )
+      : Effect.void,
+  );
 
   const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
     Effect.succeed(event).pipe(
-      Effect.tap((canonicalEvent) =>
-        canonicalEventLogger
-          ? canonicalEventLogger.write(canonicalEvent, canonicalEvent.threadId)
-          : Effect.void,
-      ),
       Effect.flatMap((canonicalEvent) => PubSub.publish(runtimeEventPubSub, canonicalEvent)),
+      Effect.andThen(canonicalEventLogWorker.enqueue(event)),
       Effect.asVoid,
     );
 
