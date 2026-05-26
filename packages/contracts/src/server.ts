@@ -87,6 +87,29 @@ export const ServerProviderAuth = Schema.Struct({
       usage: Schema.optional(
         Schema.NullOr(
           Schema.Struct({
+            plan: Schema.optional(Schema.NullOr(Schema.String)),
+            planLabel: Schema.optional(Schema.NullOr(Schema.String)),
+            planMultiplier: Schema.optional(Schema.NullOr(Schema.Number)),
+            currentWindow: Schema.optional(
+              Schema.NullOr(
+                Schema.Struct({
+                  usedUnits: Schema.Number,
+                  limitUnits: Schema.Number,
+                  usedPercent: Schema.Number,
+                  resetsAt: Schema.NullOr(Schema.String),
+                }),
+              ),
+            ),
+            weeklyWindow: Schema.optional(
+              Schema.NullOr(
+                Schema.Struct({
+                  usedUnits: Schema.Number,
+                  limitUnits: Schema.Number,
+                  usedPercent: Schema.Number,
+                  resetsAt: Schema.NullOr(Schema.String),
+                }),
+              ),
+            ),
             totalTokens: Schema.Number,
             todayTokens: Schema.optional(Schema.NullOr(Schema.Number)),
             totalActualCost: Schema.optional(Schema.NullOr(Schema.Number)),

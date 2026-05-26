@@ -150,6 +150,84 @@ describe("DesktopEngineUpdater", () => {
     );
   });
 
+  it.effect("accepts the sub2api IDE version envelope as an engine manifest", () => {
+    const manifestUrl = "https://updates.example.test/ide/api/version/engine";
+    const binaryUrl = "https://updates.example.test/ai-engine";
+    const binaryBytes = textEncoder.encode("new-engine-binary");
+    const binaryName = engineBinaryName();
+
+    return withUpdater(
+      withFetch(
+        (async (url) => {
+          const rawUrl = String(url);
+          if (rawUrl === manifestUrl) {
+            return new Response(
+              JSON.stringify({
+                code: 0,
+                data: {
+                  version: "2.2.0",
+                  min_app_version: "1.0.0",
+                  protocolVersion: "app-server-v1",
+                  download: {
+                    url: binaryUrl,
+                    sha256: NEW_ENGINE_BINARY_SHA256,
+                    size: binaryBytes.byteLength,
+                  },
+                },
+              }),
+              { status: 200 },
+            );
+          }
+
+          if (rawUrl === binaryUrl) {
+            return new Response(binaryBytes, { status: 200 });
+          }
+
+          return new Response("not found", { status: 404 });
+        }) as typeof fetch,
+        Effect.gen(function* () {
+          const environment = yield* DesktopEnvironment.DesktopEnvironment;
+          const updater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
+
+          yield* updater.checkAndUpdate;
+
+          assert.equal(
+            yield* updater.getActiveEnginePath,
+            environment.path.join(environment.engineVersionsPath, "2.2.0", binaryName),
+          );
+        }),
+      ),
+      { MYIDE_ENGINE_MANIFEST_URL: manifestUrl },
+    );
+  });
+
+  it.effect("rejects engine updates with an incompatible protocol version", () => {
+    const manifestUrl = "https://updates.example.test/engine-manifest.json";
+    const key = `${process.platform}-${process.arch}`;
+
+    return withUpdater(
+      withFetch(
+        (async (url) => {
+          if (String(url) === manifestUrl) {
+            return new Response(
+              `{"version":"9.0.0","protocolVersion":"future-protocol","binaries":{"${key}":{"url":"https://updates.example.test/ai-engine","sha256":"${NEW_ENGINE_BINARY_SHA256}"}}}`,
+              { status: 200 },
+            );
+          }
+          return new Response("not found", { status: 404 });
+        }) as typeof fetch,
+        Effect.gen(function* () {
+          const updater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
+          const error = yield* updater.checkAndUpdate.pipe(Effect.flip);
+
+          assert.include(error.message, "unsupported protocol version");
+          assert.equal(yield* updater.getCurrentVersion, "bundled");
+        }),
+      ),
+      { MYIDE_ENGINE_MANIFEST_URL: manifestUrl },
+    );
+  });
+
   it.effect("rolls back to the previous downloaded engine version", () =>
     withUpdater(
       Effect.gen(function* () {

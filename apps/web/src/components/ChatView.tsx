@@ -184,6 +184,7 @@ import {
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
+  shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   threadHasStarted,
   waitForStartedServerThread,
@@ -201,6 +202,10 @@ import { retainThreadDetailSubscription } from "../environments/runtime/service"
 import { RightPanelSheet } from "./RightPanelSheet";
 import ThreadRightPanel, { type RightPanelArtifact } from "./ThreadRightPanel";
 import { Button } from "./ui/button";
+import {
+  formatUsageLimitResetHint,
+  resolveCommercialUsageLimitBlock,
+} from "../lib/commercialUsageGate";
 import {
   buildVersionMismatchDismissalKey,
   dismissVersionMismatch,
@@ -978,12 +983,22 @@ export default function ChatView(props: ChatViewProps) {
     setNewThreadScope({ kind: "project", projectRef: activeProjectRef });
   }, [activeProjectRef, setNewThreadScope]);
 
+  const threadDetailSubscriptionRef = useMemo(() => {
+    if (routeKind === "server") {
+      return scopeThreadRef(environmentId, threadId);
+    }
+    return draftThread?.promotedTo ?? null;
+  }, [draftThread?.promotedTo, environmentId, routeKind, threadId]);
+
   useEffect(() => {
-    if (routeKind !== "server") {
+    if (!threadDetailSubscriptionRef) {
       return;
     }
-    return retainThreadDetailSubscription(environmentId, threadId);
-  }, [environmentId, routeKind, threadId]);
+    return retainThreadDetailSubscription(
+      threadDetailSubscriptionRef.environmentId,
+      threadDetailSubscriptionRef.threadId,
+    );
+  }, [threadDetailSubscriptionRef]);
 
   useEffect(() => {
     if (
@@ -1848,6 +1863,21 @@ export default function ChatView(props: ChatViewProps) {
     const defaultInstanceId = defaultInstanceIdForDriver(selectedProvider);
     return providerStatuses.find((status) => status.instanceId === defaultInstanceId) ?? null;
   }, [activeProviderInstanceId, providerStatuses, selectedProvider]);
+  const usageLimitBlock = useMemo(
+    () => resolveCommercialUsageLimitBlock(activeProviderStatus),
+    [activeProviderStatus],
+  );
+  const showUsageLimitReachedToast = useCallback(() => {
+    if (!usageLimitBlock) return false;
+    toastManager.add(
+      stackedThreadToast({
+        type: "warning",
+        title: "用量已达上限",
+        description: formatUsageLimitResetHint(usageLimitBlock),
+      }),
+    );
+    return true;
+  }, [usageLimitBlock]);
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -2825,6 +2855,9 @@ export default function ChatView(props: ChatViewProps) {
       onAdvanceActivePendingUserInput();
       return;
     }
+    if (usageLimitBlock && showUsageLimitReachedToast()) {
+      return;
+    }
     const sendCtx = composerRef.current?.getSendContext();
     if (!sendCtx) return;
     const {
@@ -3321,6 +3354,9 @@ export default function ChatView(props: ChatViewProps) {
       if (!trimmed) {
         return;
       }
+      if (usageLimitBlock && showUsageLimitReachedToast()) {
+        return;
+      }
 
       const sendCtx = composerRef.current?.getSendContext();
       if (!sendCtx) {
@@ -3431,9 +3467,11 @@ export default function ChatView(props: ChatViewProps) {
       runtimeMode,
       setComposerDraftInteractionMode,
       setThreadError,
+      showUsageLimitReachedToast,
       activeThreadKey,
       environmentId,
       openRightPanelSurface,
+      usageLimitBlock,
     ],
   );
 
@@ -3455,6 +3493,9 @@ export default function ChatView(props: ChatViewProps) {
 
     const sendCtx = composerRef.current?.getSendContext();
     if (!sendCtx) {
+      return;
+    }
+    if (usageLimitBlock && showUsageLimitReachedToast()) {
       return;
     }
     const {
@@ -3568,6 +3609,8 @@ export default function ChatView(props: ChatViewProps) {
     resetLocalDispatch,
     runtimeMode,
     environmentId,
+    showUsageLimitReachedToast,
+    usageLimitBlock,
   ]);
 
   const onProviderModelSelect = useCallback(
@@ -3766,12 +3809,14 @@ export default function ChatView(props: ChatViewProps) {
     return null;
   }
 
-  const isEmptyNewThread =
-    (routeKind === "draft" || isConversationThread) &&
-    activeThread.messages.length === 0 &&
-    optimisticUserMessages.length === 0 &&
-    activeThread.latestTurn === null &&
-    !activeThread.error;
+  const isEmptyNewThread = shouldShowEmptyNewThread({
+    routeKind,
+    isConversationThread,
+    activeThreadMessagesCount: activeThread.messages.length,
+    displayedMessagesCount: timelineMessages.length,
+    latestTurn: activeThread.latestTurn,
+    error: activeThread.error,
+  });
   const hideProjectChromeForEmptyNewThread =
     isEmptyNewThread && (isConversationThread || !activeProject);
   const emptyNewThreadTitle =
@@ -3837,6 +3882,7 @@ export default function ChatView(props: ChatViewProps) {
       phase={phase}
       isConnecting={isConnecting}
       isSendBusy={isSendBusy}
+      isUsageLimitReached={usageLimitBlock !== null}
       isPreparingWorktree={isPreparingWorktree}
       environmentUnavailable={activeEnvironmentUnavailableState}
       activePendingApproval={activePendingApproval}

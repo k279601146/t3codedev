@@ -1,4 +1,4 @@
-import {
+﻿import {
   CommercialAccountUsageSchema,
   GatewayModelListResultSchema,
   SetLastUsedModelInputSchema,
@@ -8,6 +8,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
 } from "@t3tools/shared/commercialEngine";
+import { buildCommercialAccountUsageSnapshot } from "@t3tools/shared/commercialUsage";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -81,17 +82,7 @@ export const getCommercialAccountUsage = makeIpcMethod({
       return null;
     }
 
-    const { account, usage } = accountUsage;
-
-    return {
-      balance:
-        readNumber(account, ["data", "user", "balance"]) ??
-        readNumber(account, ["data", "balance"]),
-      totalTokens: readNumber(usage, ["data", "total_tokens"]) ?? 0,
-      todayTokens: readNumber(usage, ["data", "today_tokens"]),
-      totalActualCost: readNumber(usage, ["data", "total_actual_cost"]),
-      todayActualCost: readNumber(usage, ["data", "today_actual_cost"]),
-    };
+    return buildCommercialAccountUsageSnapshot(accountUsage);
   }),
 });
 
@@ -192,17 +183,6 @@ function requestGatewayJson(
   });
 }
 
-function readNumber(value: unknown, path: readonly string[]): number | null {
-  let current = value;
-  for (const segment of path) {
-    if (typeof current !== "object" || current === null || !(segment in current)) {
-      return null;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return typeof current === "number" && Number.isFinite(current) ? current : null;
-}
-
 interface RawModelEntry {
   id?: string;
   name?: string;
@@ -225,3 +205,4 @@ function parseModelsResponse(body: unknown): Array<{ id: string; name: string; p
   }
   return results;
 }
+

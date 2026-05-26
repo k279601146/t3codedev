@@ -32,7 +32,6 @@ import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
 import {
-  canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
@@ -304,10 +303,19 @@ function AboutVersionSection() {
 
   const action = updateState ? resolveDesktopUpdateButtonAction(updateState) : "none";
   const buttonTooltip = updateState ? getDesktopUpdateButtonTooltip(updateState) : null;
-  const buttonDisabled =
-    action === "none"
-      ? !canCheckForUpdate(updateState)
-      : isDesktopUpdateButtonDisabled(updateState);
+  const canRequestManualCheck =
+    hasDesktopBridge &&
+    typeof window.desktopBridge?.checkForUpdate === "function" &&
+    updateState?.status !== "checking" &&
+    updateState?.status !== "downloading" &&
+    updateState?.status !== "downloaded";
+  const buttonDisabled = !hasDesktopBridge
+    ? true
+    : updateState === null
+      ? false
+      : action === "none"
+        ? !canRequestManualCheck
+        : isDesktopUpdateButtonDisabled(updateState);
 
   const actionLabel: Record<string, string> = { download: "Download", install: "Install" };
   const statusLabel: Record<string, string> = {

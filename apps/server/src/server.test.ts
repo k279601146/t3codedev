@@ -1045,6 +1045,28 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("serves engine health metadata without requiring auth", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const url = yield* getHttpServerUrl("/health");
+      const response = yield* Effect.promise(() => fetch(url));
+      const body = (yield* Effect.promise(() => response.json())) as {
+        readonly status: string;
+        readonly engine: {
+          readonly engineName: string;
+          readonly upstream: string;
+          readonly protocolVersion: string;
+        };
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(body.status, "ok");
+      assert.equal(body.engine.upstream, "openai/codex");
+      assert.equal(body.engine.protocolVersion, "app-server-v1");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("includes CORS headers on public environment descriptor responses", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();

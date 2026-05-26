@@ -53,6 +53,7 @@ export const DesktopConfig = Config.all({
     Config.withDefault(3000),
   ),
   engineManifestUrl: trimmedString("MYIDE_ENGINE_MANIFEST_URL"),
+  engineSignaturePublicKey: trimmedString("MYIDE_ENGINE_SIGNATURE_PUBLIC_KEY"),
   windowsSandboxMode: trimmedString("MYIDE_WINDOWS_SANDBOX_MODE"),
 });
 

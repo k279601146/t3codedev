@@ -136,6 +136,7 @@ describe("DesktopCommercialAuth", () => {
             const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
 
             const state = yield* auth.signIn({
+              gatewayBaseUrl: "http://localhost:8080/v1",
               webAccessToken: "web-jwt",
             });
 
@@ -176,6 +177,7 @@ describe("DesktopCommercialAuth", () => {
           Effect.gen(function* () {
             const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
             yield* auth.signIn({
+              gatewayBaseUrl: "https://api.example.com/v1",
               webAccessToken: "web-jwt",
             });
 
@@ -212,6 +214,7 @@ describe("DesktopCommercialAuth", () => {
           Effect.gen(function* () {
             const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
             const state = yield* auth.signIn({
+              gatewayBaseUrl: "https://api.example.com/v1",
               webAccessToken: "web-jwt",
             });
 

@@ -14,6 +14,7 @@ import * as Scope from "effect/Scope";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
+import { SUPPORTED_ENGINE_PROTOCOL_VERSION } from "./DesktopEngineIntegrity.ts";
 
 const ENGINE_UPDATE_STARTUP_DELAY = Duration.minutes(5);
 const ENGINE_UPDATE_POLL_INTERVAL = Duration.days(1);
@@ -27,12 +28,18 @@ const BUNDLED_ENGINE_VERSION = "bundled";
 const EngineManifestBinary = Schema.Struct({
   url: Schema.String,
   sha256: Schema.String,
+  signature: Schema.optionalKey(Schema.String),
   size: Schema.optionalKey(Schema.Number),
 });
 
 const EngineManifest = Schema.Struct({
   version: Schema.String,
   minAppVersion: Schema.optionalKey(Schema.String),
+  protocolVersion: Schema.optionalKey(Schema.String),
+  engineName: Schema.optionalKey(Schema.String),
+  upstream: Schema.optionalKey(Schema.String),
+  upstreamVersion: Schema.optionalKey(Schema.String),
+  build: Schema.optionalKey(Schema.String),
   binaries: Schema.Record(Schema.String, EngineManifestBinary),
 });
 
@@ -44,7 +51,9 @@ const encodeEngineIntegrityManifestJson = Schema.encodeEffect(
   Schema.fromJsonString(
     Schema.Struct({
       version: Schema.String,
+      protocolVersion: Schema.optionalKey(Schema.String),
       binaries: Schema.Record(Schema.String, Schema.String),
+      signatures: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     }),
   ),
 );
@@ -108,6 +117,91 @@ function sha256(bytes: Uint8Array): string {
   return Crypto.createHash("sha256").update(bytes).digest("hex");
 }
 
+function stringFromRecord(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function numberFromRecord(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function compactRecord(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter((entry) => entry[1] !== undefined));
+}
+
+function normalizeManifestPayload(raw: unknown): unknown {
+  const payload =
+    typeof raw === "object" &&
+    raw !== null &&
+    "data" in raw &&
+    typeof (raw as { readonly data?: unknown }).data === "object" &&
+    (raw as { readonly data?: unknown }).data !== null
+      ? (raw as { readonly data: unknown }).data
+      : raw;
+
+  if (typeof payload !== "object" || payload === null) {
+    return payload;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const download =
+    typeof record.download === "object" && record.download !== null
+      ? (record.download as Record<string, unknown>)
+      : null;
+  const platform = platformKey({
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const binaries =
+    typeof record.binaries === "object" && record.binaries !== null
+      ? record.binaries
+      : download
+        ? {
+            [platform]: compactRecord({
+              url: stringFromRecord(download, "url") ?? stringFromRecord(record, "download_url"),
+              sha256: stringFromRecord(download, "sha256") ?? stringFromRecord(record, "sha256"),
+              signature:
+                stringFromRecord(download, "signature") ?? stringFromRecord(record, "signature"),
+              size: numberFromRecord(download, "size"),
+            }),
+          }
+        : undefined;
+
+  return compactRecord({
+    version:
+      stringFromRecord(record, "version") ??
+      stringFromRecord(record, "latest_version") ??
+      stringFromRecord(record, "latestVersion"),
+    minAppVersion:
+      stringFromRecord(record, "minAppVersion") ?? stringFromRecord(record, "min_app_version"),
+    protocolVersion:
+      stringFromRecord(record, "protocolVersion") ?? stringFromRecord(record, "protocol_version"),
+    engineName: stringFromRecord(record, "engineName") ?? stringFromRecord(record, "engine_name"),
+    upstream: stringFromRecord(record, "upstream"),
+    upstreamVersion:
+      stringFromRecord(record, "upstreamVersion") ?? stringFromRecord(record, "upstream_version"),
+    build: stringFromRecord(record, "build"),
+    binaries,
+  });
+}
+
+function verifyEd25519Signature(input: {
+  readonly bytes: Uint8Array;
+  readonly signature: string;
+  readonly publicKey: string;
+}): boolean {
+  const key = input.publicKey.includes("BEGIN")
+    ? input.publicKey
+    : Crypto.createPublicKey({
+        key: Buffer.from(input.publicKey, "base64"),
+        format: "der",
+        type: "spki",
+      });
+  return Crypto.verify(null, Buffer.from(input.bytes), key, Buffer.from(input.signature, "base64"));
+}
+
 function assertTrustedDownloadUrl(rawUrl: string, isDevelopment: boolean): void {
   const url = new URL(rawUrl);
   if (url.protocol === "https:") return;
@@ -155,13 +249,23 @@ const writeVersionManifest = Effect.fn("desktop.engineUpdater.writeVersionManife
     readonly binaryName: string;
     readonly version: string;
     readonly sha256: string;
+    readonly protocolVersion?: string;
+    readonly signature?: string;
   }): Effect.fn.Return<void, never, FileSystem.FileSystem> {
     const fileSystem = yield* FileSystem.FileSystem;
     const encoded = yield* encodeEngineIntegrityManifestJson({
       version: input.version,
+      ...(input.protocolVersion ? { protocolVersion: input.protocolVersion } : {}),
       binaries: {
         [input.binaryName]: input.sha256,
       },
+      ...(input.signature
+        ? {
+            signatures: {
+              [input.binaryName]: input.signature,
+            },
+          }
+        : {}),
     }).pipe(Effect.orDie);
     yield* fileSystem
       .writeFileString(`${input.versionDir}/${ENGINE_MANIFEST_FILE}`, `${encoded}\n`)
@@ -247,6 +351,27 @@ export const layer = Layer.effect(
             reason: `sha256 mismatch: expected ${binary.sha256}, got ${actualSha256}`,
           });
         }
+        const signaturePublicKey = Option.getOrUndefined(config.engineSignaturePublicKey);
+        if (signaturePublicKey !== undefined) {
+          if (!binary.signature) {
+            return yield* new DesktopEngineUpdateError({
+              reason: "manifest binary is missing required signature",
+            });
+          }
+          const validSignature = yield* Effect.try({
+            try: () =>
+              verifyEd25519Signature({
+                bytes,
+                signature: binary.signature ?? "",
+                publicKey: signaturePublicKey,
+              }),
+            catch: (cause) =>
+              new DesktopEngineUpdateError({ reason: "signature verification failed", cause }),
+          });
+          if (!validSignature) {
+            return yield* new DesktopEngineUpdateError({ reason: "signature mismatch" });
+          }
+        }
 
         const versionDir = environment.path.join(environment.engineVersionsPath, manifest.version);
         const tmpPath = environment.path.join(
@@ -265,6 +390,8 @@ export const layer = Layer.effect(
           binaryName,
           version: manifest.version,
           sha256: actualSha256,
+          ...(manifest.protocolVersion ? { protocolVersion: manifest.protocolVersion } : {}),
+          ...(binary.signature ? { signature: binary.signature } : {}),
         }).pipe(Effect.provideService(FileSystem.FileSystem, fileSystem));
         yield* fileSystem.writeFileString(currentVersionPath, `${manifest.version}\n`);
         yield* cleanupOldVersions(manifest.version);
@@ -286,12 +413,21 @@ export const layer = Layer.effect(
         try: () => fetchJson(manifestUrl, ENGINE_MANIFEST_TIMEOUT_MS),
         catch: (cause) => new DesktopEngineUpdateError({ reason: "manifest fetch failed", cause }),
       });
-      const manifest = yield* decodeEngineManifest(rawManifest).pipe(
+      const manifest = yield* decodeEngineManifest(normalizeManifestPayload(rawManifest)).pipe(
         Effect.mapError(
           (cause) =>
             new DesktopEngineUpdateError({ reason: `invalid manifest: ${cause.message}`, cause }),
         ),
       );
+
+      if (
+        manifest.protocolVersion !== undefined &&
+        manifest.protocolVersion !== SUPPORTED_ENGINE_PROTOCOL_VERSION
+      ) {
+        return yield* new DesktopEngineUpdateError({
+          reason: `unsupported protocol version: expected ${SUPPORTED_ENGINE_PROTOCOL_VERSION}, got ${manifest.protocolVersion}`,
+        });
+      }
 
       if (
         manifest.minAppVersion !== undefined &&
@@ -352,21 +488,19 @@ export const layer = Layer.effect(
         currentIndex > 0
           ? versions[currentIndex - 1]
           : versions.filter((version) => version !== currentVersion).at(-1);
-      if (!previousVersion) {
-        return false;
-      }
+      const rollbackVersion = previousVersion ?? BUNDLED_ENGINE_VERSION;
 
-      const previousPath = getEnginePathForVersion(previousVersion);
+      const previousPath = getEnginePathForVersion(rollbackVersion);
       const exists = yield* fileSystem.exists(previousPath).pipe(Effect.orElseSucceed(() => false));
       if (!exists) {
         return false;
       }
 
       yield* fileSystem.makeDirectory(environment.engineVersionsPath, { recursive: true });
-      yield* fileSystem.writeFileString(currentVersionPath, `${previousVersion}\n`);
+      yield* fileSystem.writeFileString(currentVersionPath, `${rollbackVersion}\n`);
       yield* logEngineUpdaterWarning("engine rolled back", {
         fromVersion: currentVersion,
-        toVersion: previousVersion,
+        toVersion: rollbackVersion,
         path: previousPath,
       });
       return true;

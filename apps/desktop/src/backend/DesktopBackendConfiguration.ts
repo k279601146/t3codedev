@@ -20,6 +20,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopEngineIntegrity from "../engine/DesktopEngineIntegrity.ts";
 import * as DesktopEngineUpdater from "../engine/DesktopEngineUpdater.ts";
+import { SUPPORTED_ENGINE_PROTOCOL_VERSION } from "../engine/DesktopEngineIntegrity.ts";
 import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
@@ -145,6 +146,8 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     readonly bootstrapToken: string;
     readonly commercialCredentials: Option.Option<DesktopCommercialAuth.DesktopCommercialAuthCredentials>;
     readonly engineBinaryPath: string;
+    readonly engineUpstreamVersion: Option.Option<string>;
+    readonly engineBuild: string;
     readonly windowsSandboxMode: CommercialEngineWindowsSandboxMode;
     readonly observabilitySettings: BackendObservabilitySettings;
     readonly telemetryEnabled: boolean;
@@ -181,6 +184,11 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         // 捆绑引擎路径注入：server 层通过这些环境变量检测捆绑模式
         MYIDE_ENGINE_PATH: input.engineBinaryPath,
         MYIDE_ENGINE_HOME: environment.engineHomePath,
+        MYIDE_ENGINE_NAME: "ai-engine",
+        MYIDE_ENGINE_UPSTREAM: "openai/codex",
+        MYIDE_ENGINE_UPSTREAM_VERSION: Option.getOrUndefined(input.engineUpstreamVersion),
+        MYIDE_ENGINE_PROTOCOL_VERSION: SUPPORTED_ENGINE_PROTOCOL_VERSION,
+        MYIDE_ENGINE_BUILD: input.engineBuild,
         [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: input.windowsSandboxMode,
         T3CODE_TELEMETRY_ENABLED: input.telemetryEnabled ? "true" : "false",
         ...commercialEnv,
@@ -270,14 +278,29 @@ export const layer = Layer.effect(
           );
 
         const bootstrapToken = yield* getOrCreateBootstrapToken(tokenRef);
-        const engineBinaryPath = yield* engineUpdater.getActiveEnginePath;
-        yield* engineIntegrity
-          .ensure(engineBinaryPath)
-          .pipe(
-            Effect.catch((error) =>
-              logBackendConfigurationWarning(error.message).pipe(Effect.andThen(Effect.die(error))),
-            ),
-          );
+        let engineBinaryPath = yield* engineUpdater.getActiveEnginePath;
+        const verifyEngine = (path: string) =>
+          engineIntegrity
+            .ensure(path)
+            .pipe(
+              Effect.catch((error) =>
+                logBackendConfigurationWarning(error.message).pipe(
+                  Effect.andThen(Effect.fail(error)),
+                ),
+              ),
+            );
+        const firstVerifyExit = yield* Effect.exit(verifyEngine(engineBinaryPath));
+        if (firstVerifyExit._tag === "Failure") {
+          const rolledBack = yield* engineUpdater.rollback.pipe(Effect.orElseSucceed(() => false));
+          if (!rolledBack) {
+            return yield* Effect.die(firstVerifyExit.cause);
+          }
+          engineBinaryPath = yield* engineUpdater.getActiveEnginePath;
+          yield* verifyEngine(engineBinaryPath).pipe(Effect.catch((error) => Effect.die(error)));
+        }
+        const engineBuild = yield* engineUpdater.getCurrentVersion;
+        const engineUpstreamVersion =
+          engineBuild === "bundled" ? Option.none<string>() : Option.some(engineBuild);
         const observabilitySettings = yield* readPersistedBackendObservabilitySettings.pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
@@ -295,6 +318,8 @@ export const layer = Layer.effect(
           bootstrapToken,
           commercialCredentials,
           engineBinaryPath,
+          engineUpstreamVersion,
+          engineBuild,
           windowsSandboxMode,
           observabilitySettings,
           telemetryEnabled,

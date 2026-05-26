@@ -60,6 +60,23 @@ export function buildLocalDraftThread(
   };
 }
 
+export function shouldShowEmptyNewThread(input: {
+  routeKind: "server" | "draft";
+  isConversationThread: boolean;
+  activeThreadMessagesCount: number;
+  displayedMessagesCount: number;
+  latestTurn: Thread["latestTurn"];
+  error: string | null | undefined;
+}): boolean {
+  return (
+    (input.routeKind === "draft" || input.isConversationThread) &&
+    input.activeThreadMessagesCount === 0 &&
+    input.displayedMessagesCount === 0 &&
+    input.latestTurn === null &&
+    !input.error
+  );
+}
+
 export function shouldWriteThreadErrorToCurrentServerThread(input: {
   serverThread:
     | {

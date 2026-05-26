@@ -9,12 +9,17 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 
+export const SUPPORTED_ENGINE_PROTOCOL_VERSION = "app-server-v1";
+
 const EngineIntegrityManifestDocument = Schema.Struct({
   version: Schema.optionalKey(Schema.String),
+  protocolVersion: Schema.optionalKey(Schema.String),
   binaries: Schema.Record(Schema.String, Schema.String),
+  signatures: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 type EngineIntegrityManifestDocument = typeof EngineIntegrityManifestDocument.Type;
@@ -49,6 +54,21 @@ const { logInfo: logIntegrityInfo, logWarning: logIntegrityWarning } =
 
 function sha256(bytes: Uint8Array): string {
   return Crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+function verifyEd25519Signature(input: {
+  readonly bytes: Uint8Array;
+  readonly signature: string;
+  readonly publicKey: string;
+}): boolean {
+  const key = input.publicKey.includes("BEGIN")
+    ? input.publicKey
+    : Crypto.createPublicKey({
+        key: Buffer.from(input.publicKey, "base64"),
+        format: "der",
+        type: "spki",
+      });
+  return Crypto.verify(null, Buffer.from(input.bytes), key, Buffer.from(input.signature, "base64"));
 }
 
 const readManifest = Effect.fn("desktop.engineIntegrity.readManifest")(function* (
@@ -102,6 +122,7 @@ export const layer = Layer.effect(
   DesktopEngineIntegrity,
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const config = yield* DesktopConfig.DesktopConfig;
     const fileSystem = yield* FileSystem.FileSystem;
 
     const verifyHash: DesktopEngineIntegrityShape["verifyHash"] = Effect.fn(
@@ -131,10 +152,28 @@ export const layer = Layer.effect(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
         );
         if (Option.isNone(manifestResult)) {
-          yield* logIntegrityWarning("engine integrity manifest not found; verification skipped", {
+          if (!environment.isPackaged && enginePath === environment.engineBinaryPath) {
+            yield* logIntegrityWarning(
+              "engine integrity manifest not found in unpackaged runtime; verification skipped",
+              { enginePath },
+            );
+            return;
+          }
+          return yield* new DesktopEngineIntegrityError({
             enginePath,
+            reason: "engine integrity manifest not found",
           });
-          return;
+        }
+
+        const protocolVersion = manifestResult.value.manifest.protocolVersion;
+        if (
+          protocolVersion !== undefined &&
+          protocolVersion !== SUPPORTED_ENGINE_PROTOCOL_VERSION
+        ) {
+          return yield* new DesktopEngineIntegrityError({
+            enginePath,
+            reason: `unsupported protocol version: expected ${SUPPORTED_ENGINE_PROTOCOL_VERSION}, got ${protocolVersion}`,
+          });
         }
 
         const binaryName = environment.path.basename(enginePath);
@@ -147,9 +186,43 @@ export const layer = Layer.effect(
         }
 
         yield* verifyHash({ enginePath, expectedSha256 });
+        const publicKey = Option.getOrUndefined(config.engineSignaturePublicKey);
+        if (publicKey !== undefined) {
+          const signature = manifestResult.value.manifest.signatures?.[binaryName];
+          if (!signature) {
+            return yield* new DesktopEngineIntegrityError({
+              enginePath,
+              reason: `no signature entry for ${binaryName} in ${manifestResult.value.manifestPath}`,
+            });
+          }
+          const bytes = yield* fileSystem
+            .readFile(enginePath)
+            .pipe(
+              Effect.mapError(
+                () =>
+                  new DesktopEngineIntegrityError({ enginePath, reason: "engine file not found" }),
+              ),
+            );
+          const validSignature = yield* Effect.try({
+            try: () => verifyEd25519Signature({ bytes, signature, publicKey }),
+            catch: (cause) =>
+              new DesktopEngineIntegrityError({
+                enginePath,
+                reason: `signature verification failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+              }),
+          });
+          if (!validSignature) {
+            return yield* new DesktopEngineIntegrityError({
+              enginePath,
+              reason: "signature mismatch",
+            });
+          }
+        }
         yield* logIntegrityInfo("engine integrity verified", {
           enginePath,
           manifestPath: manifestResult.value.manifestPath,
+          protocolVersion: protocolVersion ?? null,
+          signatureVerified: publicKey !== undefined,
         });
       }),
     });

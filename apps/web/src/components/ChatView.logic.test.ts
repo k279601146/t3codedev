@@ -22,6 +22,7 @@ import {
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
   resolveSendEnvMode,
+  shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -222,6 +223,34 @@ describe("deriveComposerSendState", () => {
     expect(state.trimmedPrompt).toBe("yoo  waddup");
     expect(state.expiredTerminalContextCount).toBe(1);
     expect(state.hasSendableContent).toBe(true);
+  });
+});
+
+describe("shouldShowEmptyNewThread", () => {
+  it("显示源已经有消息时不再停留在首页空状态", () => {
+    expect(
+      shouldShowEmptyNewThread({
+        routeKind: "draft",
+        isConversationThread: true,
+        activeThreadMessagesCount: 0,
+        displayedMessagesCount: 2,
+        latestTurn: null,
+        error: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("无项目新对话在没有任何可展示内容时保持首页空状态", () => {
+    expect(
+      shouldShowEmptyNewThread({
+        routeKind: "draft",
+        isConversationThread: true,
+        activeThreadMessagesCount: 0,
+        displayedMessagesCount: 0,
+        latestTurn: null,
+        error: null,
+      }),
+    ).toBe(true);
   });
 });
 

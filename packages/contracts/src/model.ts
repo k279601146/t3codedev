@@ -214,8 +214,24 @@ export type GatewayModelEntrySchema = typeof GatewayModelEntrySchema.Type;
 export const GatewayModelListResultSchema = Schema.Array(GatewayModelEntrySchema);
 export type GatewayModelListResultSchema = typeof GatewayModelListResultSchema.Type;
 
+export const CommercialSubscriptionPlanSchema = Schema.Literals(["free", "plus", "pro"]);
+export type CommercialSubscriptionPlanSchema = typeof CommercialSubscriptionPlanSchema.Type;
+
+export const CommercialUsageWindowSchema = Schema.Struct({
+  usedUnits: Schema.Number,
+  limitUnits: Schema.Number,
+  usedPercent: Schema.Number,
+  resetsAt: Schema.NullOr(Schema.String),
+});
+export type CommercialUsageWindowSchema = typeof CommercialUsageWindowSchema.Type;
+
 export const CommercialAccountUsageSchema = Schema.Struct({
   balance: Schema.NullOr(Schema.Number),
+  plan: CommercialSubscriptionPlanSchema,
+  planLabel: Schema.String,
+  planMultiplier: Schema.Number,
+  currentWindow: CommercialUsageWindowSchema,
+  weeklyWindow: CommercialUsageWindowSchema,
   totalTokens: Schema.Number,
   todayTokens: Schema.NullOr(Schema.Number),
   totalActualCost: Schema.NullOr(Schema.Number),

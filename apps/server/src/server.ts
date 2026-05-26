@@ -12,6 +12,7 @@ import {
   serverEnvironmentRouteLayer,
   staticAndDevRouteLayer,
   browserApiCorsLayer,
+  healthRouteLayer,
 } from "./http.ts";
 import { skillsAssetRouteLayer, skillsInstalledAssetRouteLayer } from "./skillsHttp.ts";
 import { fixPath } from "./os-jank.ts";
@@ -253,9 +254,7 @@ const ProviderRegistryLayerLive = ProviderRegistryLive.pipe(
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
 );
 
-const SkillsLayerLive = SkillsServiceLive.pipe(
-  Layer.provide(SkillsCatalogServiceLive),
-);
+const SkillsLayerLive = SkillsServiceLive.pipe(Layer.provide(SkillsCatalogServiceLive));
 
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
@@ -329,6 +328,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   prometheusMetricsRouteLayer,
   projectFaviconRouteLayer,
   serverEnvironmentRouteLayer,
+  healthRouteLayer,
   skillsAssetRouteLayer,
   skillsInstalledAssetRouteLayer,
   staticAndDevRouteLayer,

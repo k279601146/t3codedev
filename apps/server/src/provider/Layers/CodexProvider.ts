@@ -28,6 +28,7 @@ import {
   resolveCommercialEngineIdeApiBaseUrlCandidates,
   resolveCommercialEngineIdeJwt,
 } from "@t3tools/shared/commercialEngine";
+import { buildCommercialUsageLimitSnapshot } from "@t3tools/shared/commercialUsage";
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
@@ -135,6 +136,16 @@ const CommercialGatewayUsageResponse = Schema.Struct({
     today_tokens: Schema.optional(Schema.Number),
     total_actual_cost: Schema.optional(Schema.Number),
     today_actual_cost: Schema.optional(Schema.Number),
+    plan: Schema.optional(Schema.String),
+    plan_type: Schema.optional(Schema.String),
+    current_window: Schema.optional(Schema.Unknown),
+    current_window_units: Schema.optional(Schema.Number),
+    current_window_limit: Schema.optional(Schema.Number),
+    current_window_resets_at: Schema.optional(Schema.String),
+    weekly_window: Schema.optional(Schema.Unknown),
+    weekly_units: Schema.optional(Schema.Number),
+    weekly_limit: Schema.optional(Schema.Number),
+    weekly_resets_at: Schema.optional(Schema.String),
   }),
 });
 
@@ -387,6 +398,7 @@ const requestCommercialGatewayUsage = Effect.fn("requestCommercialGatewayUsage")
     ),
   );
   return {
+    ...buildCommercialUsageLimitSnapshot(payload),
     totalTokens: decoded.data.total_tokens,
     ...(decoded.data.today_tokens !== undefined ? { todayTokens: decoded.data.today_tokens } : {}),
     ...(decoded.data.total_actual_cost !== undefined

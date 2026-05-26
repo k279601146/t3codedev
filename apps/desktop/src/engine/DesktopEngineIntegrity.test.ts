@@ -12,6 +12,7 @@ const textEncoder = new TextEncoder();
 const ENGINE_BINARY_SHA256 = "4337d96a20d1bde86fef8cf57a4174e342e7604daa2a011d563a4f6ecad89b81";
 
 function makeLayer(baseDir: string) {
+  const configLayer = DesktopConfig.layerTest({ BAHEW_HOME: baseDir });
   const environmentLayer = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
     homeDirectory: baseDir,
@@ -22,14 +23,11 @@ function makeLayer(baseDir: string) {
     isPackaged: true,
     resourcesPath: "/missing/resources",
     runningUnderArm64Translation: false,
-  }).pipe(
-    Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ BAHEW_HOME: baseDir })),
-    ),
-  );
+  }).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, configLayer)));
 
   return DesktopEngineIntegrity.layer.pipe(
     Layer.provideMerge(environmentLayer),
+    Layer.provideMerge(configLayer),
     Layer.provideMerge(NodeServices.layer),
   );
 }
@@ -94,6 +92,29 @@ describe("DesktopEngineIntegrity", () => {
         const error = yield* integrity.ensure(enginePath).pipe(Effect.flip);
 
         assert.include(error.message, "sha256 mismatch");
+      }),
+    ),
+  );
+
+  it.effect("fails when the manifest protocol version is incompatible", () =>
+    withIntegrity(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const integrity = yield* DesktopEngineIntegrity.DesktopEngineIntegrity;
+        const baseDir = environment.path.join(environment.stateDir, "future-protocol");
+        const enginePath = environment.path.join(baseDir, "ai-engine");
+
+        yield* fileSystem.makeDirectory(baseDir, { recursive: true });
+        yield* fileSystem.writeFile(enginePath, textEncoder.encode("engine-binary"));
+        yield* fileSystem.writeFileString(
+          environment.path.join(baseDir, "engine-manifest.json"),
+          `{"version":"1.0.0","protocolVersion":"future-protocol","binaries":{"ai-engine":"${ENGINE_BINARY_SHA256}"}}`,
+        );
+
+        const error = yield* integrity.ensure(enginePath).pipe(Effect.flip);
+
+        assert.include(error.message, "unsupported protocol version");
       }),
     ),
   );

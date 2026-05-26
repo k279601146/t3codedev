@@ -1,18 +1,19 @@
 ﻿import {
   ArchiveIcon,
+  CreditCardIcon,
   BlocksIcon,
   CircleUserRoundIcon,
   Clock3Icon,
-  GaugeIcon,
+  HelpCircleIcon,
   CloudIcon,
   ExternalLinkIcon,
   FolderPlusIcon,
   LogOutIcon,
   PanelLeftIcon,
+  RefreshCwIcon,
   PinIcon,
   SearchIcon,
   SettingsIcon,
-  SlidersHorizontalIcon,
   SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -2324,11 +2325,17 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   );
   const providerStatuses = useServerProviders();
   const codexProvider = providerStatuses.find((provider) => provider.driver === "codex") ?? null;
+  const providerUsage = codexProvider?.auth.rateLimits?.usage ?? null;
   const accountLabel =
     commercialAuthState?.userLabel ??
     codexProvider?.auth.email ??
     codexProvider?.auth.label ??
     "T3 Code account";
+  const accountPlanLabel =
+    providerUsage?.planLabel ??
+    (providerUsage?.plan ? formatPlanLabel(providerUsage.plan) : undefined) ??
+    codexProvider?.auth.label ??
+    "AI Plus";
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2418,35 +2425,40 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             <SettingsIcon className="size-3.5" />
             <span className="text-xs">{t("sidebar.settings")}</span>
           </MenuTrigger>
-          <MenuPopup align="start" side="top" className="w-64">
+          <MenuPopup align="start" side="top" sideOffset={8} className="w-82 rounded-xl p-0">
             <MenuGroup>
-              <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-                <CircleUserRoundIcon className="size-4 shrink-0" />
-                <span className="truncate" title={accountLabel}>
-                  {accountLabel}
-                </span>
+              <div className="flex min-w-0 items-center gap-3 border-border/70 border-b px-4 py-4">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <CircleUserRoundIcon className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-foreground" title={accountLabel}>
+                    {accountLabel}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">{accountPlanLabel}</div>
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-                <SettingsIcon className="size-4 shrink-0" />
-                <span>Personal account</span>
-              </div>
-              <MenuSeparator />
-              <MenuItem onClick={handleOpenSettings}>
-                <SlidersHorizontalIcon className="size-4" />
-                <span>{t("sidebar.settings")}</span>
+              <AccountUsageCard providerUsage={providerUsage} onUpgrade={handleOpenPlans} />
+              <MenuSeparator className="mx-0 my-2" />
+              <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenSettings}>
+                <SettingsIcon className="size-4" />
+                <span>个人设置</span>
               </MenuItem>
-              <MenuSeparator />
-              <AccountUsageRows />
-              <MenuItem onClick={handleOpenPlans}>
-                <span>Upgrade to Pro</span>
-                <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
+              <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenBilling}>
+                <CreditCardIcon className="size-4" />
+                <span>订阅与账单</span>
               </MenuItem>
-              <MenuItem onClick={handleOpenBilling}>
-                <span>Learn more</span>
-                <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
+              <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenBilling}>
+                <HelpCircleIcon className="size-4" />
+                <span>帮助与支持</span>
               </MenuItem>
               {canSignOut ? (
-                <MenuItem disabled={isSigningOut} onClick={handleSignOut} variant="destructive">
+                <MenuItem
+                  className="mx-3 mb-2 min-h-10 rounded-md px-2.5"
+                  disabled={isSigningOut}
+                  onClick={handleSignOut}
+                  variant="destructive"
+                >
                   <LogOutIcon className="size-4" />
                   <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
                 </MenuItem>
@@ -2475,7 +2487,14 @@ type CommercialAccountUsage = Awaited<
   ReturnType<NonNullable<NonNullable<Window["desktopBridge"]>["getCommercialAccountUsage"]>>
 >;
 
-function AccountUsageRows() {
+type CommercialUsageLike = NonNullable<
+  NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]
+>;
+
+function AccountUsageCard(props: {
+  providerUsage: CommercialUsageLike | null;
+  onUpgrade: () => void;
+}) {
   const [usage, setUsage] = useState<CommercialAccountUsage | undefined>(undefined);
 
   useEffect(() => {
@@ -2503,48 +2522,123 @@ function AccountUsageRows() {
     };
   }, []);
 
+  const resolvedUsage = usage ?? props.providerUsage;
+  const currentWindow = resolvedUsage?.currentWindow ?? null;
+  const weeklyWindow = resolvedUsage?.weeklyWindow ?? null;
+  const planLabel =
+    resolvedUsage?.planLabel ??
+    (resolvedUsage?.plan ? formatPlanLabel(resolvedUsage.plan) : "AI Plus");
+  const multiplier = resolvedUsage?.planMultiplier ?? (resolvedUsage?.plan === "pro" ? 4 : 2);
+
   return (
-    <div className="px-2 py-1.5 text-xs">
-      <div className="flex items-center gap-2 text-foreground">
-        <GaugeIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="font-medium">已使用 Token</span>
-        <span className="ml-auto tabular-nums text-muted-foreground">
-          {formatUsageTokens(usage === undefined ? undefined : usage?.totalTokens)}
-        </span>
-      </div>
-      <div className="mt-1.5 space-y-1 pl-6 text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>账户余额</span>
-          <span className="ml-auto tabular-nums">
-            {formatAccountBalance(usage === undefined ? undefined : usage?.balance)}
-          </span>
+    <div className="px-3 py-3">
+      <div className="rounded-lg border border-border/80 bg-background px-4 py-3 shadow-sm">
+        <div className="text-sm font-semibold text-foreground">用量限制</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          {planLabel} · 标准限额的 {formatUsageMultiplier(multiplier)} 倍
         </div>
+        <UsageLimitRow
+          className="mt-4"
+          label="当前用量"
+          loading={usage === undefined && props.providerUsage === null}
+          window={currentWindow}
+        />
+        <UsageLimitRow
+          className="mt-4"
+          label="每周上限"
+          loading={usage === undefined && props.providerUsage === null}
+          window={weeklyWindow}
+        />
+        <Button
+          className="mt-4 h-9 w-full gap-1.5 rounded-lg bg-foreground text-background hover:bg-foreground/90"
+          onClick={props.onUpgrade}
+          size="sm"
+          type="button"
+        >
+          <span>升级到 AI Pro</span>
+          <ExternalLinkIcon className="size-3.5" />
+        </Button>
       </div>
     </div>
   );
 }
 
-function formatAccountBalance(balance: number | null | undefined): string {
-  if (balance === undefined) {
-    return "加载中";
-  }
-  if (balance === null || !Number.isFinite(balance)) {
-    return "--";
-  }
-  return `$${balance.toFixed(8).replace(/\.?0+$/, "")}`;
+function UsageLimitRow(props: {
+  className?: string;
+  label: string;
+  loading: boolean;
+  window: CommercialUsageLike["currentWindow"] | null | undefined;
+}) {
+  const percent = props.window ? clampUsagePercent(props.window.usedPercent) : 0;
+  const resetLabel = formatResetTime(props.window?.resetsAt ?? null);
+
+  return (
+    <div className={props.className}>
+      <div className="flex items-center gap-2 text-xs">
+        <span className="font-medium text-foreground">{props.label}</span>
+        <span className="ml-auto font-semibold tabular-nums text-muted-foreground">
+          {props.loading ? "--" : `${Math.round(percent)}%`}
+        </span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-foreground transition-[width]"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="tabular-nums">
+          {props.loading || !props.window
+            ? "加载中"
+            : `${formatUsageUnits(props.window.usedUnits)} / ${formatUsageUnits(
+                props.window.limitUnits,
+              )} units`}
+        </span>
+        <span className="ml-auto inline-flex items-center gap-1 tabular-nums">
+          <RefreshCwIcon className="size-3" />
+          {resetLabel}
+        </span>
+      </div>
+    </div>
+  );
 }
 
-function formatUsageTokens(tokens: number | null | undefined): string {
-  if (tokens === undefined) {
-    return "加载中";
+function clampUsagePercent(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function formatPlanLabel(plan: string): string {
+  switch (plan) {
+    case "plus":
+      return "AI Plus";
+    case "pro":
+      return "AI Pro";
+    default:
+      return "未订阅方案";
   }
-  if (tokens === null || !Number.isFinite(tokens)) {
-    return "--";
-  }
-  if (tokens <= 0) {
-    return "0";
-  }
-  return Math.round(tokens).toLocaleString();
+}
+
+function formatUsageMultiplier(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "1";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatUsageUnits(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "--";
+  return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function formatResetTime(value: string | null): string {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function resolveAccountActionUrl(baseUrl: string | null | undefined, path: string): string {

@@ -34,6 +34,7 @@ import { ProjectFaviconResolver } from "./project/Services/ProjectFaviconResolve
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import { respondToAuthError } from "./auth/http.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
+import { resolveBundledEngineConfig } from "./provider/BundledEngineConfig.ts";
 import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
@@ -46,6 +47,7 @@ const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const PROMETHEUS_METRICS_PATH = "/api/observability/metrics";
 const DESKTOP_APM_EVENTS_PATH = "/ide/api/telemetry";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
+const ENGINE_PROTOCOL_VERSION = "app-server-v1";
 
 export const browserApiCorsLayer = HttpRouter.cors({
   allowedMethods: [...browserApiCorsAllowedMethods],
@@ -68,6 +70,30 @@ export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   redirectUrl.hash = requestUrl.hash;
   return redirectUrl.toString();
 }
+
+function buildEngineHealthPayload() {
+  const bundledConfig = resolveBundledEngineConfig(process.env);
+  const engineName =
+    process.env.MYIDE_ENGINE_NAME?.trim() || (bundledConfig ? "ai-engine" : "codex");
+  return {
+    engineName,
+    upstream: process.env.MYIDE_ENGINE_UPSTREAM?.trim() || "openai/codex",
+    upstreamVersion: process.env.MYIDE_ENGINE_UPSTREAM_VERSION?.trim() || null,
+    protocolVersion: process.env.MYIDE_ENGINE_PROTOCOL_VERSION?.trim() || ENGINE_PROTOCOL_VERSION,
+    build: process.env.MYIDE_ENGINE_BUILD?.trim() || null,
+  };
+}
+
+export const healthRouteLayer = HttpRouter.add(
+  "GET",
+  "/health",
+  Effect.succeed(
+    HttpServerResponse.jsonUnsafe({
+      status: "ok",
+      engine: buildEngineHealthPayload(),
+    }),
+  ),
+);
 
 const requireAuthenticatedRequest = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;

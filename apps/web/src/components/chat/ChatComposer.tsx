@@ -306,6 +306,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
+  isUsageLimitReached?: boolean;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
@@ -327,6 +328,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
+        isUsageLimitReached={props.isUsageLimitReached ?? false}
         isConnecting={props.isConnecting}
         isEnvironmentUnavailable={props.isEnvironmentUnavailable}
         isPreparingWorktree={props.isPreparingWorktree}
@@ -400,6 +402,7 @@ export interface ChatComposerProps {
   phase: SessionPhase;
   isConnecting: boolean;
   isSendBusy: boolean;
+  isUsageLimitReached?: boolean;
   isPreparingWorktree: boolean;
   environmentUnavailable: {
     readonly label: string;
@@ -511,6 +514,7 @@ export const ChatComposer = memo(
       phase,
       isConnecting,
       isSendBusy,
+      isUsageLimitReached = false,
       isPreparingWorktree,
       environmentUnavailable,
       activePendingApproval,
@@ -1608,7 +1612,7 @@ export const ChatComposer = memo(
 
     const shouldBlurMobileComposerOnSubmit = useCallback(() => {
       if (!isMobileViewport) return false;
-      if (isSendBusy || isConnecting || phase === "running") return false;
+      if (isSendBusy || isUsageLimitReached || isConnecting || phase === "running") return false;
       if (activePendingProgress) {
         return activePendingProgress.isLastQuestion && Boolean(activePendingResolvedAnswers);
       }
@@ -1618,6 +1622,7 @@ export const ChatComposer = memo(
       activePendingResolvedAnswers,
       composerSendState.hasSendableContent,
       isConnecting,
+      isUsageLimitReached,
       isMobileViewport,
       isSendBusy,
       phase,
@@ -2359,6 +2364,7 @@ export const ChatComposer = memo(
                       showPlanFollowUpPrompt={false}
                       promptHasText={false}
                       isSendBusy={isSendBusy}
+                      isUsageLimitReached={isUsageLimitReached}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={environmentUnavailable !== null}
                       isPreparingWorktree={false}
@@ -2492,6 +2498,7 @@ export const ChatComposer = memo(
                     }
                     promptHasText={prompt.trim().length > 0}
                     isSendBusy={isSendBusy}
+                    isUsageLimitReached={isUsageLimitReached}
                     isConnecting={isConnecting}
                     isEnvironmentUnavailable={environmentUnavailable !== null}
                     isPreparingWorktree={isPreparingWorktree}

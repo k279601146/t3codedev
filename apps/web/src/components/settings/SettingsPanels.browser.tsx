@@ -340,6 +340,8 @@ const createDesktopBridgeStub = (overrides?: {
   readonly advertisedEndpoints?: Awaited<ReturnType<DesktopBridge["getAdvertisedEndpoints"]>>;
   readonly setServerExposureMode?: DesktopBridge["setServerExposureMode"];
   readonly setUpdateChannel?: DesktopBridge["setUpdateChannel"];
+  readonly getUpdateState?: DesktopBridge["getUpdateState"];
+  readonly checkForUpdate?: DesktopBridge["checkForUpdate"];
 }): DesktopBridge => {
   const idleUpdateState: DesktopUpdateState = {
     enabled: false,
@@ -450,14 +452,16 @@ const createDesktopBridgeStub = (overrides?: {
     showContextMenu: vi.fn().mockResolvedValue(null),
     openExternal: vi.fn().mockResolvedValue(true),
     onMenuAction: () => () => {},
-    getUpdateState: vi.fn().mockResolvedValue(idleUpdateState),
+    getUpdateState: overrides?.getUpdateState ?? vi.fn().mockResolvedValue(idleUpdateState),
     setUpdateChannel:
       overrides?.setUpdateChannel ??
       vi.fn().mockImplementation(async (channel: DesktopUpdateChannel) => ({
         ...idleUpdateState,
         channel,
       })),
-    checkForUpdate: vi.fn().mockResolvedValue({ checked: false, state: idleUpdateState }),
+    checkForUpdate:
+      overrides?.checkForUpdate ??
+      vi.fn().mockResolvedValue({ checked: false, state: idleUpdateState }),
     downloadUpdate: vi
       .fn()
       .mockResolvedValue({ accepted: false, completed: false, state: idleUpdateState }),
@@ -759,6 +763,41 @@ describe("GeneralSettingsPanel observability", () => {
         ),
       )
       .toBeInTheDocument();
+  });
+
+  it("allows manual update checks when automatic updates are disabled", async () => {
+    const disabledUpdateState: DesktopUpdateState = {
+      enabled: false,
+      status: "disabled",
+      channel: "latest",
+      currentVersion: "0.0.0-test",
+      hostArch: "arm64",
+      appArch: "arm64",
+      runningUnderArm64Translation: false,
+      availableVersion: null,
+      downloadedVersion: null,
+      downloadPercent: null,
+      checkedAt: null,
+      message: "Automatic updates are not available because no update feed is configured.",
+      errorContext: null,
+      canRetry: false,
+    };
+    const desktopBridge = createDesktopBridgeStub({
+      getUpdateState: vi.fn().mockResolvedValue(disabledUpdateState),
+      checkForUpdate: vi.fn().mockResolvedValue({ checked: false, state: disabledUpdateState }),
+    });
+    window.desktopBridge = desktopBridge;
+
+    mounted = await renderWithTestRouter(
+      <AppAtomRegistryProvider>
+        <GeneralSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    const button = page.getByRole("button", { name: "Check for Updates" });
+    await expect.element(button).toBeEnabled();
+    await button.click();
+    expect(desktopBridge.checkForUpdate).toHaveBeenCalled();
   });
 
   it("creates and shows a pairing link when network access is enabled", async () => {
