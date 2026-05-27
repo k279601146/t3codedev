@@ -4,6 +4,7 @@ import { describe, it } from "vitest";
 
 import {
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
+  COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV,
   COMMERCIAL_ENGINE_WIRE_API,
   COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
@@ -12,6 +13,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineWebAuthBaseUrl,
   resolveCommercialEngineWindowsSandboxMode,
 } from "./commercialEngine.ts";
 
@@ -29,6 +31,16 @@ describe("commercialEngine", () => {
     assert.equal(
       resolveCommercialEngineGatewayBaseUrl({}),
       DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+    );
+  });
+
+  it("uses a separate dev2 web authorization URL", () => {
+    assert.equal(
+      resolveCommercialEngineWebAuthBaseUrl({
+        [COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV]: "https://app.example.com",
+        MYIDE_GATEWAY_BASE_URL: "https://gateway.example.com/v1",
+      }),
+      "https://app.example.com",
     );
   });
 

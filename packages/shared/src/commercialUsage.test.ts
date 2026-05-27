@@ -5,8 +5,8 @@ import {
   buildCommercialUsageLimitSnapshot,
 } from "./commercialUsage.ts";
 
-describe("商业用量快照", () => {
-  it("优先使用网关返回的窗口限额", () => {
+describe("commercial usage snapshot", () => {
+  it("prefers gateway-provided usage windows", () => {
     const snapshot = buildCommercialUsageLimitSnapshot({
       data: {
         plan: "plus",
@@ -42,7 +42,7 @@ describe("商业用量快照", () => {
     });
   });
 
-  it("在旧网关只返回 token 时派生基础窗口", () => {
+  it("does not treat raw token counters as product usage units", () => {
     const snapshot = buildCommercialAccountUsageSnapshot({
       account: { data: { user: { balance: 12.5 } } },
       usage: {
@@ -58,12 +58,56 @@ describe("商业用量快照", () => {
 
     expect(snapshot.plan).toBe("pro");
     expect(snapshot.planMultiplier).toBe(4);
-    expect(snapshot.currentWindow.usedUnits).toBe(100);
-    expect(snapshot.currentWindow.limitUnits).toBe(800);
-    expect(snapshot.weeklyWindow.usedUnits).toBe(1_000);
-    expect(snapshot.weeklyWindow.limitUnits).toBe(5_600);
+    expect(snapshot.currentWindow.usedUnits).toBe(0.01);
+    expect(snapshot.currentWindow.limitUnits).toBe(400);
+    expect(snapshot.weeklyWindow.usedUnits).toBe(0);
+    expect(snapshot.weeklyWindow.limitUnits).toBe(2_800);
     expect(snapshot.balance).toBe(12.5);
     expect(snapshot.totalActualCost).toBe(0.12);
     expect(snapshot.todayActualCost).toBe(0.01);
+  });
+
+  it("does not treat request count as product usage units", () => {
+    const snapshot = buildCommercialUsageLimitSnapshot({
+      data: {
+        plan: "free",
+        today_tokens: 9_565,
+        total_tokens: 9_565,
+        today_requests: 1,
+      },
+    });
+
+    expect(snapshot.currentWindow.usedUnits).toBe(0);
+    expect(snapshot.currentWindow.limitUnits).toBe(100);
+    expect(snapshot.weeklyWindow.usedUnits).toBe(0);
+  });
+
+  it("reads dev2-compatible current_window and weekly fields", () => {
+    const snapshot = buildCommercialUsageLimitSnapshot({
+      data: {
+        plan: "free",
+        current_window: {
+          used: 1.25,
+          limit: 100,
+          reset_at: "2026-05-27T18:00:00Z",
+        },
+        weekly: {
+          used: 2.5,
+          limit: 700,
+          reset_at: "2026-06-01T00:00:00Z",
+        },
+      },
+    });
+
+    expect(snapshot.currentWindow).toMatchObject({
+      usedUnits: 1.25,
+      limitUnits: 100,
+      resetsAt: "2026-05-27T18:00:00Z",
+    });
+    expect(snapshot.weeklyWindow).toMatchObject({
+      usedUnits: 2.5,
+      limitUnits: 700,
+      resetsAt: "2026-06-01T00:00:00Z",
+    });
   });
 });

@@ -65,7 +65,7 @@ export function NewThreadProjectPicker({
             variant="ghost"
             size="sm"
             className={cn(
-              "h-8 rounded-full bg-muted/55 px-3 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
+              "h-9 rounded-lg border border-border/65 bg-background/85 px-3.5 text-[13px] text-muted-foreground shadow-[0_1px_2px_rgb(15_23_42/0.03)] hover:border-border hover:bg-muted/45 hover:text-foreground",
               className,
             )}
           />

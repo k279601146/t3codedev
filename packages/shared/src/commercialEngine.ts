@@ -1,11 +1,13 @@
 export const COMMERCIAL_ENGINE_PROVIDER_ID = "myservice";
 export const COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME = "MyService";
+export const COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV = "MYIDE_WEB_AUTH_BASE_URL";
 export const COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV = "MYIDE_GATEWAY_BASE_URL";
 export const COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV = "MYIDE_API_URL";
 export const COMMERCIAL_ENGINE_IDE_JWT_ENV = "MYIDE_IDE_JWT";
 export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV = "MYIDE_WINDOWS_SANDBOX";
 
 export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "http://localhost:3000/v1";
+export const DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL = "http://localhost:3001";
 export const COMMERCIAL_ENGINE_WIRE_API = "responses";
 export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_MODES = ["unelevated", "elevated"] as const;
 export type CommercialEngineWindowsSandboxMode =
@@ -80,6 +82,15 @@ export function resolveCommercialEngineGatewayBaseUrl(
     getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV) ||
     getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV) ||
     DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL
+  );
+}
+
+export function resolveCommercialEngineWebAuthBaseUrl(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return (
+    getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV) ||
+    DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL
   );
 }
 

@@ -1047,10 +1047,9 @@ label:has(> select#reasoning-effort) select {
   border-collapse: collapse;
 }
 
-/* Sidebar typography — PingFang SC first, slightly smaller than chat
-   (chat = 15px, sidebar base = 13.5px). Override the few utility classes
-   the shadcn primitives still use so the sidebar visually scales up
-   together rather than leaving stray 12px nodes behind. */
+/* 侧边栏排版：
+   侧边栏排版优先使用中文 UI 字体，整体字号略小于聊天区。
+   同步覆盖 shadcn 基础字号，避免局部节点仍停留在不协调的默认尺寸。 */
 [data-slot="sidebar"],
 [data-slot="sidebar-container"],
 [data-slot="sidebar-inner"] {
@@ -1061,20 +1060,20 @@ label:has(> select#reasoning-effort) select {
     "Microsoft YaHei",
     "Hiragino Sans GB",
     sans-serif;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
 [data-slot="sidebar"] .text-xs,
 [data-slot="sidebar-container"] .text-xs,
 [data-slot="sidebar-inner"] .text-xs {
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 [data-slot="sidebar"] .text-sm,
 [data-slot="sidebar-container"] .text-sm,
 [data-slot="sidebar-inner"] .text-sm {
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -1084,7 +1083,7 @@ label:has(> select#reasoning-effort) select {
 [data-slot="sidebar"] .text-\[11px\],
 [data-slot="sidebar-container"] .text-\[11px\],
 [data-slot="sidebar-inner"] .text-\[11px\] {
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .chat-markdown th,

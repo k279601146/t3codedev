@@ -1611,7 +1611,7 @@ function ComposerPromptEditorInner({
           contentEditable={
             <ContentEditable
               className={cn(
-                "block max-h-50 min-h-16 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent font-sans text-[15px] leading-6 text-foreground antialiased focus:outline-none sm:text-[14px]",
+                "block max-h-50 min-h-14 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent font-sans text-[15px] leading-6 text-foreground antialiased focus:outline-none sm:text-[14px]",
                 className,
               )}
               data-testid="composer-editor"

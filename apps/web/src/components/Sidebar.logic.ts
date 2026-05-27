@@ -300,27 +300,27 @@ export function resolveThreadRowClassName(input: {
   isSelected: boolean;
 }): string {
   const baseClassName =
-    "h-7.5 w-full translate-x-0 cursor-pointer justify-start rounded-lg px-8 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+    "h-6.5 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 
   if (input.isSelected && input.isActive) {
     return cn(
       baseClassName,
-      "bg-accent text-foreground font-medium hover:bg-accent hover:text-foreground",
+      "bg-accent/90 text-foreground font-medium hover:bg-accent hover:text-foreground",
     );
   }
 
   if (input.isSelected) {
-    return cn(baseClassName, "bg-accent/80 text-foreground hover:bg-accent hover:text-foreground");
+    return cn(baseClassName, "bg-accent/75 text-foreground hover:bg-accent hover:text-foreground");
   }
 
   if (input.isActive) {
     return cn(
       baseClassName,
-      "bg-accent text-foreground font-medium hover:bg-accent hover:text-foreground",
+      "bg-accent/90 text-foreground font-medium hover:bg-accent hover:text-foreground",
     );
   }
 
-  return cn(baseClassName, "text-foreground/82 hover:bg-accent/70 hover:text-foreground");
+  return cn(baseClassName, "text-foreground/82 hover:bg-accent/55 hover:text-foreground");
 }
 
 export function resolveThreadStatusPill(input: {

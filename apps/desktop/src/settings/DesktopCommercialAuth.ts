@@ -8,6 +8,7 @@ import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import {
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
   resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineWebAuthBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import { resilientFetch } from "@t3tools/shared/Net";
 import * as Crypto from "node:crypto";
@@ -41,6 +42,7 @@ export interface DesktopCommercialAuthCredentials {
 interface CommercialAuthDocument {
   readonly version: number;
   readonly gatewayBaseUrl: string;
+  readonly webAuthBaseUrl: string;
   readonly encryptedIdeJwt?: string;
   readonly authenticatedAt?: string | null;
   readonly tokenExpiresAt?: string | null;
@@ -50,6 +52,7 @@ interface CommercialAuthDocument {
 interface CommercialAuthStorageDocument {
   readonly version?: number;
   readonly gatewayBaseUrl?: string;
+  readonly webAuthBaseUrl?: string;
   readonly encryptedIdeJwt?: string;
   readonly authenticatedAt?: string | null;
   readonly tokenExpiresAt?: string | null;
@@ -60,9 +63,14 @@ function resolveConfiguredGatewayBaseUrl(): string {
   return normalizeGatewayBaseUrl(resolveCommercialEngineGatewayBaseUrl(process.env));
 }
 
+function resolveConfiguredWebAuthBaseUrl(): string {
+  return normalizeWebAuthBaseUrl(resolveCommercialEngineWebAuthBaseUrl(process.env));
+}
+
 const CommercialAuthDocumentSchema = Schema.Struct({
   version: Schema.optionalKey(Schema.Number),
   gatewayBaseUrl: Schema.optionalKey(Schema.String),
+  webAuthBaseUrl: Schema.optionalKey(Schema.String),
   encryptedIdeJwt: Schema.optionalKey(Schema.String),
   authenticatedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   tokenExpiresAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -173,6 +181,29 @@ function normalizeGatewayBaseUrl(raw: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+function normalizeWebAuthBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Web auth URL is required.");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch (cause) {
+    throw new Error("Web auth URL must be an absolute HTTP(S) URL.", { cause });
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Web auth URL must use HTTP or HTTPS.");
+  }
+
+  url.hash = "";
+  url.search = "";
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString().replace(/\/$/, "");
+}
+
 function resolveAuthTokenEndpoint(gatewayBaseUrl: string): string {
   const url = new URL(gatewayBaseUrl);
   return new URL("/ide/auth/token", url.origin).toString();
@@ -180,9 +211,11 @@ function resolveAuthTokenEndpoint(gatewayBaseUrl: string): string {
 
 function normalizeDocument(document: CommercialAuthStorageDocument): CommercialAuthDocument {
   const configuredGatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
+  const configuredWebAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
   const baseDocument = {
     version: document.version ?? 1,
     gatewayBaseUrl: document.gatewayBaseUrl?.trim() || configuredGatewayBaseUrl,
+    webAuthBaseUrl: document.webAuthBaseUrl?.trim() || configuredWebAuthBaseUrl,
     authenticatedAt: document.authenticatedAt ?? null,
     tokenExpiresAt: document.tokenExpiresAt ?? null,
     userLabel: document.userLabel ?? null,
@@ -207,6 +240,7 @@ function readDocument(
           Effect.succeed({
             version: 1,
             gatewayBaseUrl: resolveConfiguredGatewayBaseUrl(),
+            webAuthBaseUrl: resolveConfiguredWebAuthBaseUrl(),
             authenticatedAt: null,
             tokenExpiresAt: null,
             userLabel: null,
@@ -218,6 +252,7 @@ function readDocument(
               Effect.succeed({
                 version: 1,
                 gatewayBaseUrl: resolveConfiguredGatewayBaseUrl(),
+                webAuthBaseUrl: resolveConfiguredWebAuthBaseUrl(),
                 authenticatedAt: null,
                 tokenExpiresAt: null,
                 userLabel: null,
@@ -327,17 +362,17 @@ function makeDeviceId(environment: DesktopEnvironment.DesktopEnvironmentShape): 
     .slice(0, 24);
 }
 
-function resolveAuthAuthorizeEndpoint(gatewayBaseUrl: string): string {
-  const url = new URL(gatewayBaseUrl);
+function resolveAuthAuthorizeEndpoint(webAuthBaseUrl: string): string {
+  const url = new URL(webAuthBaseUrl);
   return new URL("/ide/auth/authorize", url.origin).toString();
 }
 
 function buildAuthorizeUrl(input: {
-  readonly gatewayBaseUrl: string;
+  readonly webAuthBaseUrl: string;
   readonly codeChallenge: string;
   readonly redirectUri: string;
 }): string {
-  const url = new URL(resolveAuthAuthorizeEndpoint(input.gatewayBaseUrl));
+  const url = new URL(resolveAuthAuthorizeEndpoint(input.webAuthBaseUrl));
   url.searchParams.set("code_challenge", input.codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("redirect_uri", input.redirectUri);
@@ -446,6 +481,7 @@ function waitForPKCECallback(
   openAuthorizeUrl: (authorizeUrl: string) => Promise<boolean>,
   input: {
     readonly gatewayBaseUrl: string;
+    readonly webAuthBaseUrl: string;
     readonly codeChallenge: string;
     readonly requestId?: string;
   },
@@ -521,7 +557,7 @@ function waitForPKCECallback(
     server.listen(0, PKCE_CALLBACK_HOST, () => {
       redirectUri = `http://${PKCE_CALLBACK_HOST}:${serverAddressPort(server.address())}${PKCE_CALLBACK_PATH}`;
       const authorizeUrl = buildAuthorizeUrl({
-        gatewayBaseUrl: input.gatewayBaseUrl,
+        webAuthBaseUrl: input.webAuthBaseUrl,
         codeChallenge: input.codeChallenge,
         redirectUri,
       });
@@ -620,6 +656,7 @@ function exchangePKCECodeForIDEToken(input: {
 function toState(document: CommercialAuthDocument): DesktopCommercialAuthState {
   return {
     gatewayBaseUrl: document.gatewayBaseUrl,
+    webAuthBaseUrl: document.webAuthBaseUrl,
     signedIn: document.encryptedIdeJwt !== undefined,
     authenticatedAt: document.authenticatedAt ?? null,
     tokenExpiresAt: document.tokenExpiresAt ?? null,
@@ -666,6 +703,9 @@ export const layer = Layer.effect(
       }).pipe(Effect.withSpan("desktop.commercialAuth.getCredentials")),
       signIn: Effect.fn("desktop.commercialAuth.signIn")(function* (input) {
         const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
+        const webAuthBaseUrl = input.webAuthBaseUrl
+          ? normalizeWebAuthBaseUrl(input.webAuthBaseUrl)
+          : resolveConfiguredWebAuthBaseUrl();
         const exchanged = yield* exchangeWebTokenForIDEToken({
           ...input,
         });
@@ -684,6 +724,7 @@ export const layer = Layer.effect(
         const document: CommercialAuthDocument = {
           version: 1,
           gatewayBaseUrl,
+          webAuthBaseUrl,
           encryptedIdeJwt: Encoding.encodeBase64(
             yield* safeStorage.encryptString(exchanged.accessToken),
           ),
@@ -697,6 +738,9 @@ export const layer = Layer.effect(
       }),
       signInWithBrowser: Effect.fn("desktop.commercialAuth.signInWithBrowser")(function* (input) {
         const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
+        const webAuthBaseUrl = input.webAuthBaseUrl
+          ? normalizeWebAuthBaseUrl(input.webAuthBaseUrl)
+          : resolveConfiguredWebAuthBaseUrl();
         const codeVerifier = makePKCEVerifier();
         const codeChallenge = makePKCEChallenge(codeVerifier);
         const authorization = yield* Effect.tryPromise({
@@ -706,11 +750,13 @@ export const layer = Layer.effect(
               input.requestId
                 ? {
                     gatewayBaseUrl,
+                    webAuthBaseUrl,
                     codeChallenge,
                     requestId: input.requestId,
                   }
                 : {
                     gatewayBaseUrl,
+                    webAuthBaseUrl,
                     codeChallenge,
                   },
             ),
@@ -739,6 +785,7 @@ export const layer = Layer.effect(
         const document: CommercialAuthDocument = {
           version: 1,
           gatewayBaseUrl,
+          webAuthBaseUrl,
           encryptedIdeJwt: Encoding.encodeBase64(
             yield* safeStorage.encryptString(exchanged.accessToken),
           ),
@@ -762,6 +809,7 @@ export const layer = Layer.effect(
         const nextDocument: CommercialAuthDocument = {
           version: document.version,
           gatewayBaseUrl: document.gatewayBaseUrl,
+          webAuthBaseUrl: document.webAuthBaseUrl,
           authenticatedAt: null,
           tokenExpiresAt: null,
           userLabel: null,
@@ -775,6 +823,7 @@ export const layer = Layer.effect(
 
 export const layerTest = (input?: {
   readonly gatewayBaseUrl?: string;
+  readonly webAuthBaseUrl?: string;
   readonly ideJwt?: string;
   readonly state?: Partial<DesktopCommercialAuthState>;
 }) =>
@@ -783,6 +832,7 @@ export const layerTest = (input?: {
     Effect.gen(function* () {
       const stateRef = yield* Ref.make<DesktopCommercialAuthState>({
         gatewayBaseUrl: input?.gatewayBaseUrl ?? DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+        webAuthBaseUrl: input?.webAuthBaseUrl ?? resolveConfiguredWebAuthBaseUrl(),
         signedIn: input?.ideJwt !== undefined,
         authenticatedAt: null,
         tokenExpiresAt: null,
@@ -804,12 +854,14 @@ export const layerTest = (input?: {
         signIn: (request) =>
           Ref.updateAndGet(stateRef, (previous) => ({
             ...previous,
+            webAuthBaseUrl: request.webAuthBaseUrl ?? previous.webAuthBaseUrl,
             signedIn: true,
             authenticatedAt: "2026-05-10T00:00:00.000Z",
           })),
         signInWithBrowser: (request) =>
           Ref.updateAndGet(stateRef, (previous) => ({
             ...previous,
+            webAuthBaseUrl: request.webAuthBaseUrl ?? previous.webAuthBaseUrl,
             signedIn: true,
             authenticatedAt: "2026-05-10T00:00:00.000Z",
           })),

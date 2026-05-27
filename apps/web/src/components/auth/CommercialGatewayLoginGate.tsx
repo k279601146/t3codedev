@@ -1,5 +1,8 @@
 import type { DesktopCommercialAuthState } from "@t3tools/contracts";
-import { resolveCommercialEngineGatewayBaseUrl } from "@t3tools/shared/commercialEngine";
+import {
+  resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineWebAuthBaseUrl,
+} from "@t3tools/shared/commercialEngine";
 import { CheckIcon, ExternalLinkIcon, LoaderIcon, LogInIcon, XIcon } from "lucide-react";
 import type React from "react";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
@@ -60,6 +63,7 @@ export function useDesktopCommercialAuthGate(enabled: boolean): CommercialAuthGa
           status: "requires-sign-in",
           authState: {
             gatewayBaseUrl: "",
+            webAuthBaseUrl: "",
             signedIn: false,
             authenticatedAt: null,
             tokenExpiresAt: null,
@@ -116,6 +120,7 @@ export function CommercialGatewayLoginGate({
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
   const browserSignInRequestIdRef = useRef<string | null>(null);
   const gatewayBaseUrl = authState?.gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
+  const webAuthBaseUrl = authState?.webAuthBaseUrl || resolveCommercialEngineWebAuthBaseUrl();
   const registerGatewayBaseUrl = gatewayBaseUrl;
 
   useEffect(() => {
@@ -143,7 +148,7 @@ export function CommercialGatewayLoginGate({
     setIsBrowserSignIn(true);
     setCurrentErrorMessage("");
     void bridge
-      .signInCommercialAuthWithBrowser({ gatewayBaseUrl, requestId })
+      .signInCommercialAuthWithBrowser({ gatewayBaseUrl, webAuthBaseUrl, requestId })
       .then((nextState) => {
         if (browserSignInRequestIdRef.current !== requestId) return;
         publishDesktopCommercialAuthState(nextState);
@@ -159,7 +164,7 @@ export function CommercialGatewayLoginGate({
           setIsBrowserSignIn(false);
         }
       });
-  }, [bridge, gatewayBaseUrl, isBrowserSignIn, onAuthenticated]);
+  }, [bridge, gatewayBaseUrl, isBrowserSignIn, onAuthenticated, webAuthBaseUrl]);
 
   const handleTokenSignIn = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -170,6 +175,7 @@ export function CommercialGatewayLoginGate({
       void bridge
         .signInCommercialAuth({
           gatewayBaseUrl,
+          webAuthBaseUrl,
           webAccessToken,
         })
         .then((nextState) => {
@@ -184,7 +190,7 @@ export function CommercialGatewayLoginGate({
           setIsTokenSignIn(false);
         });
     },
-    [bridge, gatewayBaseUrl, onAuthenticated, webAccessToken],
+    [bridge, gatewayBaseUrl, onAuthenticated, webAccessToken, webAuthBaseUrl],
   );
 
   return (

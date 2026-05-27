@@ -8,6 +8,7 @@ import * as NetService from "@t3tools/shared/Net";
 import * as Config from "effect/Config";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
@@ -23,6 +24,40 @@ const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 const DESKTOP_DEV_LOOPBACK_HOST = "127.0.0.1";
 const DEV_PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::1", "::"] as const;
+
+function parseDotenvLine(line: string): readonly [string, string] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return undefined;
+  const separatorIndex = trimmed.indexOf("=");
+  if (separatorIndex <= 0) return undefined;
+
+  const key = trimmed.slice(0, separatorIndex).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return undefined;
+
+  let value = trimmed.slice(separatorIndex + 1).trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  return [key, value];
+}
+
+const loadRootDotenv = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const envPath = path.resolve(path.join(import.meta.dirname, "..", ".env"));
+  const content = yield* fs.readFileString(envPath).pipe(Effect.orElseSucceed(() => ""));
+  for (const line of content.split(/\r?\n/)) {
+    const entry = parseDotenvLine(line);
+    if (!entry) continue;
+    const [key, value] = entry;
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+});
 
 export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(NodeOS.homedir(), ".bahew"),
@@ -385,6 +420,8 @@ interface DevRunnerCliInput {
 
 export function runDevRunnerWithInput(input: DevRunnerCliInput) {
   return Effect.gen(function* () {
+    yield* loadRootDotenv;
+
     const { portOffset, devInstance } = yield* OffsetConfig.asEffect().pipe(
       Effect.mapError(
         (cause) =>

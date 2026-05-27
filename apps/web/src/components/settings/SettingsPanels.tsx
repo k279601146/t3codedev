@@ -456,6 +456,7 @@ function CommercialGatewaySection() {
     void bridge
       .signInCommercialAuth({
         gatewayBaseUrl: authState?.gatewayBaseUrl ?? "",
+        webAuthBaseUrl: authState?.webAuthBaseUrl,
         webAccessToken,
       })
       .then((state) => {
@@ -566,6 +567,15 @@ function CommercialGatewaySection() {
         control={
           <span className="max-w-full truncate text-xs font-medium text-muted-foreground sm:max-w-80">
             {authState?.gatewayBaseUrl ?? "Unavailable"}
+          </span>
+        }
+      />
+      <SettingsRow
+        title="Web auth URL"
+        description="Browser login and authorization entry."
+        control={
+          <span className="max-w-full truncate text-xs font-medium text-muted-foreground sm:max-w-80">
+            {authState?.webAuthBaseUrl ?? "Unavailable"}
           </span>
         }
       />

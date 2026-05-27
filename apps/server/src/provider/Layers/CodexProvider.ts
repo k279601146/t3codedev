@@ -132,7 +132,7 @@ const CommercialGatewayAccountResponse = Schema.Struct({
 
 const CommercialGatewayUsageResponse = Schema.Struct({
   data: Schema.Struct({
-    total_tokens: Schema.Number,
+    total_tokens: Schema.optional(Schema.Number),
     today_tokens: Schema.optional(Schema.Number),
     total_actual_cost: Schema.optional(Schema.Number),
     today_actual_cost: Schema.optional(Schema.Number),
@@ -399,7 +399,7 @@ const requestCommercialGatewayUsage = Effect.fn("requestCommercialGatewayUsage")
   );
   return {
     ...buildCommercialUsageLimitSnapshot(payload),
-    totalTokens: decoded.data.total_tokens,
+    totalTokens: decoded.data.total_tokens ?? 0,
     ...(decoded.data.today_tokens !== undefined ? { todayTokens: decoded.data.today_tokens } : {}),
     ...(decoded.data.total_actual_cost !== undefined
       ? { totalActualCost: decoded.data.total_actual_cost }

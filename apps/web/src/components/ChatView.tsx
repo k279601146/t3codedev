@@ -3998,17 +3998,17 @@ export default function ChatView(props: ChatViewProps) {
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-28 pt-6 sm:px-6">
-              <div className="@container/new-thread w-full max-w-[52rem] -translate-y-6">
-                <h1 className="text-balance text-center text-[27px] font-semibold leading-[1.18] tracking-normal text-foreground @2xl/new-thread:text-[31px]">
+              <div className="@container/new-thread w-full max-w-[50rem] -translate-y-5">
+                <h1 className="text-balance text-center text-[25px] font-medium leading-[1.22] tracking-normal text-foreground/92 @2xl/new-thread:text-[28px]">
                   {emptyNewThreadTitle}
                 </h1>
-                <div className="mx-auto mt-10 w-full max-w-[46rem]">
+                <div className="mx-auto mt-8 w-full max-w-[43.5rem]">
                   <div className="relative isolate">
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     <div className="relative z-10">{composerNode}</div>
                   </div>
                   {isConversationNewThread ? (
-                    <div className="mx-auto flex w-full max-w-208 items-center justify-center gap-2 px-2.5 pb-3 pt-1 sm:px-3">
+                    <div className="mx-auto flex w-full max-w-208 items-center justify-center gap-2 px-2.5 pb-3 pt-3 sm:px-3">
                       <NewThreadProjectPicker
                         activeProjectRef={null}
                         onProjectSelect={handleNewThreadProjectSelect}

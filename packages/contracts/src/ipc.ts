@@ -241,6 +241,7 @@ export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
 
 export interface DesktopCommercialAuthState {
   gatewayBaseUrl: string;
+  webAuthBaseUrl: string;
   signedIn: boolean;
   authenticatedAt: string | null;
   tokenExpiresAt: string | null;
@@ -249,11 +250,13 @@ export interface DesktopCommercialAuthState {
 
 export interface DesktopCommercialAuthSignInInput {
   gatewayBaseUrl: string;
+  webAuthBaseUrl?: string;
   webAccessToken: string;
 }
 
 export interface DesktopCommercialAuthBrowserSignInInput {
   gatewayBaseUrl: string;
+  webAuthBaseUrl?: string;
   requestId?: string;
 }
 
@@ -263,6 +266,7 @@ export interface DesktopCommercialAuthBrowserSignInCancelInput {
 
 export const DesktopCommercialAuthStateSchema = Schema.Struct({
   gatewayBaseUrl: Schema.String,
+  webAuthBaseUrl: Schema.String,
   signedIn: Schema.Boolean,
   authenticatedAt: Schema.NullOr(Schema.String),
   tokenExpiresAt: Schema.NullOr(Schema.String),
@@ -271,11 +275,13 @@ export const DesktopCommercialAuthStateSchema = Schema.Struct({
 
 export const DesktopCommercialAuthSignInInputSchema = Schema.Struct({
   gatewayBaseUrl: Schema.String,
+  webAuthBaseUrl: Schema.optionalKey(Schema.String),
   webAccessToken: Schema.String,
 });
 
 export const DesktopCommercialAuthBrowserSignInInputSchema = Schema.Struct({
   gatewayBaseUrl: Schema.String,
+  webAuthBaseUrl: Schema.optionalKey(Schema.String),
   requestId: Schema.optionalKey(Schema.String),
 });
 

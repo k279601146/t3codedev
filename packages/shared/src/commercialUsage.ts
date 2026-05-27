@@ -105,8 +105,8 @@ export function buildCommercialUsageLimitSnapshot(usage: unknown): CommercialUsa
       readCommercialString(usage, ["data", "plan_type"]),
   );
   const planDetails = commercialPlanDetails(plan);
-  const fallbackCurrentLimit = 200 * planDetails.multiplier;
-  const fallbackWeeklyLimit = 1_400 * planDetails.multiplier;
+  const fallbackCurrentLimit = 100 * planDetails.multiplier;
+  const fallbackWeeklyLimit = 700 * planDetails.multiplier;
 
   return {
     plan,
@@ -115,28 +115,64 @@ export function buildCommercialUsageLimitSnapshot(usage: unknown): CommercialUsa
     currentWindow: buildUsageWindow({
       usedUnits:
         readCommercialNumber(usage, ["data", "current_window", "used_units"]) ??
+        readCommercialNumber(usage, ["data", "current_window", "used"]) ??
         readCommercialNumber(usage, ["data", "current_window_units"]) ??
-        readCommercialNumber(usage, ["data", "today_tokens"]),
+        readCommercialNumber(usage, ["current_window", "used_units"]) ??
+        readCommercialNumber(usage, ["current_window", "used"]) ??
+        readCommercialNumber(usage, ["current_window_units"]) ??
+        readCommercialNumber(usage, ["data", "today_actual_cost"]) ??
+        readCommercialNumber(usage, ["today_actual_cost"]),
       limitUnits:
         readCommercialNumber(usage, ["data", "current_window", "limit_units"]) ??
-        readCommercialNumber(usage, ["data", "current_window_limit"]),
+        readCommercialNumber(usage, ["data", "current_window", "limit"]) ??
+        readCommercialNumber(usage, ["data", "current_window_limit"]) ??
+        readCommercialNumber(usage, ["current_window", "limit_units"]) ??
+        readCommercialNumber(usage, ["current_window", "limit"]) ??
+        readCommercialNumber(usage, ["current_window_limit"]),
       resetsAt:
         readCommercialString(usage, ["data", "current_window", "resets_at"]) ??
+        readCommercialString(usage, ["data", "current_window", "reset_at"]) ??
         readCommercialString(usage, ["data", "current_window_resets_at"]) ??
+        readCommercialString(usage, ["current_window", "resets_at"]) ??
+        readCommercialString(usage, ["current_window", "reset_at"]) ??
+        readCommercialString(usage, ["current_window_resets_at"]) ??
         nextFiveHourResetIso(currentTimeMs()),
       fallbackLimitUnits: fallbackCurrentLimit,
     }),
     weeklyWindow: buildUsageWindow({
       usedUnits:
         readCommercialNumber(usage, ["data", "weekly_window", "used_units"]) ??
+        readCommercialNumber(usage, ["data", "weekly_window", "used"]) ??
+        readCommercialNumber(usage, ["data", "weekly", "used_units"]) ??
+        readCommercialNumber(usage, ["data", "weekly", "used"]) ??
         readCommercialNumber(usage, ["data", "weekly_units"]) ??
-        readCommercialNumber(usage, ["data", "total_tokens"]),
+        readCommercialNumber(usage, ["weekly_window", "used_units"]) ??
+        readCommercialNumber(usage, ["weekly_window", "used"]) ??
+        readCommercialNumber(usage, ["weekly", "used_units"]) ??
+        readCommercialNumber(usage, ["weekly", "used"]) ??
+        readCommercialNumber(usage, ["weekly_units"]),
       limitUnits:
         readCommercialNumber(usage, ["data", "weekly_window", "limit_units"]) ??
-        readCommercialNumber(usage, ["data", "weekly_limit"]),
+        readCommercialNumber(usage, ["data", "weekly_window", "limit"]) ??
+        readCommercialNumber(usage, ["data", "weekly", "limit_units"]) ??
+        readCommercialNumber(usage, ["data", "weekly", "limit"]) ??
+        readCommercialNumber(usage, ["data", "weekly_limit"]) ??
+        readCommercialNumber(usage, ["weekly_window", "limit_units"]) ??
+        readCommercialNumber(usage, ["weekly_window", "limit"]) ??
+        readCommercialNumber(usage, ["weekly", "limit_units"]) ??
+        readCommercialNumber(usage, ["weekly", "limit"]) ??
+        readCommercialNumber(usage, ["weekly_limit"]),
       resetsAt:
         readCommercialString(usage, ["data", "weekly_window", "resets_at"]) ??
+        readCommercialString(usage, ["data", "weekly_window", "reset_at"]) ??
+        readCommercialString(usage, ["data", "weekly", "resets_at"]) ??
+        readCommercialString(usage, ["data", "weekly", "reset_at"]) ??
         readCommercialString(usage, ["data", "weekly_resets_at"]) ??
+        readCommercialString(usage, ["weekly_window", "resets_at"]) ??
+        readCommercialString(usage, ["weekly_window", "reset_at"]) ??
+        readCommercialString(usage, ["weekly", "resets_at"]) ??
+        readCommercialString(usage, ["weekly", "reset_at"]) ??
+        readCommercialString(usage, ["weekly_resets_at"]) ??
         nextWeeklyResetIso(currentTimeMs()),
       fallbackLimitUnits: fallbackWeeklyLimit,
     }),

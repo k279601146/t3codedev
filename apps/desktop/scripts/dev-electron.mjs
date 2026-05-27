@@ -3,7 +3,10 @@ import { watch } from "node:fs";
 import { join } from "node:path";
 
 import { desktopDir, resolveElectronPath } from "./electron-launcher.mjs";
+import { loadRootDotenv } from "./load-root-dotenv.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
+
+loadRootDotenv();
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 if (!devServerUrl) {

@@ -1,6 +1,13 @@
+import assert from "node:assert/strict";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - Test simulates the OAuth loopback callback served by DesktopCommercialAuth.
+import * as Http from "node:http";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, describe, it } from "@effect/vitest";
-import { COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV } from "@t3tools/shared/commercialEngine";
+import { describe, it } from "@effect/vitest";
+import {
+  COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV,
+  COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV,
+} from "@t3tools/shared/commercialEngine";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -33,7 +40,10 @@ function makeSafeStorageLayer(input: { readonly available: boolean }) {
   } satisfies ElectronSafeStorage.ElectronSafeStorageShape);
 }
 
-function makeLayer(baseDir: string, options?: { readonly safeStorageAvailable?: boolean }) {
+function makeLayer(
+  baseDir: string,
+  options?: { readonly safeStorageAvailable?: boolean; readonly openedUrls?: string[] },
+) {
   const environmentLayer = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
     homeDirectory: baseDir,
@@ -55,7 +65,24 @@ function makeLayer(baseDir: string, options?: { readonly safeStorageAvailable?: 
     Layer.provideMerge(makeSafeStorageLayer({ available: options?.safeStorageAvailable ?? true })),
     Layer.provideMerge(
       Layer.succeed(ElectronShell.ElectronShell, {
-        openExternal: () => Effect.succeed(true),
+        openExternal: (url) =>
+          Effect.sync(() => {
+            options?.openedUrls?.push(String(url));
+            const parsed = new URL(String(url));
+            const redirectUri = parsed.searchParams.get("redirect_uri");
+            if (redirectUri) {
+              // @effect-diagnostics-next-line globalTimers:off - Test schedules the synthetic browser callback after the server starts listening.
+              setTimeout(() => {
+                const callbackUrl = new URL(redirectUri);
+                callbackUrl.searchParams.set("code", "pkce-code");
+                const request = Http.get(callbackUrl, (response) => {
+                  response.resume();
+                });
+                request.on("error", () => undefined);
+              }, 0);
+            }
+            return true;
+          }),
         copyText: () => Effect.void,
       } satisfies ElectronShell.ElectronShellShape),
     ),
@@ -65,7 +92,7 @@ function makeLayer(baseDir: string, options?: { readonly safeStorageAvailable?: 
 
 const withCommercialAuth = <A, E, R>(
   effect: Effect.Effect<A, E, R | DesktopCommercialAuth.DesktopCommercialAuth>,
-  options?: { readonly safeStorageAvailable?: boolean },
+  options?: { readonly safeStorageAvailable?: boolean; readonly openedUrls?: string[] },
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -107,6 +134,24 @@ const withGatewayBaseUrl = <A, E, R>(gatewayBaseUrl: string, effect: Effect.Effe
       }),
   );
 
+const withWebAuthBaseUrl = <A, E, R>(webAuthBaseUrl: string, effect: Effect.Effect<A, E, R>) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const previous = process.env[COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV];
+      process.env[COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV] = webAuthBaseUrl;
+      return previous;
+    }),
+    () => effect,
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) {
+          delete process.env[COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV];
+        } else {
+          process.env[COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV] = previous;
+        }
+      }),
+  );
+
 describe("DesktopCommercialAuth", () => {
   it.effect("exchanges a web token and persists only an encrypted IDE JWT", () =>
     withGatewayBaseUrl(
@@ -140,7 +185,7 @@ describe("DesktopCommercialAuth", () => {
               webAccessToken: "web-jwt",
             });
 
-            assert.isTrue(state.signedIn);
+            assert.equal(state.signedIn, true);
             assert.equal(state.gatewayBaseUrl, "http://localhost:8080/v1");
             assert.equal(state.userLabel, "dev@example.com");
             assert.deepEqual(
@@ -152,8 +197,8 @@ describe("DesktopCommercialAuth", () => {
             );
 
             const persisted = yield* fileSystem.readFileString(environment.commercialAuthPath);
-            assert.include(persisted, "http://localhost:8080/v1");
-            assert.include(persisted, "ZW5jOmlkZS1qd3Q=");
+            assert.match(persisted, /http:\/\/localhost:8080\/v1/);
+            assert.match(persisted, /ZW5jOmlkZS1qd3Q=/);
             assert.equal(persisted.includes("ide-jwt"), false);
             assert.equal(persisted.includes("web-jwt"), false);
           }),
@@ -183,8 +228,8 @@ describe("DesktopCommercialAuth", () => {
 
             const state = yield* auth.signOut;
             assert.equal(state.gatewayBaseUrl, "https://api.example.com/v1");
-            assert.isFalse(state.signedIn);
-            assert.isTrue(Option.isNone(yield* auth.getCredentials));
+            assert.equal(state.signedIn, false);
+            assert.equal(Option.isNone(yield* auth.getCredentials), true);
           }),
         ),
       ),
@@ -218,7 +263,7 @@ describe("DesktopCommercialAuth", () => {
               webAccessToken: "web-jwt",
             });
 
-            assert.isTrue(state.signedIn);
+            assert.equal(state.signedIn, true);
             assert.deepEqual(
               yield* auth.getCredentials,
               Option.some({
@@ -231,4 +276,50 @@ describe("DesktopCommercialAuth", () => {
       ),
     ),
   );
+
+  it.effect("opens dev2 for browser authorization and exchanges the code against sub2api", () => {
+    const openedUrls: string[] = [];
+    return withGatewayBaseUrl(
+      "https://gateway.example.com/v1",
+      withWebAuthBaseUrl(
+        "https://app.example.com",
+        withCommercialAuth(
+          withFetch(
+            (async (url, init) => {
+              assert.equal(url, "https://gateway.example.com/ide/auth/token");
+              const body = JSON.parse(String(init?.body));
+              assert.equal(body.code, "pkce-code");
+              assert.equal(body.client_id, "t3code-desktop");
+              return new Response(
+                JSON.stringify({
+                  data: {
+                    access_token: "ide-jwt",
+                    expires_in: 3600,
+                    user: { email: "dev@example.com" },
+                  },
+                }),
+                { status: 200 },
+              );
+            }) as typeof fetch,
+            Effect.gen(function* () {
+              const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+              const state = yield* auth.signInWithBrowser({
+                gatewayBaseUrl: "https://gateway.example.com/v1",
+                webAuthBaseUrl: "https://app.example.com",
+              });
+
+              assert.equal(state.signedIn, true);
+              assert.equal(state.gatewayBaseUrl, "https://gateway.example.com/v1");
+              assert.equal(state.webAuthBaseUrl, "https://app.example.com");
+              assert.equal(openedUrls.length, 1);
+              const authorizeUrl = new URL(openedUrls[0]!);
+              assert.equal(authorizeUrl.origin, "https://app.example.com");
+              assert.equal(authorizeUrl.pathname, "/ide/auth/authorize");
+            }),
+          ),
+          { openedUrls },
+        ),
+      ),
+    );
+  });
 });

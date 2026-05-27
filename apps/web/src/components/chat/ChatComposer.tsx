@@ -207,7 +207,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
         <>
           <Button
             variant="ghost"
-            className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+            className="h-8 shrink-0 whitespace-nowrap rounded-lg px-2.5 text-[13px] text-muted-foreground/72 hover:text-foreground/85"
             size="sm"
             type="button"
             onClick={props.onToggleInteractionMode}
@@ -234,7 +234,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
         <SelectTrigger
           variant="ghost"
           size="sm"
-          className="font-medium"
+          className="h-8 rounded-lg px-2.5 text-[13px] font-medium text-muted-foreground/72 hover:text-foreground/85"
           aria-label="Runtime mode"
           title={runtimeModeOption.description}
         >
@@ -268,7 +268,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           <Button
             variant="ghost"
             className={cn(
-              "shrink-0 whitespace-nowrap px-2 sm:px-3",
+              "h-8 shrink-0 whitespace-nowrap rounded-lg px-2.5 text-[13px]",
               props.planSidebarOpen
                 ? "text-blue-400 hover:text-blue-300"
                 : "text-muted-foreground/70 hover:text-foreground/80",
@@ -2012,7 +2012,7 @@ export const ChatComposer = memo(
       <form
         ref={composerFormRef}
         onSubmit={submitComposer}
-        className="mx-auto w-full min-w-0 max-w-[45.5rem]"
+        className="mx-auto w-full min-w-0 max-w-[43.5rem]"
         data-chat-composer-form="true"
       >
         <input
@@ -2024,7 +2024,7 @@ export const ChatComposer = memo(
         />
         <div
           className={cn(
-            "group rounded-[18px] p-px transition-colors duration-200",
+            "group rounded-[15px] p-px transition-colors duration-200",
             composerProviderState.composerFrameClassName,
           )}
           onDragEnter={onComposerDragEnter}
@@ -2036,7 +2036,7 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-[17px] border bg-card/98 shadow-[var(--t3-shadow-composer)] transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65 has-focus-visible:shadow-[var(--claude-shadow-panel)]",
+              "rounded-[14px] border bg-card/98 shadow-[var(--t3-shadow-composer)] transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65 has-focus-visible:shadow-[var(--claude-shadow-panel)]",
               isDragOverComposer ? "border-foreground/25 bg-accent/20" : "border-border/80",
               environmentUnavailable ? "opacity-75" : null,
               composerProviderState.composerSurfaceClassName,
@@ -2062,14 +2062,14 @@ export const ChatComposer = memo(
           >
             {!isComposerCollapsedMobile &&
               (activePendingApproval ? (
-                <div className="rounded-t-[18px] bg-muted/15">
+                <div className="rounded-t-[14px] bg-muted/15">
                   <ComposerPendingApprovalPanel
                     approval={activePendingApproval}
                     pendingCount={pendingApprovals.length}
                   />
                 </div>
               ) : pendingUserInputs.length > 0 ? (
-                <div className="rounded-t-[18px] bg-muted/15">
+                <div className="rounded-t-[14px] bg-muted/15">
                   <ComposerPendingUserInputPanel
                     pendingUserInputs={pendingUserInputs}
                     respondingRequestIds={respondingRequestIds}
@@ -2080,7 +2080,7 @@ export const ChatComposer = memo(
                   />
                 </div>
               ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-                <div className="rounded-t-[18px] bg-muted/15">
+                <div className="rounded-t-[14px] bg-muted/15">
                   <ComposerPlanFollowUpBanner
                     key={activeProposedPlan.id}
                     planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
@@ -2209,8 +2209,8 @@ export const ChatComposer = memo(
 
             <div
               className={cn(
-                "relative px-4 pb-2 sm:px-5",
-                hasComposerHeader ? "pt-3 sm:pt-3.5" : "pt-3.5 sm:pt-4",
+                "relative px-4 pb-1.5 sm:px-4",
+                hasComposerHeader ? "pt-3" : "pt-3.5",
                 isComposerCollapsedMobile && "hidden",
               )}
             >
@@ -2393,7 +2393,7 @@ export const ChatComposer = memo(
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
-                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-3.5",
+                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3.5 pb-3.5",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
@@ -2402,8 +2402,8 @@ export const ChatComposer = memo(
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-lg"
-                    className="shrink-0 text-muted-foreground/70 hover:text-foreground"
+                    size="icon-sm"
+                    className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground/70 hover:text-foreground"
                     aria-label="Attach files"
                     title="Attach files"
                     onClick={openAttachmentPicker}
@@ -2428,6 +2428,7 @@ export const ChatComposer = memo(
                             composerProviderState.modelPickerIconClassName,
                         }
                       : {})}
+                    triggerClassName="h-8 rounded-lg px-2.5 text-[13px]"
                     onOpenChange={(open) => {
                       setIsComposerModelPickerOpen(open);
                       if (open) {

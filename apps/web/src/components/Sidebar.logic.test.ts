@@ -583,7 +583,7 @@ describe("resolveThreadRowClassName", () => {
 
   it("uses a quiet accent color for selected threads", () => {
     const className = resolveThreadRowClassName({ isActive: false, isSelected: true });
-    expect(className).toContain("bg-accent/80");
+    expect(className).toContain("bg-accent/75");
     expect(className).toContain("hover:bg-accent");
     expect(className).not.toContain("bg-primary");
   });

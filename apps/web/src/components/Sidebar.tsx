@@ -376,16 +376,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
-  // jumpLabel（命令面板快捷键标签）一直可见；时间默认完全不占空间（hidden），
-  // 仅 hover/focus 行（或小屏）时显示，让标题在常态下可以根据侧栏宽度自适应占满。
   const threadMetaClassName = isConfirmingArchive
     ? "pointer-events-none opacity-0"
-    : "pointer-events-none";
-  const threadTimeClassName = isConfirmingArchive
-    ? "hidden"
-    : !isThreadRunning
-      ? "hidden group-hover/menu-sub-item:inline group-focus-within/menu-sub-item:inline max-sm:inline"
-      : "";
+    : "pointer-events-none transition-opacity duration-150 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0";
+  const threadTimeClassName = isConfirmingArchive ? "hidden" : "inline";
   const clearConfirmingArchive = useCallback(() => {
     setConfirmingArchiveThreadKey((current) => (current === threadKey ? null : current));
   }, [setConfirmingArchiveThreadKey, threadKey]);
@@ -574,7 +568,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           {renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
-              className="min-w-0 flex-1 truncate text-base sm:text-xs bg-transparent outline-none border border-ring rounded px-0.5"
+              className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-[12.5px] outline-none"
               value={renamingTitle}
               onChange={handleRenameInputChange}
               onKeyDown={handleRenameInputKeyDown}
@@ -586,7 +580,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-[13px]"
+                    className="min-w-0 flex-1 truncate text-[12.5px] leading-5"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -599,7 +593,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </Tooltip>
           )}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {terminalStatus && (
             <span
               role="img"
@@ -611,7 +605,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </span>
           )}
           <div
-            className={`flex min-w-0 justify-end transition-[min-width] duration-150 group-hover/menu-sub-item:min-w-11 group-focus-within/menu-sub-item:min-w-11 max-sm:min-w-11 ${
+            className={`flex min-w-11 justify-end transition-[min-width] duration-150 ${
               isRemoteThread ? "max-sm:min-w-24" : "max-sm:min-w-20"
             }`}
           >
@@ -692,10 +686,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </span>
                 ) : (
                   <span
-                    className={`text-[12px] ${threadTimeClassName} ${
+                    className={`text-[11.5px] tabular-nums ${threadTimeClassName} ${
                       isHighlighted
-                        ? "text-foreground/72 dark:text-foreground/82"
-                        : "text-muted-foreground/70"
+                        ? "text-foreground/58 dark:text-foreground/70"
+                        : "text-muted-foreground/55"
                     }`}
                   >
                     {formatRelativeTimeLabel(
@@ -778,7 +772,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
         render={buttonRender}
         data-thread-selection-safe
         size="sm"
-        className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+        className="h-6 w-full translate-x-0 justify-start rounded-md px-2 text-left text-[11px] text-muted-foreground/58 hover:bg-accent/45 hover:text-muted-foreground/80"
         onClick={expanded ? onCollapse : onExpand}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -833,13 +827,13 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   return (
     <SidebarMenuSub
       ref={attachThreadListAutoAnimateRef}
-      className="mx-0 my-0 w-full translate-x-0 gap-0 overflow-hidden px-0 py-0"
+      className="mx-0 my-0 w-full translate-x-0 gap-0.5 overflow-hidden py-0 pl-7 pr-0"
     >
       {shouldShowThreadPanel && showEmptyThreadState ? (
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
           <div
             data-thread-selection-safe
-            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60"
+            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[11px] text-muted-foreground/55"
           >
             <span>No threads yet</span>
           </div>
@@ -1979,7 +1973,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className={`h-7 gap-2 rounded-md px-2 py-1 pr-8 text-left text-[13px] font-normal text-foreground/86 hover:bg-muted/60 hover:text-foreground group-hover/project-header:bg-muted/60 group-hover/project-header:text-foreground max-sm:pr-14 ${
+          className={`h-7 gap-2 rounded-md px-2 py-1 pr-8 text-left text-[13px] font-normal text-foreground/88 hover:bg-accent/45 hover:text-foreground group-hover/project-header:bg-accent/45 group-hover/project-header:text-foreground max-sm:pr-14 ${
             isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
           }`}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
@@ -1991,7 +1985,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         >
           <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13px] font-normal text-foreground/86">
+            <span className="truncate text-[13px] font-normal text-foreground/88">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -2001,9 +1995,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             ) : null}
           </span>
         </SidebarMenuButton>
-        {/* Environment badge – visible by default, crossfades with the
-            "new thread" button on hover using the same pointer-events +
-            opacity pattern as the thread row archive/timestamp swap. */}
+        {/* 环境标记默认可见，悬停时与“新建对话”按钮做透明度切换。 */}
         {project.environmentPresence === "remote-only" && (
           <Tooltip>
             <TooltipTrigger
@@ -2206,7 +2198,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
 const SidebarProjectListRow = memo(function SidebarProjectListRow(props: SidebarProjectItemProps) {
   return (
-    <SidebarMenuItem className="rounded-md">
+    <SidebarMenuItem className="rounded-md pb-1.5 last:pb-0">
       <SidebarProjectItem {...props} />
     </SidebarMenuItem>
   );
@@ -2408,7 +2400,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   }, [commercialAuthState?.gatewayBaseUrl]);
 
   return (
-    <SidebarFooter className="p-1.5">
+    <SidebarFooter className="border-border/60 border-t p-1.5">
       <SidebarProviderUpdatePill />
       <div className="flex items-center gap-1.5">
         <Menu>
@@ -2505,23 +2497,38 @@ function AccountUsageCard(props: {
     }
 
     let disposed = false;
-    void bridge
-      .getCommercialAccountUsage()
-      .then((value) => {
-        if (!disposed) {
-          setUsage(value);
-        }
-      })
-      .catch(() => {
-        if (!disposed) {
-          setUsage(null);
-        }
-      });
+    const refreshUsage = () => {
+      void bridge
+        .getCommercialAccountUsage()
+        .then((value) => {
+          if (!disposed) {
+            setUsage(value);
+          }
+        })
+        .catch(() => {
+          if (!disposed) {
+            setUsage(null);
+          }
+        });
+    };
+
+    refreshUsage();
+    const interval = window.setInterval(refreshUsage, 10_000);
+    const onFocus = () => refreshUsage();
+    window.addEventListener("focus", onFocus);
 
     return () => {
       disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
+
+  useEffect(() => {
+    if (usage === undefined && props.providerUsage) {
+      setUsage(props.providerUsage);
+    }
+  }, [props.providerUsage, usage]);
 
   const resolvedUsage = usage ?? props.providerUsage;
   const currentWindow = resolvedUsage?.currentWindow ?? null;
@@ -2701,8 +2708,8 @@ function SidebarSectionTitle({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mb-1 flex h-6 items-center justify-between px-2">
-      <span className="text-[13px] font-normal text-muted-foreground">{children}</span>
+    <div className="mb-1 flex h-5 items-center justify-between px-2">
+      <span className="text-[12px] font-normal text-muted-foreground/72">{children}</span>
       {action ? <div className="flex items-center gap-1">{action}</div> : null}
     </div>
   );
