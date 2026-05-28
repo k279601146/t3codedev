@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { formatPendingPrimaryActionLabel } from "./ComposerPrimaryActions";
+import {
+  formatPendingPrimaryActionLabel,
+  isStandardSendButtonDisabled,
+} from "./ComposerPrimaryActions";
 
 describe("formatPendingPrimaryActionLabel", () => {
   it("returns 'Submitting...' while responding", () => {
@@ -89,5 +92,29 @@ describe("formatPendingPrimaryActionLabel", () => {
         questionIndex: 5,
       }),
     ).toBe("Submit answers");
+  });
+});
+
+describe("isStandardSendButtonDisabled", () => {
+  it("does not disable the send button for usage limits", () => {
+    expect(
+      isStandardSendButtonDisabled({
+        isSendBusy: false,
+        isConnecting: false,
+        isEnvironmentUnavailable: false,
+        hasSendableContent: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("still disables the send button when the composer cannot submit", () => {
+    expect(
+      isStandardSendButtonDisabled({
+        isSendBusy: false,
+        isConnecting: false,
+        isEnvironmentUnavailable: false,
+        hasSendableContent: false,
+      }),
+    ).toBe(true);
   });
 });
