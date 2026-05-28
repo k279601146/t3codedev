@@ -17,6 +17,7 @@
   SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
+  ArrowUpRight,
   TriangleAlertIcon,
 } from "lucide-react";
 import {
@@ -47,6 +48,7 @@ import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import {
   type ContextMenuItem,
+  type CommercialAccountUsageSchema,
   type DesktopUpdateState,
   ProjectId,
   type ServerProvider,
@@ -2484,6 +2486,28 @@ type CommercialAccountUsage = Awaited<
 
 type CommercialUsageLike = NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]>;
 
+function normalizeCommercialUsage(
+  usage: CommercialAccountUsage | CommercialUsageLike | null | undefined,
+): CommercialAccountUsage | null {
+  if (!usage?.currentWindow || !usage.weeklyWindow) {
+    return null;
+  }
+
+  return {
+    balance: "balance" in usage ? (usage.balance ?? null) : null,
+    plan:
+      usage.plan === "free" || usage.plan === "plus" || usage.plan === "pro" ? usage.plan : "plus",
+    planLabel: usage.planLabel ?? "AI Plus",
+    planMultiplier: usage.planMultiplier ?? (usage.plan === "pro" ? 4 : 2),
+    currentWindow: usage.currentWindow,
+    weeklyWindow: usage.weeklyWindow,
+    totalTokens: usage.totalTokens,
+    todayTokens: usage.todayTokens ?? null,
+    totalActualCost: usage.totalActualCost ?? null,
+    todayActualCost: usage.todayActualCost ?? null,
+  } satisfies CommercialAccountUsageSchema;
+}
+
 function AccountUsageCard(props: {
   providerUsage: CommercialUsageLike | null;
   onUpgrade: () => void;
@@ -2492,14 +2516,14 @@ function AccountUsageCard(props: {
 
   useEffect(() => {
     const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
-    if (!bridge?.getCommercialAccountUsage) {
+    const getCommercialAccountUsage = bridge?.getCommercialAccountUsage;
+    if (!getCommercialAccountUsage) {
       return;
     }
 
     let disposed = false;
     const refreshUsage = () => {
-      void bridge
-        .getCommercialAccountUsage()
+      void getCommercialAccountUsage()
         .then((value) => {
           if (!disposed) {
             setUsage(value);
@@ -2526,7 +2550,7 @@ function AccountUsageCard(props: {
 
   useEffect(() => {
     if (usage === undefined && props.providerUsage) {
-      setUsage(props.providerUsage);
+      setUsage(normalizeCommercialUsage(props.providerUsage));
     }
   }, [props.providerUsage, usage]);
 
@@ -2537,6 +2561,9 @@ function AccountUsageCard(props: {
     resolvedUsage?.planLabel ??
     (resolvedUsage?.plan ? formatPlanLabel(resolvedUsage.plan) : "AI Plus");
   const multiplier = resolvedUsage?.planMultiplier ?? (resolvedUsage?.plan === "pro" ? 4 : 2);
+
+  const nextPlan = planLabel === "free" ? "AI Plus" : "AI Pro";
+
 
   return (
     <div className="px-3 py-3">
@@ -2557,15 +2584,15 @@ function AccountUsageCard(props: {
           loading={usage === undefined && props.providerUsage === null}
           window={weeklyWindow}
         />
-        <Button
-          className="mt-4 h-9 w-full gap-1.5 rounded-lg bg-foreground text-background hover:bg-foreground/90"
-          onClick={props.onUpgrade}
-          size="sm"
-          type="button"
-        >
-          <span>升级到 AI Pro</span>
-          <ExternalLinkIcon className="size-3.5" />
-        </Button>
+       
+
+          <button
+                    onClick={props.onUpgrade}
+                    className="mt-4 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-800 transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+                >
+                    升级到 {nextPlan}
+                    <ArrowUpRight className="size-3.5" />
+                </button>
       </div>
     </div>
   );
@@ -2623,7 +2650,7 @@ function formatPlanLabel(plan: string): string {
     case "pro":
       return "AI Pro";
     default:
-      return "未订阅方案";
+      return "Free";
   }
 }
 

@@ -96,23 +96,17 @@ import { useI18n } from "../../i18n";
 const THEME_OPTIONS = [
   {
     value: "light",
-    label: "Claude Light",
+    labelKey: "settings.themeLight",
   },
   {
     value: "dark",
-    label: "Claude Dark",
+    labelKey: "settings.themeDark",
   },
   {
     value: "system",
-    label: "跟随系统",
+    labelKey: "settings.themeSystem",
   },
 ] as const;
-
-const TIMESTAMP_FORMAT_LABELS = {
-  locale: "System default",
-  "12-hour": "12-hour",
-  "24-hour": "24-hour",
-} as const;
 
 const LANGUAGE_OPTIONS = ["system", "en", "zh-CN"] as const;
 
@@ -128,6 +122,21 @@ function languageOptionLabel(
     case "en":
     default:
       return t("settings.languageEnglish");
+  }
+}
+
+function timestampFormatLabel(
+  value: "locale" | "12-hour" | "24-hour",
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  switch (value) {
+    case "12-hour":
+      return t("settings.timeFormat12Hour");
+    case "24-hour":
+      return t("settings.timeFormat24Hour");
+    case "locale":
+    default:
+      return t("settings.timeFormatSystem");
   }
 }
 
@@ -176,15 +185,18 @@ function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }
 }
 
 function AboutVersionTitle() {
+  const { t } = useI18n();
+
   return (
     <span className="inline-flex items-center gap-2">
-      <span>Version</span>
+      <span>{t("settings.version")}</span>
       <code className="text-[11px] font-medium text-muted-foreground">{APP_VERSION}</code>
     </span>
   );
 }
 
 function AboutVersionSection() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const updateStateQuery = useDesktopUpdateState();
   const [isChangingUpdateChannel, setIsChangingUpdateChannel] = useState(false);
@@ -318,18 +330,21 @@ function AboutVersionSection() {
         ? !canRequestManualCheck
         : isDesktopUpdateButtonDisabled(updateState);
 
-  const actionLabel: Record<string, string> = { download: "Download", install: "Install" };
+  const actionLabel: Record<string, string> = {
+    download: t("settings.updateDownload"),
+    install: t("settings.updateInstall"),
+  };
   const statusLabel: Record<string, string> = {
-    checking: "Checking…",
-    downloading: "Downloading…",
-    "up-to-date": "Up to Date",
+    checking: t("settings.updateChecking"),
+    downloading: t("settings.updateDownloading"),
+    "up-to-date": t("settings.updateUpToDate"),
   };
   const buttonLabel =
-    actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? "Check for Updates";
+    actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? t("settings.updateCheck");
   const description =
     action === "download" || action === "install"
-      ? "Update available."
-      : "Current version of the application.";
+      ? t("settings.updateAvailable")
+      : t("settings.currentVersion");
 
   return (
     <>
@@ -356,8 +371,8 @@ function AboutVersionSection() {
       />
       {hasDesktopBridge ? (
         <SettingsRow
-          title="Update track"
-          description="Stable follows full releases. Nightly follows the nightly desktop channel and can switch back to stable immediately."
+          title={t("settings.updateTrack")}
+          description={t("settings.updateTrackDesktopDescription")}
           control={
             <Select
               value={selectedUpdateChannel}
@@ -367,19 +382,21 @@ function AboutVersionSection() {
             >
               <SelectTrigger
                 className="w-full sm:w-40"
-                aria-label="Update track"
+                aria-label={t("settings.updateTrack")}
                 disabled={isChangingUpdateChannel}
               >
                 <SelectValue>
-                  {selectedUpdateChannel === "nightly" ? "Nightly" : "Stable"}
+                  {selectedUpdateChannel === "nightly"
+                    ? t("settings.updateNightly")
+                    : t("settings.updateStable")}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="latest">
-                  Stable
+                  {t("settings.updateStable")}
                 </SelectItem>
                 <SelectItem hideIndicator value="nightly">
-                  Nightly
+                  {t("settings.updateNightly")}
                 </SelectItem>
               </SelectPopup>
             </Select>
@@ -387,8 +404,8 @@ function AboutVersionSection() {
         />
       ) : selectedHostedAppChannel ? (
         <SettingsRow
-          title="Update track"
-          description="Switches the hosted app release channel."
+          title={t("settings.updateTrack")}
+          description={t("settings.updateTrackHostedDescription")}
           control={
             <Select
               value={selectedHostedAppChannel}
@@ -399,15 +416,15 @@ function AboutVersionSection() {
                 );
               }}
             >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Update track">
+              <SelectTrigger className="w-full sm:w-40" aria-label={t("settings.updateTrack")}>
                 <SelectValue>{HOSTED_APP_CHANNEL_LABEL}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="latest">
-                  Latest
+                  {t("settings.updateLatest")}
                 </SelectItem>
                 <SelectItem hideIndicator value="nightly">
-                  Nightly
+                  {t("settings.updateNightly")}
                 </SelectItem>
               </SelectPopup>
             </Select>
@@ -419,6 +436,7 @@ function AboutVersionSection() {
 }
 
 function CommercialGatewaySection() {
+  const { t } = useI18n();
   const [authState, setAuthState] = useState<DesktopCommercialAuthState | null>(null);
   const [webAccessToken, setWebAccessToken] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -456,7 +474,7 @@ function CommercialGatewaySection() {
     void bridge
       .signInCommercialAuth({
         gatewayBaseUrl: authState?.gatewayBaseUrl ?? "",
-        webAuthBaseUrl: authState?.webAuthBaseUrl,
+        ...(authState?.webAuthBaseUrl ? { webAuthBaseUrl: authState.webAuthBaseUrl } : {}),
         webAccessToken,
       })
       .then((state) => {
@@ -514,18 +532,18 @@ function CommercialGatewaySection() {
   const canSignIn = webAccessToken.trim().length > 0;
 
   return (
-    <SettingsSection title="Commercial Gateway">
+    <SettingsSection title={t("settings.section.account")}>
       <SettingsRow
         title={
           <span className="inline-flex items-center gap-2">
             <ShieldCheckIcon className="size-3.5 text-muted-foreground" />
-            {signedIn ? "Connected" : "Not connected"}
+            {signedIn ? t("settings.gatewayConnected") : t("settings.gatewayNotConnected")}
           </span>
         }
         description={
           signedIn
-            ? (authState?.userLabel ?? "IDE token is encrypted on this device.")
-            : "Connect with a gateway-issued user token."
+            ? (authState?.userLabel ?? t("settings.gatewayConnectedDescription"))
+            : t("settings.gatewayNotConnectedDescription")
         }
         control={
           signedIn ? (
@@ -541,7 +559,7 @@ function CommercialGatewaySection() {
               ) : (
                 <LogOutIcon className="size-3" />
               )}
-              <span>Sign Out</span>
+              <span>{t("settings.signOut")}</span>
             </Button>
           ) : (
             <Button
@@ -556,33 +574,33 @@ function CommercialGatewaySection() {
               ) : (
                 <LogInIcon className="size-3" />
               )}
-              <span>Connect</span>
+              <span>{t("settings.connect")}</span>
             </Button>
           )
         }
       />
       <SettingsRow
-        title="Gateway URL"
-        description="Configured by the desktop process deployment environment."
+        title={t("settings.gatewayUrl")}
+        description={t("settings.gatewayUrlDescription")}
         control={
           <span className="max-w-full truncate text-xs font-medium text-muted-foreground sm:max-w-80">
-            {authState?.gatewayBaseUrl ?? "Unavailable"}
+            {authState?.gatewayBaseUrl ?? t("settings.unavailable")}
           </span>
         }
       />
       <SettingsRow
-        title="Web auth URL"
-        description="Browser login and authorization entry."
+        title={t("settings.webAuthUrl")}
+        description={t("settings.webAuthUrlDescription")}
         control={
           <span className="max-w-full truncate text-xs font-medium text-muted-foreground sm:max-w-80">
-            {authState?.webAuthBaseUrl ?? "Unavailable"}
+            {authState?.webAuthBaseUrl ?? t("settings.unavailable")}
           </span>
         }
       />
       {!signedIn ? (
         <SettingsRow
-          title="Web token"
-          description="Existing web login JWT used once to issue an IDE token."
+          title={t("settings.webToken")}
+          description={t("settings.webTokenDescription")}
           control={
             <DraftInput
               className="w-full sm:w-80"
@@ -750,7 +768,7 @@ export function GeneralSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      <SettingsSection title={t("settings.general")}>
+      <SettingsSection title={t("settings.section.appearance")}>
         <SettingsRow
           title={t("settings.theme")}
           description={t("settings.themeDescription")}
@@ -770,13 +788,16 @@ export function GeneralSettingsPanel() {
             >
               <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
                 <SelectValue>
-                  {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "Claude Light"}
+                  {t(
+                    THEME_OPTIONS.find((option) => option.value === theme)?.labelKey ??
+                      "settings.themeLight",
+                  )}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 {THEME_OPTIONS.map((option) => (
                   <SelectItem hideIndicator key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.labelKey)}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -785,8 +806,8 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          title="Layout mode"
-          description="Switch between the default Codex layout and the Cursor-style editor layout."
+          title={t("settings.layoutMode")}
+          description={t("settings.layoutModeDescription")}
           resetAction={
             settings.layoutMode !== DEFAULT_LAYOUT_MODE ? (
               <SettingResetButton
@@ -808,7 +829,7 @@ export function GeneralSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Layout mode">
+              <SelectTrigger className="w-full sm:w-40" aria-label={t("settings.layoutMode")}>
                 <SelectValue>{settings.layoutMode === "cursor" ? "Cursor" : "Codex"}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -886,26 +907,28 @@ export function GeneralSettingsPanel() {
               }}
             >
               <SelectTrigger className="w-full sm:w-40" aria-label="Timestamp format">
-                <SelectValue>{TIMESTAMP_FORMAT_LABELS[settings.timestampFormat]}</SelectValue>
+                <SelectValue>{timestampFormatLabel(settings.timestampFormat, t)}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="locale">
-                  {TIMESTAMP_FORMAT_LABELS.locale}
+                  {t("settings.timeFormatSystem")}
                 </SelectItem>
                 <SelectItem hideIndicator value="12-hour">
-                  {TIMESTAMP_FORMAT_LABELS["12-hour"]}
+                  {t("settings.timeFormat12Hour")}
                 </SelectItem>
                 <SelectItem hideIndicator value="24-hour">
-                  {TIMESTAMP_FORMAT_LABELS["24-hour"]}
+                  {t("settings.timeFormat24Hour")}
                 </SelectItem>
               </SelectPopup>
             </Select>
           }
         />
+      </SettingsSection>
 
+      <SettingsSection title={t("settings.section.editor")}>
         <SettingsRow
-          title="Diff line wrapping"
-          description="Set the default wrap state when the diff panel opens."
+          title={t("settings.diffLineWrapping")}
+          description={t("settings.diffLineWrappingDescription")}
           resetAction={
             settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap ? (
               <SettingResetButton
@@ -922,14 +945,14 @@ export function GeneralSettingsPanel() {
             <Switch
               checked={settings.diffWordWrap}
               onCheckedChange={(checked) => updateSettings({ diffWordWrap: Boolean(checked) })}
-              aria-label="Wrap diff lines by default"
+              aria-label={t("settings.diffLineWrapping")}
             />
           }
         />
 
         <SettingsRow
-          title="Hide whitespace changes"
-          description="Set whether the diff panel ignores whitespace-only edits by default."
+          title={t("settings.hideWhitespaceChanges")}
+          description={t("settings.hideWhitespaceChangesDescription")}
           resetAction={
             settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace ? (
               <SettingResetButton
@@ -948,14 +971,14 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ diffIgnoreWhitespace: Boolean(checked) })
               }
-              aria-label="Hide whitespace changes by default"
+              aria-label={t("settings.hideWhitespaceChanges")}
             />
           }
         />
 
         <SettingsRow
-          title="Assistant output"
-          description="Show token-by-token output while a response is in progress."
+          title={t("settings.assistantOutput")}
+          description={t("settings.assistantOutputDescription")}
           resetAction={
             settings.enableAssistantStreaming !==
             DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming ? (
@@ -975,14 +998,16 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ enableAssistantStreaming: Boolean(checked) })
               }
-              aria-label="Stream assistant messages"
+              aria-label={t("settings.assistantOutput")}
             />
           }
         />
+      </SettingsSection>
 
+      <SettingsSection title={t("settings.section.workflow")}>
         <SettingsRow
-          title="Auto-open task panel"
-          description="Open the right-side plan and task panel automatically when steps appear."
+          title={t("settings.autoOpenTaskPanel")}
+          description={t("settings.autoOpenTaskPanelDescription")}
           resetAction={
             settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar ? (
               <SettingResetButton
@@ -1001,14 +1026,14 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ autoOpenPlanSidebar: Boolean(checked) })
               }
-              aria-label="Open the task panel automatically"
+              aria-label={t("settings.autoOpenTaskPanel")}
             />
           }
         />
 
         <SettingsRow
-          title="New threads"
-          description="Pick the default workspace mode for newly created draft threads."
+          title={t("settings.newThreads")}
+          description={t("settings.newThreadsDescription")}
           resetAction={
             settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode ? (
               <SettingResetButton
@@ -1030,17 +1055,19 @@ export function GeneralSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-full sm:w-44" aria-label="Default thread mode">
+              <SelectTrigger className="w-full sm:w-44" aria-label={t("settings.newThreads")}>
                 <SelectValue>
-                  {settings.defaultThreadEnvMode === "worktree" ? "New worktree" : "Local"}
+                  {settings.defaultThreadEnvMode === "worktree"
+                    ? t("settings.threadModeWorktree")
+                    : t("settings.threadModeLocal")}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="local">
-                  Local
+                  {t("settings.threadModeLocal")}
                 </SelectItem>
                 <SelectItem hideIndicator value="worktree">
-                  New worktree
+                  {t("settings.threadModeWorktree")}
                 </SelectItem>
               </SelectPopup>
             </Select>
@@ -1048,8 +1075,8 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          title="Add project starts in"
-          description='Leave empty to use "~/" when the Add Project browser opens.'
+          title={t("settings.addProjectStartsIn")}
+          description={t("settings.addProjectStartsInDescription")}
           resetAction={
             settings.addProjectBaseDirectory !==
             DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory ? (
@@ -1070,14 +1097,14 @@ export function GeneralSettingsPanel() {
               onCommit={(next) => updateSettings({ addProjectBaseDirectory: next })}
               placeholder="~/"
               spellCheck={false}
-              aria-label="Add project base directory"
+              aria-label={t("settings.addProjectStartsIn")}
             />
           }
         />
 
         <SettingsRow
-          title="Archive confirmation"
-          description="Require a second click on the inline archive action before a thread is archived."
+          title={t("settings.archiveConfirmation")}
+          description={t("settings.archiveConfirmationDescription")}
           resetAction={
             settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive ? (
               <SettingResetButton
@@ -1096,14 +1123,14 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ confirmThreadArchive: Boolean(checked) })
               }
-              aria-label="Confirm thread archiving"
+              aria-label={t("settings.archiveConfirmation")}
             />
           }
         />
 
         <SettingsRow
-          title="Delete confirmation"
-          description="Ask before deleting a thread and its chat history."
+          title={t("settings.deleteConfirmation")}
+          description={t("settings.deleteConfirmationDescription")}
           resetAction={
             settings.confirmThreadDelete !== DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete ? (
               <SettingResetButton
@@ -1122,14 +1149,16 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ confirmThreadDelete: Boolean(checked) })
               }
-              aria-label="Confirm thread deletion"
+              aria-label={t("settings.deleteConfirmation")}
             />
           }
         />
+      </SettingsSection>
 
+      <SettingsSection title={t("settings.section.aiGit")}>
         <SettingsRow
-          title="Text generation model"
-          description="Configure the model used for generated commit messages, PR titles, and similar Git text."
+          title={t("settings.textGenerationModel")}
+          description={t("settings.textGenerationModelDescription")}
           resetAction={
             isGitWritingModelDirty ? (
               <SettingResetButton
@@ -1202,10 +1231,10 @@ export function GeneralSettingsPanel() {
         />
       </SettingsSection>
 
-      <SettingsSection title="Privacy">
+      <SettingsSection title={t("settings.section.privacy")}>
         <SettingsRow
-          title="Usage analytics"
-          description="Allow anonymous product usage events. Code content, prompts, and file paths are not sent."
+          title={t("settings.usageAnalytics")}
+          description={t("settings.usageAnalyticsDescription")}
           resetAction={
             settings.telemetryConsent.usageAnalytics !==
             DEFAULT_UNIFIED_SETTINGS.telemetryConsent.usageAnalytics ? (
@@ -1233,13 +1262,13 @@ export function GeneralSettingsPanel() {
                   },
                 })
               }
-              aria-label="Allow usage analytics"
+              aria-label={t("settings.usageAnalytics")}
             />
           }
         />
         <SettingsRow
-          title="Crash reporting"
-          description="Reserve consent for crash diagnostics; no crash reporter is enabled until this is on."
+          title={t("settings.crashReporting")}
+          description={t("settings.crashReportingDescription")}
           resetAction={
             settings.telemetryConsent.crashReporting !==
             DEFAULT_UNIFIED_SETTINGS.telemetryConsent.crashReporting ? (
@@ -1267,13 +1296,13 @@ export function GeneralSettingsPanel() {
                   },
                 })
               }
-              aria-label="Allow crash reporting"
+              aria-label={t("settings.crashReporting")}
             />
           }
         />
         <SettingsRow
-          title="Improve product"
-          description="Allow anonymous feature-quality signals used to prioritize reliability work."
+          title={t("settings.improveProduct")}
+          description={t("settings.improveProductDescription")}
           resetAction={
             settings.telemetryConsent.improveProduct !==
             DEFAULT_UNIFIED_SETTINGS.telemetryConsent.improveProduct ? (
@@ -1301,7 +1330,7 @@ export function GeneralSettingsPanel() {
                   },
                 })
               }
-              aria-label="Allow product improvement telemetry"
+              aria-label={t("settings.improveProduct")}
             />
           }
         />
@@ -1309,21 +1338,18 @@ export function GeneralSettingsPanel() {
 
       <CommercialGatewaySection />
 
-      <SettingsSection title="About">
+      <SettingsSection title={t("settings.section.about")}>
         {isElectron || HOSTED_APP_CHANNEL ? (
           <AboutVersionSection />
         ) : (
-          <SettingsRow
-            title={<AboutVersionTitle />}
-            description="Current version of the application."
-          />
+          <SettingsRow title={<AboutVersionTitle />} description={t("settings.currentVersion")} />
         )}
         <SettingsRow
-          title="Diagnostics"
+          title={t("settings.diagnostics")}
           description={diagnosticsDescription}
           control={
             <Button render={<Link to="/settings/diagnostics" />} size="xs" variant="outline">
-              View diagnostics
+              {t("settings.viewDiagnostics")}
             </Button>
           }
         />
@@ -1335,6 +1361,7 @@ export function GeneralSettingsPanel() {
 export function ProviderSettingsPanel() {
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
+  const { t } = useI18n();
   const serverProviders = useServerProviders();
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
   const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
@@ -1597,7 +1624,7 @@ export function ProviderSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection
-        title="Providers"
+        title={t("settings.providers")}
         headerAction={
           <div className="flex items-center gap-1.5">
             <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
@@ -1609,13 +1636,13 @@ export function ProviderSettingsPanel() {
                     variant="ghost"
                     className="size-5 rounded-sm p-0 text-muted-foreground hover:text-foreground"
                     onClick={() => setIsAddInstanceDialogOpen(true)}
-                    aria-label="Add provider instance"
+                    aria-label={t("settings.addProviderInstance")}
                   >
                     <PlusIcon className="size-3" />
                   </Button>
                 }
               />
-              <TooltipPopup side="top">Add provider instance</TooltipPopup>
+              <TooltipPopup side="top">{t("settings.addProviderInstance")}</TooltipPopup>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -1626,7 +1653,7 @@ export function ProviderSettingsPanel() {
                     className="size-5 rounded-sm p-0 text-muted-foreground hover:text-foreground"
                     disabled={isRefreshingProviders}
                     onClick={() => void refreshProviders()}
-                    aria-label="Refresh provider status"
+                    aria-label={t("settings.refreshProviderStatus")}
                   >
                     {isRefreshingProviders ? (
                       <LoaderIcon className="size-3 animate-spin" />
@@ -1636,7 +1663,7 @@ export function ProviderSettingsPanel() {
                   </Button>
                 }
               />
-              <TooltipPopup side="top">Refresh provider status</TooltipPopup>
+              <TooltipPopup side="top">{t("settings.refreshProviderStatus")}</TooltipPopup>
             </Tooltip>
           </div>
         }
@@ -1750,6 +1777,7 @@ export function ProviderSettingsPanel() {
 }
 
 export function ArchivedThreadsPanel() {
+  const { t } = useI18n();
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
   const environmentIds = useMemo(
@@ -1810,8 +1838,8 @@ export function ArchivedThreadsPanel() {
       if (!api) return;
       const clicked = await api.contextMenu.show(
         [
-          { id: "unarchive", label: "Unarchive" },
-          { id: "delete", label: "Delete", destructive: true },
+          { id: "unarchive", label: t("settings.unarchive") },
+          { id: "delete", label: t("settings.delete"), destructive: true },
         ],
         position,
       );
@@ -1837,13 +1865,13 @@ export function ArchivedThreadsPanel() {
         refreshArchivedThreads();
       }
     },
-    [confirmAndDeleteThread, refreshArchivedThreads, unarchiveThread],
+    [confirmAndDeleteThread, refreshArchivedThreads, t, unarchiveThread],
   );
 
   return (
     <SettingsPageContainer>
       {archivedGroups.length === 0 ? (
-        <SettingsSection title="Archived threads">
+        <SettingsSection title={t("settings.archivedThreads")}>
           <SettingsRow
             title={
               <span className="inline-flex items-center gap-2">
@@ -1853,16 +1881,16 @@ export function ArchivedThreadsPanel() {
                   <ArchiveIcon className="size-3.5 text-muted-foreground" />
                 )}
                 {isLoadingArchive
-                  ? "Loading archived threads"
+                  ? t("settings.loadingArchivedThreads")
                   : archiveError
-                    ? "Could not load archived threads"
-                    : "No archived threads"}
+                    ? t("settings.couldNotLoadArchivedThreads")
+                    : t("settings.noArchivedThreads")}
               </span>
             }
             description={
               isLoadingArchive
-                ? "Checking connected environments."
-                : (archiveError ?? "Archived threads will appear here.")
+                ? t("settings.checkingConnectedEnvironments")
+                : (archiveError ?? t("settings.archivedThreadsEmpty"))
             }
           />
         </SettingsSection>
@@ -1887,13 +1915,10 @@ export function ArchivedThreadsPanel() {
                   );
                 }}
                 title={thread.title}
-                description={
-                  <>
-                    Archived {formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt)}
-                    {" \u00b7 Created "}
-                    {formatRelativeTimeLabel(thread.createdAt)}
-                  </>
-                }
+                description={t("settings.archivedAtCreatedAt", {
+                  archivedAt: formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt),
+                  createdAt: formatRelativeTimeLabel(thread.createdAt),
+                })}
                 control={
                   <Button
                     type="button"
@@ -1916,7 +1941,7 @@ export function ArchivedThreadsPanel() {
                     }
                   >
                     <ArchiveX className="size-3.5" />
-                    <span>Unarchive</span>
+                    <span>{t("settings.unarchive")}</span>
                   </Button>
                 }
               />
