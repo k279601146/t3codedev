@@ -79,6 +79,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    * model set but are free to diverge via customModels).
    */
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
+  simplified?: boolean;
   terminalOpen: boolean;
   onRequestClose?: () => void;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
@@ -218,8 +219,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       props.lockedProvider ? instanceEntries.filter((entry) => matchesLockedProvider(entry)) : [],
     [instanceEntries, matchesLockedProvider, props.lockedProvider],
   );
-  const showLockedInstanceSidebar = isLocked && lockedInstanceEntries.length > 1;
-  const showSidebar = !isSearching && (!isLocked || showLockedInstanceSidebar);
+  const showLockedInstanceSidebar =
+    !props.simplified && isLocked && lockedInstanceEntries.length > 1;
+  const showSidebar = !props.simplified && !isSearching && (!isLocked || showLockedInstanceSidebar);
   const sidebarInstanceEntries = showLockedInstanceSidebar
     ? lockedInstanceEntries
     : instanceEntries;
@@ -521,6 +523,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         className={cn(
           "relative flex h-screen max-h-96 w-screen max-w-100 overflow-hidden rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
           isLocked && !showLockedInstanceSidebar ? "flex-col" : "flex-row",
+          props.simplified && "h-auto max-h-88 max-w-80",
         )}
       >
         {/* Locked provider header (only shown in locked mode) */}
@@ -568,43 +571,44 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               isLocked && !showLockedInstanceSidebar ? "min-w-0" : showSidebar && "border-l",
             )}
           >
-            {/* Search bar */}
-            <div className="border-b px-3 py-2">
-              <ComboboxInput
-                ref={searchInputRef}
-                className="[&_input]:font-sans rounded-md"
-                inputClassName="border-0 shadow-none ring-0 focus-visible:ring-0"
-                placeholder="Search models..."
-                showTrigger={false}
-                startAddon={<SearchIcon className="size-4 shrink-0 text-muted-foreground/50" />}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
+            {props.simplified ? null : (
+              <div className="border-b px-3 py-2">
+                <ComboboxInput
+                  ref={searchInputRef}
+                  className="[&_input]:font-sans rounded-md"
+                  inputClassName="border-0 shadow-none ring-0 focus-visible:ring-0"
+                  placeholder="Search models..."
+                  showTrigger={false}
+                  startAddon={<SearchIcon className="size-4 shrink-0 text-muted-foreground/50" />}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      props.onRequestClose?.();
+                      return;
+                    }
+                    if (e.key === "Enter" && highlightedModelKeyRef.current) {
+                      (
+                        e as typeof e & { preventBaseUIHandler?: () => void }
+                      ).preventBaseUIHandler?.();
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const { instanceId, slug } = splitInstanceModelKey(
+                        highlightedModelKeyRef.current,
+                      );
+                      handleModelSelect(slug, instanceId);
+                      return;
+                    }
                     e.stopPropagation();
-                    props.onRequestClose?.();
-                    return;
-                  }
-                  if (e.key === "Enter" && highlightedModelKeyRef.current) {
-                    (
-                      e as typeof e & { preventBaseUIHandler?: () => void }
-                    ).preventBaseUIHandler?.();
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const { instanceId, slug } = splitInstanceModelKey(
-                      highlightedModelKeyRef.current,
-                    );
-                    handleModelSelect(slug, instanceId);
-                    return;
-                  }
-                  e.stopPropagation();
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-                size="sm"
-              />
-            </div>
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  size="sm"
+                />
+              </div>
+            )}
 
             {/* Model list */}
             <div
@@ -627,11 +631,20 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       providerDisplayName={model.instanceDisplayName}
                       providerAccentColor={model.instanceAccentColor}
                       isFavorite={favoritesSet.has(modelKey)}
-                      showProvider={!isLocked || showLockedInstanceSidebar}
+                      showProvider={
+                        props.simplified ? false : !isLocked || showLockedInstanceSidebar
+                      }
                       preferShortName={!isLocked}
                       useTriggerLabel={isLocked && !showLockedInstanceSidebar}
-                      showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
-                      jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
+                      showNewBadge={
+                        props.simplified
+                          ? false
+                          : isModelPickerNewModel(model.driverKind, model.slug)
+                      }
+                      jumpLabel={
+                        props.simplified ? null : (modelJumpLabelByKey.get(modelKey) ?? null)
+                      }
+                      {...(props.simplified ? { showFavorite: false } : {})}
                       onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
                     />
                   );

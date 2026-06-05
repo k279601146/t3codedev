@@ -2435,7 +2435,11 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                   <div className="truncate text-xs text-muted-foreground">{accountPlanLabel}</div>
                 </div>
               </div>
-              <AccountUsageCard providerUsage={providerUsage} onUpgrade={handleOpenPlans} />
+              <AccountUsageCard
+                credits={codexProvider?.auth.rateLimits?.credits ?? null}
+                providerUsage={providerUsage}
+                onUpgrade={handleOpenPlans}
+              />
               <MenuSeparator className="mx-0 my-2" />
               <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenSettings}>
                 <SettingsIcon className="size-4" />
@@ -2509,6 +2513,7 @@ function normalizeCommercialUsage(
 }
 
 function AccountUsageCard(props: {
+  credits: NonNullable<ServerProvider["auth"]["rateLimits"]>["credits"] | null;
   providerUsage: CommercialUsageLike | null;
   onUpgrade: () => void;
 }) {
@@ -2561,9 +2566,13 @@ function AccountUsageCard(props: {
     resolvedUsage?.planLabel ??
     (resolvedUsage?.plan ? formatPlanLabel(resolvedUsage.plan) : "AI Plus");
   const multiplier = resolvedUsage?.planMultiplier ?? (resolvedUsage?.plan === "pro" ? 4 : 2);
+  const resolvedBalance =
+    resolvedUsage && "balance" in resolvedUsage && typeof resolvedUsage.balance === "number"
+      ? resolvedUsage.balance
+      : null;
+  const balanceLabel = formatCreditBalance(resolvedBalance, props.credits?.balance);
 
   const nextPlan = planLabel === "free" ? "AI Plus" : "AI Pro";
-
 
   return (
     <div className="px-3 py-3">
@@ -2571,6 +2580,13 @@ function AccountUsageCard(props: {
         <div className="text-sm font-semibold text-foreground">用量限制</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
           {planLabel} · 标准限额的 {formatUsageMultiplier(multiplier)} 倍
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs">
+          <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">可用积分余额</span>
+          <span className="shrink-0 font-semibold tabular-nums text-foreground">
+            {balanceLabel}
+          </span>
         </div>
         <UsageLimitRow
           className="mt-4"
@@ -2584,15 +2600,14 @@ function AccountUsageCard(props: {
           loading={usage === undefined && props.providerUsage === null}
           window={weeklyWindow}
         />
-       
 
-          <button
-                    onClick={props.onUpgrade}
-                    className="mt-4 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-800 transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
-                >
-                    升级到 {nextPlan}
-                    <ArrowUpRight className="size-3.5" />
-                </button>
+        <button
+          onClick={props.onUpgrade}
+          className="mt-4 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-800 transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+        >
+          升级到 {nextPlan}
+          <ArrowUpRight className="size-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -2662,6 +2677,15 @@ function formatUsageMultiplier(value: number | null | undefined): string {
 function formatUsageUnits(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "--";
   return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function formatCreditBalance(value: number | null | undefined, fallback?: string | null): string {
+  if (value !== null && value !== undefined && Number.isFinite(value)) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  }
+  const normalized = fallback?.trim();
+  if (normalized) return normalized.replace(/^\$/, "");
+  return "0";
 }
 
 function formatResetTime(value: string | null): string {

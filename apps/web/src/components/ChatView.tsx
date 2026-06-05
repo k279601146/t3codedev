@@ -12,7 +12,6 @@ import {
   ProviderInstanceId,
   type ServerProvider,
   type ResolvedKeybindingsConfig,
-  type ScopedProjectRef,
   type ScopedThreadRef,
   type ThreadId,
   type TurnId,
@@ -25,7 +24,6 @@ import {
 } from "@t3tools/contracts";
 import {
   parseScopedThreadKey,
-  scopedProjectKey,
   scopedThreadKey,
   scopeProjectRef,
   scopeThreadRef,
@@ -157,8 +155,13 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import {
+  getLauncherModeLabel,
+  MODE_PLACEHOLDERS,
+  NewThreadLauncherView,
+  type LauncherModeId,
+} from "./NewThreadLauncherView";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
-import { NewThreadProjectPicker } from "./NewThreadProjectPicker";
 import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
@@ -711,6 +714,9 @@ export default function ChatView(props: ChatViewProps) {
   const composerInteractionMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.interactionMode ?? null,
   );
+  const composerPrompt = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.prompt ?? "",
+  );
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
@@ -754,6 +760,7 @@ export default function ChatView(props: ChatViewProps) {
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
+  const [newThreadLauncherMode, setNewThreadLauncherMode] = useState<LauncherModeId>("general");
   const [optimisticUserMessages, setOptimisticUserMessagesState] = useState<ChatMessage[]>(
     () => OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [],
   );
@@ -2000,49 +2007,21 @@ export default function ChatView(props: ChatViewProps) {
       focusComposer();
     });
   }, [focusComposer]);
-  const handleNewThreadProjectSelect = useCallback(
-    (projectRef: ScopedProjectRef) => {
-      if (routeKind !== "draft" || !draftId || !activeThread) {
-        return;
-      }
-
-      const selectedProject = allProjects.find(
-        (project) =>
-          project.environmentId === projectRef.environmentId && project.id === projectRef.projectId,
-      );
-      const logicalProjectKey = selectedProject
-        ? deriveLogicalProjectKeyFromSettings(selectedProject, projectGroupingSettings)
-        : scopedProjectKey(projectRef);
-
-      if (activeProjectRef && !envLocked) {
-        useComposerDraftStore.getState().clearProjectDraftThreadById(activeProjectRef, draftId);
-      }
-      setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
-        threadId: activeThread.id,
-        createdAt: activeThread.createdAt,
-        runtimeMode,
-        interactionMode,
-        branch: null,
-        worktreePath: null,
-        envMode: "local",
+  const handleNewThreadPresetSubmit = useCallback(
+    (presetPrompt: string, mode: LauncherModeId = "general") => {
+      setNewThreadLauncherMode(mode);
+      promptRef.current = presetPrompt;
+      setComposerDraftPrompt(composerDraftTarget, presetPrompt);
+      window.requestAnimationFrame(() => {
+        composerRef.current?.resetCursorState({
+          cursor: presetPrompt.length,
+          prompt: presetPrompt,
+          detectTrigger: true,
+        });
+        focusComposer();
       });
-      setNewThreadScope({ kind: "project", projectRef });
-      scheduleComposerFocus();
     },
-    [
-      activeProjectRef,
-      activeThread,
-      allProjects,
-      draftId,
-      envLocked,
-      interactionMode,
-      projectGroupingSettings,
-      routeKind,
-      runtimeMode,
-      scheduleComposerFocus,
-      setLogicalProjectDraftThreadId,
-      setNewThreadScope,
-    ],
+    [composerDraftTarget, composerRef, focusComposer, promptRef, setComposerDraftPrompt],
   );
   const addTerminalContextToDraft = useCallback((selection: TerminalContextSelection) => {
     composerRef.current?.addTerminalContext(selection);
@@ -3819,15 +3798,6 @@ export default function ChatView(props: ChatViewProps) {
   });
   const hideProjectChromeForEmptyNewThread =
     isEmptyNewThread && (isConversationThread || !activeProject);
-  const emptyNewThreadTitle =
-    isConversationThread || !activeProject ? (
-      "我们该做什么？"
-    ) : (
-      <>
-        要在 <span className="font-semibold">{activeProject?.name ?? "New thread"}</span>{" "}
-        中构建什么？
-      </>
-    );
   const inlineRightPanel =
     rightPanelOpen && !shouldUseRightPanelSheet ? (
       <div
@@ -3866,6 +3836,28 @@ export default function ChatView(props: ChatViewProps) {
         />
       </div>
     ) : null;
+  const emptyNewThreadFooter = isConversationNewThread ? null : isGitRepo ? (
+    <BranchToolbar
+      environmentId={activeThread.environmentId}
+      threadId={activeThread.id}
+      {...(routeKind === "draft" && draftId ? { draftId } : {})}
+      onEnvModeChange={onEnvModeChange}
+      {...(canOverrideServerThreadEnvMode ? { effectiveEnvModeOverride: envMode } : {})}
+      {...(canOverrideServerThreadEnvMode
+        ? {
+            activeThreadBranchOverride: activeThreadBranch,
+            onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
+          }
+        : {})}
+      envLocked={envLocked}
+      onComposerFocusRequest={scheduleComposerFocus}
+      {...(canCheckoutPullRequestIntoThread
+        ? { onCheckoutPullRequestRequest: openPullRequestDialog }
+        : {})}
+      {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
+      availableEnvironments={logicalProjectEnvironments}
+    />
+  ) : null;
   const composerNode = (
     <ChatComposer
       ref={composerRef}
@@ -3912,6 +3904,12 @@ export default function ChatView(props: ChatViewProps) {
       keybindings={keybindings}
       terminalOpen={Boolean(terminalState.terminalOpen)}
       gitCwd={gitCwd}
+      newThreadMode={isEmptyNewThread}
+      newThreadPlaceholder={MODE_PLACEHOLDERS[newThreadLauncherMode]}
+      newThreadModeLabel={
+        newThreadLauncherMode === "general" ? null : getLauncherModeLabel(newThreadLauncherMode)
+      }
+      onClearNewThreadMode={() => setNewThreadLauncherMode("general")}
       promptRef={promptRef}
       composerImagesRef={composerImagesRef}
       composerTerminalContextsRef={composerTerminalContextsRef}
@@ -3997,50 +3995,20 @@ export default function ChatView(props: ChatViewProps) {
       {isEmptyNewThread ? (
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <main className="flex min-h-0 flex-1 items-center justify-center px-4 pb-28 pt-6 sm:px-6">
-              <div className="@container/new-thread w-full max-w-[50rem] -translate-y-5">
-                <h1 className="text-balance text-center text-[25px] font-medium leading-[1.22] tracking-normal text-foreground/92 @2xl/new-thread:text-[28px]">
-                  {emptyNewThreadTitle}
-                </h1>
-                <div className="mx-auto mt-8 w-full max-w-[43.5rem]">
-                  <div className="relative isolate">
-                    <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
-                    <div className="relative z-10">{composerNode}</div>
-                  </div>
-                  {isConversationNewThread ? (
-                    <div className="mx-auto flex w-full max-w-208 items-center justify-center gap-2 px-2.5 pb-3 pt-3 sm:px-3">
-                      <NewThreadProjectPicker
-                        activeProjectRef={null}
-                        onProjectSelect={handleNewThreadProjectSelect}
-                      />
-                    </div>
-                  ) : isGitRepo ? (
-                    <BranchToolbar
-                      environmentId={activeThread.environmentId}
-                      threadId={activeThread.id}
-                      {...(routeKind === "draft" && draftId ? { draftId } : {})}
-                      onEnvModeChange={onEnvModeChange}
-                      {...(canOverrideServerThreadEnvMode
-                        ? { effectiveEnvModeOverride: envMode }
-                        : {})}
-                      {...(canOverrideServerThreadEnvMode
-                        ? {
-                            activeThreadBranchOverride: activeThreadBranch,
-                            onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
-                          }
-                        : {})}
-                      envLocked={envLocked}
-                      onComposerFocusRequest={scheduleComposerFocus}
-                      {...(canCheckoutPullRequestIntoThread
-                        ? { onCheckoutPullRequestRequest: openPullRequestDialog }
-                        : {})}
-                      {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
-                      availableEnvironments={logicalProjectEnvironments}
-                    />
-                  ) : null}
-                </div>
-              </div>
-            </main>
+            <NewThreadLauncherView
+              mode={newThreadLauncherMode}
+              isComposerEmpty={composerPrompt.trim().length === 0}
+              projectName={!isConversationThread ? activeProject?.name : undefined}
+              composer={
+                <>
+                  <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                  <div className="relative z-10">{composerNode}</div>
+                </>
+              }
+              footer={emptyNewThreadFooter}
+              onModeChange={setNewThreadLauncherMode}
+              onSubmitPreset={handleNewThreadPresetSubmit}
+            />
           </div>
           {inlineRightPanel}
         </div>

@@ -21,11 +21,21 @@ function isWindowExhausted(window: UsageWindow | null | undefined): boolean {
   );
 }
 
+function hasSpendableCredits(provider: ServerProvider | null | undefined): boolean {
+  const credits = provider?.auth.rateLimits?.credits ?? null;
+  if (!credits || credits.unlimited) return Boolean(credits?.unlimited);
+  if (credits.hasCredits) return true;
+  const numericBalance =
+    typeof credits.balance === "string" ? Number(credits.balance.replace(/[^0-9.-]/g, "")) : 0;
+  return Number.isFinite(numericBalance) && numericBalance > 0;
+}
+
 export function resolveCommercialUsageLimitBlock(
   provider: ServerProvider | null | undefined,
 ): CommercialUsageLimitBlock | null {
   const usage = provider?.auth.rateLimits?.usage ?? null;
   if (!usage) return null;
+  if (hasSpendableCredits(provider)) return null;
   if (isWindowExhausted(usage.currentWindow)) {
     return {
       reason: "current",

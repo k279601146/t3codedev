@@ -8,6 +8,7 @@ import type {
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
+  ServerProviderSkill,
   ServerProvider,
   ThreadId,
   TurnId,
@@ -84,13 +85,28 @@ import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuItem,
+  MenuPopup,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import { toastManager } from "../ui/toast";
 import {
-  BotIcon,
   CircleAlertIcon,
+  BookOpenIcon,
+  CheckIcon,
   FileIcon,
   ListTodoIcon,
   PlusIcon,
+  SearchIcon,
+  SettingsIcon,
+  ShieldCheckIcon,
   type LucideIcon,
   LockIcon,
   BadgeAlertIcon,
@@ -342,6 +358,201 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   );
 });
 
+const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
+  disabled: boolean;
+  interactionMode: ProviderInteractionMode;
+  runtimeMode: RuntimeMode;
+  skills: ReadonlyArray<ServerProviderSkill>;
+  showInteractionModeToggle: boolean;
+  traitsMenuContent?: React.ReactNode;
+  onAttachFiles: () => void;
+  onSelectSkill: (skill: ServerProviderSkill) => void;
+  onRuntimeModeChange: (mode: RuntimeMode) => void;
+  onInteractionModeChange: (mode: ProviderInteractionMode) => void;
+}) {
+  const [skillQuery, setSkillQuery] = useState("");
+  const visibleSkills = useMemo(
+    () => searchProviderSkills(props.skills, skillQuery, 8),
+    [props.skills, skillQuery],
+  );
+
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-10 rounded-full border-border/80 bg-background text-muted-foreground shadow-none hover:text-foreground"
+            aria-label="打开更多输入选项"
+            title="更多"
+            disabled={props.disabled}
+          />
+        }
+      >
+        <PlusIcon aria-hidden="true" className="size-5" />
+      </MenuTrigger>
+      <MenuPopup align="start" side="bottom" sideOffset={8} className="min-w-56">
+        <MenuItem onClick={props.onAttachFiles}>
+          <FileIcon className="size-4 shrink-0 opacity-80" />
+          添加文件
+        </MenuItem>
+        <MenuSub>
+          <MenuSubTrigger>
+            <BookOpenIcon className="size-4 shrink-0 opacity-80" />
+            使用技能
+          </MenuSubTrigger>
+          <MenuSubPopup className="w-[332px] rounded-[14px] p-0">
+            <div className="p-2">
+              <label className="mb-2 flex h-9 items-center gap-2 rounded-[9px] border border-border bg-background px-2.5 text-muted-foreground">
+                <SearchIcon className="size-4 shrink-0" />
+                <input
+                  value={skillQuery}
+                  onChange={(event) => setSkillQuery(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  placeholder="搜索技能"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+                />
+              </label>
+              <div className="max-h-[250px] overflow-y-auto pr-1">
+                {visibleSkills.map((skill, index) => (
+                  <MenuItem
+                    key={skill.name}
+                    onClick={() => props.onSelectSkill(skill)}
+                    className="min-h-12 items-start rounded-[9px] px-2.5 py-2 animate-in fade-in slide-in-from-left-1 duration-200"
+                    style={{ animationDelay: `${index * 35}ms`, animationFillMode: "both" }}
+                  >
+                    <BookOpenIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[13px] font-medium">
+                          {formatProviderSkillDisplayName(skill)}
+                        </span>
+                        <span className="shrink-0 rounded bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary">
+                          {getNewThreadSkillBadgeLabel(skill)}
+                        </span>
+                      </span>
+                      <span className="line-clamp-1 text-[12px] leading-4 text-muted-foreground">
+                        {skill.shortDescription ?? skill.description ?? "通过技能增强任务执行能力"}
+                      </span>
+                    </span>
+                  </MenuItem>
+                ))}
+                {visibleSkills.length === 0 ? (
+                  <div className="px-2 py-8 text-center text-[12px] text-muted-foreground">
+                    {skillQuery.trim() ? "没有匹配的技能" : "暂无可用技能"}
+                  </div>
+                ) : null}
+              </div>
+              <MenuSeparator className="mx-0 mt-1" />
+              <MenuItem
+                onClick={() =>
+                  toastManager.add({ type: "info", title: "请在技能目录中添加技能。" })
+                }
+              >
+                <PlusIcon className="size-4 shrink-0 opacity-80" />
+                添加技能
+              </MenuItem>
+              <MenuItem
+                onClick={() => toastManager.add({ type: "info", title: "请在设置中管理技能。" })}
+              >
+                <SettingsIcon className="size-4 shrink-0 opacity-80" />
+                管理技能
+              </MenuItem>
+            </div>
+          </MenuSubPopup>
+        </MenuSub>
+        {props.traitsMenuContent ? (
+          <>
+            <MenuSeparator />
+            {props.traitsMenuContent}
+          </>
+        ) : null}
+        {props.showInteractionModeToggle ? (
+          <>
+            <MenuSeparator />
+            <MenuCheckboxItem
+              checked={props.interactionMode === "plan"}
+              variant="switch"
+              onCheckedChange={(checked) =>
+                props.onInteractionModeChange(checked ? "plan" : "default")
+              }
+            >
+              <span className="inline-flex items-center gap-2">
+                <ListTodoIcon className="size-4 shrink-0 opacity-80" />
+                计划模式
+              </span>
+            </MenuCheckboxItem>
+          </>
+        ) : null}
+        <MenuSub>
+          <MenuSubTrigger>
+            <ShieldCheckIcon className="size-4 shrink-0 opacity-80" />
+            权限控制
+          </MenuSubTrigger>
+          <MenuSubPopup className="min-w-64">
+            {runtimeModeOptions.map((mode) => {
+              const option = runtimeModeConfig[mode];
+              const OptionIcon = option.icon;
+              const selected = props.runtimeMode === mode;
+              return (
+                <MenuItem key={mode} onClick={() => props.onRuntimeModeChange(mode)}>
+                  <OptionIcon className="size-4 shrink-0 opacity-80" />
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="text-sm font-medium">{option.label}</span>
+                    <span className="line-clamp-1 text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </span>
+                  {selected ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
+                </MenuItem>
+              );
+            })}
+          </MenuSubPopup>
+        </MenuSub>
+      </MenuPopup>
+    </Menu>
+  );
+});
+
+function getNewThreadSkillBadgeLabel(skill: Pick<ServerProviderSkill, "scope" | "path">): string {
+  const normalizedScope = skill.scope?.trim().toLowerCase();
+  const normalizedPath = skill.path.replaceAll("\\", "/");
+  if (
+    normalizedScope === "project" ||
+    normalizedScope === "workspace" ||
+    normalizedScope === "local"
+  ) {
+    return "项目";
+  }
+  if (normalizedScope === "user" || normalizedScope === "personal") {
+    return "个人";
+  }
+  if (normalizedScope === "system" || normalizedPath.includes("/.codex/plugins/")) {
+    return "官方";
+  }
+  return "官方";
+}
+
+const NewThreadModeStatusChip = memo(function NewThreadModeStatusChip(props: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClear}
+      aria-label={`关闭${props.label}`}
+      className="inline-flex h-8 shrink-0 animate-in items-center gap-1.5 rounded-full border border-[#147DFF] bg-[#EAF5FF] px-2.5 text-[13px] font-medium text-[#147DFF] fade-in slide-in-from-left-1 zoom-in-95 duration-200 hover:bg-[#DDECFF] active:bg-[#D2E5FF] dark:bg-[#147DFF]/10 dark:hover:bg-[#147DFF]/15"
+    >
+      <XIcon className="size-3.5 stroke-[2.4px]" />
+      <span className="max-w-32 truncate">{props.label}</span>
+    </button>
+  );
+});
+
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
 // --------------------------------------------------------------------------
@@ -453,6 +664,10 @@ export interface ChatComposerProps {
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;
   gitCwd: string | null;
+  newThreadMode?: boolean;
+  newThreadPlaceholder?: string;
+  newThreadModeLabel?: string | null;
+  onClearNewThreadMode?: () => void;
 
   // Refs the parent needs kept in sync
   promptRef: React.MutableRefObject<string>;
@@ -544,6 +759,10 @@ export const ChatComposer = memo(
       keybindings,
       terminalOpen,
       gitCwd,
+      newThreadMode = false,
+      newThreadPlaceholder,
+      newThreadModeLabel = null,
+      onClearNewThreadMode,
       promptRef,
       composerImagesRef,
       composerTerminalContextsRef,
@@ -1701,6 +1920,39 @@ export const ChatComposer = memo(
       composerAttachmentInputRef.current?.click();
     }, []);
 
+    const insertSkillAtComposerCursor = useCallback(
+      (skill: ServerProviderSkill) => {
+        if (isComposerApprovalState || activePendingProgress) {
+          return;
+        }
+        const snapshot = readComposerSnapshot();
+        const needsLeadingSpacer = snapshot.value.length > 0 && !/\s$/.test(snapshot.value);
+        const replacement = `${needsLeadingSpacer ? " " : ""}$${skill.name} `;
+        const applied = applyPromptReplacement(snapshot.cursor, snapshot.cursor, replacement);
+        if (!applied) {
+          return;
+        }
+        const nextCursor = snapshot.cursor + replacement.length;
+        window.requestAnimationFrame(() => {
+          const nextPrompt = promptRef.current;
+          setComposerTrigger(
+            detectComposerTrigger(
+              nextPrompt,
+              expandCollapsedComposerCursor(nextPrompt, nextCursor),
+            ),
+          );
+          composerEditorRef.current?.focusAt(nextCursor);
+        });
+      },
+      [
+        activePendingProgress,
+        applyPromptReplacement,
+        isComposerApprovalState,
+        promptRef,
+        readComposerSnapshot,
+      ],
+    );
+
     // ------------------------------------------------------------------
     // Callbacks: attachments
     // ------------------------------------------------------------------
@@ -2012,7 +2264,7 @@ export const ChatComposer = memo(
       <form
         ref={composerFormRef}
         onSubmit={submitComposer}
-        className="mx-auto w-full min-w-0 max-w-[43.5rem]"
+        className={cn("mx-auto w-full min-w-0", newThreadMode ? "max-w-none" : "max-w-[43.5rem]")}
         data-chat-composer-form="true"
       >
         <input
@@ -2024,8 +2276,9 @@ export const ChatComposer = memo(
         />
         <div
           className={cn(
-            "group rounded-[15px] p-px transition-colors duration-200",
-            composerProviderState.composerFrameClassName,
+            "group transition-colors duration-200",
+            newThreadMode ? "rounded-[22px]" : "rounded-[15px] p-px",
+            !newThreadMode && composerProviderState.composerFrameClassName,
           )}
           onDragEnter={onComposerDragEnter}
           onDragOver={onComposerDragOver}
@@ -2036,10 +2289,17 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "rounded-[14px] border bg-card/98 shadow-[var(--t3-shadow-composer)] transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65 has-focus-visible:shadow-[var(--claude-shadow-panel)]",
-              isDragOverComposer ? "border-foreground/25 bg-accent/20" : "border-border/80",
+              "relative overflow-hidden border bg-card/98 transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65",
+              newThreadMode
+                ? "rounded-[22px] shadow-[0_18px_48px_-34px_rgba(0,0,0,0.45)]"
+                : "rounded-[14px] shadow-[var(--t3-shadow-composer)] has-focus-visible:shadow-[var(--claude-shadow-panel)]",
+              isDragOverComposer
+                ? newThreadMode
+                  ? "border-dashed border-[#147DFF] bg-card ring-[12px] ring-[#EAF5FF] dark:ring-[#147DFF]/10"
+                  : "border-foreground/25 bg-accent/20"
+                : "border-border/80",
               environmentUnavailable ? "opacity-75" : null,
-              composerProviderState.composerSurfaceClassName,
+              !newThreadMode && composerProviderState.composerSurfaceClassName,
             )}
             onFocusCapture={(event) => {
               const activeElement = event.target;
@@ -2060,6 +2320,14 @@ export const ChatComposer = memo(
               scheduleComposerCollapseCheck();
             }}
           >
+            {newThreadMode && isDragOverComposer ? (
+              <div className="pointer-events-none absolute inset-1 z-20 flex items-center justify-center rounded-[20px] bg-card/85 backdrop-blur-[2px]">
+                <div className="flex flex-col items-center gap-1.5 text-[#147DFF]">
+                  <FileIcon className="h-5 w-5 stroke-[2.4px]" />
+                  <span className="text-[13px] font-medium">将文件拖到这里</span>
+                </div>
+              </div>
+            ) : null}
             {!isComposerCollapsedMobile &&
               (activePendingApproval ? (
                 <div className="rounded-t-[14px] bg-muted/15">
@@ -2209,9 +2477,13 @@ export const ChatComposer = memo(
 
             <div
               className={cn(
-                "relative px-4 pb-1.5 sm:px-4",
-                hasComposerHeader ? "pt-3" : "pt-3.5",
+                "relative",
+                newThreadMode
+                  ? "min-h-[128px] max-h-[380px] overflow-y-auto px-5 pb-14 pt-4"
+                  : "px-4 pb-1.5 sm:px-4",
+                !newThreadMode && (hasComposerHeader ? "pt-3" : "pt-3.5"),
                 isComposerCollapsedMobile && "hidden",
+                newThreadMode && isDragOverComposer && "opacity-20 blur-[1px]",
               )}
             >
               {composerMenuOpen && !isComposerApprovalState && (
@@ -2323,7 +2595,10 @@ export const ChatComposer = memo(
                       : []
                   }
                   skills={selectedProviderStatus?.skills ?? []}
-                  {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
+                  className={cn(
+                    newThreadMode && "min-h-[64px] max-h-[300px] text-[15px] leading-7",
+                    showMobilePendingAnswerActions && "max-sm:pb-11",
+                  )}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                   onChange={onPromptChange}
                   onCommandKeyDown={onComposerCommandKey}
@@ -2342,9 +2617,11 @@ export const ChatComposer = memo(
                                   ? "connecting"
                                   : "disconnected"
                               }`
-                            : phase === "disconnected"
-                              ? "Ask for follow-up changes or attach files"
-                              : "Type / for skills"
+                            : newThreadMode
+                              ? (newThreadPlaceholder ?? "分配一个任务或提问任何问题")
+                              : phase === "disconnected"
+                                ? "Ask for follow-up changes or attach files"
+                                : "Type / for skills"
                   }
                   disabled={
                     isConnecting ||
@@ -2394,25 +2671,53 @@ export const ChatComposer = memo(
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
                   "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3.5 pb-3.5",
+                  newThreadMode && "absolute bottom-0 left-0 right-0 px-4 pb-3",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
               >
                 <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground/70 hover:text-foreground"
-                    aria-label="Attach files"
-                    title="Attach files"
-                    onClick={openAttachmentPicker}
-                  >
-                    <PlusIcon />
-                  </Button>
+                  {newThreadMode ? (
+                    <NewThreadPlusMenu
+                      disabled={
+                        isConnecting ||
+                        isComposerApprovalState ||
+                        (environmentUnavailable !== null && activePendingProgress === null)
+                      }
+                      interactionMode={interactionMode}
+                      runtimeMode={runtimeMode}
+                      skills={selectedProviderStatus?.skills ?? []}
+                      showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
+                      traitsMenuContent={providerTraitsMenuContent}
+                      onAttachFiles={openAttachmentPicker}
+                      onSelectSkill={insertSkillAtComposerCursor}
+                      onRuntimeModeChange={handleRuntimeModeChange}
+                      onInteractionModeChange={handleInteractionModeChange}
+                    />
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground/70 hover:text-foreground"
+                      aria-label="Attach files"
+                      title="Attach files"
+                      onClick={openAttachmentPicker}
+                    >
+                      <PlusIcon />
+                    </Button>
+                  )}
+
+                  {newThreadMode && newThreadModeLabel && onClearNewThreadMode ? (
+                    <NewThreadModeStatusChip
+                      label={newThreadModeLabel}
+                      onClear={onClearNewThreadMode}
+                    />
+                  ) : null}
 
                   <ProviderModelPicker
                     compact={isComposerFooterCompact}
+                    simplified={newThreadMode}
                     activeInstanceId={selectedInstanceId}
                     model={selectedModelForPickerWithCustomFallback}
                     lockedProvider={lockedProvider}
@@ -2440,7 +2745,7 @@ export const ChatComposer = memo(
                     onInstanceModelChange={onProviderModelSelect}
                   />
 
-                  {isComposerFooterCompact ? (
+                  {newThreadMode ? null : isComposerFooterCompact ? (
                     <CompactComposerControlsMenu
                       activePlan={showPlanSidebarToggle}
                       interactionMode={interactionMode}

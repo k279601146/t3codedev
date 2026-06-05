@@ -31,6 +31,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   preferShortName?: boolean;
   useTriggerLabel?: boolean;
   showNewBadge?: boolean;
+  showFavorite?: boolean;
   jumpLabel?: string | null;
   onToggleFavorite: () => void;
 }) {
@@ -50,31 +51,33 @@ export const ModelListRow = memo(function ModelListRow(props: {
         "data-highlighted:bg-muted data-selected:bg-accent data-selected:text-foreground",
       )}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              className="mt-0.5 shrink-0 cursor-pointer opacity-40 transition-opacity group-hover:opacity-100"
-              onClick={(event) => {
-                event.stopPropagation();
-                props.onToggleFavorite();
-              }}
-              onKeyDown={(event) => {
-                event.stopPropagation();
-              }}
-              type="button"
-              aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
-            >
-              <StarIcon
-                className={cn("size-4", props.isFavorite && "fill-current text-yellow-500")}
-              />
-            </button>
-          }
-        />
-        <TooltipPopup side="top" align="center">
-          {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
-        </TooltipPopup>
-      </Tooltip>
+      {props.showFavorite === false ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                className="mt-0.5 shrink-0 cursor-pointer opacity-40 transition-opacity group-hover:opacity-100"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onToggleFavorite();
+                }}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                }}
+                type="button"
+                aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <StarIcon
+                  className={cn("size-4", props.isFavorite && "fill-current text-yellow-500")}
+                />
+              </button>
+            }
+          />
+          <TooltipPopup side="top" align="center">
+            {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+          </TooltipPopup>
+        </Tooltip>
+      )}
 
       <div className="min-w-0 flex-1 text-left">
         <div className="flex items-center justify-between gap-2 min-w-0">

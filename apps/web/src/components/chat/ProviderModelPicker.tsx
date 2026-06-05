@@ -35,6 +35,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   activeProviderIconClassName?: string;
   compact?: boolean;
+  simplified?: boolean;
   disabled?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
@@ -65,7 +66,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     selectedInstanceOptions.find((option) => option.slug === props.model) ??
     selectedInstanceOptions[0];
   const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
-  const triggerSubtitle = selectedModel?.subProvider;
+  const triggerSubtitle = props.simplified ? null : selectedModel?.subProvider;
   const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
   const duplicateDriverCount = props.instanceEntries.filter(
     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
@@ -124,7 +125,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             props.compact ? "max-w-36 sm:pl-1" : undefined,
           )}
         >
-          {activeEntry ? (
+          {activeEntry && !props.simplified ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
               displayName={activeEntry.displayName}
@@ -177,6 +178,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           instanceEntries={props.instanceEntries}
           {...(props.keybindings ? { keybindings: props.keybindings } : {})}
           modelOptionsByInstance={props.modelOptionsByInstance}
+          simplified={props.simplified ?? false}
           terminalOpen={props.terminalOpen ?? false}
           onRequestClose={() => setIsMenuOpen(false)}
           onInstanceModelChange={handleInstanceModelChange}
