@@ -296,7 +296,7 @@ export interface ExternalLauncherShape {
  * ExternalLauncher - Service tag for browser/editor launch operations.
  */
 export class ExternalLauncher extends Context.Service<ExternalLauncher, ExternalLauncherShape>()(
-  "t3/process/ExternalLauncher",
+  "t3/process/externalLauncher",
 ) {}
 
 // ==============================
