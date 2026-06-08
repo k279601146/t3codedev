@@ -327,6 +327,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
+  newThreadMode?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -350,6 +351,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isPreparingWorktree={props.isPreparingWorktree}
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
+        newThreadMode={props.newThreadMode ?? false}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
@@ -384,14 +386,14 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
             type="button"
             variant="outline"
             size="icon"
-            className="size-10 rounded-full border-border/80 bg-background text-muted-foreground shadow-none hover:text-foreground"
+            className="size-7 rounded-md border-transparent bg-transparent text-muted-foreground/70 shadow-none hover:bg-transparent hover:text-foreground"
             aria-label="打开更多输入选项"
             title="更多"
             disabled={props.disabled}
           />
         }
       >
-        <PlusIcon aria-hidden="true" className="size-5" />
+        <PlusIcon aria-hidden="true" className="size-4.5" />
       </MenuTrigger>
       <MenuPopup align="start" side="bottom" sideOffset={8} className="min-w-56">
         <MenuItem onClick={props.onAttachFiles}>
@@ -2266,6 +2268,7 @@ export const ChatComposer = memo(
         onSubmit={submitComposer}
         className={cn("mx-auto w-full min-w-0", newThreadMode ? "max-w-none" : "max-w-[43.5rem]")}
         data-chat-composer-form="true"
+        data-chat-composer-new-thread={newThreadMode ? "true" : "false"}
       >
         <input
           ref={composerAttachmentInputRef}
@@ -2277,7 +2280,7 @@ export const ChatComposer = memo(
         <div
           className={cn(
             "group transition-colors duration-200",
-            newThreadMode ? "rounded-[22px]" : "rounded-[15px] p-px",
+            newThreadMode ? "rounded-[18px]" : "rounded-[15px] p-px",
             !newThreadMode && composerProviderState.composerFrameClassName,
           )}
           onDragEnter={onComposerDragEnter}
@@ -2291,13 +2294,15 @@ export const ChatComposer = memo(
             className={cn(
               "relative overflow-hidden border bg-card/98 transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65",
               newThreadMode
-                ? "rounded-[22px] shadow-[0_18px_48px_-34px_rgba(0,0,0,0.45)]"
+                ? "rounded-[18px] border-[#dcdfe4] bg-background shadow-[0_1px_2px_rgba(15,23,42,0.045),0_14px_36px_-32px_rgba(15,23,42,0.55)] has-focus-visible:border-[#c8ccd2] dark:border-border/70 dark:bg-card/98 dark:shadow-[0_10px_28px_-24px_rgba(0,0,0,0.7)]"
                 : "rounded-[14px] shadow-[var(--t3-shadow-composer)] has-focus-visible:shadow-[var(--claude-shadow-panel)]",
               isDragOverComposer
                 ? newThreadMode
                   ? "border-dashed border-[#147DFF] bg-card ring-[12px] ring-[#EAF5FF] dark:ring-[#147DFF]/10"
                   : "border-foreground/25 bg-accent/20"
-                : "border-border/80",
+                : newThreadMode
+                  ? "border-[#dcdfe4] dark:border-border/70"
+                  : "border-border/80",
               environmentUnavailable ? "opacity-75" : null,
               !newThreadMode && composerProviderState.composerSurfaceClassName,
             )}
@@ -2479,7 +2484,7 @@ export const ChatComposer = memo(
               className={cn(
                 "relative",
                 newThreadMode
-                  ? "min-h-[128px] max-h-[380px] overflow-y-auto px-5 pb-14 pt-4"
+                  ? "min-h-[96px] max-h-[360px] overflow-y-auto px-4 pb-11 pt-3.5"
                   : "px-4 pb-1.5 sm:px-4",
                 !newThreadMode && (hasComposerHeader ? "pt-3" : "pt-3.5"),
                 isComposerCollapsedMobile && "hidden",
@@ -2596,9 +2601,14 @@ export const ChatComposer = memo(
                   }
                   skills={selectedProviderStatus?.skills ?? []}
                   className={cn(
-                    newThreadMode && "min-h-[64px] max-h-[300px] text-[15px] leading-7",
+                    newThreadMode && "min-h-[42px] max-h-[280px] text-[14px] leading-6",
                     showMobilePendingAnswerActions && "max-sm:pb-11",
                   )}
+                  {...(newThreadMode
+                    ? {
+                        placeholderClassName: "text-[14px] leading-6 text-muted-foreground/45",
+                      }
+                    : {})}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                   onChange={onPromptChange}
                   onCommandKeyDown={onComposerCommandKey}
@@ -2618,7 +2628,7 @@ export const ChatComposer = memo(
                                   : "disconnected"
                               }`
                             : newThreadMode
-                              ? (newThreadPlaceholder ?? "分配一个任务或提问任何问题")
+                              ? (newThreadPlaceholder ?? "随心输入")
                               : phase === "disconnected"
                                 ? "Ask for follow-up changes or attach files"
                                 : "Type / for skills"
@@ -2671,7 +2681,7 @@ export const ChatComposer = memo(
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
                   "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3.5 pb-3.5",
-                  newThreadMode && "absolute bottom-0 left-0 right-0 px-4 pb-3",
+                  newThreadMode && "absolute bottom-0 left-0 right-0 px-3 pb-2.5",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
@@ -2733,7 +2743,11 @@ export const ChatComposer = memo(
                             composerProviderState.modelPickerIconClassName,
                         }
                       : {})}
-                    triggerClassName="h-8 rounded-lg px-2.5 text-[13px]"
+                    triggerClassName={cn(
+                      "h-8 rounded-lg px-2.5 text-[13px]",
+                      newThreadMode &&
+                        "h-7 rounded-md px-1.5 text-[12px] font-normal text-foreground/80 hover:text-foreground",
+                    )}
                     onOpenChange={(open) => {
                       setIsComposerModelPickerOpen(open);
                       if (open) {
@@ -2810,6 +2824,7 @@ export const ChatComposer = memo(
                     isPreparingWorktree={isPreparingWorktree}
                     hasSendableContent={composerSendState.hasSendableContent}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
+                    newThreadMode={newThreadMode}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}

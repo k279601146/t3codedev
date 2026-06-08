@@ -25,6 +25,7 @@ interface ComposerPrimaryActionsProps {
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
+  newThreadMode?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -76,6 +77,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
+  newThreadMode = false,
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
@@ -139,7 +141,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     return (
       <button
         type="button"
-        className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-black/5 bg-neutral-950 text-white shadow-sm transition-[background-color,transform,box-shadow] duration-150 hover:scale-[1.03] hover:bg-neutral-900 dark:bg-neutral-50 dark:text-neutral-950 dark:hover:bg-white sm:h-8 sm:w-8"
+        className={cn(
+          "flex size-8 cursor-pointer items-center justify-center rounded-full border text-white transition-[background-color,transform,box-shadow] duration-150 hover:scale-[1.03] sm:h-8 sm:w-8",
+          newThreadMode
+            ? "border-black/5 bg-neutral-500 shadow-none hover:bg-neutral-600 dark:bg-neutral-400 dark:text-neutral-950 dark:hover:bg-neutral-300"
+            : "border-black/5 bg-neutral-950 shadow-sm hover:bg-neutral-900 dark:bg-neutral-50 dark:text-neutral-950 dark:hover:bg-white",
+        )}
         {...pointerFocusProps}
         onClick={onInterrupt}
         aria-label="Stop generation"
@@ -186,9 +193,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 className="h-9 rounded-l-none rounded-r-full border-l-white/12 px-2 sm:h-8"
                 aria-label="Implementation actions"
                 {...pointerFocusProps}
-                disabled={
-                  isSendBusy || isConnecting || isEnvironmentUnavailable
-                }
+                disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
               />
             }
           >
@@ -210,9 +215,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   return (
     <button
       type="submit"
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-black/5 text-white shadow-sm transition-[background-color,transform,box-shadow] duration-150 sm:h-8 sm:w-8
-    enabled:cursor-pointer enabled:bg-neutral-950 enabled:hover:scale-[1.03] enabled:hover:bg-neutral-800
-    disabled:pointer-events-none disabled:bg-neutral-300 disabled:text-white/85 disabled:shadow-none dark:enabled:bg-neutral-50 dark:enabled:text-neutral-950 dark:enabled:hover:bg-white dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400"
+      className={cn(
+        "flex items-center justify-center rounded-full border border-black/5 text-white transition-[background-color,transform,box-shadow] duration-150 disabled:pointer-events-none disabled:shadow-none",
+        newThreadMode
+          ? "h-8 w-8 shadow-none enabled:cursor-pointer enabled:bg-neutral-500 enabled:hover:scale-[1.03] enabled:hover:bg-neutral-600 disabled:bg-neutral-400 disabled:text-white dark:enabled:bg-neutral-300 dark:enabled:text-neutral-950 dark:enabled:hover:bg-neutral-100 dark:disabled:bg-neutral-600 dark:disabled:text-neutral-300"
+          : "h-9 w-9 shadow-sm enabled:cursor-pointer enabled:bg-neutral-950 enabled:hover:scale-[1.03] enabled:hover:bg-neutral-800 disabled:bg-neutral-300 disabled:text-white/85 dark:enabled:bg-neutral-50 dark:enabled:text-neutral-950 dark:enabled:hover:bg-white dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400 sm:h-8 sm:w-8",
+      )}
       {...pointerFocusProps}
       disabled={isStandardSendButtonDisabled({
         isSendBusy,
@@ -224,14 +232,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         isUsageLimitReached
           ? "Usage limit reached"
           : isEnvironmentUnavailable
-          ? "Environment disconnected"
-          : isConnecting
-            ? "Connecting"
-            : isPreparingWorktree
-              ? "Preparing worktree"
-              : isSendBusy
-                ? "Sending"
-                : "Send message"
+            ? "Environment disconnected"
+            : isConnecting
+              ? "Connecting"
+              : isPreparingWorktree
+                ? "Preparing worktree"
+                : isSendBusy
+                  ? "Sending"
+                  : "Send message"
       }
     >
       {isConnecting || isSendBusy ? (
