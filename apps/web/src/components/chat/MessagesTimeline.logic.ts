@@ -49,9 +49,10 @@ export type MessagesTimelineRow =
 export interface ImageGenerationRowItem {
   id: string;
   createdAt: string;
-  status: "running" | "completed";
+  status: "running" | "completed" | "failed";
   label: string | null;
   imagePath: string | null;
+  errorMessage?: string | undefined;
 }
 
 export interface StableMessagesTimelineRowsState {
@@ -219,18 +220,65 @@ export function pickGeneratedImagePath(entry: WorkLogEntry): string | null {
   return null;
 }
 
-function toImageGenerationRowItem(id: string, entry: WorkLogEntry): ImageGenerationRowItem {
+function findLaterRuntimeIssueForImage(
+  entries: ReadonlyArray<TimelineEntry>,
+  startIndex: number,
+): string | null {
+  const imageEntry = entries[startIndex];
+  if (!imageEntry || imageEntry.kind !== "work") {
+    return null;
+  }
+  const imageCreatedAt = imageEntry.createdAt;
+  for (let index = startIndex + 1; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry || entry.kind !== "work") {
+      continue;
+    }
+    if (entry.createdAt < imageCreatedAt) {
+      continue;
+    }
+    const label = entry.entry.label.trim().toLowerCase();
+    const detail = entry.entry.detail?.trim();
+    const isRuntimeIssue =
+      label === "runtime warning" ||
+      label === "runtime error" ||
+      entry.entry.tone === "error" ||
+      detail?.toLowerCase().includes("stream disconnected before completion") === true;
+    if (!isRuntimeIssue) {
+      continue;
+    }
+    return detail || entry.entry.label;
+  }
+  return null;
+}
+
+function toImageGenerationRowItem(
+  id: string,
+  entry: WorkLogEntry,
+  runtimeIssue: string | null,
+): ImageGenerationRowItem {
   const imagePath = pickGeneratedImagePath(entry);
-  const status = entry.status === "running" && !imagePath ? "running" : "completed";
+  const status =
+    entry.status === "running" && !imagePath
+      ? runtimeIssue
+        ? "failed"
+        : "running"
+      : entry.status === "failed" && !imagePath
+        ? "failed"
+        : "completed";
   const runningLabel = resolveRunningWorkEntryStatusLabel(entry);
   const labelSource = entry.toolTitle ?? entry.label ?? null;
-  const label = runningLabel ?? (labelSource ? normalizeCompactToolLabel(labelSource) : null);
+  const label =
+    status === "failed"
+      ? "图片生成失败"
+      : (runningLabel ?? (labelSource ? normalizeCompactToolLabel(labelSource) : null));
   return {
     id,
     createdAt: entry.createdAt,
     status,
     label,
     imagePath,
+    ...(status === "failed" ? { errorMessage: runtimeIssue ?? entry.detail ?? "图片生成失败" } : {}),
   };
 }
 
@@ -310,14 +358,24 @@ export function deriveMessagesTimelineRows(input: {
       // side and each tile swaps in independently as its image arrives.
       if (isImageGenerationWorkEntry(timelineEntry.entry)) {
         const items: ImageGenerationRowItem[] = [
-          toImageGenerationRowItem(timelineEntry.id, timelineEntry.entry),
+          toImageGenerationRowItem(
+            timelineEntry.id,
+            timelineEntry.entry,
+            findLaterRuntimeIssueForImage(input.timelineEntries, index),
+          ),
         ];
         let cursor = index + 1;
         while (cursor < input.timelineEntries.length) {
           const nextEntry = input.timelineEntries[cursor];
           if (!nextEntry || nextEntry.kind !== "work") break;
           if (!isImageGenerationWorkEntry(nextEntry.entry)) break;
-          items.push(toImageGenerationRowItem(nextEntry.id, nextEntry.entry));
+          items.push(
+            toImageGenerationRowItem(
+              nextEntry.id,
+              nextEntry.entry,
+              findLaterRuntimeIssueForImage(input.timelineEntries, cursor),
+            ),
+          );
           cursor += 1;
         }
         nextRows.push({

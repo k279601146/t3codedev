@@ -59,7 +59,7 @@ export interface WorkLogEntry {
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
-  status?: "running" | "completed";
+  status?: "running" | "completed" | "failed";
   generatedImage?: {
     id?: string;
     result?: string;
@@ -558,7 +558,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       payload.detail.length > 0
       ? stripTrailingExitCode(payload.detail).output
       : null
-    : extractToolDetail(payload, title ?? activity.summary);
+    : extractRuntimeIssueDetail(activity.kind, payload) ??
+      extractToolDetail(payload, title ?? activity.summary);
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
@@ -576,6 +577,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       activity.kind === "tool.updated" ||
       activity.kind === "tool.started"
         ? "running"
+        : activity.tone === "error"
+          ? "failed"
         : "completed",
   };
   const itemType = extractWorkLogItemType(payload);
@@ -1092,6 +1095,24 @@ function extractToolDetail(
   }
 
   return null;
+}
+
+function extractRuntimeIssueDetail(
+  kind: OrchestrationThreadActivity["kind"],
+  payload: Record<string, unknown> | null,
+): string | null {
+  if (kind !== "runtime.warning" && kind !== "runtime.error") {
+    return null;
+  }
+
+  const message = asTrimmedString(payload?.message);
+  const detail = asRecord(payload?.detail);
+  const error = asRecord(detail?.error) ?? asRecord(payload?.error);
+  const additionalDetails = asTrimmedString(error?.additionalDetails);
+  if (message && additionalDetails && message !== additionalDetails) {
+    return `${message}: ${additionalDetails}`;
+  }
+  return message ?? additionalDetails ?? null;
 }
 
 function stripTrailingExitCode(value: string): {

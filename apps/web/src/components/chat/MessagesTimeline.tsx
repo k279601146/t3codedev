@@ -1028,6 +1028,7 @@ interface ResolvedImageGenerationItem {
   readonly resolvedSrc: string | null;
   readonly resolvedName: string;
   readonly isFinal: boolean;
+  readonly isFailed: boolean;
 }
 
 function resolveImageGenerationItem(item: ImageGenerationItem): ResolvedImageGenerationItem {
@@ -1044,6 +1045,7 @@ function resolveImageGenerationItem(item: ImageGenerationItem): ResolvedImageGen
     resolvedSrc,
     resolvedName,
     isFinal: item.status !== "running" && Boolean(resolvedSrc),
+    isFailed: item.status === "failed" && !resolvedSrc,
   };
 }
 
@@ -1083,7 +1085,9 @@ function ImageGenerationTimelineRow({ row }: { row: ImageGenerationRowKind }) {
   const isMulti = resolved.length > 1;
   const overallStatus = resolved.some((entry) => entry.item.status === "running")
     ? "running"
-    : "completed";
+    : resolved.some((entry) => entry.item.status === "failed")
+      ? "failed"
+      : "completed";
 
   return (
     <div
@@ -1121,6 +1125,7 @@ const ImageGenerationTile = memo(function ImageGenerationTile({
   const [imageLoaded, setImageLoaded] = useState(false);
   const src = entry.resolvedSrc;
   const showFinalImage = entry.isFinal && Boolean(src);
+  const showFailure = entry.isFailed;
 
   useEffect(() => {
     setImageLoaded(false);
@@ -1131,9 +1136,23 @@ const ImageGenerationTile = memo(function ImageGenerationTile({
       className="min-w-[180px] flex-1"
       style={{ maxWidth: `${tileMaxWidth}px`, flexBasis: tileBasis }}
       data-image-generation-tile="true"
-      data-image-tile-status={showFinalImage && imageLoaded ? "final" : "running"}
+      data-image-tile-status={
+        showFailure ? "failed" : showFinalImage && imageLoaded ? "final" : "running"
+      }
     >
-      {showFinalImage && src ? (
+      {showFailure ? (
+        <div className="flex aspect-[4/3] min-h-[168px] w-full flex-col items-start justify-center gap-2 rounded-xl border border-destructive/35 bg-destructive/8 p-4 text-destructive shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <CircleAlertIcon className="size-4 shrink-0" />
+            <span>{entry.item.label ?? "图片生成失败"}</span>
+          </div>
+          {entry.item.errorMessage ? (
+            <p className="line-clamp-4 text-xs leading-5 text-destructive/80">
+              {entry.item.errorMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : showFinalImage && src ? (
         <button
           type="button"
           className={cn(

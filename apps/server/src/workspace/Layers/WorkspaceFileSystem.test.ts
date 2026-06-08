@@ -137,4 +137,45 @@ it.layer(TestLayer)("WorkspaceFileSystemLive", (it) => {
       }),
     );
   });
+
+  describe("writeBinaryFile", () => {
+    it.effect("writes binary files and invalidates workspace entry search cache", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries;
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+
+        const beforeWrite = yield* workspaceEntries.search({
+          cwd,
+          query: "image",
+          limit: 10,
+        });
+        expect(beforeWrite.entries).toEqual([]);
+
+        const result = yield* workspaceFileSystem.writeBinaryFile({
+          cwd,
+          relativePath: "generated-images/image.png",
+          contents: new Uint8Array([137, 80, 78, 71]),
+        });
+        const saved = yield* fileSystem
+          .readFile(path.join(cwd, "generated-images", "image.png"))
+          .pipe(Effect.orDie);
+
+        expect(result.relativePath).toBe("generated-images/image.png");
+        expect(result.absolutePath).toBe(path.join(cwd, "generated-images", "image.png"));
+        expect([...saved]).toEqual([137, 80, 78, 71]);
+
+        const afterWrite = yield* workspaceEntries.search({
+          cwd,
+          query: "image",
+          limit: 10,
+        });
+        expect(afterWrite.entries).toEqual(
+          expect.arrayContaining([expect.objectContaining({ path: "generated-images/image.png" })]),
+        );
+      }),
+    );
+  });
 });

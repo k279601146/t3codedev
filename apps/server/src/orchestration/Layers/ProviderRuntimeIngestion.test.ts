@@ -50,6 +50,11 @@ import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts"
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
+import * as VcsProcess from "../../vcs/VcsProcess.ts";
+import { WorkspaceEntriesLive } from "../../workspace/Layers/WorkspaceEntries.ts";
+import { WorkspaceFileSystemLive } from "../../workspace/Layers/WorkspaceFileSystem.ts";
+import { WorkspacePathsLive } from "../../workspace/Layers/WorkspacePaths.ts";
 
 function makeTestServerSettingsLayer(overrides: Partial<ServerSettings> = {}) {
   return ServerSettingsService.layerTest(overrides);
@@ -233,11 +238,22 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provide(RepositoryIdentityResolverLive),
       Layer.provide(SqlitePersistenceMemory),
     );
+    const workspaceEntriesLayer = WorkspaceEntriesLive.pipe(
+      Layer.provide(WorkspacePathsLive),
+      Layer.provideMerge(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer))),
+    );
+    const workspaceFileSystemLayer = WorkspaceFileSystemLive.pipe(
+      Layer.provide(WorkspacePathsLive),
+      Layer.provide(workspaceEntriesLayer),
+    );
     const layer = ProviderRuntimeIngestionLive.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
+      Layer.provideMerge(workspaceFileSystemLayer),
+      Layer.provideMerge(workspaceEntriesLayer),
+      Layer.provideMerge(WorkspacePathsLive),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(NodeServices.layer),
@@ -315,6 +331,7 @@ describe("ProviderRuntimeIngestion", () => {
       emit: provider.emit,
       setProviderSession: provider.setSession,
       drain,
+      workspaceRoot,
     };
   }
 
@@ -805,6 +822,105 @@ describe("ProviderRuntimeIngestion", () => {
     expect(data?.toolCallId).toBe("tool-read-1");
     expect(data?.kind).toBe("read");
     expect(rawOutput?.content).toBe('import * as Effect from "effect/Effect"\n');
+  });
+
+  it("persists completed generated images from savedPath into the workspace", async () => {
+    const harness = await createHarness();
+    const sourceDir = makeTempDir("t3-generated-image-source-");
+    const sourcePath = path.join(sourceDir, "ig-source.png");
+    fs.writeFileSync(sourcePath, Buffer.from([137, 80, 78, 71]));
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-image-completed-saved-path"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-image"),
+      itemId: asItemId("ig_saved_path"),
+      payload: {
+        itemType: "image_view",
+        status: "completed",
+        title: "Image view",
+        data: {
+          item: {
+            id: "ig_saved_path",
+            result: "",
+            savedPath: sourcePath,
+            status: "generating",
+            type: "imageGeneration",
+          },
+        },
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-image-completed-saved-path",
+      ),
+    );
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-image-completed-saved-path",
+    );
+    const payload = activity?.payload as Record<string, unknown> | undefined;
+    const data = payload?.data as Record<string, unknown> | undefined;
+    const item = data?.item as Record<string, unknown> | undefined;
+    const persistence = data?.imagePersistence as Record<string, unknown> | undefined;
+    const savedPath = path.join(harness.workspaceRoot, "generated-images", "ig_saved_path.png");
+
+    expect(activity?.kind).toBe("tool.completed");
+    expect(item?.savedPath).toBe(savedPath);
+    expect(item?.originalSavedPath).toBe(sourcePath);
+    expect(item?.status).toBe("completed");
+    expect(persistence?.workspaceRelativePath).toBe("generated-images/ig_saved_path.png");
+    expect(payload?.changedFiles).toEqual(["generated-images/ig_saved_path.png"]);
+    expect([...fs.readFileSync(savedPath)]).toEqual([137, 80, 78, 71]);
+  });
+
+  it("persists completed generated images from base64 result when savedPath is unavailable", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-image-completed-base64"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-image-base64"),
+      itemId: asItemId("ig_base64"),
+      payload: {
+        itemType: "image_view",
+        status: "completed",
+        title: "Image view",
+        data: {
+          item: {
+            id: "ig_base64",
+            result: "iVBORw==",
+            status: "completed",
+            type: "imageGeneration",
+          },
+        },
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-image-completed-base64",
+      ),
+    );
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-image-completed-base64",
+    );
+    const payload = activity?.payload as Record<string, unknown> | undefined;
+    const data = payload?.data as Record<string, unknown> | undefined;
+    const item = data?.item as Record<string, unknown> | undefined;
+    const savedPath = path.join(harness.workspaceRoot, "generated-images", "ig_base64.png");
+
+    expect(item?.savedPath).toBe(savedPath);
+    expect(payload?.changedFiles).toEqual(["generated-images/ig_base64.png"]);
+    expect([...fs.readFileSync(savedPath)]).toEqual([137, 80, 78, 71]);
   });
 
   it("normalizes command execution activities to ran-command summaries", async () => {
