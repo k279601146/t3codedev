@@ -80,7 +80,43 @@ export const makeWorkspaceFileSystem = Effect.gen(function* () {
     yield* workspaceEntries.invalidate(input.cwd);
     return { relativePath: target.relativePath };
   });
-  return { readFile, writeFile } satisfies WorkspaceFileSystemShape;
+
+  const writeBinaryFile: WorkspaceFileSystemShape["writeBinaryFile"] = Effect.fn(
+    "WorkspaceFileSystem.writeBinaryFile",
+  )(function* (input) {
+    const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+    });
+
+    yield* fileSystem.makeDirectory(path.dirname(target.absolutePath), { recursive: true }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new WorkspaceFileSystemError({
+            cwd: input.cwd,
+            relativePath: input.relativePath,
+            operation: "workspaceFileSystem.makeDirectory",
+            detail: cause.message,
+            cause,
+          }),
+      ),
+    );
+    yield* fileSystem.writeFile(target.absolutePath, input.contents).pipe(
+      Effect.mapError(
+        (cause) =>
+          new WorkspaceFileSystemError({
+            cwd: input.cwd,
+            relativePath: input.relativePath,
+            operation: "workspaceFileSystem.writeBinaryFile",
+            detail: cause.message,
+            cause,
+          }),
+      ),
+    );
+    yield* workspaceEntries.invalidate(input.cwd);
+    return { relativePath: target.relativePath, absolutePath: target.absolutePath };
+  });
+  return { readFile, writeFile, writeBinaryFile } satisfies WorkspaceFileSystemShape;
 });
 
 export const WorkspaceFileSystemLive = Layer.effect(WorkspaceFileSystem, makeWorkspaceFileSystem);

@@ -18,6 +18,17 @@ import type {
 } from "@t3tools/contracts";
 import { WorkspacePathOutsideRootError } from "./WorkspacePaths.ts";
 
+export interface WorkspaceWriteBinaryFileInput {
+  readonly cwd: string;
+  readonly relativePath: string;
+  readonly contents: Uint8Array;
+}
+
+export interface WorkspaceWriteBinaryFileResult {
+  readonly relativePath: string;
+  readonly absolutePath: string;
+}
+
 export class WorkspaceFileSystemError extends Schema.TaggedErrorClass<WorkspaceFileSystemError>()(
   "WorkspaceFileSystemError",
   {
@@ -53,6 +64,18 @@ export interface WorkspaceFileSystemShape {
     input: ProjectWriteFileInput,
   ) => Effect.Effect<
     ProjectWriteFileResult,
+    WorkspaceFileSystemError | WorkspacePathOutsideRootError
+  >;
+
+  /**
+   * 写入工作区根目录内的二进制文件。
+   *
+   * 会按需创建父目录，并拒绝逃逸工作区根目录的路径。
+   */
+  readonly writeBinaryFile: (
+    input: WorkspaceWriteBinaryFileInput,
+  ) => Effect.Effect<
+    WorkspaceWriteBinaryFileResult,
     WorkspaceFileSystemError | WorkspacePathOutsideRootError
   >;
 }

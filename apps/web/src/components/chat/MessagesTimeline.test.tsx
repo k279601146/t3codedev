@@ -369,6 +369,49 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain(">Image view<");
   });
 
+  it("shows image generation failure instead of a shimmer when runtime reports an error", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Image view",
+              tone: "tool",
+              itemType: "image_view",
+              status: "running",
+            },
+          },
+          {
+            id: "entry-2",
+            kind: "work",
+            createdAt: "2026-03-17T19:13:28.000Z",
+            entry: {
+              id: "work-2",
+              createdAt: "2026-03-17T19:13:28.000Z",
+              label: "Runtime warning",
+              detail:
+                "Reconnecting... 1/5: stream disconnected before completion: stream closed before response.completed",
+              tone: "info",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("图片生成失败");
+    expect(markup).toContain("stream disconnected before completion");
+    expect(markup).toContain("data-image-tile-status=\"failed\"");
+    expect(markup).not.toContain("image-generation-shimmer");
+  });
+
   it("renders the live working row with shimmer styling", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

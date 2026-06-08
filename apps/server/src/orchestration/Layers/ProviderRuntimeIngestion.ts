@@ -14,6 +14,7 @@ import {
   type OrchestrationCheckpointSummary,
   type OrchestrationProposedPlan,
   type OrchestrationThread,
+  type OrchestrationThreadShell,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
@@ -22,6 +23,7 @@ import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
@@ -42,6 +44,7 @@ import {
   metricAttributes,
   providerFirstAssistantDeltaLatency,
 } from "../../observability/Metrics.ts";
+import { WorkspaceFileSystem } from "../../workspace/Services/WorkspaceFileSystem.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
@@ -61,11 +64,93 @@ const BUFFERED_PROPOSED_PLAN_BY_ID_CACHE_CAPACITY = 10_000;
 const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
 const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
+const GENERATED_IMAGES_WORKSPACE_DIR = "generated-images";
+const IMAGE_RESULT_DATA_URL_PATTERN = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i;
+const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|webp|gif)$/i;
 
 type TurnStartRequestedDomainEvent = Extract<
   OrchestrationEvent,
   { type: "thread.turn-start-requested" }
 >;
+
+type ItemCompletedRuntimeEvent = Extract<ProviderRuntimeEvent, { type: "item.completed" }>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function imageFileExtensionFromPath(filePath: string | undefined): string | undefined {
+  const match = filePath?.match(IMAGE_FILE_EXTENSION_PATTERN);
+  return match?.[1] ? match[1].toLowerCase().replace("jpeg", "jpg") : undefined;
+}
+
+function imageFileExtensionFromResult(result: string | undefined): string | undefined {
+  const mimeType = result?.match(IMAGE_RESULT_DATA_URL_PATTERN)?.[1]?.toLowerCase();
+  switch (mimeType) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return undefined;
+  }
+}
+
+function sanitizeImageArtifactName(value: string | undefined, fallback: string): string {
+  const source = value ?? fallback;
+  const sanitized = source.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized.length > 0 ? sanitized.slice(0, 120) : fallback;
+}
+
+function decodeImageResultBase64(result: string | undefined): Uint8Array | null {
+  if (!result) {
+    return null;
+  }
+  const dataUrlMatch = result.match(IMAGE_RESULT_DATA_URL_PATTERN);
+  const base64 = (dataUrlMatch?.[2] ?? result).replace(/\s+/g, "");
+  if (base64.length === 0) {
+    return null;
+  }
+  try {
+    const bytes = Buffer.from(base64, "base64");
+    return bytes.length > 0 ? new Uint8Array(bytes) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildImagePersistenceFailureEvent(
+  event: ItemCompletedRuntimeEvent,
+  detail: string,
+): ItemCompletedRuntimeEvent {
+  const data = asRecord(event.payload.data);
+  return {
+    ...event,
+    payload: {
+      ...event.payload,
+      data: {
+        ...(data ?? {}),
+        imagePersistence: {
+          status: "failed",
+          detail,
+        },
+      },
+    },
+  };
+}
 
 type RuntimeIngestionInput =
   | {
@@ -215,6 +300,12 @@ function buildContextWindowActivityPayload(
     return undefined;
   }
   return event.payload.usage;
+}
+
+function extractPersistedImageChangedFiles(data: unknown): ReadonlyArray<string> | undefined {
+  const persistence = asRecord(asRecord(data)?.imagePersistence);
+  const workspaceRelativePath = asNonEmptyString(persistence?.workspaceRelativePath);
+  return workspaceRelativePath ? [workspaceRelativePath] : undefined;
 }
 
 function normalizeRuntimeTurnState(
@@ -578,6 +669,9 @@ function runtimeEventToActivities(
             ...(event.itemId ? { itemId: event.itemId } : {}),
             ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
             ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
+            ...(extractPersistedImageChangedFiles(event.payload.data)
+              ? { changedFiles: extractPersistedImageChangedFiles(event.payload.data) }
+              : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -621,6 +715,8 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const workspaceFileSystem = yield* WorkspaceFileSystem;
   const turnStartRequestedAtByThread = new Map<ThreadId, number>();
   const firstAssistantDeltaRecordedByThread = new Set<ThreadId>();
 
@@ -661,6 +757,121 @@ const make = Effect.gen(function* () {
     return yield* projectionSnapshotQuery
       .getThreadShellById(threadId)
       .pipe(Effect.map(Option.getOrUndefined));
+  });
+
+  const resolveWorkspaceCwd = Effect.fn("resolveWorkspaceCwd")(function* (
+    thread: OrchestrationThreadShell,
+  ) {
+    if (thread.worktreePath) {
+      return thread.worktreePath;
+    }
+    const project = yield* projectionSnapshotQuery.getProjectShellById(thread.projectId).pipe(
+      Effect.map(Option.getOrUndefined),
+      Effect.catch(() => Effect.void),
+    );
+    return project?.workspaceRoot;
+  });
+
+  const readGeneratedImageBytes = Effect.fn("readGeneratedImageBytes")(function* (input: {
+    readonly originalSavedPath?: string;
+    readonly result?: string;
+  }) {
+    if (input.originalSavedPath) {
+      const savedBytes = yield* fileSystem
+        .readFile(input.originalSavedPath)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (savedBytes && savedBytes.length > 0) {
+        return savedBytes;
+      }
+    }
+    return decodeImageResultBase64(input.result);
+  });
+
+  const persistGeneratedImageToWorkspace = Effect.fn("persistGeneratedImageToWorkspace")(function* (
+    event: ItemCompletedRuntimeEvent,
+    thread: OrchestrationThreadShell,
+  ): Effect.fn.Return<ItemCompletedRuntimeEvent> {
+    if (event.payload.itemType !== "image_view") {
+      return event;
+    }
+
+    const workspaceCwd = yield* resolveWorkspaceCwd(thread);
+    if (!workspaceCwd) {
+      return event;
+    }
+
+    const data = asRecord(event.payload.data) ?? {};
+    const item = asRecord(data.item);
+    if (!item) {
+      return event;
+    }
+
+    const itemId = asNonEmptyString(item.id) ?? event.itemId;
+    const originalSavedPath = asNonEmptyString(item.savedPath);
+    const result = asNonEmptyString(item.result);
+    const imageBytes = yield* readGeneratedImageBytes({
+      ...(originalSavedPath ? { originalSavedPath } : {}),
+      ...(result ? { result } : {}),
+    });
+    if (!imageBytes) {
+      return buildImagePersistenceFailureEvent(
+        event,
+        "图片生成完成，但没有可写入工作区的图片数据。",
+      );
+    }
+
+    const extension =
+      imageFileExtensionFromPath(originalSavedPath) ??
+      imageFileExtensionFromResult(result) ??
+      "png";
+    const fileName = `${sanitizeImageArtifactName(itemId, String(event.eventId))}.${extension}`;
+    const writeResult = yield* workspaceFileSystem
+      .writeBinaryFile({
+        cwd: workspaceCwd,
+        relativePath: `${GENERATED_IMAGES_WORKSPACE_DIR}/${fileName}`,
+        contents: imageBytes,
+      })
+      .pipe(
+        Effect.matchEffect({
+          onFailure: (error) => Effect.succeed({ _tag: "Failure" as const, error }),
+          onSuccess: (result) => Effect.succeed({ _tag: "Success" as const, result }),
+        }),
+      );
+
+    if (writeResult._tag === "Failure") {
+      return buildImagePersistenceFailureEvent(
+        event,
+        `图片生成成功，但保存到工作区失败：${writeResult.error.message}`,
+      );
+    }
+
+    const persisted = writeResult.result;
+    const existingFiles = Array.isArray(data.files) ? data.files : [];
+    return {
+      ...event,
+      payload: {
+        ...event.payload,
+        data: {
+          ...data,
+          item: {
+            ...item,
+            status: "completed",
+            savedPath: persisted.absolutePath,
+            ...(originalSavedPath ? { originalSavedPath } : {}),
+          },
+          files: [
+            ...existingFiles,
+            { path: persisted.relativePath, absolutePath: persisted.absolutePath },
+          ],
+          imagePersistence: {
+            status: "saved",
+            workspaceRelativePath: persisted.relativePath,
+            workspaceSavedPath: persisted.absolutePath,
+            ...(originalSavedPath ? { originalSavedPath } : {}),
+          },
+        },
+      },
+    };
   });
 
   const rememberAssistantMessageId = (threadId: ThreadId, turnId: TurnId, messageId: MessageId) =>
@@ -1645,11 +1856,23 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const activities = runtimeEventToActivities(event);
+      const activityEvent =
+        event.type === "item.completed"
+          ? yield* persistGeneratedImageToWorkspace(event, thread).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("provider runtime ingestion failed to persist generated image", {
+                  eventId: event.eventId,
+                  eventType: event.type,
+                  cause: Cause.pretty(cause),
+                }).pipe(Effect.as(event)),
+              ),
+            )
+          : event;
+      const activities = runtimeEventToActivities(activityEvent);
       yield* Effect.forEach(activities, (activity) =>
         orchestrationEngine.dispatch({
           type: "thread.activity.append",
-          commandId: providerCommandId(event, "thread-activity-append"),
+          commandId: providerCommandId(activityEvent, "thread-activity-append"),
           threadId: thread.id,
           activity,
           createdAt: activity.createdAt,

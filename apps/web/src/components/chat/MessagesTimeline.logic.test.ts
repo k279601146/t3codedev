@@ -325,6 +325,63 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.kind)).toEqual(["image-generation"]);
   });
 
+  it("marks an unresolved image-generation row as failed when a later runtime issue arrives", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-start-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-start",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view",
+            tone: "tool",
+            itemType: "image_view",
+            status: "running",
+            generatedImage: {
+              id: "ig_1",
+              status: "in_progress",
+              type: "imageGeneration",
+            },
+          },
+        },
+        {
+          id: "runtime-warning-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:01:00Z",
+          entry: {
+            id: "runtime-warning",
+            createdAt: "2026-01-01T00:01:00Z",
+            label: "Runtime warning",
+            detail:
+              "Reconnecting... 1/5: stream disconnected before completion: stream closed before response.completed",
+            tone: "info",
+            status: "completed",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const row = rows[0];
+    expect(row?.kind).toBe("image-generation");
+    if (row?.kind !== "image-generation") return;
+    expect(row.items[0]).toEqual({
+      id: "image-start-entry",
+      createdAt: "2026-01-01T00:00:00Z",
+      status: "failed",
+      label: "图片生成失败",
+      imagePath: null,
+      errorMessage:
+        "Reconnecting... 1/5: stream disconnected before completion: stream closed before response.completed",
+    });
+  });
+
   it("suppresses the generic thinking row while a running work entry is visible", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
