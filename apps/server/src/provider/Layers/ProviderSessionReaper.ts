@@ -1,11 +1,15 @@
-import * as Clock from "effect/Clock";
+import { CommandId, type OrchestrationThreadShell } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import type { ProviderRuntimeBindingWithMetadata } from "../Services/ProviderSessionDirectory.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import {
   ProviderSessionReaper,
@@ -15,6 +19,25 @@ import { ProviderService } from "../Services/ProviderService.ts";
 
 const DEFAULT_INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
 const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+function sameId(left: string | null | undefined, right: string | null | undefined): boolean {
+  if (left === null || left === undefined || right === null || right === undefined) {
+    return false;
+  }
+  return String(left) === String(right);
+}
+
+function hasTerminalActiveTurn(thread: OrchestrationThreadShell | undefined): boolean {
+  const activeTurnId = thread?.session?.activeTurnId;
+  const latestTurn = thread?.latestTurn;
+  if (activeTurnId == null || latestTurn == null) {
+    return false;
+  }
+  return (
+    sameId(latestTurn.turnId, activeTurnId) &&
+    (latestTurn.state === "completed" || latestTurn.state === "error")
+  );
+}
 
 export interface ProviderSessionReaperLiveOptions {
   readonly inactivityThresholdMs?: number;
@@ -26,6 +49,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
     const providerService = yield* ProviderService;
     const directory = yield* ProviderSessionDirectory;
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+    const orchestrationEngine = yield* OrchestrationEngineService;
 
     const inactivityThresholdMs = Math.max(
       1,
@@ -33,9 +57,46 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
     );
     const sweepIntervalMs = Math.max(1, options?.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS);
 
+    const settleTerminalActiveTurn = Effect.fnUntraced(function* (
+      thread: OrchestrationThreadShell,
+      binding: ProviderRuntimeBindingWithMetadata,
+      nowIso: string,
+      idleDurationMs: number,
+    ) {
+      const session = thread.session;
+      if (session?.activeTurnId == null || thread.latestTurn == null) {
+        return false;
+      }
+
+      yield* orchestrationEngine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make(
+          `server:provider-session-reaper:settle-terminal-active-turn:${binding.threadId}:${crypto.randomUUID()}`,
+        ),
+        threadId: binding.threadId,
+        session: {
+          ...session,
+          status: "stopped",
+          activeTurnId: null,
+          updatedAt: nowIso,
+        },
+        createdAt: nowIso,
+      });
+      yield* Effect.logInfo("provider.session.reaper.settled-terminal-active-turn", {
+        threadId: binding.threadId,
+        provider: binding.provider,
+        activeTurnId: session.activeTurnId,
+        latestTurnState: thread.latestTurn.state,
+        idleDurationMs,
+      });
+      return true;
+    });
+
     const sweep = Effect.gen(function* () {
       const bindings = yield* directory.listBindings();
-      const now = yield* Clock.currentTimeMillis;
+      const now = yield* DateTime.now;
+      const nowMs = DateTime.toEpochMillis(now);
+      const nowIso = DateTime.formatIso(now);
       let reapedCount = 0;
 
       for (const binding of bindings) {
@@ -53,7 +114,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           continue;
         }
 
-        const idleDurationMs = now - lastSeenMs;
+        const idleDurationMs = nowMs - lastSeenMs;
         if (idleDurationMs < inactivityThresholdMs) {
           continue;
         }
@@ -62,12 +123,26 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           .getThreadShellById(binding.threadId)
           .pipe(Effect.map(Option.getOrUndefined));
         if (thread?.session?.activeTurnId != null) {
-          yield* Effect.logDebug("provider.session.reaper.skipped-active-turn", {
-            threadId: binding.threadId,
-            activeTurnId: thread.session.activeTurnId,
-            idleDurationMs,
-          });
-          continue;
+          if (!hasTerminalActiveTurn(thread)) {
+            yield* Effect.logDebug("provider.session.reaper.skipped-active-turn", {
+              threadId: binding.threadId,
+              activeTurnId: thread.session.activeTurnId,
+              idleDurationMs,
+            });
+            continue;
+          }
+
+          yield* settleTerminalActiveTurn(thread, binding, nowIso, idleDurationMs).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("provider.session.reaper.settle-terminal-active-turn-failed", {
+                threadId: binding.threadId,
+                provider: binding.provider,
+                activeTurnId: thread.session?.activeTurnId,
+                idleDurationMs,
+                cause: Cause.pretty(cause),
+              }),
+            ),
+          );
         }
 
         const reaped = yield* providerService.stopSession({ threadId: binding.threadId }).pipe(

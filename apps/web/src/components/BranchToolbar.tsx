@@ -241,7 +241,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   if (!hasActiveThread || !activeProject) return null;
 
   return (
-    <div className="mx-auto mt-0.5 flex w-full max-w-[45.5rem] items-center gap-2 rounded-b-[17px] bg-muted/80 px-3 pb-3 pt-2.5 text-muted-foreground sm:px-4">
+    <div className="mx-auto mt-0 flex w-full max-w-[45.5rem] items-center gap-2 rounded-b-[18px] bg-muted/55 px-3 pb-3 pt-2.5 text-[12px] text-muted-foreground/80 sm:px-4">
       {isMobile ? (
         <MobileRunContextSelector
           envLocked={envLocked}

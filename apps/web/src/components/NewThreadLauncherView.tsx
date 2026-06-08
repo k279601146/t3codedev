@@ -90,7 +90,7 @@ const MODE_LABELS: Record<LauncherModeId, string> = {
 };
 
 export const MODE_PLACEHOLDERS: Record<LauncherModeId, string> = {
-  general: "分配一个任务或提问任何问题",
+  general: "随心输入",
   slides: "描述你的演示文稿主题",
   website: "描述你想创建的网站",
   desktop: "描述你想开发的桌面应用",
@@ -294,7 +294,7 @@ export function NewThreadLauncherView({
   return (
     <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-[10vh] sm:px-6 sm:pt-[13vh]">
       <div className="mx-auto flex min-h-full w-full max-w-[48rem] flex-col items-center">
-        <h1 className="mb-9 min-h-[48px] text-center font-serif text-[34px] font-medium leading-tight text-foreground sm:text-[40px]">
+        <h1 className="mb-10 min-h-[40px] text-center font-sans text-[28px] font-normal leading-tight text-foreground sm:text-[30px]">
           <span key={title.key} className="block animate-in fade-in duration-500">
             {title.node}
           </span>
@@ -351,7 +351,7 @@ function useLauncherTitle(
       key: `project:${projectName}`,
       node: (
         <>
-          要在 <span className="font-semibold">{projectName}</span> 中构建什么？
+          我们应该在 <span className="font-normal">{projectName}</span> 中构建什么？
         </>
       ),
     };
