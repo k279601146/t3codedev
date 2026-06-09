@@ -93,22 +93,36 @@ import type {
 export interface ContextMenuItem<T extends string = string> {
   id: T;
   label: string;
+  icon?: ContextMenuItemIcon;
   destructive?: boolean;
   disabled?: boolean;
   children?: readonly ContextMenuItem<T>[];
 }
 
+export type ContextMenuItemIcon = "pin" | "folder-open" | "edit" | "archive" | "x" | "copy";
+
 export interface ContextMenuItemSchemaType {
   readonly id: string;
   readonly label: string;
+  readonly icon?: ContextMenuItemIcon;
   readonly destructive?: boolean;
   readonly disabled?: boolean;
   readonly children?: readonly ContextMenuItemSchemaType[];
 }
 
+export const ContextMenuItemIconSchema = Schema.Literals([
+  "pin",
+  "folder-open",
+  "edit",
+  "archive",
+  "x",
+  "copy",
+]);
+
 export const ContextMenuItemSchema: Schema.Codec<ContextMenuItemSchemaType> = Schema.Struct({
   id: Schema.String,
   label: Schema.String,
+  icon: Schema.optionalKey(ContextMenuItemIconSchema),
   destructive: Schema.optionalKey(Schema.Boolean),
   disabled: Schema.optionalKey(Schema.Boolean),
   children: Schema.optionalKey(
@@ -517,6 +531,7 @@ export interface DesktopBridge {
   clearCloudAuthToken: () => Promise<void>;
   fetchCloudAuth: (input: DesktopCloudAuthFetchInput) => Promise<DesktopCloudAuthFetchResult>;
   onCloudAuthCallback: (listener: (rawUrl: string) => void) => () => void;
+  openPath: (path: string) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
@@ -544,6 +559,7 @@ export interface LocalApi {
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
     openExternal: (url: string) => Promise<void>;
+    openPath: (path: string) => Promise<void>;
   };
   contextMenu: {
     show: <T extends string>(

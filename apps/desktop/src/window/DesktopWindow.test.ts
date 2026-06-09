@@ -151,6 +151,7 @@ function makeTestLayer(input: {
               input.openedExternalUrls?.push(url);
               return true;
             }),
+          openPath: () => Effect.succeed(true),
           copyText: () => Effect.void,
         } satisfies ElectronShell.ElectronShellShape),
         electronThemeLayer,

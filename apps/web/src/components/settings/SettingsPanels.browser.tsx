@@ -473,6 +473,7 @@ const createDesktopBridgeStub = (overrides?: {
       body: "",
     }),
     onCloudAuthCallback: () => () => {},
+    openPath: vi.fn().mockResolvedValue(true),
     onMenuAction: () => () => {},
     getUpdateState: overrides?.getUpdateState ?? vi.fn().mockResolvedValue(idleUpdateState),
     setUpdateChannel:

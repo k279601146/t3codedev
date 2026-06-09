@@ -7,9 +7,11 @@
   HelpCircleIcon,
   CloudIcon,
   ExternalLinkIcon,
+  FolderOpenIcon,
   FolderPlusIcon,
   LogOutIcon,
   PanelLeftIcon,
+  PencilIcon,
   RefreshCwIcon,
   PinIcon,
   SearchIcon,
@@ -17,6 +19,7 @@
   SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
+  XIcon,
   ArrowUpRight,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -47,7 +50,6 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  type ContextMenuItem,
   type CommercialAccountUsageSchema,
   type DesktopUpdateState,
   ProjectId,
@@ -152,6 +154,10 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useCommandPaletteStore } from "../commandPaletteStore";
+import {
+  type DefaultSidebarSectionId,
+  useCursorLayoutStore,
+} from "../cursorLayoutStore";
 import {
   getSidebarThreadIdsToPrewarm,
   getVisibleThreadsForProject,
@@ -921,6 +927,100 @@ interface SidebarProjectItemProps {
   dragHandleProps: SortableProjectHandleProps | null;
 }
 
+interface ProjectContextMenuPosition {
+  x: number;
+  y: number;
+}
+
+function ProjectContextMenu({
+  position,
+  labels,
+  onClose,
+  onPinProject,
+  onOpenInExplorer,
+  onRenameProject,
+  onProjectGrouping,
+  onArchiveThreads,
+  onRemoveProject,
+}: {
+  position: ProjectContextMenuPosition;
+  labels: {
+    pinProject: string;
+    openInExplorer: string;
+    renameProject: string;
+    projectGrouping: string;
+    archiveProjectThreads: string;
+    removeProject: string;
+  };
+  onClose: () => void;
+  onPinProject: () => void;
+  onOpenInExplorer: () => void;
+  onRenameProject: () => void;
+  onProjectGrouping: () => void;
+  onArchiveThreads: () => void;
+  onRemoveProject: () => void;
+}) {
+  useEffect(() => {
+    const handlePointerDown = () => onClose();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const runAction = (action: () => void) => {
+    onClose();
+    action();
+  };
+  const left = Math.min(Math.max(8, position.x), Math.max(8, window.innerWidth - 190));
+  const top = Math.min(Math.max(8, position.y), Math.max(8, window.innerHeight - 188));
+  const menuItemClass =
+    "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-foreground/90 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent";
+  const iconClass = "size-3.5 shrink-0 text-muted-foreground/80";
+
+  return (
+    <div
+      className="fixed z-50 min-w-[166px] rounded-xl border border-border/70 bg-popover p-1.5 shadow-[0_8px_28px_rgba(0,0,0,0.16)]"
+      style={{ left, top }}
+      onContextMenu={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button type="button" className={menuItemClass} onClick={() => runAction(onPinProject)}>
+        <PinIcon className={iconClass} />
+        <span className="min-w-0 truncate">{labels.pinProject}</span>
+      </button>
+      <button type="button" className={menuItemClass} onClick={() => runAction(onOpenInExplorer)}>
+        <FolderOpenIcon className={iconClass} />
+        <span className="min-w-0 truncate">{labels.openInExplorer}</span>
+      </button>
+      <button type="button" className={menuItemClass} onClick={() => runAction(onRenameProject)}>
+        <PencilIcon className={iconClass} />
+        <span className="min-w-0 truncate">{labels.renameProject}</span>
+      </button>
+      <button type="button" className={menuItemClass} onClick={() => runAction(onProjectGrouping)}>
+        <BlocksIcon className={iconClass} />
+        <span className="min-w-0 truncate">{labels.projectGrouping}</span>
+      </button>
+      <button type="button" className={menuItemClass} onClick={() => runAction(onArchiveThreads)}>
+        <ArchiveIcon className={iconClass} />
+        <span className="min-w-0 truncate">{labels.archiveProjectThreads}</span>
+      </button>
+      <div className="my-1 h-px bg-border/70" />
+      <button type="button" className={menuItemClass} onClick={() => runAction(onRemoveProject)}>
+        <XIcon className={iconClass} />
+        <span className="min-w-0 truncate">{labels.removeProject}</span>
+      </button>
+    </div>
+  );
+}
+
 const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
   const {
     project,
@@ -1196,6 +1296,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     threadLastVisitedAts,
     visibleProjectThreads,
   ]);
+  const projectOrder = useUiStateStore((state) => state.projectOrder);
+  const setProjectOrder = useUiStateStore((state) => state.setProjectOrder);
+  const { t } = useI18n();
+  const [projectContextMenuPosition, setProjectContextMenuPosition] =
+    useState<ProjectContextMenuPosition | null>(null);
 
   const handleProjectButtonClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -1414,110 +1519,85 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [memberThreadCountByPhysicalKey, removeProject],
   );
 
+  const representativeProjectMember = project.memberProjects[0] ?? null;
+  const closeProjectContextMenu = useCallback(() => {
+    setProjectContextMenuPosition(null);
+  }, []);
+  const pinProjectToTop = useCallback(() => {
+    const draggedProjectIds = project.memberProjects.map((member) => member.physicalProjectKey);
+    setProjectOrder([
+      ...draggedProjectIds,
+      ...projectOrder.filter((projectId) => !draggedProjectIds.includes(projectId)),
+    ]);
+    updateSettings({ sidebarProjectSortOrder: "manual" });
+  }, [project.memberProjects, projectOrder, setProjectOrder, updateSettings]);
+  const openRepresentativeProjectInExplorer = useCallback(() => {
+    if (!representativeProjectMember) {
+      return;
+    }
+    const api = readLocalApi();
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: t("sidebar.pathOpenFailed"),
+        description: representativeProjectMember.cwd,
+      });
+      return;
+    }
+    void api.shell.openPath(representativeProjectMember.cwd).catch((error: unknown) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("sidebar.pathOpenFailed"),
+          description: error instanceof Error ? error.message : representativeProjectMember.cwd,
+        }),
+      );
+    });
+  }, [representativeProjectMember, t]);
+  const renameRepresentativeProject = useCallback(() => {
+    if (representativeProjectMember) {
+      openProjectRenameDialog(representativeProjectMember);
+    }
+  }, [openProjectRenameDialog, representativeProjectMember]);
+  const openRepresentativeProjectGrouping = useCallback(() => {
+    if (representativeProjectMember) {
+      openProjectGroupingDialog(representativeProjectMember);
+    }
+  }, [openProjectGroupingDialog, representativeProjectMember]);
+  const archiveVisibleProjectThreads = useCallback(() => {
+    void (async () => {
+      if (visibleProjectThreads.length === 0) {
+        toastManager.add({ type: "info", title: t("sidebar.archiveProjectThreadsEmpty") });
+        return;
+      }
+      try {
+        for (const thread of visibleProjectThreads) {
+          await archiveThread(scopeThreadRef(thread.environmentId, thread.id));
+        }
+        toastManager.add({ type: "success", title: t("sidebar.archiveProjectThreadsSuccess") });
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: t("sidebar.archiveProjectThreadsFailed"),
+            description: error instanceof Error ? error.message : "归档对话时发生错误。",
+          }),
+        );
+      }
+    })();
+  }, [archiveThread, t, visibleProjectThreads]);
+  const removeRepresentativeProject = useCallback(() => {
+    if (representativeProjectMember) {
+      void handleRemoveProject(representativeProjectMember);
+    }
+  }, [handleRemoveProject, representativeProjectMember]);
   const handleProjectButtonContextMenu = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       suppressProjectClickForContextMenuRef.current = true;
-      void (async () => {
-        const api = readLocalApi();
-        if (!api) return;
-
-        const actionHandlers = new Map<string, () => Promise<void> | void>();
-        const makeLeaf = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
-          member: SidebarProjectGroupMember,
-          options?: {
-            destructive?: boolean;
-            disabled?: boolean;
-          },
-        ): ContextMenuItem<string> => {
-          const id = `${action}:${member.physicalProjectKey}`;
-          actionHandlers.set(id, () => {
-            switch (action) {
-              case "rename":
-                openProjectRenameDialog(member);
-                return;
-              case "grouping":
-                openProjectGroupingDialog(member);
-                return;
-              case "copy-path":
-                copyPathToClipboard(member.cwd, { path: member.cwd });
-                return;
-              case "delete":
-                return handleRemoveProject(member);
-            }
-          });
-
-          return {
-            id,
-            label: formatProjectMemberActionLabel(member, project.groupedProjectCount),
-            ...(options?.destructive ? { destructive: true } : {}),
-            ...(options?.disabled ? { disabled: true } : {}),
-          };
-        };
-
-        const buildTargetedItem = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
-          label: string,
-          options?: {
-            destructive?: boolean;
-            isDisabled?: (member: SidebarProjectGroupMember) => boolean;
-          },
-        ): ContextMenuItem<string> => {
-          if (project.memberProjects.length === 1) {
-            const singleMember = project.memberProjects[0]!;
-            return {
-              ...makeLeaf(action, singleMember, {
-                ...(options?.destructive ? { destructive: true } : {}),
-                ...(options?.isDisabled?.(singleMember) ? { disabled: true } : {}),
-              }),
-              label,
-            };
-          }
-
-          return {
-            id: `${action}:submenu`,
-            label,
-            children: project.memberProjects.map((member) =>
-              makeLeaf(action, member, {
-                ...(options?.destructive ? { destructive: true } : {}),
-                ...(options?.isDisabled?.(member) ? { disabled: true } : {}),
-              }),
-            ),
-          };
-        };
-
-        const clicked = await api.contextMenu.show(
-          [
-            buildTargetedItem("rename", "Rename project"),
-            buildTargetedItem("grouping", "Project grouping…"),
-            buildTargetedItem("copy-path", "Copy Project Path"),
-            buildTargetedItem("delete", "Remove project", {
-              destructive: true,
-            }),
-          ],
-          {
-            x: event.clientX,
-            y: event.clientY,
-          },
-        );
-
-        if (!clicked) {
-          return;
-        }
-
-        await actionHandlers.get(clicked)?.();
-      })();
+      setProjectContextMenuPosition({ x: event.clientX, y: event.clientY });
     },
-    [
-      copyPathToClipboard,
-      handleRemoveProject,
-      openProjectGroupingDialog,
-      openProjectRenameDialog,
-      project.groupedProjectCount,
-      project.memberProjects,
-      suppressProjectClickForContextMenuRef,
-    ],
+    [suppressProjectClickForContextMenuRef],
   );
 
   const navigateToThread = useCallback(
@@ -2040,6 +2120,26 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           </TooltipPopup>
         </Tooltip>
       </div>
+      {projectContextMenuPosition ? (
+        <ProjectContextMenu
+          position={projectContextMenuPosition}
+          labels={{
+            pinProject: t("sidebar.pinProject"),
+            openInExplorer: t("sidebar.openInExplorer"),
+            renameProject: t("sidebar.renameProject"),
+            projectGrouping: t("sidebar.projectGrouping"),
+            archiveProjectThreads: t("sidebar.archiveProjectThreads"),
+            removeProject: t("sidebar.removeProject"),
+          }}
+          onClose={closeProjectContextMenu}
+          onPinProject={pinProjectToTop}
+          onOpenInExplorer={openRepresentativeProjectInExplorer}
+          onRenameProject={renameRepresentativeProject}
+          onProjectGrouping={openRepresentativeProjectGrouping}
+          onArchiveThreads={archiveVisibleProjectThreads}
+          onRemoveProject={removeRepresentativeProject}
+        />
+      ) : null}
 
       <SidebarProjectThreadList
         projectKey={project.projectKey}
@@ -2754,12 +2854,29 @@ interface SidebarProjectsContentProps {
 function SidebarSectionTitle({
   action,
   children,
+  draggable = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
 }: {
   action?: React.ReactNode;
   children: React.ReactNode;
+  draggable?: boolean;
+  onDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onDragOver?: React.DragEventHandler<HTMLDivElement>;
+  onDrop?: React.DragEventHandler<HTMLDivElement>;
 }) {
   return (
-    <div className="mb-1 flex h-5 items-center justify-between px-2">
+    <div
+      className={cn(
+        "mb-1 flex h-5 items-center justify-between px-2",
+        draggable ? "cursor-grab active:cursor-grabbing" : "",
+      )}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <span className="text-[12px] font-normal text-muted-foreground/72">{children}</span>
       {action ? <div className="flex items-center gap-1">{action}</div> : null}
     </div>
@@ -2806,6 +2923,13 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const [isProjectDropActive, setIsProjectDropActive] = useState(false);
+  const defaultSidebarSectionOrder = useCursorLayoutStore(
+    (state) => state.defaultSidebarSectionOrder,
+  );
+  const setDefaultSidebarSectionOrder = useCursorLayoutStore(
+    (state) => state.setDefaultSidebarSectionOrder,
+  );
+  const draggedDefaultSidebarSectionRef = useRef<DefaultSidebarSectionId | null>(null);
   const defaultThreadEnvMode = useSettings((settings) => settings.defaultThreadEnvMode);
   const {
     showArm64IntelBuildWarning,
@@ -2839,6 +2963,52 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     projectsLength,
     globalThreads,
   } = props;
+  const defaultSidebarSectionOrderIndex = useMemo(
+    () =>
+      new Map(
+        defaultSidebarSectionOrder.map((sectionId, index) => [sectionId, index] as const),
+      ),
+    [defaultSidebarSectionOrder],
+  );
+  const moveDefaultSidebarSection = useCallback(
+    (draggedSection: DefaultSidebarSectionId, targetSection: DefaultSidebarSectionId) => {
+      if (draggedSection === targetSection) {
+        return;
+      }
+      const nextOrder = defaultSidebarSectionOrder.filter(
+        (sectionId) => sectionId !== draggedSection,
+      );
+      const targetIndex = nextOrder.indexOf(targetSection);
+      if (targetIndex < 0) {
+        return;
+      }
+      nextOrder.splice(targetIndex, 0, draggedSection);
+      setDefaultSidebarSectionOrder(nextOrder);
+    },
+    [defaultSidebarSectionOrder, setDefaultSidebarSectionOrder],
+  );
+  const handleDefaultSectionDragStart = useCallback(
+    (sectionId: DefaultSidebarSectionId, event: React.DragEvent<HTMLDivElement>) => {
+      draggedDefaultSidebarSectionRef.current = sectionId;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-t3code-default-sidebar-section", sectionId);
+    },
+    [],
+  );
+  const handleDefaultSectionDrop = useCallback(
+    (sectionId: DefaultSidebarSectionId, event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const draggedSection =
+        (event.dataTransfer.getData(
+          "application/x-t3code-default-sidebar-section",
+        ) as DefaultSidebarSectionId) || draggedDefaultSidebarSectionRef.current;
+      draggedDefaultSidebarSectionRef.current = null;
+      if (draggedSection === "projects" || draggedSection === "conversations") {
+        moveDefaultSidebarSection(draggedSection, sectionId);
+      }
+    },
+    [moveDefaultSidebarSection],
+  );
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -3209,8 +3379,22 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarSectionTitle>
       </SidebarGroup>
 
-      <SidebarGroup className="px-2 py-1">
+      <SidebarGroup
+        className="px-2 py-1"
+        style={{ order: 20 + (defaultSidebarSectionOrderIndex.get("projects") ?? 0) }}
+      >
         <SidebarSectionTitle
+          draggable
+          onDragStart={(event) => handleDefaultSectionDragStart("projects", event)}
+          onDragOver={(event) => {
+            if (
+              event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")
+            ) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDrop={(event) => handleDefaultSectionDrop("projects", event)}
           action={
             <Tooltip>
               <TooltipTrigger
@@ -3355,8 +3539,22 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </div>
         )}
       </SidebarGroup>
-      <SidebarGroup className="mt-2 px-2 py-1">
+      <SidebarGroup
+        className="mt-2 px-2 py-1"
+        style={{ order: 20 + (defaultSidebarSectionOrderIndex.get("conversations") ?? 1) }}
+      >
         <SidebarSectionTitle
+          draggable
+          onDragStart={(event) => handleDefaultSectionDragStart("conversations", event)}
+          onDragOver={(event) => {
+            if (
+              event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")
+            ) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDrop={(event) => handleDefaultSectionDrop("conversations", event)}
           action={
             <Tooltip>
               <TooltipTrigger

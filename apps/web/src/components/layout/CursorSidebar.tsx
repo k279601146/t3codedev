@@ -3,7 +3,7 @@ import { CONVERSATION_PROJECT_ID } from "@t3tools/contracts";
 import { useParams } from "@tanstack/react-router";
 import { FolderPlusIcon } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useShallow } from "zustand/react/shallow";
@@ -19,6 +19,7 @@ import { CursorFileTree } from "../file-tree/CursorFileTree";
 import { getEditorLanguage, useEditorStore } from "../../editorStore";
 import { toastManager } from "../ui/toast";
 import { useCursorLayoutStore } from "../../cursorLayoutStore";
+import type { CursorSidebarColumnId } from "../../cursorLayoutStore";
 import { readEnvironmentApi } from "../../environmentApi";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
@@ -35,6 +36,7 @@ import { CURSOR_PROJECT_DRAG_TYPE, CursorProjectDock } from "./CursorProjectDock
 import type { Project } from "../../types";
 import { useUiStateStore } from "../../uiStateStore";
 import { AddProjectMenu } from "../AddProjectMenu";
+import { useI18n } from "../../i18n";
 
 const PROJECT_DOCK_MIN_HEIGHT_PX = 112;
 const PROJECT_DOCK_MAX_HEIGHT_RATIO = 0.82;
@@ -75,6 +77,7 @@ export function CursorSidebar() {
     [visibleProjects],
   );
   const pinnedProjectKeys = useCursorLayoutStore((state) => state.pinnedProjectKeys);
+  const sidebarColumnOrder = useCursorLayoutStore((state) => state.sidebarColumnOrder);
   const collapsedPinnedProjectKeys = useCursorLayoutStore(
     (state) => state.collapsedPinnedProjectKeys,
   );
@@ -82,6 +85,7 @@ export function CursorSidebar() {
   const pinProject = useCursorLayoutStore((state) => state.pinProject);
   const unpinProject = useCursorLayoutStore((state) => state.unpinProject);
   const setPinnedProjects = useCursorLayoutStore((state) => state.setPinnedProjects);
+  const setSidebarColumnOrder = useCursorLayoutStore((state) => state.setSidebarColumnOrder);
   const togglePinnedProject = useCursorLayoutStore((state) => state.togglePinnedProject);
   const { handleNewThread } = useNewThreadHandler();
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
@@ -94,6 +98,8 @@ export function CursorSidebar() {
     () => new Set(),
   );
   const projectDockPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const draggedColumnRef = useRef<CursorSidebarColumnId | null>(null);
+  const { t } = useI18n();
   const activeProjectKey = activeProject
     ? scopedProjectKey(scopeProjectRef(activeProject.environmentId, activeProject.id))
     : null;
@@ -311,123 +317,200 @@ export function CursorSidebar() {
     }
   }, []);
 
+  const moveSidebarColumn = useCallback(
+    (draggedColumn: CursorSidebarColumnId, targetColumn: CursorSidebarColumnId) => {
+      if (draggedColumn === targetColumn) {
+        return;
+      }
+      const nextOrder = sidebarColumnOrder.filter((columnId) => columnId !== draggedColumn);
+      const targetIndex = nextOrder.indexOf(targetColumn);
+      if (targetIndex < 0) {
+        return;
+      }
+      nextOrder.splice(targetIndex, 0, draggedColumn);
+      setSidebarColumnOrder(nextOrder);
+    },
+    [setSidebarColumnOrder, sidebarColumnOrder],
+  );
+
+  const handleColumnDragStart = useCallback(
+    (columnId: CursorSidebarColumnId, event: React.DragEvent) => {
+      draggedColumnRef.current = columnId;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-t3code-sidebar-column", columnId);
+    },
+    [],
+  );
+
+  const handleColumnDrop = useCallback(
+    (columnId: CursorSidebarColumnId, event: React.DragEvent) => {
+      const draggedColumn =
+        (event.dataTransfer.getData(
+          "application/x-t3code-sidebar-column",
+        ) as CursorSidebarColumnId) || draggedColumnRef.current;
+      draggedColumnRef.current = null;
+      if (draggedColumn === "explorer" || draggedColumn === "projects") {
+        event.preventDefault();
+        moveSidebarColumn(draggedColumn, columnId);
+      }
+    },
+    [moveSidebarColumn],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <Group id="cursor-sidebar-panels" className="h-full min-h-0" orientation="vertical">
-        <Panel
-          id="cursor-explorer-panel"
-          defaultSize="46%"
-          minSize="18%"
-          className="min-h-0 overflow-hidden"
-        >
-          <div
-            className={cn(
-              "h-full min-h-0 overflow-y-auto transition-colors",
-              isProjectDropActive ? "bg-accent/30" : "",
-            )}
-            onDragEnter={(event) => {
-              if (
-                event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE) ||
-                hasExternalFolderDrop(event)
-              ) {
-                event.preventDefault();
-                setIsProjectDropActive(true);
-              }
-            }}
-            onDragOver={(event) => {
-              if (
-                event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE) ||
-                hasExternalFolderDrop(event)
-              ) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "copy";
-              }
-            }}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setIsProjectDropActive(false);
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setIsProjectDropActive(false);
-              if (pinProjectFromDragEvent(event)) {
-                return;
-              }
-              if (hasExternalFolderDrop(event)) {
-                void addExternalProjectsFromDrop(event).catch((error) => {
-                  toastManager.add({
-                    type: "error",
-                    title: "Could not add dropped folder",
-                    description:
-                      error instanceof Error ? error.message : "The folder could not be added.",
-                  });
-                });
-              }
-            }}
-          >
-            <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-border/60 bg-sidebar/95 px-3 backdrop-blur">
-              <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
-                Explorer
-              </div>
-              <AddProjectMenu
-                title="添加项目到资源管理器"
-                pinToCursorExplorer
-                trigger={
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                    aria-label="添加项目"
+        {sidebarColumnOrder.map((columnId, index) => (
+          <Fragment key={columnId}>
+            {index > 0 ? (
+              <Separator className="h-px bg-border/60 transition-colors hover:bg-border" />
+            ) : null}
+            {columnId === "explorer" ? (
+              <Panel
+                id="cursor-explorer-panel"
+                defaultSize="46%"
+                minSize="18%"
+                className="min-h-0 overflow-hidden"
+              >
+                <div
+                  className={cn(
+                    "h-full min-h-0 overflow-y-auto transition-colors",
+                    isProjectDropActive ? "bg-accent/30" : "",
+                  )}
+                  onDragEnter={(event) => {
+                    if (
+                      event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE) ||
+                      event.dataTransfer.types.includes("application/x-t3code-sidebar-column") ||
+                      hasExternalFolderDrop(event)
+                    ) {
+                      event.preventDefault();
+                      if (!event.dataTransfer.types.includes("application/x-t3code-sidebar-column")) {
+                        setIsProjectDropActive(true);
+                      }
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    if (
+                      event.dataTransfer.types.includes(CURSOR_PROJECT_DRAG_TYPE) ||
+                      event.dataTransfer.types.includes("application/x-t3code-sidebar-column") ||
+                      hasExternalFolderDrop(event)
+                    ) {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = event.dataTransfer.types.includes(
+                        "application/x-t3code-sidebar-column",
+                      )
+                        ? "move"
+                        : "copy";
+                    }
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setIsProjectDropActive(false);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    if (event.dataTransfer.types.includes("application/x-t3code-sidebar-column")) {
+                      handleColumnDrop("explorer", event);
+                      return;
+                    }
+                    event.preventDefault();
+                    setIsProjectDropActive(false);
+                    if (pinProjectFromDragEvent(event)) {
+                      return;
+                    }
+                    if (hasExternalFolderDrop(event)) {
+                      void addExternalProjectsFromDrop(event).catch((error) => {
+                        toastManager.add({
+                          type: "error",
+                          title: "Could not add dropped folder",
+                          description:
+                            error instanceof Error ? error.message : "The folder could not be added.",
+                        });
+                      });
+                    }
+                  }}
+                >
+                  <div
+                    className="sticky top-0 z-10 flex h-10 cursor-grab items-center gap-2 border-b border-border/60 bg-sidebar/95 px-3 backdrop-blur active:cursor-grabbing"
+                    draggable
+                    onDragStart={(event) => handleColumnDragStart("explorer", event)}
                   >
-                    <FolderPlusIcon className="size-3.5" />
-                  </Button>
-                }
-              />
-            </div>
+                    <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
+                      {t("sidebar.explorer")}
+                    </div>
+                    <AddProjectMenu
+                      title="添加项目到资源管理器"
+                      pinToCursorExplorer
+                      trigger={
+                        <Button
+                          type="button"
+                          size="icon-xs"
+                          variant="ghost"
+                          className="size-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                          aria-label="添加项目"
+                          draggable={false}
+                        >
+                          <FolderPlusIcon className="size-3.5" />
+                        </Button>
+                      }
+                    />
+                  </div>
 
-            {explorerProjects.length > 0 ? (
-              explorerProjects.map((project) => {
-                const projectKey = scopedProjectKey(
-                  scopeProjectRef(project.environmentId, project.id),
-                );
-                return (
-                  <CursorFileTree
-                    key={projectKey}
-                    projectKey={projectKey}
-                    title={project.name}
-                    subtitle={project.cwd}
-                    environmentId={project.environmentId}
-                    workspaceRoot={project.cwd}
-                    collapsed={collapsedPinnedProjectKeys[projectKey] ?? false}
-                    onToggleProject={() => togglePinnedProject(projectKey)}
-                    onRemoveProject={() => removeProjectFromExplorer(projectKey)}
-                    onOpenFile={(filePath) => {
-                      void handleOpenFile(project, filePath);
-                    }}
-                  />
-                );
-              })
+                  {explorerProjects.length > 0 ? (
+                    explorerProjects.map((project) => {
+                      const projectKey = scopedProjectKey(
+                        scopeProjectRef(project.environmentId, project.id),
+                      );
+                      return (
+                        <CursorFileTree
+                          key={projectKey}
+                          projectKey={projectKey}
+                          title={project.name}
+                          subtitle={project.cwd}
+                          environmentId={project.environmentId}
+                          workspaceRoot={project.cwd}
+                          collapsed={collapsedPinnedProjectKeys[projectKey] ?? false}
+                          onToggleProject={() => togglePinnedProject(projectKey)}
+                          onRemoveProject={() => removeProjectFromExplorer(projectKey)}
+                          onOpenFile={(filePath) => {
+                            void handleOpenFile(project, filePath);
+                          }}
+                        />
+                      );
+                    })
+                  ) : (
+                    <div className="flex min-h-32 items-center justify-center px-5 text-center text-xs leading-5 text-muted-foreground">
+                      Drag projects or folders here, or right-click a project below to add it to the file
+                      tree.
+                    </div>
+                  )}
+                </div>
+              </Panel>
             ) : (
-              <div className="flex min-h-32 items-center justify-center px-5 text-center text-xs leading-5 text-muted-foreground">
-                Drag projects or folders here, or right-click a project below to add it to the file
-                tree.
-              </div>
+              <Panel
+                id="cursor-project-dock-panel"
+                panelRef={projectDockPanelRef}
+                defaultSize="25%"
+                minSize={`${PROJECT_DOCK_MIN_HEIGHT_PX}px`}
+                maxSize={`${PROJECT_DOCK_MAX_HEIGHT_RATIO * 100}%`}
+                className="min-h-0 overflow-hidden"
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes("application/x-t3code-sidebar-column")) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }
+                }}
+                onDrop={(event) => handleColumnDrop("projects", event)}
+              >
+                <CursorProjectDock
+                  title={t("sidebar.projectsDock")}
+                  onHeaderDragStart={(event) => handleColumnDragStart("projects", event)}
+                  onContentHeightChange={resizeProjectDockToContent}
+                />
+              </Panel>
             )}
-          </div>
-        </Panel>
-        <Separator className="h-px bg-border/60 transition-colors hover:bg-border" />
-        <Panel
-          id="cursor-project-dock-panel"
-          panelRef={projectDockPanelRef}
-          defaultSize="25%"
-          minSize={`${PROJECT_DOCK_MIN_HEIGHT_PX}px`}
-          maxSize={`${PROJECT_DOCK_MAX_HEIGHT_RATIO * 100}%`}
-          className="min-h-0 overflow-hidden"
-        >
-          <CursorProjectDock onContentHeightChange={resizeProjectDockToContent} />
-        </Panel>
+          </Fragment>
+        ))}
       </Group>
     </div>
   );

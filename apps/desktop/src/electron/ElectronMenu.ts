@@ -1,4 +1,4 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, ContextMenuItemIcon } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -47,6 +47,7 @@ function normalizeContextMenuItems(source: readonly ContextMenuItem[]): ContextM
     const normalizedItem: ContextMenuItem = {
       id: sourceItem.id,
       label: sourceItem.label,
+      ...(sourceItem.icon ? { icon: sourceItem.icon } : {}),
       destructive: sourceItem.destructive === true,
       disabled: sourceItem.disabled === true,
     };
@@ -75,6 +76,7 @@ const normalizePosition = (
 
 export const layer = Layer.sync(ElectronMenu, () => {
   let destructiveMenuIconCache: Option.Option<Electron.NativeImage> | undefined;
+  const menuIconCache = new Map<string, Option.Option<Electron.NativeImage>>();
 
   const getDestructiveMenuIcon = (): Option.Option<Electron.NativeImage> => {
     if (process.platform !== "darwin") {
@@ -95,6 +97,48 @@ export const layer = Layer.sync(ElectronMenu, () => {
     }
 
     return destructiveMenuIconCache;
+  };
+
+  const getMenuIcon = (
+    iconName: ContextMenuItemIcon | undefined,
+    destructive: boolean,
+  ): Option.Option<Electron.NativeImage> => {
+    if (!iconName) {
+      return Option.none();
+    }
+    const cacheKey = `${iconName}:${destructive ? "destructive" : "normal"}`;
+    const cached = menuIconCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const stroke = destructive ? "#dc2626" : "#4b5563";
+    const paths: Record<ContextMenuItemIcon, string> = {
+      pin: '<path d="M6 3.5l4.5 4.5"/><path d="M8 2l6 6-2 2 1 3-1 1-3-1-2 2-6-6 2-2 3 1 2-2z"/>',
+      "folder-open":
+        '<path d="M2.5 5.5h4l1.4 1.5h7.6v6.5a1.5 1.5 0 0 1-1.5 1.5h-11a1.5 1.5 0 0 1-1.5-1.5v-6.5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M2 9h14l-1.3 4.4a1.5 1.5 0 0 1-1.4 1.1h-10.2a1.5 1.5 0 0 1-1.4-1.9z"/>',
+      edit: '<path d="M3 13l1-3 6.8-6.8a1.4 1.4 0 0 1 2 0 1.4 1.4 0 0 1 0 2l-6.8 6.8-3 1z"/><path d="M10 4l2 2"/>',
+      archive:
+        '<path d="M3 5h10v9.5a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1z"/><path d="M2 2.5h12v2.5h-12z"/><path d="M6 8h4"/>',
+      x: '<path d="M4 4l8 8"/><path d="M12 4l-8 8"/>',
+      copy: '<path d="M6 6h7v7h-7z"/><path d="M3 10v-7h7"/>',
+    };
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${stroke}" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">${paths[iconName]}</svg>`;
+    const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+    try {
+      const icon = Electron.nativeImage.createFromDataURL(dataUrl).resize({
+        width: 16,
+        height: 16,
+      });
+      const result = icon.isEmpty() ? Option.none() : Option.some(icon);
+      menuIconCache.set(cacheKey, result);
+      return result;
+    } catch {
+      const result = Option.none<Electron.NativeImage>();
+      menuIconCache.set(cacheKey, result);
+      return result;
+    }
   };
 
   const buildTemplate = (
@@ -123,6 +167,12 @@ export const layer = Layer.sync(ElectronMenu, () => {
         const destructiveIcon = getDestructiveMenuIcon();
         if (Option.isSome(destructiveIcon)) {
           itemOption.icon = destructiveIcon.value;
+        }
+      }
+      if (!itemOption.icon) {
+        const menuIcon = getMenuIcon(item.icon, item.destructive === true);
+        if (Option.isSome(menuIcon)) {
+          itemOption.icon = menuIcon.value;
         }
       }
 

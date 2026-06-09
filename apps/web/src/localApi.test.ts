@@ -250,6 +250,7 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
       body: "",
     }),
     onCloudAuthCallback: () => () => undefined,
+    openPath: async () => true,
     onMenuAction: () => () => undefined,
     getUpdateState: async () => {
       throw new Error("getUpdateState not implemented in test");
