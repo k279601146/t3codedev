@@ -1,6 +1,6 @@
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { FolderOpenIcon, FolderPlusIcon, SparklesIcon } from "lucide-react";
+import { FolderOpenIcon, FolderPlusIcon } from "lucide-react";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -193,19 +193,21 @@ export function AddProjectMenu({
     <>
       <Menu>
         <MenuTrigger className={className} render={trigger as React.ReactElement} title={title} />
-        <MenuPopup align="end" className="w-56">
+        <MenuPopup align="end" sideOffset={6} className="w-[224px] rounded-[10px] p-0">
           <MenuItem
             disabled={!canRunProjectAction || isCreatingBlankProject}
             onClick={() => setBlankDialogOpen(true)}
+            className="min-h-8 rounded-[7px] px-2.5 py-1.5 text-[13px] leading-5"
           >
-            <SparklesIcon />
+            <FolderPlusIcon className="size-4 text-muted-foreground" />
             <span>新建空白项目</span>
           </MenuItem>
           <MenuItem
             disabled={!canRunProjectAction || isPickingExistingFolder}
             onClick={() => void addExistingFolder()}
+            className="min-h-8 rounded-[7px] px-2.5 py-1.5 text-[13px] leading-5"
           >
-            <FolderOpenIcon />
+            <FolderOpenIcon className="size-4 text-muted-foreground" />
             <span>使用现有文件夹</span>
           </MenuItem>
           {disabledDescription ? (

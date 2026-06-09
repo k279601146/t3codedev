@@ -290,6 +290,8 @@ export function NewThreadLauncherView({
   }, [isComposerEmpty, mode]);
 
   const shouldShowIdleSuggestions = showIdleSuggestions && !isIdleSuggestionsDismissed;
+  const shouldLiftEmptyGeneralLauncher = mode === "general" && !shouldShowIdleSuggestions;
+  const shouldShowModeRecommendations = !shouldShowIdleSuggestions && mode !== "general";
 
   return (
     <main
@@ -299,7 +301,13 @@ export function NewThreadLauncherView({
       )}
     >
       <div className="mx-auto flex min-h-full w-full max-w-[48rem] flex-col items-center">
-        <div className="flex min-h-full w-full flex-col items-center justify-center">
+        <div
+          className={cn(
+            "flex w-full flex-col items-center",
+            mode === "general" ? "min-h-full justify-center" : "pb-8 pt-[8vh]",
+            shouldLiftEmptyGeneralLauncher && "pb-14 sm:pb-20",
+          )}
+        >
           <h1 className="mb-10 min-h-[40px] text-center font-sans text-[28px] font-normal leading-tight text-foreground sm:text-[30px]">
             <span key={title.key} className="block animate-in fade-in duration-500">
               {title.node}
@@ -319,16 +327,16 @@ export function NewThreadLauncherView({
           ) : (
             <LauncherModeBar activeMode={mode} onModeChange={onModeChange} />
           )}
-        </div>
 
-        {!shouldShowIdleSuggestions && mode !== "general" ? (
-          <div
-            key={mode}
-            className="mt-7 w-full animate-in fade-in slide-in-from-bottom-2 duration-300"
-          >
-            <ModeRecommendations mode={mode} onSubmitPreset={onSubmitPreset} />
-          </div>
-        ) : null}
+          {shouldShowModeRecommendations ? (
+            <div
+              key={mode}
+              className="mt-7 w-full animate-in fade-in slide-in-from-bottom-2 duration-300"
+            >
+              <ModeRecommendations mode={mode} onSubmitPreset={onSubmitPreset} />
+            </div>
+          ) : null}
+        </div>
       </div>
     </main>
   );
