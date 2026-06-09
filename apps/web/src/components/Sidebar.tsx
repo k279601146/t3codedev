@@ -210,6 +210,7 @@ import {
   hasExternalFolderDrop,
 } from "../lib/cursorExternalProjects";
 import { AddProjectMenu } from "./AddProjectMenu";
+import { startNewConversationThread } from "../lib/conversationThreadActions";
 const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   duration: 180,
   easing: "ease-out",
@@ -3222,9 +3223,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     setRenamingThreadKey(null);
   }, []);
   const openConversationThread = useCallback(() => {
-    setNewThreadScope({ kind: "conversation" });
-    void navigate({ to: "/" });
-  }, [navigate, setNewThreadScope]);
+    void startNewConversationThread({
+      environmentId: primaryEnvironmentId,
+      setNewThreadScope,
+      navigateToConversationHome: () => navigate({ to: "/" }),
+    });
+  }, [navigate, primaryEnvironmentId, setNewThreadScope]);
   const handleCreateGlobalThread = useCallback(() => {
     openConversationThread();
   }, [openConversationThread]);

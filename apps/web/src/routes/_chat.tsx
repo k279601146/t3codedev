@@ -12,6 +12,8 @@ import { useUiStateStore } from "../uiStateStore";
 import { resolveSidebarNewThreadEnvMode } from "~/components/Sidebar.logic";
 import { useSettings } from "~/hooks/useSettings";
 import { useServerKeybindings } from "~/rpc/serverState";
+import { usePrimaryEnvironmentId } from "../environments/primary";
+import { startNewConversationThread } from "../lib/conversationThreadActions";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -20,6 +22,7 @@ function ChatRouteGlobalShortcuts() {
     useHandleNewThread();
   const keybindings = useServerKeybindings();
   const navigate = useNavigate();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
   const terminalOpen = useTerminalStateStore((state) =>
     routeThreadRef
@@ -69,8 +72,11 @@ function ChatRouteGlobalShortcuts() {
       if (command === "chat.new") {
         event.preventDefault();
         event.stopPropagation();
-        setNewThreadScope({ kind: "conversation" });
-        void navigate({ to: "/" });
+        void startNewConversationThread({
+          environmentId: primaryEnvironmentId,
+          setNewThreadScope,
+          navigateToConversationHome: () => navigate({ to: "/" }),
+        });
       }
     };
 
@@ -85,6 +91,7 @@ function ChatRouteGlobalShortcuts() {
     handleNewThread,
     keybindings,
     navigate,
+    primaryEnvironmentId,
     setNewThreadScope,
     defaultProjectRef,
     selectedThreadKeysSize,
