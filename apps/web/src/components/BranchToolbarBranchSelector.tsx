@@ -592,13 +592,14 @@ export function BranchToolbarBranchSelector({
       <ComboboxTrigger
         render={<Button variant="ghost" size="xs" />}
         className={cn(
-          "min-w-0 h-7 px-1.5 text-[12px] font-normal text-muted-foreground/75 hover:text-foreground/80",
+          "h-7 min-w-0 gap-1.5 rounded-md px-1.5 text-[12px] font-normal text-muted-foreground/75 hover:bg-transparent hover:text-foreground/80",
           className,
         )}
         disabled={isInitialBranchesLoadPending || isBranchActionPending}
       >
+        <SourceControlIcon className="size-3 shrink-0 text-muted-foreground/70" />
         <span className="min-w-0 max-w-[240px] truncate">{triggerLabel}</span>
-        <ChevronDownIcon className="shrink-0" />
+        <ChevronDownIcon className="size-3 shrink-0 opacity-65" />
       </ComboboxTrigger>
       <ComboboxPopup align="end" side="top" className="w-80">
         <div className="border-b p-1">

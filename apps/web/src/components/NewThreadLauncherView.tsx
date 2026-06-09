@@ -292,38 +292,43 @@ export function NewThreadLauncherView({
   const shouldShowIdleSuggestions = showIdleSuggestions && !isIdleSuggestionsDismissed;
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-[10vh] sm:px-6 sm:pt-[13vh]">
+    <main
+      className={cn(
+        "flex min-h-0 flex-1 flex-col px-4 sm:px-6",
+        mode === "general" ? "overflow-hidden" : "overflow-y-auto",
+      )}
+    >
       <div className="mx-auto flex min-h-full w-full max-w-[48rem] flex-col items-center">
-        <h1 className="mb-10 min-h-[40px] text-center font-sans text-[28px] font-normal leading-tight text-foreground sm:text-[30px]">
-          <span key={title.key} className="block animate-in fade-in duration-500">
-            {title.node}
-          </span>
-        </h1>
+        <div className="flex min-h-full w-full flex-col items-center justify-center">
+          <h1 className="mb-10 min-h-[40px] text-center font-sans text-[28px] font-normal leading-tight text-foreground sm:text-[30px]">
+            <span key={title.key} className="block animate-in fade-in duration-500">
+              {title.node}
+            </span>
+          </h1>
 
-        <div className="w-full">
-          <div className="relative isolate">{composer}</div>
-          {footer}
+          <div className="w-full">
+            <div className="relative isolate">{composer}</div>
+            {footer}
+          </div>
+
+          {shouldShowIdleSuggestions ? (
+            <IdleSuggestionsPanel
+              onClose={() => setIsIdleSuggestionsDismissed(true)}
+              onSubmitPreset={onSubmitPreset}
+            />
+          ) : (
+            <LauncherModeBar activeMode={mode} onModeChange={onModeChange} />
+          )}
         </div>
 
-        {shouldShowIdleSuggestions ? (
-          <IdleSuggestionsPanel
-            onClose={() => setIsIdleSuggestionsDismissed(true)}
-            onSubmitPreset={onSubmitPreset}
-          />
-        ) : (
-          <>
-            <LauncherModeBar activeMode={mode} onModeChange={onModeChange} />
-            <div
-              key={mode}
-              className={cn(
-                "w-full animate-in fade-in slide-in-from-bottom-2 duration-300",
-                mode === "general" ? "mt-auto pt-[18vh] sm:pt-[24vh]" : "mt-7",
-              )}
-            >
-              <ModeRecommendations mode={mode} onSubmitPreset={onSubmitPreset} />
-            </div>
-          </>
-        )}
+        {!shouldShowIdleSuggestions && mode !== "general" ? (
+          <div
+            key={mode}
+            className="mt-7 w-full animate-in fade-in slide-in-from-bottom-2 duration-300"
+          >
+            <ModeRecommendations mode={mode} onSubmitPreset={onSubmitPreset} />
+          </div>
+        ) : null}
       </div>
     </main>
   );

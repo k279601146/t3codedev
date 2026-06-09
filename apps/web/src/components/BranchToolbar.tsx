@@ -277,7 +277,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       )}
 
       <BranchToolbarBranchSelector
-        className="min-w-0 flex-1 justify-end md:ml-auto md:flex-none"
+        className="min-w-0 flex-1 justify-end md:flex-none md:justify-start"
         environmentId={environmentId}
         threadId={threadId}
         {...(draftId ? { draftId } : {})}
