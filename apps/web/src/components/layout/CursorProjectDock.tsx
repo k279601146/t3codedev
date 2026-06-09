@@ -4,6 +4,7 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime";
+import type { ContextMenuItem } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -39,8 +40,9 @@ import {
 } from "../../lib/cursorExternalProjects";
 import { usePrimaryEnvironmentId } from "../../environments/primary";
 import { cn } from "../../lib/utils";
-import { useSettings } from "../../hooks/useSettings";
+import { useSettings, useUpdateSettings } from "../../hooks/useSettings";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { useThreadActions } from "../../hooks/useThreadActions";
 import { sortThreads } from "../../lib/threadSort";
 import { useUiStateStore } from "../../uiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
@@ -63,6 +65,7 @@ import {
 } from "../../environments/runtime";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProjectMenu } from "../AddProjectMenu";
+import { useI18n } from "../../i18n";
 
 export const CURSOR_PROJECT_DRAG_TYPE = "application/x-t3code-project-key";
 const PROJECT_DOCK_LIST_PADDING_PX = 8;
@@ -131,8 +134,12 @@ async function chooseProjectMember(
 }
 
 export function CursorProjectDock({
+  title = "Projects",
+  onHeaderDragStart,
   onContentHeightChange,
 }: {
+  title?: string;
+  onHeaderDragStart?: (event: React.DragEvent) => void;
   onContentHeightChange?: (height: number) => void;
 }) {
   const allProjects = useStore(useShallow(selectProjectsAcrossEnvironments));
@@ -328,7 +335,12 @@ export function CursorProjectDock({
         });
       }}
     >
-      <div ref={headerRef} className="flex h-10 min-h-10 items-center gap-2 px-3">
+      <div
+        ref={headerRef}
+        className="flex h-10 min-h-10 cursor-grab items-center gap-2 px-3 active:cursor-grabbing"
+        draggable={onHeaderDragStart !== undefined}
+        onDragStart={onHeaderDragStart}
+      >
         <Button
           type="button"
           size="icon-xs"
@@ -344,7 +356,7 @@ export function CursorProjectDock({
           )}
         </Button>
         <div className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
-          Projects
+          {title}
         </div>
         <AddProjectMenu
           title="添加项目"
@@ -409,7 +421,12 @@ function CursorProjectDockRow({
   const navigate = useNavigate();
   const pinProject = useCursorLayoutStore((state) => state.pinProject);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
+  const setProjectOrder = useUiStateStore((state) => state.setProjectOrder);
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
+  const projectOrder = useUiStateStore((state) => state.projectOrder);
+  const { archiveThread } = useThreadActions();
+  const { t } = useI18n();
+  const { updateSettings } = useUpdateSettings();
   const projectExpanded = useUiStateStore(
     (state) => state.projectExpandedById[project.projectKey] ?? true,
   );
@@ -477,6 +494,63 @@ function CursorProjectDockRow({
     pinProject(representativeProjectKey);
   }, [pinProject, representativeProjectKey]);
 
+  const handlePinToTop = useCallback(() => {
+    const draggedProjectIds = project.memberProjects.map((member) => member.physicalProjectKey);
+    setProjectOrder([
+      ...draggedProjectIds,
+      ...projectOrder.filter((projectId) => !draggedProjectIds.includes(projectId)),
+    ]);
+    updateSettings({ sidebarProjectSortOrder: "manual" });
+  }, [project.memberProjects, projectOrder, setProjectOrder, updateSettings]);
+
+  const handleOpenInExplorer = useCallback(async () => {
+    const api = readLocalApi();
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: t("sidebar.pathOpenFailed"),
+        description: project.cwd,
+      });
+      return;
+    }
+    try {
+      await api.shell.openPath(project.cwd);
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("sidebar.pathOpenFailed"),
+          description: error instanceof Error ? error.message : project.cwd,
+        }),
+      );
+    }
+  }, [project.cwd, t]);
+
+  const handleArchiveProjectThreads = useCallback(async () => {
+    const archiveTargets = visibleProjectThreads.filter((thread) => thread.archivedAt === null);
+    if (archiveTargets.length === 0) {
+      toastManager.add({ type: "info", title: t("sidebar.archiveProjectThreadsEmpty") });
+      return;
+    }
+    try {
+      for (const thread of archiveTargets) {
+        await archiveThread(scopeThreadRef(thread.environmentId, thread.id));
+      }
+      toastManager.add({
+        type: "success",
+        title: t("sidebar.archiveProjectThreadsSuccess"),
+      });
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("sidebar.archiveProjectThreadsFailed"),
+          description: error instanceof Error ? error.message : "归档对话时发生错误。",
+        }),
+      );
+    }
+  }, [archiveThread, t, visibleProjectThreads]);
+
   const handleCreateThread = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -515,6 +589,18 @@ function CursorProjectDockRow({
               project,
               position: { x: event.clientX, y: event.clientY },
               onPin: handlePin,
+              onPinToTop: handlePinToTop,
+              onOpenInExplorer: handleOpenInExplorer,
+              onArchiveThreads: handleArchiveProjectThreads,
+              labels: {
+                pinProject: t("sidebar.pinProject"),
+                addToFileTree: t("sidebar.addToFileTree"),
+                openInExplorer: t("sidebar.openInExplorer"),
+                copyProjectPath: t("sidebar.copyProjectPath"),
+                archiveProjectThreads: t("sidebar.archiveProjectThreads"),
+                removeProject: t("sidebar.removeProject"),
+                pathCopied: t("sidebar.pathCopied"),
+              },
             });
           }}
         >
@@ -678,24 +764,46 @@ async function showProjectContextMenu({
   project,
   position,
   onPin,
+  onPinToTop,
+  onOpenInExplorer,
+  onArchiveThreads,
+  labels,
 }: {
   project: Project;
   position: { x: number; y: number };
   onPin: () => void;
+  onPinToTop: () => void;
+  onOpenInExplorer: () => Promise<void>;
+  onArchiveThreads: () => Promise<void>;
+  labels: {
+    pinProject: string;
+    addToFileTree: string;
+    openInExplorer: string;
+    copyProjectPath: string;
+    archiveProjectThreads: string;
+    removeProject: string;
+    pathCopied: string;
+  };
 }) {
   const api = readLocalApi();
+  const items = [
+    { id: "pin-top", label: labels.pinProject, icon: "pin" },
+    { id: "pin", label: labels.addToFileTree, icon: "folder-open" },
+    { id: "open-in-explorer", label: labels.openInExplorer, icon: "folder-open" },
+    { id: "copy-path", label: labels.copyProjectPath, icon: "copy" },
+    { id: "archive-threads", label: labels.archiveProjectThreads, icon: "archive" },
+    { id: "remove", label: labels.removeProject, icon: "x", destructive: true },
+  ] satisfies readonly ContextMenuItem<string>[];
   const action = api
-    ? await api.contextMenu.show(
-        [
-          { id: "pin", label: "Add to file tree" },
-          { id: "copy-path", label: "Copy Project Path" },
-          { id: "remove", label: "Remove project", destructive: true },
-        ],
-        position,
-      )
+    ? await api.contextMenu.show(items, position)
     : window.prompt("Type pin, copy, or remove")?.trim();
 
   if (!action) {
+    return;
+  }
+
+  if (action === "pin-top") {
+    onPinToTop();
     return;
   }
 
@@ -704,13 +812,23 @@ async function showProjectContextMenu({
     return;
   }
 
+  if (action === "open-in-explorer") {
+    await onOpenInExplorer();
+    return;
+  }
+
   if (action === "copy-path") {
     await navigator.clipboard?.writeText(project.cwd);
     toastManager.add({
       type: "success",
-      title: "Path copied",
+      title: labels.pathCopied,
       description: project.cwd,
     });
+    return;
+  }
+
+  if (action === "archive-threads") {
+    await onArchiveThreads();
     return;
   }
 

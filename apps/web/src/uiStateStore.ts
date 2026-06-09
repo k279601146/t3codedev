@@ -632,6 +632,27 @@ export function reorderProjects(
   };
 }
 
+export function setProjectOrder(state: UiState, projectIds: readonly string[]): UiState {
+  const currentProjectIds = new Set(state.projectOrder);
+  const nextProjectOrder = [
+    ...projectIds.filter((projectId, index) => {
+      return (
+        typeof projectId === "string" &&
+        projectId.length > 0 &&
+        currentProjectIds.has(projectId) &&
+        projectIds.indexOf(projectId) === index
+      );
+    }),
+    ...state.projectOrder.filter((projectId) => !projectIds.includes(projectId)),
+  ];
+  return projectOrdersEqual(state.projectOrder, nextProjectOrder)
+    ? state
+    : {
+        ...state,
+        projectOrder: nextProjectOrder,
+      };
+}
+
 interface UiStateStore extends UiState {
   syncProjects: (projects: readonly SyncProjectInput[]) => void;
   syncThreads: (threads: readonly SyncThreadInput[]) => void;
@@ -647,6 +668,7 @@ interface UiStateStore extends UiState {
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
   ) => void;
+  setProjectOrder: (projectIds: readonly string[]) => void;
 }
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
@@ -679,6 +701,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
+  setProjectOrder: (projectIds) => set((state) => setProjectOrder(state, projectIds)),
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
