@@ -66,7 +66,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       <SelectTrigger
         variant="ghost"
         size="xs"
-        className="h-7 px-1.5 text-[12px] font-normal text-muted-foreground/75"
+        className="h-7 px-1.5 text-[12px] font-normal text-muted-foreground/75 hover:bg-transparent hover:text-foreground/80"
         aria-label="Workspace"
       >
         {effectiveEnvMode === "worktree" ? (
