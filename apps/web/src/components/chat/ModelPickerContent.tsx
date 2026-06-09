@@ -5,13 +5,13 @@ import {
 } from "@t3tools/contracts";
 import { resolveSelectableModel } from "@t3tools/shared/model";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { SearchIcon } from "lucide-react";
+import { CheckIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
 import { buildModelPickerSearchText, scoreModelPickerSearch } from "./modelPickerSearch";
-import { Combobox, ComboboxEmpty, ComboboxInput, ComboboxList } from "../ui/combobox";
-import { ModelEsque, PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
+import { Combobox, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "../ui/combobox";
+import { getDisplayModelName, ModelEsque, PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
 import {
   modelPickerJumpCommandForIndex,
   modelPickerJumpIndexFromCommand,
@@ -23,6 +23,7 @@ import { cn } from "~/lib/utils";
 import { TooltipProvider } from "../ui/tooltip";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { useI18n } from "../../i18n";
 
 type ModelPickerItem = {
   slug: string;
@@ -51,6 +52,25 @@ function splitInstanceModelKey(key: string): { instanceId: ProviderInstanceId; s
     slug: key.slice(colonIndex + 1),
   };
 }
+
+const ModelPickerSimpleRow = memo(function ModelPickerSimpleRow(props: {
+  index: number;
+  model: ModelPickerItem;
+  selected: boolean;
+}) {
+  return (
+    <ComboboxItem
+      hideIndicator
+      index={props.index}
+      value={`${props.model.instanceId}:${props.model.slug}`}
+      contentClassName="flex w-full items-center justify-between gap-3"
+      className="min-h-7 rounded-[6px] px-2.5 py-1 text-[13px] text-foreground hover:bg-accent/60 data-highlighted:bg-accent/70 data-selected:bg-transparent"
+    >
+      <span className="truncate">{getDisplayModelName(props.model, { preferShortName: true })}</span>
+      {props.selected ? <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+    </ComboboxItem>
+  );
+});
 
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
   /** The instance currently selected in the composer (combobox "value"). */
@@ -94,6 +114,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRegionRef = useRef<HTMLDivElement>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
+  const { t } = useI18n();
   const favorites = useSettings((s) => s.favorites ?? []);
   const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | "favorites">(
     () => {
@@ -415,6 +436,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     (): string[] => filteredModels.map((model) => `${model.instanceId}:${model.slug}`),
     [filteredModels],
   );
+  const activeModelKey = `${props.activeInstanceId}:${props.model}`;
   const filteredModelByKey = useMemo(
     (): ReadonlyMap<string, ModelPickerItem> =>
       new Map(filteredModels.map((model) => [`${model.instanceId}:${model.slug}`, model] as const)),
@@ -528,7 +550,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         className={cn(
           "relative flex h-screen max-h-96 w-screen max-w-100 overflow-hidden rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
           isLocked && !showLockedInstanceSidebar ? "flex-col" : "flex-row",
-          props.simplified && "h-auto max-h-88 max-w-80",
+          props.simplified &&
+            "h-auto max-h-[320px] w-[200px] max-w-[calc(100vw-1rem)] rounded-[10px] shadow-lg/10",
         )}
       >
         {/* Locked provider header (only shown in locked mode) */}
@@ -618,13 +641,38 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             {/* Model list */}
             <div
               ref={listRegionRef}
-              className="relative min-h-0 flex-1 before:pointer-events-none before:absolute before:inset-0 before:bg-muted/40"
+              className={cn(
+                "relative min-h-0 flex-1",
+                props.simplified
+                  ? "bg-popover"
+                  : "before:pointer-events-none before:absolute before:inset-0 before:bg-muted/40",
+              )}
             >
-              <ComboboxList className="model-picker-list size-full divide-y px-2 py-1">
+              {props.simplified ? (
+                <div className="px-3 pb-1.5 pt-2 text-[12px] leading-5 text-muted-foreground">
+                  {t("composer.model.label")}
+                </div>
+              ) : null}
+              <ComboboxList
+                className={cn(
+                  "model-picker-list size-full",
+                  props.simplified ? "px-1.5 pb-2" : "divide-y px-2 py-1",
+                )}
+              >
                 {filteredModelKeys.map((modelKey, index) => {
                   const model = filteredModelByKey.get(modelKey);
                   if (!model) {
                     return null;
+                  }
+                  if (props.simplified) {
+                    return (
+                      <ModelPickerSimpleRow
+                        key={modelKey}
+                        index={index}
+                        model={model}
+                        selected={modelKey === activeModelKey}
+                      />
+                    );
                   }
                   return (
                     <ModelListRow
@@ -636,20 +684,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       providerDisplayName={model.instanceDisplayName}
                       providerAccentColor={model.instanceAccentColor}
                       isFavorite={favoritesSet.has(modelKey)}
-                      showProvider={
-                        props.simplified ? false : !isLocked || showLockedInstanceSidebar
-                      }
+                      showProvider={!isLocked || showLockedInstanceSidebar}
                       preferShortName={!isLocked}
                       useTriggerLabel={isLocked && !showLockedInstanceSidebar}
-                      showNewBadge={
-                        props.simplified
-                          ? false
-                          : isModelPickerNewModel(model.driverKind, model.slug)
-                      }
-                      jumpLabel={
-                        props.simplified ? null : (modelJumpLabelByKey.get(modelKey) ?? null)
-                      }
-                      {...(props.simplified ? { showFavorite: false } : {})}
+                      showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
+                      jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
                       onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
                     />
                   );
@@ -657,7 +696,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </ComboboxList>
             </div>
             <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-              No models found
+              {t("composer.model.empty")}
             </ComboboxEmpty>
           </div>
         </Combobox>

@@ -98,22 +98,22 @@ import {
 } from "../ui/menu";
 import { toastManager } from "../ui/toast";
 import {
+  ChevronDownIcon,
   CircleAlertIcon,
   BookOpenIcon,
   CheckIcon,
   FileIcon,
+  HandIcon,
   ListTodoIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  ShieldAlertIcon,
   ShieldCheckIcon,
   type LucideIcon,
-  LockIcon,
-  BadgeAlertIcon,
-  LockOpenIcon,
-  PenLineIcon,
   XIcon,
 } from "lucide-react";
+import { useI18n, type TranslationKey } from "../../i18n";
 import { proposedPlanTitle } from "../../proposedPlan";
 import { getProviderInteractionModeToggle } from "../../providerModels";
 import {
@@ -139,22 +139,34 @@ const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
 
 const runtimeModeConfig: Record<
   RuntimeMode,
-  { label: string; description: string; icon: LucideIcon }
+  {
+    shortLabelKey: TranslationKey;
+    labelKey: TranslationKey;
+    descriptionKey: TranslationKey;
+    icon: LucideIcon;
+    tone: "muted" | "blue" | "orange";
+  }
 > = {
   "approval-required": {
-    label: "Supervised",
-    description: "Ask before commands and file changes.",
-    icon: LockIcon,
+    shortLabelKey: "composer.permission.approvalRequired",
+    labelKey: "composer.permission.approvalRequired",
+    descriptionKey: "composer.permission.approvalRequiredDescription",
+    icon: HandIcon,
+    tone: "muted",
   },
   "auto-accept-edits": {
-    label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
-    icon: PenLineIcon,
+    shortLabelKey: "composer.permission.autoAcceptEdits",
+    labelKey: "composer.permission.autoAcceptEdits",
+    descriptionKey: "composer.permission.autoAcceptEditsDescription",
+    icon: ShieldCheckIcon,
+    tone: "blue",
   },
   "full-access": {
-    label: "Full access",
-    description: "Allow commands and edits without prompts.",
-    icon: BadgeAlertIcon,
+    shortLabelKey: "composer.permission.fullAccessShort",
+    labelKey: "composer.permission.fullAccess",
+    descriptionKey: "composer.permission.fullAccessDescription",
+    icon: ShieldAlertIcon,
+    tone: "orange",
   },
 };
 
@@ -212,8 +224,11 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   onRuntimeModeChange: (mode: RuntimeMode) => void;
   onTogglePlanSidebar: () => void;
 }) {
+  const { t } = useI18n();
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
+  const runtimeModeLabel = t(runtimeModeOption.labelKey);
+  const runtimeModeDescription = t(runtimeModeOption.descriptionKey);
 
   return (
     <>
@@ -251,25 +266,27 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           variant="ghost"
           size="sm"
           className="h-8 rounded-lg px-2.5 text-[13px] font-medium text-muted-foreground/72 hover:text-foreground/85"
-          aria-label="Runtime mode"
-          title={runtimeModeOption.description}
+          aria-label={t("composer.permission.control")}
+          title={runtimeModeDescription}
         >
           <RuntimeModeIcon className="size-4" />
-          <SelectValue>{runtimeModeOption.label}</SelectValue>
+          <SelectValue>{runtimeModeLabel}</SelectValue>
         </SelectTrigger>
         <SelectPopup alignItemWithTrigger={false}>
           {runtimeModeOptions.map((mode) => {
             const option = runtimeModeConfig[mode];
             const OptionIcon = option.icon;
+            const optionLabel = t(option.labelKey);
+            const optionDescription = t(option.descriptionKey);
             return (
               <SelectItem key={mode} value={mode} className="min-w-64 py-2">
                 <div className="grid min-w-0 gap-0.5">
                   <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                     <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    {option.label}
+                    {optionLabel}
                   </span>
                   <span className="text-muted-foreground text-xs leading-4">
-                    {option.description}
+                    {optionDescription}
                   </span>
                 </div>
               </SelectItem>
@@ -372,6 +389,7 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
   onRuntimeModeChange: (mode: RuntimeMode) => void;
   onInteractionModeChange: (mode: ProviderInteractionMode) => void;
 }) {
+  const { t } = useI18n();
   const [skillQuery, setSkillQuery] = useState("");
   const visibleSkills = useMemo(
     () => searchProviderSkills(props.skills, skillQuery, 8),
@@ -492,20 +510,22 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
         <MenuSub>
           <MenuSubTrigger>
             <ShieldCheckIcon className="size-4 shrink-0 opacity-80" />
-            权限控制
+            {t("composer.permission.control")}
           </MenuSubTrigger>
           <MenuSubPopup className="min-w-64">
             {runtimeModeOptions.map((mode) => {
               const option = runtimeModeConfig[mode];
               const OptionIcon = option.icon;
               const selected = props.runtimeMode === mode;
+              const optionLabel = t(option.labelKey);
+              const optionDescription = t(option.descriptionKey);
               return (
                 <MenuItem key={mode} onClick={() => props.onRuntimeModeChange(mode)}>
                   <OptionIcon className="size-4 shrink-0 opacity-80" />
                   <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="text-sm font-medium">{option.label}</span>
+                    <span className="text-sm font-medium">{optionLabel}</span>
                     <span className="line-clamp-1 text-xs text-muted-foreground">
-                      {option.description}
+                      {optionDescription}
                     </span>
                   </span>
                   {selected ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
@@ -551,6 +571,109 @@ const NewThreadModeStatusChip = memo(function NewThreadModeStatusChip(props: {
     >
       <XIcon className="size-3.5 stroke-[2.4px]" />
       <span className="max-w-32 truncate">{props.label}</span>
+    </button>
+  );
+});
+
+const runtimeModeToneClassName: Record<
+  (typeof runtimeModeConfig)[RuntimeMode]["tone"],
+  { trigger: string; icon: string; menuIcon: string }
+> = {
+  muted: {
+    trigger: "text-muted-foreground hover:bg-accent hover:text-foreground",
+    icon: "text-muted-foreground",
+    menuIcon: "text-muted-foreground",
+  },
+  blue: {
+    trigger:
+      "text-[#147DFF] hover:bg-[#EAF5FF] hover:text-[#147DFF] dark:hover:bg-[#147DFF]/10",
+    icon: "text-[#147DFF]",
+    menuIcon: "text-[#147DFF]",
+  },
+  orange: {
+    trigger:
+      "text-orange-600 hover:bg-orange-50 hover:text-orange-600 dark:text-orange-400 dark:hover:bg-orange-500/10",
+    icon: "text-orange-600 dark:text-orange-400",
+    menuIcon: "text-orange-600 dark:text-orange-400",
+  },
+};
+
+const NewThreadRuntimeModeControl = memo(function NewThreadRuntimeModeControl(props: {
+  disabled: boolean;
+  runtimeMode: RuntimeMode;
+  onRuntimeModeChange: (mode: RuntimeMode) => void;
+}) {
+  const { t } = useI18n();
+  const activeOption = runtimeModeConfig[props.runtimeMode];
+  const ActiveIcon = activeOption.icon;
+  const activeTone = runtimeModeToneClassName[activeOption.tone];
+
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={t("composer.permission.control")}
+            title={t(activeOption.descriptionKey)}
+            disabled={props.disabled}
+            className={cn(
+              "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-55",
+              activeTone.trigger,
+            )}
+          />
+        }
+      >
+        <ActiveIcon className={cn("size-3.5", activeTone.icon)} />
+        <span>{t(activeOption.shortLabelKey)}</span>
+        <ChevronDownIcon className="size-3 opacity-70" />
+      </MenuTrigger>
+      <MenuPopup align="start" side="bottom" sideOffset={8} className="min-w-[320px]">
+        {runtimeModeOptions.map((mode) => {
+          const option = runtimeModeConfig[mode];
+          const OptionIcon = option.icon;
+          const tone = runtimeModeToneClassName[option.tone];
+          const selected = props.runtimeMode === mode;
+          return (
+            <MenuItem
+              key={mode}
+              onClick={() => props.onRuntimeModeChange(mode)}
+              className="min-h-[58px] items-start rounded-[8px] px-3 py-2"
+            >
+              <OptionIcon className={cn("mt-0.5 size-4 shrink-0", tone.menuIcon)} />
+              <span className="grid min-w-0 flex-1 gap-0.5">
+                <span className="text-sm font-medium text-foreground">{t(option.labelKey)}</span>
+                <span className="text-xs leading-4 text-muted-foreground">
+                  {t(option.descriptionKey)}
+                </span>
+              </span>
+              {selected ? <CheckIcon className="mt-0.5 size-4 shrink-0 text-foreground" /> : null}
+            </MenuItem>
+          );
+        })}
+      </MenuPopup>
+    </Menu>
+  );
+});
+
+const NewThreadPlanModeStatusChip = memo(function NewThreadPlanModeStatusChip(props: {
+  onClear: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClear}
+      aria-label="关闭计划模式"
+      title="关闭计划模式"
+      className="group inline-flex h-7 shrink-0 animate-in items-center gap-1.5 rounded-full bg-muted px-2 text-[12px] font-normal text-muted-foreground fade-in slide-in-from-left-1 zoom-in-95 duration-200 hover:bg-muted/90 hover:text-foreground active:bg-muted/80"
+    >
+      <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center">
+        <ListTodoIcon className="absolute size-3.5 opacity-100 transition-opacity duration-150 group-hover:opacity-0" />
+        <span className="absolute inline-flex size-3.5 items-center justify-center rounded-full bg-muted-foreground/65 text-background opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <XIcon className="size-2.5 stroke-[2.5px]" />
+        </span>
+      </span>
+      <span>计划</span>
     </button>
   );
 });
@@ -2262,6 +2385,41 @@ export const ChatComposer = memo(
 
     // Render
     // ------------------------------------------------------------------
+    const composerModelPicker = (
+      <ProviderModelPicker
+        compact={isComposerFooterCompact}
+        simplified={newThreadMode}
+        activeInstanceId={selectedInstanceId}
+        model={selectedModelForPickerWithCustomFallback}
+        lockedProvider={lockedProvider}
+        lockedContinuationGroupKey={lockedContinuationGroupKey}
+        instanceEntries={providerInstanceEntries}
+        keybindings={keybindings}
+        modelOptionsByInstance={modelOptionsByInstance}
+        terminalOpen={terminalOpen}
+        open={isComposerModelPickerOpen}
+        {...(composerProviderState.modelPickerIconClassName
+          ? {
+              activeProviderIconClassName: composerProviderState.modelPickerIconClassName,
+            }
+          : {})}
+        triggerClassName={cn(
+          "h-8 rounded-lg px-2.5 text-[13px]",
+          newThreadMode &&
+            "h-7 rounded-md px-1.5 text-[12px] font-normal text-foreground/80 hover:text-foreground",
+        )}
+        onOpenChange={(open) => {
+          setIsComposerModelPickerOpen(open);
+          if (open) {
+            void getPrimaryEnvironmentConnection()
+              .client.server.refreshProviders()
+              .catch(() => undefined);
+          }
+        }}
+        onInstanceModelChange={onProviderModelSelect}
+      />
+    );
+
     return (
       <form
         ref={composerFormRef}
@@ -2718,6 +2876,18 @@ export const ChatComposer = memo(
                     </Button>
                   )}
 
+                  {newThreadMode ? (
+                    <NewThreadRuntimeModeControl
+                      disabled={
+                        isConnecting ||
+                        isComposerApprovalState ||
+                        (environmentUnavailable !== null && activePendingProgress === null)
+                      }
+                      runtimeMode={runtimeMode}
+                      onRuntimeModeChange={handleRuntimeModeChange}
+                    />
+                  ) : null}
+
                   {newThreadMode && newThreadModeLabel && onClearNewThreadMode ? (
                     <NewThreadModeStatusChip
                       label={newThreadModeLabel}
@@ -2725,39 +2895,13 @@ export const ChatComposer = memo(
                     />
                   ) : null}
 
-                  <ProviderModelPicker
-                    compact={isComposerFooterCompact}
-                    simplified={newThreadMode}
-                    activeInstanceId={selectedInstanceId}
-                    model={selectedModelForPickerWithCustomFallback}
-                    lockedProvider={lockedProvider}
-                    lockedContinuationGroupKey={lockedContinuationGroupKey}
-                    instanceEntries={providerInstanceEntries}
-                    keybindings={keybindings}
-                    modelOptionsByInstance={modelOptionsByInstance}
-                    terminalOpen={terminalOpen}
-                    open={isComposerModelPickerOpen}
-                    {...(composerProviderState.modelPickerIconClassName
-                      ? {
-                          activeProviderIconClassName:
-                            composerProviderState.modelPickerIconClassName,
-                        }
-                      : {})}
-                    triggerClassName={cn(
-                      "h-8 rounded-lg px-2.5 text-[13px]",
-                      newThreadMode &&
-                        "h-7 rounded-md px-1.5 text-[12px] font-normal text-foreground/80 hover:text-foreground",
-                    )}
-                    onOpenChange={(open) => {
-                      setIsComposerModelPickerOpen(open);
-                      if (open) {
-                        void getPrimaryEnvironmentConnection()
-                          .client.server.refreshProviders()
-                          .catch(() => undefined);
-                      }
-                    }}
-                    onInstanceModelChange={onProviderModelSelect}
-                  />
+                  {newThreadMode ? null : composerModelPicker}
+
+                  {newThreadMode && interactionMode === "plan" ? (
+                    <NewThreadPlanModeStatusChip
+                      onClear={() => handleInteractionModeChange("default")}
+                    />
+                  ) : null}
 
                   {newThreadMode ? null : isComposerFooterCompact ? (
                     <CompactComposerControlsMenu
@@ -2808,6 +2952,7 @@ export const ChatComposer = memo(
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
+                  {newThreadMode ? composerModelPicker : null}
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     activeContextWindow={activeContextWindow}

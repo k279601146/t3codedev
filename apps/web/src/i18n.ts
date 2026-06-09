@@ -186,6 +186,19 @@ const TRANSLATIONS = {
       "The skill will be deleted from your machine. You can reinstall it later from the catalog.",
     "skills.cancel": "Cancel",
     "skills.loadMore": "Loading more...",
+    "composer.permission.approvalRequired": "Request approval",
+    "composer.permission.approvalRequiredDescription":
+      "Ask before editing files and accessing the internet.",
+    "composer.permission.autoAcceptEdits": "Approve for me",
+    "composer.permission.autoAcceptEditsDescription":
+      "Ask for approval when risky operations are detected.",
+    "composer.permission.fullAccessShort": "Full access",
+    "composer.permission.fullAccess": "Full access",
+    "composer.permission.fullAccessDescription":
+      "Access the internet and any files on this computer without restrictions.",
+    "composer.permission.control": "Permission control",
+    "composer.model.label": "Model",
+    "composer.model.empty": "No models found",
   },
   "zh-CN": {
     "auth.welcome": "欢迎使用 {appName}",
@@ -357,10 +370,21 @@ const TRANSLATIONS = {
     "skills.confirmUninstallDescription": "该技能将从本机删除，需要时可以再次从市场安装。",
     "skills.cancel": "取消",
     "skills.loadMore": "正在加载更多...",
+    "composer.permission.approvalRequired": "请求批准",
+    "composer.permission.approvalRequiredDescription": "编辑外部文件和使用互联网时始终询问",
+    "composer.permission.autoAcceptEdits": "替我审批",
+    "composer.permission.autoAcceptEditsDescription": "仅对检测到的风险操作请求批准",
+    "composer.permission.fullAccessShort": "完全访问",
+    "composer.permission.fullAccess": "完全访问权限",
+    "composer.permission.fullAccessDescription":
+      "可不受限制地访问互联网和您电脑上的任何文件",
+    "composer.permission.control": "权限控制",
+    "composer.model.label": "模型",
+    "composer.model.empty": "没有可用模型",
   },
 } as const;
 
-type TranslationKey = keyof (typeof TRANSLATIONS)["en"];
+export type TranslationKey = keyof (typeof TRANSLATIONS)["en"];
 
 function detectSystemLocale(): Locale {
   const language =
