@@ -360,7 +360,7 @@ function ComputerPluginDetails({
         <div className="flex items-start gap-2">
           <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="text-xs leading-5 text-muted-foreground">
-            Computer Use 会在使用未授权 App 前请求确认；终端应用、T3 Code 和 Codex 自身会被拦截，避免绕过会话权限与安全策略。
+            Computer Use 会在使用未授权 App 前请求确认；执行桌面控制时 T3 Code 会让出前台，避免遮挡目标 App。终端应用、T3 Code 和 Codex 自身会被拦截，避免绕过会话权限与安全策略。
           </p>
         </div>
       </section>

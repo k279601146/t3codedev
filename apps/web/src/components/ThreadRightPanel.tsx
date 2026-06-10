@@ -637,6 +637,9 @@ function ComputerPanel() {
   const foreground = state?.foregroundWindow
     ? state.foregroundWindow.title || state.foregroundWindow.processName || "未知窗口"
     : "-";
+  const selectedWindow = state?.selectedWindow
+    ? state.selectedWindow.title || state.selectedWindow.processName || state.selectedWindow.id
+    : "-";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -646,7 +649,11 @@ function ComputerPanel() {
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-foreground">桌面控制</div>
             <div className="truncate text-xs text-muted-foreground">
-              {state?.available ? (paused ? "已暂停" : "运行中") : "仅 Windows 可用"}
+              {state?.available
+                ? paused
+                  ? "已暂停"
+                  : "运行中，控制时会让出前台"
+                : "仅 Windows 可用"}
             </div>
           </div>
         </div>
@@ -676,6 +683,10 @@ function ComputerPanel() {
             <div className="text-muted-foreground">前台窗口</div>
             <div className="mt-1 truncate font-medium text-foreground">{foreground}</div>
           </div>
+          <div className="col-span-2 rounded-md border border-border/60 p-2">
+            <div className="text-muted-foreground">选中窗口</div>
+            <div className="mt-1 truncate font-medium text-foreground">{selectedWindow}</div>
+          </div>
         </div>
         {state?.lastError ? (
           <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -693,7 +704,7 @@ function ComputerPanel() {
             <EmptyState
               icon={<MonitorIcon className="size-7" />}
               title="等待桌面截图"
-              description="模型调用 computer_screenshot 后，最新截图会显示在这里。"
+              description="模型调用 computer_screenshot 后，最新截图会显示在这里；执行桌面控制时 T3 会让出前台。"
             />
           )}
         </div>

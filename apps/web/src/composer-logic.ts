@@ -42,6 +42,13 @@ function tokenStartForCursor(text: string, cursor: number): number {
   return index + 1;
 }
 
+function isInlineMentionBoundary(text: string, index: number): boolean {
+  if (index <= 0) {
+    return true;
+  }
+  return !/[A-Za-z0-9._-]/.test(text[index - 1] ?? "");
+}
+
 export function expandCollapsedComposerCursor(text: string, cursorInput: number): number {
   const collapsedCursor = clampCursor(text, cursorInput);
   const segments = splitPromptIntoComposerSegments(text);
@@ -243,14 +250,16 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
       rangeEnd: cursor,
     };
   }
-  if (!token.startsWith("@")) {
+  const atIndex = token.lastIndexOf("@");
+  if (atIndex < 0 || !isInlineMentionBoundary(token, atIndex)) {
     return null;
   }
+  const mentionStart = tokenStart + atIndex;
 
   return {
     kind: "path",
-    query: token.slice(1),
-    rangeStart: tokenStart,
+    query: token.slice(atIndex + 1),
+    rangeStart: mentionStart,
     rangeEnd: cursor,
   };
 }

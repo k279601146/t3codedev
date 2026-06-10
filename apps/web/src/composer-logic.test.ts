@@ -130,6 +130,24 @@ describe("detectComposerTrigger", () => {
     expect(trigger?.kind).toBe("path");
     expect(trigger?.query).toBe("");
   });
+
+  it("detects @ trigger even when it is attached to preceding non-whitespace text", () => {
+    const text = "打开@";
+    const trigger = detectComposerTrigger(text, text.length);
+
+    expect(trigger).toEqual({
+      kind: "path",
+      query: "",
+      rangeStart: "打开".length,
+      rangeEnd: text.length,
+    });
+  });
+
+  it("does not treat email addresses as @ triggers", () => {
+    const text = "name@example";
+
+    expect(detectComposerTrigger(text, text.length)).toBeNull();
+  });
 });
 
 describe("replaceTextRange", () => {

@@ -961,9 +961,8 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
       lastOpenedComputerToolSequenceRef.current = sequence;
-      openRightPanelSurface("computer", activeThreadKey);
     });
-  }, [activeThreadKey, openRightPanelSurface]);
+  }, []);
   const existingOpenTerminalThreadKeys = useMemo(() => {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));

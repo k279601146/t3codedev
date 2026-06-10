@@ -124,6 +124,7 @@ const computerAutomationState = {
   virtualScreen: null,
   cursor: null,
   foregroundWindow: null,
+  selectedWindow: null,
   lastAction: null,
   lastError: null,
   lastScreenshotDataUrl: null,

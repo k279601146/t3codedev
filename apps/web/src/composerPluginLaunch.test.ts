@@ -10,19 +10,19 @@ import { searchComposerPluginMentions } from "./composerPluginMentions";
 describe("composerPluginLaunch", () => {
   it("adds launch context for built-in plugin mentions", () => {
     expect(buildComposerPluginLaunchContext("@Computer 截屏看看")).toContain(
-      "@Computer: use the T3 computer_use tools",
+      "@Computer: use T3 computer_use",
     );
     expect(buildComposerPluginLaunchContext("@Browser 打开 localhost:3000")).toContain(
       "@Browser: use the T3 in-app browser tools",
     );
     expect(buildComposerPluginLaunchContext("@Chrome 检查登录页")).toContain(
-      "@Chrome: use computer_use to operate the Chrome desktop app",
+      '@Chrome: use computer_list_windows with query "Chrome"',
     );
   });
 
   it("treats simple app mentions as desktop app targets", () => {
     expect(buildComposerPluginLaunchContext("@Notepad 输入 hello")).toContain(
-      "@Notepad: treat this as a desktop app target",
+      '@Notepad: treat this as a desktop app target; use computer_list_windows with query "Notepad"',
     );
   });
 

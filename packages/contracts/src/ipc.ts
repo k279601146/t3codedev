@@ -508,6 +508,14 @@ export interface DesktopComputerAutomationForegroundWindow {
   processName: string | null;
 }
 
+export interface DesktopComputerAutomationWindow extends DesktopComputerAutomationForegroundWindow {
+  id: string;
+  bounds: DesktopComputerAutomationRect | null;
+  visible: boolean;
+  isMinimized?: boolean;
+  isProtected: boolean;
+}
+
 export interface DesktopComputerAutomationAppPermission {
   appKey: string;
   displayName: string;
@@ -526,6 +534,7 @@ export interface DesktopComputerAutomationState {
   virtualScreen: DesktopComputerAutomationRect | null;
   cursor: DesktopComputerAutomationPoint | null;
   foregroundWindow: DesktopComputerAutomationForegroundWindow | null;
+  selectedWindow: DesktopComputerAutomationWindow | null;
   lastAction: string | null;
   lastError: string | null;
   lastScreenshotDataUrl: string | null;

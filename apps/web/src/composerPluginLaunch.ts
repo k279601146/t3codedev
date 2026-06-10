@@ -41,13 +41,19 @@ export function buildComposerPluginLaunchContext(prompt: string): string | null 
     lines.push("- @Browser: use the T3 in-app browser tools for web navigation and page checks.");
   }
   if (plugins.includes("Computer")) {
-    lines.push("- @Computer: use the T3 computer_use tools to inspect or operate the desktop.");
+    lines.push(
+      "- @Computer: use T3 computer_use; prefer computer_list_windows, computer_select_window, then computer_get_window_state. Use includeText=true when element_index targeting is useful, then use window-scoped input tools or computer_click_element/computer_set_value.",
+    );
   }
   if (plugins.includes("Chrome")) {
-    lines.push("- @Chrome: use computer_use to operate the Chrome desktop app.");
+    lines.push(
+      "- @Chrome: use computer_list_windows with query \"Chrome\", select the matching Chrome window, then computer_get_window_state. Prefer browser_use for normal webpage automation; use computer_use only for Chrome app UI or extension UI.",
+    );
   }
   for (const appName of apps) {
-    lines.push(`- @${appName}: treat this as a desktop app target and use computer_use when GUI operation is needed.`);
+    lines.push(
+      `- @${appName}: treat this as a desktop app target; use computer_list_windows with query "${appName}", select the matching window, then computer_get_window_state. Use includeText=true before element_index actions.`,
+    );
   }
   lines.push(PLUGIN_LAUNCH_CONTEXT_END);
   return lines.join("\n");
