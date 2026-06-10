@@ -9,6 +9,7 @@ export const RIGHT_PANEL_SURFACES = [
   "image",
   "artifacts",
   "browser",
+  "computer",
   "terminal",
   "summary",
 ] as const;

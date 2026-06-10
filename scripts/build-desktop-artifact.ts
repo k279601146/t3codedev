@@ -580,6 +580,11 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         to: ".",
         filter: ["**/*"],
       },
+      {
+        from: "apps/desktop/resources/computer-use",
+        to: "resources/computer-use",
+        filter: ["**/*"],
+      },
     ],
   };
   const updateChannel = resolveDesktopUpdateChannel(version);

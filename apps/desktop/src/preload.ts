@@ -141,6 +141,48 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.removeListener(IpcChannels.MENU_ACTION_CHANNEL, wrappedListener);
     };
   },
+  getBrowserAutomationState: () =>
+    ipcRenderer.invoke(IpcChannels.BROWSER_AUTOMATION_GET_STATE_CHANNEL),
+  navigateBrowserAutomation: (url) =>
+    ipcRenderer.invoke(IpcChannels.BROWSER_AUTOMATION_NAVIGATE_CHANNEL, url),
+  reloadBrowserAutomation: () => ipcRenderer.invoke(IpcChannels.BROWSER_AUTOMATION_RELOAD_CHANNEL),
+  goBackBrowserAutomation: () => ipcRenderer.invoke(IpcChannels.BROWSER_AUTOMATION_GO_BACK_CHANNEL),
+  goForwardBrowserAutomation: () =>
+    ipcRenderer.invoke(IpcChannels.BROWSER_AUTOMATION_GO_FORWARD_CHANNEL),
+  setBrowserAutomationBounds: (bounds) =>
+    ipcRenderer.invoke(IpcChannels.BROWSER_AUTOMATION_SET_BOUNDS_CHANNEL, bounds),
+  onBrowserAutomationState: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+      if (typeof state !== "object" || state === null) return;
+      listener(state as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(IpcChannels.BROWSER_AUTOMATION_STATE_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.BROWSER_AUTOMATION_STATE_CHANNEL, wrappedListener);
+    };
+  },
+  getComputerAutomationState: () =>
+    ipcRenderer.invoke(IpcChannels.COMPUTER_AUTOMATION_GET_STATE_CHANNEL),
+  setComputerAutomationPaused: (paused) =>
+    ipcRenderer.invoke(IpcChannels.COMPUTER_AUTOMATION_SET_PAUSED_CHANNEL, paused),
+  allowComputerAutomationForegroundApp: () =>
+    ipcRenderer.invoke(IpcChannels.COMPUTER_AUTOMATION_ALLOW_FOREGROUND_APP_CHANNEL),
+  removeComputerAutomationAppPermission: (appKey) =>
+    ipcRenderer.invoke(IpcChannels.COMPUTER_AUTOMATION_REMOVE_APP_PERMISSION_CHANNEL, appKey),
+  clearComputerAutomationAppPermissions: () =>
+    ipcRenderer.invoke(IpcChannels.COMPUTER_AUTOMATION_CLEAR_APP_PERMISSIONS_CHANNEL),
+  onComputerAutomationState: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+      if (typeof state !== "object" || state === null) return;
+      listener(state as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(IpcChannels.COMPUTER_AUTOMATION_STATE_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.COMPUTER_AUTOMATION_STATE_CHANNEL, wrappedListener);
+    };
+  },
   getUpdateState: () => ipcRenderer.invoke(IpcChannels.UPDATE_GET_STATE_CHANNEL),
   setUpdateChannel: (channel) =>
     ipcRenderer.invoke(IpcChannels.UPDATE_SET_CHANNEL_CHANNEL, channel),

@@ -63,12 +63,14 @@ import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
 } from "~/lib/terminalContext";
+import { getComposerPluginMention } from "~/composerPluginMentions";
 import { cn } from "~/lib/utils";
 import { basenameOfPath, getVscodeIconUrlForEntry, inferEntryKindFromPath } from "~/vscode-icons";
 import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
+  COMPOSER_INLINE_PLUGIN_CHIP_CLASS_NAME,
   COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME,
   SKILL_CHIP_ICON_SVG,
 } from "./composerInlineChip";
@@ -129,6 +131,34 @@ const ComposerTerminalContextActionsContext = createContext<{
 });
 
 function ComposerMentionDecorator(props: { path: string }) {
+  const pluginMention = getComposerPluginMention(props.path);
+  if (pluginMention) {
+    const chip = (
+      <span
+        className={COMPOSER_INLINE_PLUGIN_CHIP_CLASS_NAME}
+        contentEditable={false}
+        spellCheck={false}
+        data-composer-plugin-chip="true"
+      >
+        <span
+          aria-hidden="true"
+          className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME}
+          dangerouslySetInnerHTML={{ __html: pluginMention.iconSvg }}
+        />
+        <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{pluginMention.label}</span>
+      </span>
+    );
+
+    return (
+      <Tooltip>
+        <TooltipTrigger render={chip} />
+        <TooltipPopup side="top" className="max-w-120 whitespace-normal leading-tight">
+          {pluginMention.description}
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
+
   const theme = resolvedThemeFromDocument();
   const chip = (
     <span

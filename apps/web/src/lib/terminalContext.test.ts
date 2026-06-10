@@ -1,6 +1,7 @@
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { appendComposerPluginLaunchContext } from "../composerPluginLaunch";
 import {
   appendTerminalContextsToPrompt,
   buildTerminalContextPreviewTitle,
@@ -114,6 +115,24 @@ describe("terminalContext", () => {
     expect(deriveDisplayedUserMessageState(prompt)).toEqual({
       visibleText: "Investigate this",
       copyText: prompt,
+      contextCount: 1,
+      previewTitle: "Terminal 1 lines 12-13\n12 | git status\n13 | On branch main",
+      contexts: [
+        {
+          header: "Terminal 1 lines 12-13",
+          body: "12 | git status\n13 | On branch main",
+        },
+      ],
+    });
+  });
+
+  it("hides plugin launch context while preserving terminal context previews", () => {
+    const visiblePrompt = "@Computer investigate this";
+    const terminalPrompt = appendTerminalContextsToPrompt(visiblePrompt, [makeContext()]);
+    const prompt = appendComposerPluginLaunchContext(terminalPrompt);
+    expect(deriveDisplayedUserMessageState(prompt)).toEqual({
+      visibleText: visiblePrompt,
+      copyText: terminalPrompt,
       contextCount: 1,
       previewTitle: "Terminal 1 lines 12-13\n12 | git status\n13 | On branch main",
       contexts: [

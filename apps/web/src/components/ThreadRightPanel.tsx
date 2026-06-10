@@ -1,14 +1,32 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import type {
+  DesktopBrowserAutomationState,
+  DesktopComputerAutomationState,
+} from "@t3tools/contracts";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
   BotIcon,
+  CirclePlusIcon,
+  CrosshairIcon,
   FileIcon,
   FileImageIcon,
   FolderOpenIcon,
   GlobeIcon,
   Maximize2Icon,
+  MonitorIcon,
+  MoreVerticalIcon,
   PanelRightCloseIcon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -78,6 +96,8 @@ function surfaceTitle(surface: RightPanelSurface): string {
       return "产物";
     case "browser":
       return "浏览器";
+    case "computer":
+      return "桌面";
     case "terminal":
       return "终端";
     case "summary":
@@ -98,6 +118,8 @@ function surfaceIcon(surface: RightPanelSurface): ReactNode {
       return <FileImageIcon className="size-3.5" />;
     case "browser":
       return <GlobeIcon className="size-3.5" />;
+    case "computer":
+      return <MonitorIcon className="size-3.5" />;
     case "terminal":
       return <SquareTerminalIcon className="size-3.5" />;
     case "summary":
@@ -323,45 +345,361 @@ function ImagePanel(props: { artifact: RightPanelArtifact | undefined }) {
   );
 }
 
-function BrowserPanel() {
+function formatBrowserAddress(url: string | undefined): string {
+  if (!url) {
+    return "";
+  }
+  if (url === "about:blank") {
+    return "about:blank";
+  }
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url.replace(/^https?:\/\//, "");
+  }
+}
+
+function BrowserPanel(props: { onTitleChange?: (title: string) => void }) {
+  const [state, setState] = useState<DesktopBrowserAutomationState | null>(null);
+  const [addressDraft, setAddressDraft] = useState("");
+  const [addressFocused, setAddressFocused] = useState(false);
+  const [navigationPending, setNavigationPending] = useState(false);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const embedRef = useRef<HTMLDivElement | null>(null);
+  const { onTitleChange } = props;
+
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    let cancelled = false;
+    void bridge?.getBrowserAutomationState?.().then((next) => {
+      if (!cancelled) setState(next);
+    });
+    const unsubscribe = bridge?.onBrowserAutomationState?.((next) => setState(next));
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    const sendBounds = () => {
+      const element = embedRef.current;
+      if (!element || !bridge?.setBrowserAutomationBounds) return;
+      const rect = element.getBoundingClientRect();
+      void bridge.setBrowserAutomationBounds({
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height,
+        visible: rect.width > 0 && rect.height > 0,
+      });
+    };
+
+    sendBounds();
+    const observer = new ResizeObserver(sendBounds);
+    if (embedRef.current) {
+      observer.observe(embedRef.current);
+    }
+    window.addEventListener("resize", sendBounds);
+    const frame = window.setInterval(sendBounds, 500);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sendBounds);
+      window.clearInterval(frame);
+      void bridge?.setBrowserAutomationBounds?.({
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        visible: false,
+      });
+    };
+  }, []);
+
+  const selectedTab = state?.tabs.find((tab) => tab.id === state.selectedTabId) ?? state?.tabs[0];
+  const browserTitle = selectedTab?.title?.trim() || "浏览器";
+  const browserAddress = formatBrowserAddress(selectedTab?.url);
+
+  useEffect(() => {
+    if (!addressFocused) {
+      setAddressDraft(browserAddress);
+    }
+  }, [addressFocused, browserAddress]);
+
+  useEffect(() => {
+    onTitleChange?.(browserTitle);
+  }, [browserTitle, onTitleChange]);
+
+  const runBrowserControl = useCallback(
+    async (
+      action: (
+        bridge: NonNullable<typeof window.desktopBridge>,
+      ) => Promise<DesktopBrowserAutomationState>,
+    ) => {
+      const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+      if (!bridge) {
+        setNavigationError("桌面浏览器桥接不可用。");
+        return;
+      }
+      setNavigationPending(true);
+      setNavigationError(null);
+      try {
+        const next = await action(bridge);
+        setState(next);
+      } catch (error) {
+        setNavigationError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setNavigationPending(false);
+      }
+    },
+    [],
+  );
+
+  const submitAddress = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const url = addressDraft.trim();
+      if (!url) {
+        return;
+      }
+      void runBrowserControl(async (bridge) => {
+        if (!bridge.navigateBrowserAutomation) {
+          throw new Error("当前桌面端不支持浏览器地址栏导航。");
+        }
+        return bridge.navigateBrowserAutomation(url);
+      });
+    },
+    [addressDraft, runBrowserControl],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-        <Button size="icon-xs" variant="ghost" className="size-7 rounded-md" disabled>
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/40 px-3">
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="size-7 rounded-md text-muted-foreground/70"
+          disabled={!selectedTab?.canGoBack || navigationPending}
+          aria-label="后退"
+          onClick={() => {
+            void runBrowserControl(async (bridge) => {
+              if (!bridge.goBackBrowserAutomation) {
+                throw new Error("当前桌面端不支持浏览器后退。");
+              }
+              return bridge.goBackBrowserAutomation();
+            });
+          }}
+        >
           <ArrowLeftIcon className="size-3.5" />
         </Button>
-        <Button size="icon-xs" variant="ghost" className="size-7 rounded-md" disabled>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="size-7 rounded-md text-muted-foreground/70"
+          disabled={!selectedTab?.canGoForward || navigationPending}
+          aria-label="前进"
+          onClick={() => {
+            void runBrowserControl(async (bridge) => {
+              if (!bridge.goForwardBrowserAutomation) {
+                throw new Error("当前桌面端不支持浏览器前进。");
+              }
+              return bridge.goForwardBrowserAutomation();
+            });
+          }}
+        >
           <ArrowRightIcon className="size-3.5" />
         </Button>
-        <Button size="icon-xs" variant="ghost" className="size-7 rounded-md" disabled>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="size-8 rounded-lg bg-muted/60 text-muted-foreground"
+          disabled={!selectedTab || navigationPending}
+          aria-label="刷新"
+          onClick={() => {
+            void runBrowserControl(async (bridge) => {
+              if (!bridge.reloadBrowserAutomation) {
+                throw new Error("当前桌面端不支持浏览器刷新。");
+              }
+              return bridge.reloadBrowserAutomation();
+            });
+          }}
+        >
           <RefreshCwIcon className="size-3.5" />
         </Button>
-        <div className="flex h-8 flex-1 items-center justify-center rounded-lg bg-muted/50 text-xs text-muted-foreground">
-          输入 URL
+        <form className="min-w-0 flex-1" onSubmit={submitAddress}>
+          <Input
+            aria-label="浏览器地址"
+            className="h-8 rounded-lg border-0 bg-muted/30 px-3 text-center text-xs text-foreground shadow-none transition-colors focus-visible:bg-background focus-visible:text-left focus-visible:ring-1 focus-visible:ring-ring"
+            value={addressDraft}
+            disabled={navigationPending}
+            placeholder="输入网址"
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            onFocus={(event) => {
+              setAddressFocused(true);
+              window.requestAnimationFrame(() => event.currentTarget.select());
+            }}
+            onBlur={() => {
+              setAddressFocused(false);
+              if (!addressDraft.trim()) {
+                setAddressDraft(browserAddress);
+              }
+            }}
+            onChange={(event) => setAddressDraft(event.currentTarget.value)}
+          />
+        </form>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          className="size-7 rounded-md text-muted-foreground/70"
+          disabled
+          aria-label="定位页面"
+        >
+          <CrosshairIcon className="size-3.5" />
+        </Button>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          className="size-7 rounded-md text-muted-foreground/70"
+          disabled
+          aria-label="缩放"
+        >
+          <CirclePlusIcon className="size-3.5" />
+        </Button>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          className="size-7 rounded-md text-muted-foreground/70"
+          disabled
+          aria-label="更多"
+        >
+          <MoreVerticalIcon className="size-3.5" />
+        </Button>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {navigationError || state?.lastError ? (
+          <div className="absolute left-3 right-3 top-3 z-10 rounded-md border border-destructive/30 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm">
+            {navigationError ?? state?.lastError}
+          </div>
+        ) : null}
+        <div ref={embedRef} className="absolute inset-0 overflow-hidden bg-background">
+          {!selectedTab ? (
+            <EmptyState
+              icon={<GlobeIcon className="size-7" />}
+              title="浏览器就绪"
+              description="模型调用内置浏览器工具后，页面会直接显示在这里。"
+            />
+          ) : null}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-10">
-        <div className="w-full max-w-md space-y-2">
-          <div className="mb-3 text-xs font-medium text-muted-foreground">本地</div>
-          {["Sub2API - AI API Gateway", "localhost:8080", "OpenHarness", "localhost:8000"].map(
-            (label) => (
-              <button
-                key={label}
-                type="button"
-                className="flex h-16 w-full items-center gap-3 rounded-xl border border-border/70 px-3 text-left hover:bg-muted/50"
-              >
-                <div className="flex size-11 items-center justify-center rounded-lg bg-muted">
-                  <GlobeIcon className="size-5 text-muted-foreground" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-foreground">{label}</div>
-                  <div className="truncate text-xs text-muted-foreground">localhost</div>
-                </div>
-                <span className="size-2 rounded-full bg-emerald-500" />
-              </button>
-            ),
+    </div>
+  );
+}
+
+function ComputerPanel() {
+  const [state, setState] = useState<DesktopComputerAutomationState | null>(null);
+  const [pendingPaused, setPendingPaused] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    let cancelled = false;
+    void bridge?.getComputerAutomationState?.().then((next) => {
+      if (!cancelled) setState(next);
+    });
+    const unsubscribe = bridge?.onComputerAutomationState?.((next) => setState(next));
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  const paused = pendingPaused ?? state?.paused ?? false;
+  const setPaused = (nextPaused: boolean) => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    if (!bridge?.setComputerAutomationPaused) return;
+    setPendingPaused(nextPaused);
+    void bridge
+      .setComputerAutomationPaused(nextPaused)
+      .then((next) => setState(next))
+      .finally(() => setPendingPaused(null));
+  };
+
+  const virtualScreen = state?.virtualScreen
+    ? `${state.virtualScreen.x},${state.virtualScreen.y} ${state.virtualScreen.width}x${state.virtualScreen.height}`
+    : "-";
+  const cursor = state?.cursor ? `${state.cursor.x},${state.cursor.y}` : "-";
+  const foreground = state?.foregroundWindow
+    ? state.foregroundWindow.title || state.foregroundWindow.processName || "未知窗口"
+    : "-";
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium text-foreground">桌面控制</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {state?.available ? (paused ? "已暂停" : "运行中") : "仅 Windows 可用"}
+            </div>
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant={paused ? "default" : "outline"}
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          disabled={!state?.available || pendingPaused !== null}
+          onClick={() => setPaused(!paused)}
+        >
+          {paused ? <PlayIcon className="size-3.5" /> : <PauseIcon className="size-3.5" />}
+          {paused ? "继续" : "暂停"}
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-md border border-border/60 p-2">
+            <div className="text-muted-foreground">坐标系</div>
+            <div className="mt-1 truncate font-medium text-foreground">{virtualScreen}</div>
+          </div>
+          <div className="rounded-md border border-border/60 p-2">
+            <div className="text-muted-foreground">光标</div>
+            <div className="mt-1 truncate font-medium text-foreground">{cursor}</div>
+          </div>
+          <div className="col-span-2 rounded-md border border-border/60 p-2">
+            <div className="text-muted-foreground">前台窗口</div>
+            <div className="mt-1 truncate font-medium text-foreground">{foreground}</div>
+          </div>
+        </div>
+        {state?.lastError ? (
+          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            {state.lastError}
+          </div>
+        ) : null}
+        <div className="mt-3 overflow-hidden rounded-md border border-border/60 bg-muted/20">
+          {state?.lastScreenshotDataUrl ? (
+            <img
+              src={state.lastScreenshotDataUrl}
+              alt="桌面截图"
+              className="h-auto w-full object-contain"
+            />
+          ) : (
+            <EmptyState
+              icon={<MonitorIcon className="size-7" />}
+              title="等待桌面截图"
+              description="模型调用 computer_screenshot 后，最新截图会显示在这里。"
+            />
           )}
         </div>
+        {state?.lastAction ? (
+          <div className="mt-3 text-xs text-muted-foreground">最后动作：{state.lastAction}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -522,6 +860,12 @@ export function ThreadRightPanel({
               onClick={() => openTab("browser")}
             />
             <HomeTile
+              icon={<MonitorIcon className="size-6" />}
+              title="桌面"
+              description="查看 computer_use"
+              onClick={() => openTab("computer")}
+            />
+            <HomeTile
               icon={<SquareTerminalIcon className="size-6" />}
               title="终端"
               description="打开终端入口"
@@ -560,7 +904,23 @@ export function ThreadRightPanel({
     ) : activeTab.surface === "image" || activeTab.surface === "artifacts" ? (
       <ImagePanel artifact={activeArtifact} />
     ) : activeTab.surface === "browser" ? (
-      <BrowserPanel />
+      <BrowserPanel
+        onTitleChange={(title) => {
+          setTabs((current) => {
+            let changed = false;
+            const next = current.map((tab) => {
+              if (tab.surface !== "browser" || tab.title === title) {
+                return tab;
+              }
+              changed = true;
+              return { ...tab, title };
+            });
+            return changed ? next : current;
+          });
+        }}
+      />
+    ) : activeTab.surface === "computer" ? (
+      <ComputerPanel />
     ) : activeTab.surface === "summary" ? (
       <PlanSidebar
         activePlan={activePlan}

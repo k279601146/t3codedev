@@ -6105,6 +6105,30 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("shows plugin suggestions when typing @ in the composer", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-plugin-menu-target" as MessageId,
+        targetText: "plugin menu thread",
+      }),
+    });
+
+    try {
+      await waitForComposerEditor();
+      await page.getByTestId("composer-editor").fill("@");
+
+      const browserItem = await waitForComposerMenuItem("plugin:Browser");
+      const computerItem = await waitForComposerMenuItem("plugin:Computer");
+      expect(browserItem.textContent).toContain("浏览器");
+      expect(browserItem.textContent).toContain("Control the in-app browser with Codex");
+      expect(computerItem.textContent).toContain("电脑");
+      expect(computerItem.textContent).toContain("Control Windows apps from Codex");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("opens the model picker when selecting /model", async () => {
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,

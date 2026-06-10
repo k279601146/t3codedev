@@ -3236,7 +3236,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     openConversationThread();
   }, [openConversationThread]);
   const handleOpenPlugins = useCallback(() => {
-    void navigate({ to: "/settings/providers" });
+    void navigate({ to: "/plugins" });
   }, [navigate]);
   const handleOpenSkills = useCallback(() => {
     void navigate({ to: "/skills" });

@@ -90,6 +90,9 @@ describe("commercialEngine", () => {
     assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
     assert.match(toml, new RegExp(`wire_api = "${COMMERCIAL_ENGINE_WIRE_API}"`));
     assert.match(toml, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
+    assert.match(toml, /browser_use = true/);
+    assert.match(toml, /in_app_browser = true/);
+    assert.match(toml, /computer_use = true/);
     assert.doesNotMatch(toml, /must-not-appear/);
     assert.doesNotMatch(toml, /jwt-token/);
   });

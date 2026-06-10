@@ -154,6 +154,9 @@ image_generation = true
 
 [features]
 image_generation = true
+browser_use = true
+in_app_browser = true
+computer_use = true
 
 [shell_environment_policy]
 include_only = ${tomlStringArray(COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY)}

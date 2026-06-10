@@ -20,6 +20,8 @@ import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
+import * as DesktopBrowserAutomationHost from "../browser/DesktopBrowserAutomationHost.ts";
+import * as DesktopComputerAutomationHost from "../computer/DesktopComputerAutomationHost.ts";
 
 const PersistedServerObservabilitySettingsDocument = Schema.Struct({
   observability: Schema.Struct({
@@ -46,6 +48,103 @@ const serverExposureLayer = Layer.succeed(DesktopServerExposure.DesktopServerExp
   setTailscaleServeEnabled: () => Effect.die("unexpected setTailscaleServeEnabled"),
   getAdvertisedEndpoints: Effect.succeed([]),
 } satisfies DesktopServerExposure.DesktopServerExposureShape);
+
+const browserAutomationHostLayer = Layer.succeed(
+  DesktopBrowserAutomationHost.DesktopBrowserAutomationHost,
+  DesktopBrowserAutomationHost.DesktopBrowserAutomationHost.of({
+    endpoint: "http://127.0.0.1:49876",
+    token: "browser-token",
+    state: Effect.succeed({
+      endpoint: "http://127.0.0.1:49876",
+      selectedTabId: null,
+      tabs: [],
+      lastError: null,
+      lastScreenshotDataUrl: null,
+      lastScreenshotPath: null,
+      lastToolCallAt: null,
+      toolCallSequence: 0,
+      updatedAt: "2026-06-09T00:00:00.000Z",
+    }),
+    navigate: () =>
+      Effect.succeed({
+        endpoint: "http://127.0.0.1:49876",
+        selectedTabId: null,
+        tabs: [],
+        lastError: null,
+        lastScreenshotDataUrl: null,
+        lastScreenshotPath: null,
+        lastToolCallAt: null,
+        toolCallSequence: 0,
+        updatedAt: "2026-06-09T00:00:00.000Z",
+      }),
+    reload: Effect.succeed({
+      endpoint: "http://127.0.0.1:49876",
+      selectedTabId: null,
+      tabs: [],
+      lastError: null,
+      lastScreenshotDataUrl: null,
+      lastScreenshotPath: null,
+      lastToolCallAt: null,
+      toolCallSequence: 0,
+      updatedAt: "2026-06-09T00:00:00.000Z",
+    }),
+    goBack: Effect.succeed({
+      endpoint: "http://127.0.0.1:49876",
+      selectedTabId: null,
+      tabs: [],
+      lastError: null,
+      lastScreenshotDataUrl: null,
+      lastScreenshotPath: null,
+      lastToolCallAt: null,
+      toolCallSequence: 0,
+      updatedAt: "2026-06-09T00:00:00.000Z",
+    }),
+    goForward: Effect.succeed({
+      endpoint: "http://127.0.0.1:49876",
+      selectedTabId: null,
+      tabs: [],
+      lastError: null,
+      lastScreenshotDataUrl: null,
+      lastScreenshotPath: null,
+      lastToolCallAt: null,
+      toolCallSequence: 0,
+      updatedAt: "2026-06-09T00:00:00.000Z",
+    }),
+    setPanelBounds: () => Effect.void,
+    reveal: Effect.void,
+  } satisfies DesktopBrowserAutomationHost.DesktopBrowserAutomationHostShape),
+);
+
+const computerAutomationState = {
+  endpoint: "http://127.0.0.1:49877",
+  platform: "win32",
+  available: true,
+  paused: false,
+  allowedApps: [],
+  virtualScreen: null,
+  cursor: null,
+  foregroundWindow: null,
+  lastAction: null,
+  lastError: null,
+  lastScreenshotDataUrl: null,
+  lastScreenshotPath: null,
+  lastToolCallAt: null,
+  toolCallSequence: 0,
+  updatedAt: "2026-06-09T00:00:00.000Z",
+} satisfies DesktopComputerAutomationHost.DesktopComputerAutomationState;
+
+const computerAutomationHostLayer = Layer.succeed(
+  DesktopComputerAutomationHost.DesktopComputerAutomationHost,
+  DesktopComputerAutomationHost.DesktopComputerAutomationHost.of({
+    endpoint: "http://127.0.0.1:49877",
+    token: "computer-token",
+    state: Effect.succeed(computerAutomationState),
+    setPaused: () => Effect.succeed(computerAutomationState),
+    allowForegroundApp: () => Effect.succeed(computerAutomationState),
+    removeAppPermission: () => Effect.succeed(computerAutomationState),
+    clearAppPermissions: () => Effect.succeed(computerAutomationState),
+  } satisfies DesktopComputerAutomationHost.DesktopComputerAutomationHostShape),
+);
 
 function makeEnvironmentLayer(
   baseDir: string,
@@ -108,6 +207,8 @@ const withHarness = <A, E, R>(
           Layer.provideMerge(DesktopEngineUpdater.layerTest()),
           Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
           Layer.provideMerge(serverExposureLayer),
+          Layer.provideMerge(browserAutomationHostLayer),
+          Layer.provideMerge(computerAutomationHostLayer),
           Layer.provideMerge(makeEnvironmentLayer(baseDir)),
         ),
       ),
@@ -158,6 +259,10 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.cwd, environment.backendCwd);
         assert.equal(first.captureOutput, true);
         assert.equal(first.env.ELECTRON_RUN_AS_NODE, "1");
+        assert.equal(first.env.T3CODE_BROWSER_USE_ENDPOINT, "http://127.0.0.1:49876");
+        assert.equal(first.env.T3CODE_BROWSER_USE_TOKEN, "browser-token");
+        assert.equal(first.env.T3CODE_COMPUTER_USE_ENDPOINT, "http://127.0.0.1:49877");
+        assert.equal(first.env.T3CODE_COMPUTER_USE_TOKEN, "computer-token");
         assert.isUndefined(first.env.T3CODE_PORT);
         assert.isUndefined(first.env.T3CODE_MODE);
         assert.isUndefined(first.env.T3CODE_DESKTOP_LAN_HOST);
@@ -266,6 +371,8 @@ describe("DesktopBackendConfiguration", () => {
             Layer.provideMerge(DesktopEngineUpdater.layerTest()),
             Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
             Layer.provideMerge(serverExposureLayer),
+            Layer.provideMerge(browserAutomationHostLayer),
+            Layer.provideMerge(computerAutomationHostLayer),
             Layer.provideMerge(
               makeEnvironmentLayer(baseDir, {
                 isPackaged: false,
@@ -353,6 +460,8 @@ describe("DesktopBackendConfiguration", () => {
               Layer.provideMerge(DesktopEngineUpdater.layerTest()),
               Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
               Layer.provideMerge(serverExposureLayer),
+              Layer.provideMerge(browserAutomationHostLayer),
+              Layer.provideMerge(computerAutomationHostLayer),
               Layer.provideMerge(makeEnvironmentLayer(baseDir)),
             ),
           ),

@@ -39,6 +39,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as Layer from "effect/Layer";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
@@ -57,6 +58,8 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import * as BrowserToolServiceLayer from "./BrowserToolService.ts";
+import * as ComputerToolServiceLayer from "./ComputerToolService.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
@@ -1534,7 +1537,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         yield* Effect.addFinalizer(() =>
           sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
         );
-        const createRuntime = options?.makeRuntime ?? makeCodexSessionRuntime;
+        const createRuntime =
+          options?.makeRuntime ??
+          ((runtimeOptions: CodexSessionRuntimeOptions) =>
+            makeCodexSessionRuntime(runtimeOptions).pipe(
+              Effect.provide(
+                Layer.mergeAll(BrowserToolServiceLayer.layer, ComputerToolServiceLayer.layer),
+              ),
+            ));
         const prewarmedChild = yield* acquireWarmProcess(runtimeInput.cwd);
         const runtime = yield* createRuntime({
           ...runtimeInput,

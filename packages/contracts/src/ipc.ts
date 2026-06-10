@@ -467,6 +467,82 @@ export const DesktopCloudAuthFetchResultSchema = Schema.Struct({
 });
 export type DesktopCloudAuthFetchResult = typeof DesktopCloudAuthFetchResultSchema.Type;
 
+export interface DesktopBrowserAutomationTabState {
+  id: string;
+  title: string;
+  url: string;
+  visible: boolean;
+  width: number;
+  height: number;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export interface DesktopBrowserAutomationState {
+  endpoint: string;
+  selectedTabId: string | null;
+  tabs: readonly DesktopBrowserAutomationTabState[];
+  lastError: string | null;
+  lastScreenshotDataUrl: string | null;
+  lastScreenshotPath: string | null;
+  lastToolCallAt: string | null;
+  toolCallSequence: number;
+  updatedAt: string;
+}
+
+export interface DesktopBrowserAutomationBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  visible: boolean;
+}
+
+export interface DesktopComputerAutomationRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DesktopComputerAutomationPoint {
+  x: number;
+  y: number;
+}
+
+export interface DesktopComputerAutomationForegroundWindow {
+  title: string;
+  processId: number | null;
+  processName: string | null;
+}
+
+export interface DesktopComputerAutomationAppPermission {
+  appKey: string;
+  displayName: string;
+  processName: string | null;
+  title: string | null;
+  allowedAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface DesktopComputerAutomationState {
+  endpoint: string;
+  platform: string;
+  available: boolean;
+  paused: boolean;
+  allowedApps: readonly DesktopComputerAutomationAppPermission[];
+  virtualScreen: DesktopComputerAutomationRect | null;
+  cursor: DesktopComputerAutomationPoint | null;
+  foregroundWindow: DesktopComputerAutomationForegroundWindow | null;
+  lastAction: string | null;
+  lastError: string | null;
+  lastScreenshotDataUrl: string | null;
+  lastScreenshotPath: string | null;
+  lastToolCallAt: string | null;
+  toolCallSequence: number;
+  updatedAt: string;
+}
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -533,6 +609,25 @@ export interface DesktopBridge {
   onCloudAuthCallback: (listener: (rawUrl: string) => void) => () => void;
   openPath: (path: string) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
+  getBrowserAutomationState?: () => Promise<DesktopBrowserAutomationState>;
+  navigateBrowserAutomation?: (url: string) => Promise<DesktopBrowserAutomationState>;
+  reloadBrowserAutomation?: () => Promise<DesktopBrowserAutomationState>;
+  goBackBrowserAutomation?: () => Promise<DesktopBrowserAutomationState>;
+  goForwardBrowserAutomation?: () => Promise<DesktopBrowserAutomationState>;
+  setBrowserAutomationBounds?: (bounds: DesktopBrowserAutomationBounds) => Promise<void>;
+  onBrowserAutomationState?: (
+    listener: (state: DesktopBrowserAutomationState) => void,
+  ) => () => void;
+  getComputerAutomationState?: () => Promise<DesktopComputerAutomationState>;
+  setComputerAutomationPaused?: (paused: boolean) => Promise<DesktopComputerAutomationState>;
+  allowComputerAutomationForegroundApp?: () => Promise<DesktopComputerAutomationState>;
+  removeComputerAutomationAppPermission?: (
+    appKey: string,
+  ) => Promise<DesktopComputerAutomationState>;
+  clearComputerAutomationAppPermissions?: () => Promise<DesktopComputerAutomationState>;
+  onComputerAutomationState?: (
+    listener: (state: DesktopComputerAutomationState) => void,
+  ) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>;

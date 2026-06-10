@@ -51,6 +51,15 @@ import {
   buildCodexProcessEnv,
   type BundledEngineResolvedConfig,
 } from "../BundledEngineConfig.ts";
+import { buildT3BrowserDynamicTools, T3_BROWSER_TOOL_NAMESPACE } from "../browserTools.ts";
+import {
+  buildT3ComputerDynamicTools,
+  isT3ComputerInputToolName,
+  T3_COMPUTER_CONFIRMATION_REQUIRED_PREFIX,
+  T3_COMPUTER_TOOL_NAMESPACE,
+} from "../computerTools.ts";
+import * as BrowserToolService from "../Services/BrowserToolService.ts";
+import * as ComputerToolService from "../Services/ComputerToolService.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
 const PROVIDER = ProviderDriverKind.make("codex");
@@ -64,6 +73,7 @@ const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
 ];
 const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds" as const;
+const T3_BROWSER_CONFIRMATION_REQUIRED_PREFIX = "T3_BROWSER_CONFIRMATION_REQUIRED:";
 const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "not found",
   "missing thread",
@@ -100,6 +110,10 @@ const formatSchemaIssue = SchemaIssue.makeFormatterDefault();
 
 export type CodexResumeCursor = typeof CodexResumeCursorSchema.Type;
 type CodexServiceTier = NonNullable<EffectCodexSchema.V2ThreadStartParams["serviceTier"]>;
+type T3DynamicTools = ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec>;
+type ThreadStartParamsWithDynamicTools = EffectCodexSchema.V2ThreadStartParams & {
+  readonly dynamicTools: T3DynamicTools;
+};
 type CodexThreadItem =
   | EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number]["items"][number]
   | EffectCodexSchema.V2ThreadRollbackResponse["thread"]["turns"][number]["items"][number];
@@ -301,12 +315,13 @@ function buildThreadStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
-}): EffectCodexSchema.V2ThreadStartParams {
+}): ThreadStartParamsWithDynamicTools {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   return {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
     sandbox: config.sandbox,
+    dynamicTools: [...buildT3BrowserDynamicTools(), ...buildT3ComputerDynamicTools()],
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
   };
@@ -720,6 +735,117 @@ function toProtocolParseError(
   });
 }
 
+function dynamicTextResponse(
+  text: string,
+  success: boolean,
+): EffectCodexSchema.DynamicToolCallResponse {
+  return {
+    success,
+    contentItems: [{ type: "inputText", text }],
+  };
+}
+
+function readBrowserConfirmationMessage(
+  response: EffectCodexSchema.DynamicToolCallResponse,
+): string | undefined {
+  if (response.success) {
+    return undefined;
+  }
+  for (const item of response.contentItems) {
+    if (item.type !== "inputText") {
+      continue;
+    }
+    const index = item.text.indexOf(T3_BROWSER_CONFIRMATION_REQUIRED_PREFIX);
+    if (index >= 0) {
+      return item.text.slice(index + T3_BROWSER_CONFIRMATION_REQUIRED_PREFIX.length).trim();
+    }
+  }
+  return undefined;
+}
+
+function readComputerConfirmationMessage(
+  response: EffectCodexSchema.DynamicToolCallResponse,
+): string | undefined {
+  if (response.success) {
+    return undefined;
+  }
+  for (const item of response.contentItems) {
+    if (item.type !== "inputText") {
+      continue;
+    }
+    const index = item.text.indexOf(T3_COMPUTER_CONFIRMATION_REQUIRED_PREFIX);
+    if (index >= 0) {
+      return item.text.slice(index + T3_COMPUTER_CONFIRMATION_REQUIRED_PREFIX.length).trim();
+    }
+  }
+  return undefined;
+}
+
+function withBrowserUserConfirmation(
+  payload: EffectCodexSchema.DynamicToolCallParams,
+): EffectCodexSchema.DynamicToolCallParams {
+  const args =
+    payload.arguments && typeof payload.arguments === "object" && !Array.isArray(payload.arguments)
+      ? payload.arguments
+      : {};
+  return {
+    ...payload,
+    arguments: {
+      ...args,
+      userConfirmed: true,
+    },
+  };
+}
+
+function withComputerRuntimeContext(
+  payload: EffectCodexSchema.DynamicToolCallParams,
+  runtimeMode: RuntimeMode,
+): EffectCodexSchema.DynamicToolCallParams {
+  const args =
+    payload.arguments && typeof payload.arguments === "object" && !Array.isArray(payload.arguments)
+      ? payload.arguments
+      : {};
+  return {
+    ...payload,
+    arguments: {
+      ...args,
+      runtimeMode,
+    },
+  };
+}
+
+function withComputerUserConfirmation(
+  payload: EffectCodexSchema.DynamicToolCallParams,
+  runtimeMode: RuntimeMode,
+  options: { readonly alwaysAllowApp?: boolean } = {},
+): EffectCodexSchema.DynamicToolCallParams {
+  const args =
+    payload.arguments && typeof payload.arguments === "object" && !Array.isArray(payload.arguments)
+      ? payload.arguments
+      : {};
+  return {
+    ...payload,
+    arguments: {
+      ...args,
+      runtimeMode,
+      userConfirmed: true,
+      ...(options.alwaysAllowApp ? { userAlwaysAllowApp: true } : {}),
+    },
+  };
+}
+
+function userInputAnswerIncludes(value: ProviderUserInputAnswers[string], label: string): boolean {
+  return (
+    value === label ||
+    (Array.isArray(value) && value.includes(label)) ||
+    (isCodexUserInputAnswerObject(value) && value.answers.includes(label))
+  );
+}
+
+function isAcceptedUserInputAnswer(value: ProviderUserInputAnswers[string]): boolean {
+  return userInputAnswerIncludes(value, "Accept") || userInputAnswerIncludes(value, "Always allow");
+}
+
 function currentProviderThreadId(session: ProviderSession): string | undefined {
   return readResumeCursorThreadId(session.resumeCursor);
 }
@@ -755,7 +881,10 @@ export const makeCodexSessionRuntime = (
 ): Effect.Effect<
   CodexSessionRuntimeShape,
   CodexErrors.CodexAppServerError,
-  ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+  | BrowserToolService.BrowserToolService
+  | ComputerToolService.ComputerToolService
+  | ChildProcessSpawner.ChildProcessSpawner
+  | Scope.Scope
 > =>
   Effect.gen(function* () {
     const runtimeScope = yield* Scope.Scope;
@@ -780,6 +909,8 @@ export const makeCodexSessionRuntime = (
       resolvedHomePath,
       bundledConfig,
     });
+    const browserTools = yield* BrowserToolService.BrowserToolService;
+    const computerTools = yield* ComputerToolService.ComputerToolService;
 
     const child =
       options.prewarmedChild ??
@@ -1188,6 +1319,139 @@ export const makeCodexSessionRuntime = (
             ),
           ),
         } satisfies EffectCodexSchema.ToolRequestUserInputResponse;
+      }),
+    );
+
+    yield* client.handleServerRequest("item/tool/call", (payload) =>
+      Effect.gen(function* () {
+        let confirmationQuestionId = "tool_confirmation";
+        let confirmationHeader = "工具确认";
+        let confirmationMessage: string | undefined;
+        let retryAfterConfirmation: () => Promise<EffectCodexSchema.DynamicToolCallResponse>;
+        let supportsAlwaysAllowApp = false;
+
+        if (payload.namespace === T3_BROWSER_TOOL_NAMESPACE) {
+          const initialResponse = yield* Effect.promise(() => browserTools.call(payload));
+          confirmationMessage = readBrowserConfirmationMessage(initialResponse);
+          if (!confirmationMessage) {
+            return initialResponse;
+          }
+          confirmationQuestionId = "browser_confirmation";
+          confirmationHeader = "浏览器确认";
+          retryAfterConfirmation = () => browserTools.call(withBrowserUserConfirmation(payload));
+        } else if (payload.namespace === T3_COMPUTER_TOOL_NAMESPACE) {
+          const payloadWithRuntimeMode = withComputerRuntimeContext(payload, options.runtimeMode);
+          if (
+            options.runtimeMode === "approval-required" &&
+            isT3ComputerInputToolName(payload.tool)
+          ) {
+            confirmationMessage = `computer_use wants to run ${payload.tool}.`;
+          }
+
+          if (!confirmationMessage) {
+            const initialResponse = yield* Effect.promise(() =>
+              computerTools.call(payloadWithRuntimeMode),
+            );
+            confirmationMessage = readComputerConfirmationMessage(initialResponse);
+            if (!confirmationMessage) {
+              return initialResponse;
+            }
+          }
+
+          confirmationQuestionId = "computer_confirmation";
+          confirmationHeader = "桌面确认";
+          supportsAlwaysAllowApp = true;
+          retryAfterConfirmation = () =>
+            computerTools.call(withComputerUserConfirmation(payload, options.runtimeMode));
+        } else {
+          return dynamicTextResponse(
+            `Unsupported dynamic tool namespace: ${payload.namespace ?? ""}`,
+            false,
+          );
+        }
+
+        const requestId = ApprovalRequestId.make(yield* Random.nextUUIDv4);
+        const turnId = TurnId.make(payload.turnId);
+        const itemId = ProviderItemId.make(payload.callId);
+        const answers = yield* Deferred.make<ProviderUserInputAnswers>();
+
+        yield* Ref.update(pendingUserInputsRef, (current) => {
+          const next = new Map(current);
+          next.set(requestId, {
+            requestId,
+            turnId,
+            itemId,
+            answers,
+          });
+          return next;
+        });
+
+        yield* emitEvent({
+          kind: "request",
+          threadId: options.threadId,
+          method: "item/tool/requestUserInput",
+          requestId,
+          turnId,
+          itemId,
+          payload: {
+            threadId: payload.threadId,
+            turnId: payload.turnId,
+            itemId: payload.callId,
+            questions: [
+              {
+                id: confirmationQuestionId,
+                header: confirmationHeader,
+                question: confirmationMessage,
+                options: [
+                  {
+                    label: "Accept",
+                    description: "允许这一次操作继续执行。",
+                  },
+                  ...(supportsAlwaysAllowApp
+                    ? [
+                        {
+                          label: "Always allow",
+                          description: "始终允许 computer_use 使用当前前台应用。",
+                        },
+                      ]
+                    : []),
+                  {
+                    label: "Decline",
+                    description: "拒绝这一次操作。",
+                  },
+                ],
+              },
+            ],
+          },
+        });
+
+        const resolvedAnswers = yield* Deferred.await(answers).pipe(
+          Effect.ensuring(
+            Ref.update(pendingUserInputsRef, (current) => {
+              const next = new Map(current);
+              next.delete(requestId);
+              return next;
+            }),
+          ),
+        );
+        const answer = resolvedAnswers[confirmationQuestionId];
+        const accepted = isAcceptedUserInputAnswer(answer);
+        if (!accepted) {
+          return dynamicTextResponse("Dynamic tool action declined by the user.", false);
+        }
+
+        if (supportsAlwaysAllowApp) {
+          const alwaysAllowApp = userInputAnswerIncludes(answer, "Always allow");
+          return yield* Effect.promise(() =>
+            computerTools.call(
+              withComputerUserConfirmation(payload, options.runtimeMode, {
+                alwaysAllowApp,
+              }),
+            ),
+          );
+        }
+
+        return yield* Effect.promise(retryAfterConfirmation);
       }),
     );
 

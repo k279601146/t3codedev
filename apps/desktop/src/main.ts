@@ -15,6 +15,7 @@ import serverPackageJson from "../../server/package.json" with { type: "json" };
 
 import type { DesktopSettings as DesktopSettingsValue } from "./settings/DesktopAppSettings.ts";
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
+import * as IpcChannels from "./ipc/channels.ts";
 import * as ElectronApp from "./electron/ElectronApp.ts";
 import * as ElectronDialog from "./electron/ElectronDialog.ts";
 import * as ElectronMenu from "./electron/ElectronMenu.ts";
@@ -30,6 +31,8 @@ import * as DesktopApplicationMenu from "./window/DesktopApplicationMenu.ts";
 import * as DesktopAssets from "./app/DesktopAssets.ts";
 import * as DesktopBackendConfiguration from "./backend/DesktopBackendConfiguration.ts";
 import * as DesktopBackendManager from "./backend/DesktopBackendManager.ts";
+import * as DesktopBrowserAutomationHost from "./browser/DesktopBrowserAutomationHost.ts";
+import * as DesktopComputerAutomationHost from "./computer/DesktopComputerAutomationHost.ts";
 import * as DesktopEngineIntegrity from "./engine/DesktopEngineIntegrity.ts";
 import * as DesktopEngineUpdater from "./engine/DesktopEngineUpdater.ts";
 import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
@@ -141,14 +144,96 @@ const desktopWindowLayer = DesktopWindow.layer.pipe(Layer.provideMerge(desktopSe
 const desktopBackendLayer = DesktopBackendManager.layer.pipe(
   Layer.provideMerge(DesktopAppIdentity.layer),
   Layer.provideMerge(DesktopBackendConfiguration.layer),
+  Layer.provideMerge(DesktopBrowserAutomationHost.layer),
+  Layer.provideMerge(DesktopComputerAutomationHost.layer),
   Layer.provideMerge(desktopApmLayer),
   Layer.provideMerge(desktopWindowLayer),
+);
+
+const desktopBrowserAutomationIpcLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const ipc = yield* DesktopIpc.DesktopIpc;
+    const host = yield* DesktopBrowserAutomationHost.DesktopBrowserAutomationHost;
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_AUTOMATION_GET_STATE_CHANNEL,
+      handler: () => host.state,
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_AUTOMATION_SET_BOUNDS_CHANNEL,
+      handler: (raw) => {
+        const bounds = raw as {
+          readonly x?: unknown;
+          readonly y?: unknown;
+          readonly width?: unknown;
+          readonly height?: unknown;
+          readonly visible?: unknown;
+        };
+        return host.setPanelBounds({
+          x: typeof bounds.x === "number" ? bounds.x : 0,
+          y: typeof bounds.y === "number" ? bounds.y : 0,
+          width: typeof bounds.width === "number" ? bounds.width : 0,
+          height: typeof bounds.height === "number" ? bounds.height : 0,
+          visible: bounds.visible === true,
+        });
+      },
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_AUTOMATION_NAVIGATE_CHANNEL,
+      handler: (raw) => {
+        if (typeof raw !== "string") {
+          return host.state;
+        }
+        return host.navigate(raw);
+      },
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_AUTOMATION_RELOAD_CHANNEL,
+      handler: () => host.reload,
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_AUTOMATION_GO_BACK_CHANNEL,
+      handler: () => host.goBack,
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_AUTOMATION_GO_FORWARD_CHANNEL,
+      handler: () => host.goForward,
+    });
+  }),
+);
+
+const desktopComputerAutomationIpcLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const ipc = yield* DesktopIpc.DesktopIpc;
+    const host = yield* DesktopComputerAutomationHost.DesktopComputerAutomationHost;
+    yield* ipc.handle({
+      channel: IpcChannels.COMPUTER_AUTOMATION_GET_STATE_CHANNEL,
+      handler: () => host.state,
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.COMPUTER_AUTOMATION_SET_PAUSED_CHANNEL,
+      handler: (raw) => host.setPaused(raw === true),
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.COMPUTER_AUTOMATION_ALLOW_FOREGROUND_APP_CHANNEL,
+      handler: () => host.allowForegroundApp(),
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.COMPUTER_AUTOMATION_REMOVE_APP_PERMISSION_CHANNEL,
+      handler: (raw) => host.removeAppPermission(typeof raw === "string" ? raw : ""),
+    });
+    yield* ipc.handle({
+      channel: IpcChannels.COMPUTER_AUTOMATION_CLEAR_APP_PERMISSIONS_CHANNEL,
+      handler: () => host.clearAppPermissions(),
+    });
+  }),
 );
 
 const desktopApplicationLayer = Layer.mergeAll(
   DesktopLifecycle.layer,
   DesktopApplicationMenu.layer,
   DesktopShellEnvironment.layer,
+  desktopBrowserAutomationIpcLayer,
+  desktopComputerAutomationIpcLayer,
   desktopSshLayer,
 ).pipe(Layer.provideMerge(DesktopUpdates.layer), Layer.provideMerge(desktopBackendLayer));
 

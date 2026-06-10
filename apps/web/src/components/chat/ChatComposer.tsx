@@ -103,7 +103,9 @@ import {
   BookOpenIcon,
   CheckIcon,
   FileIcon,
+  GlobeIcon,
   HandIcon,
+  LaptopIcon,
   ListTodoIcon,
   PlusIcon,
   SearchIcon,
@@ -132,6 +134,11 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { getPrimaryEnvironmentConnection } from "../../environments/runtime";
+import {
+  COMPOSER_PLUGIN_MENTIONS,
+  type ComposerPluginMention,
+  searchComposerPluginMentions,
+} from "../../composerPluginMentions";
 
 const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
@@ -382,9 +389,11 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   skills: ReadonlyArray<ServerProviderSkill>;
+  showRuntimeModeControl: boolean;
   showInteractionModeToggle: boolean;
   traitsMenuContent?: React.ReactNode;
   onAttachFiles: () => void;
+  onSelectPlugin: (plugin: ComposerPluginMention) => void;
   onSelectSkill: (skill: ServerProviderSkill) => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
   onInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -418,6 +427,28 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
           <FileIcon className="size-4 shrink-0 opacity-80" />
           添加文件
         </MenuItem>
+        <MenuSub>
+          <MenuSubTrigger>
+            <GlobeIcon className="size-4 shrink-0 opacity-80" />
+            插件
+          </MenuSubTrigger>
+          <MenuSubPopup className="min-w-52">
+            {COMPOSER_PLUGIN_MENTIONS.map((plugin) => {
+              const Icon = plugin.kind === "computer" ? LaptopIcon : GlobeIcon;
+              return (
+                <MenuItem key={plugin.id} onClick={() => props.onSelectPlugin(plugin)}>
+                  <Icon className="size-4 shrink-0 opacity-80" />
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="text-sm font-medium">{plugin.menuLabel}</span>
+                    <span className="line-clamp-1 text-xs text-muted-foreground">
+                      {plugin.description}
+                    </span>
+                  </span>
+                </MenuItem>
+              );
+            })}
+          </MenuSubPopup>
+        </MenuSub>
         <MenuSub>
           <MenuSubTrigger>
             <BookOpenIcon className="size-4 shrink-0 opacity-80" />
@@ -507,33 +538,35 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
             </MenuCheckboxItem>
           </>
         ) : null}
-        <MenuSub>
-          <MenuSubTrigger>
-            <ShieldCheckIcon className="size-4 shrink-0 opacity-80" />
-            {t("composer.permission.control")}
-          </MenuSubTrigger>
-          <MenuSubPopup className="min-w-64">
-            {runtimeModeOptions.map((mode) => {
-              const option = runtimeModeConfig[mode];
-              const OptionIcon = option.icon;
-              const selected = props.runtimeMode === mode;
-              const optionLabel = t(option.labelKey);
-              const optionDescription = t(option.descriptionKey);
-              return (
-                <MenuItem key={mode} onClick={() => props.onRuntimeModeChange(mode)}>
-                  <OptionIcon className="size-4 shrink-0 opacity-80" />
-                  <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="text-sm font-medium">{optionLabel}</span>
-                    <span className="line-clamp-1 text-xs text-muted-foreground">
-                      {optionDescription}
+        {props.showRuntimeModeControl ? (
+          <MenuSub>
+            <MenuSubTrigger>
+              <ShieldCheckIcon className="size-4 shrink-0 opacity-80" />
+              {t("composer.permission.control")}
+            </MenuSubTrigger>
+            <MenuSubPopup className="min-w-64">
+              {runtimeModeOptions.map((mode) => {
+                const option = runtimeModeConfig[mode];
+                const OptionIcon = option.icon;
+                const selected = props.runtimeMode === mode;
+                const optionLabel = t(option.labelKey);
+                const optionDescription = t(option.descriptionKey);
+                return (
+                  <MenuItem key={mode} onClick={() => props.onRuntimeModeChange(mode)}>
+                    <OptionIcon className="size-4 shrink-0 opacity-80" />
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      <span className="text-sm font-medium">{optionLabel}</span>
+                      <span className="line-clamp-1 text-xs text-muted-foreground">
+                        {optionDescription}
+                      </span>
                     </span>
-                  </span>
-                  {selected ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
-                </MenuItem>
-              );
-            })}
-          </MenuSubPopup>
-        </MenuSub>
+                    {selected ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
+                  </MenuItem>
+                );
+              })}
+            </MenuSubPopup>
+          </MenuSub>
+        ) : null}
       </MenuPopup>
     </Menu>
   );
@@ -1210,14 +1243,22 @@ export const ChatComposer = memo(
     const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
       if (!composerTrigger) return [];
       if (composerTrigger.kind === "path") {
-        return workspaceEntries.map((entry) => ({
+        const pluginItems = searchComposerPluginMentions(composerTrigger.query).map((plugin) => ({
+          id: `plugin:${plugin.id}`,
+          type: "plugin" as const,
+          plugin,
+          label: plugin.menuLabel,
+          description: plugin.description,
+        }));
+        const pathItems = workspaceEntries.map((entry) => ({
           id: `path:${entry.kind}:${entry.path}`,
-          type: "path",
+          type: "path" as const,
           path: entry.path,
           pathKind: entry.kind,
           label: basenameOfPath(entry.path),
           description: entry.parentPath ?? "",
         }));
+        return [...pluginItems, ...pathItems];
       }
       if (composerTrigger.kind === "slash-command") {
         const builtInSlashCommandItems = [
@@ -1855,6 +1896,24 @@ export const ChatComposer = memo(
           }
           return;
         }
+        if (item.type === "plugin") {
+          const replacement = `${item.plugin.token} `;
+          const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+            snapshot.value,
+            trigger.rangeEnd,
+            replacement,
+          );
+          const applied = applyPromptReplacement(
+            trigger.rangeStart,
+            replacementRangeEnd,
+            replacement,
+            { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+          );
+          if (applied) {
+            setComposerHighlightedItemId(null);
+          }
+          return;
+        }
         if (item.type === "slash-command") {
           if (item.command === "model") {
             const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -2053,6 +2112,39 @@ export const ChatComposer = memo(
         const snapshot = readComposerSnapshot();
         const needsLeadingSpacer = snapshot.value.length > 0 && !/\s$/.test(snapshot.value);
         const replacement = `${needsLeadingSpacer ? " " : ""}$${skill.name} `;
+        const applied = applyPromptReplacement(snapshot.cursor, snapshot.cursor, replacement);
+        if (!applied) {
+          return;
+        }
+        const nextCursor = snapshot.cursor + replacement.length;
+        window.requestAnimationFrame(() => {
+          const nextPrompt = promptRef.current;
+          setComposerTrigger(
+            detectComposerTrigger(
+              nextPrompt,
+              expandCollapsedComposerCursor(nextPrompt, nextCursor),
+            ),
+          );
+          composerEditorRef.current?.focusAt(nextCursor);
+        });
+      },
+      [
+        activePendingProgress,
+        applyPromptReplacement,
+        isComposerApprovalState,
+        promptRef,
+        readComposerSnapshot,
+      ],
+    );
+
+    const insertPluginAtComposerCursor = useCallback(
+      (plugin: ComposerPluginMention) => {
+        if (isComposerApprovalState || activePendingProgress) {
+          return;
+        }
+        const snapshot = readComposerSnapshot();
+        const needsLeadingSpacer = snapshot.value.length > 0 && !/\s$/.test(snapshot.value);
+        const replacement = `${needsLeadingSpacer ? " " : ""}${plugin.token} `;
         const applied = applyPromptReplacement(snapshot.cursor, snapshot.cursor, replacement);
         if (!applied) {
           return;
@@ -2450,7 +2542,8 @@ export const ChatComposer = memo(
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
             className={cn(
-              "relative overflow-hidden border bg-card/98 transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65",
+              "relative border bg-card/98 transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65",
+              composerMenuOpen && !isComposerApprovalState ? "overflow-visible" : "overflow-hidden",
               newThreadMode
                 ? "rounded-[18px] border-[#dcdfe4] bg-background shadow-[0_1px_2px_rgba(15,23,42,0.045),0_14px_36px_-32px_rgba(15,23,42,0.55)] has-focus-visible:border-[#c8ccd2] dark:border-border/70 dark:bg-card/98 dark:shadow-[0_10px_28px_-24px_rgba(0,0,0,0.7)]"
                 : "rounded-[14px] shadow-[var(--t3-shadow-composer)] has-focus-visible:shadow-[var(--claude-shadow-panel)]",
@@ -2638,6 +2731,30 @@ export const ChatComposer = memo(
               </div>
             ) : null}
 
+            {composerMenuOpen && !isComposerApprovalState && (
+              <div
+                className={cn(
+                  "absolute inset-x-0 z-20 px-1",
+                  newThreadMode ? "top-0 -translate-y-[calc(100%+0.5rem)]" : "bottom-full mb-2",
+                )}
+              >
+                <ComposerCommandMenu
+                  items={composerMenuItems}
+                  resolvedTheme={resolvedTheme}
+                  isLoading={isComposerMenuLoading}
+                  triggerKind={composerTriggerKind}
+                  groupSlashCommandSections={
+                    composerTrigger?.kind === "slash-command" &&
+                    composerTrigger.query.trim().length === 0
+                  }
+                  emptyStateText={composerMenuEmptyState}
+                  activeItemId={activeComposerMenuItem?.id ?? null}
+                  onHighlightedItemChange={onComposerMenuItemHighlighted}
+                  onSelect={onSelectComposerItem}
+                />
+              </div>
+            )}
+
             <div
               className={cn(
                 "relative",
@@ -2649,25 +2766,6 @@ export const ChatComposer = memo(
                 newThreadMode && isDragOverComposer && "opacity-20 blur-[1px]",
               )}
             >
-              {composerMenuOpen && !isComposerApprovalState && (
-                <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
-                  <ComposerCommandMenu
-                    items={composerMenuItems}
-                    resolvedTheme={resolvedTheme}
-                    isLoading={isComposerMenuLoading}
-                    triggerKind={composerTriggerKind}
-                    groupSlashCommandSections={
-                      composerTrigger?.kind === "slash-command" &&
-                      composerTrigger.query.trim().length === 0
-                    }
-                    emptyStateText={composerMenuEmptyState}
-                    activeItemId={activeComposerMenuItem?.id ?? null}
-                    onHighlightedItemChange={onComposerMenuItemHighlighted}
-                    onSelect={onSelectComposerItem}
-                  />
-                </div>
-              )}
-
               {!isComposerCollapsedMobile &&
                 !isComposerApprovalState &&
                 pendingUserInputs.length === 0 &&
@@ -2855,25 +2953,33 @@ export const ChatComposer = memo(
                       interactionMode={interactionMode}
                       runtimeMode={runtimeMode}
                       skills={selectedProviderStatus?.skills ?? []}
+                      showRuntimeModeControl
                       showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                       traitsMenuContent={providerTraitsMenuContent}
                       onAttachFiles={openAttachmentPicker}
+                      onSelectPlugin={insertPluginAtComposerCursor}
                       onSelectSkill={insertSkillAtComposerCursor}
                       onRuntimeModeChange={handleRuntimeModeChange}
                       onInteractionModeChange={handleInteractionModeChange}
                     />
                   ) : (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground/70 hover:text-foreground"
-                      aria-label="Attach files"
-                      title="Attach files"
-                      onClick={openAttachmentPicker}
-                    >
-                      <PlusIcon />
-                    </Button>
+                    <NewThreadPlusMenu
+                      disabled={
+                        isConnecting ||
+                        isComposerApprovalState ||
+                        (environmentUnavailable !== null && activePendingProgress === null)
+                      }
+                      interactionMode={interactionMode}
+                      runtimeMode={runtimeMode}
+                      skills={selectedProviderStatus?.skills ?? []}
+                      showRuntimeModeControl={false}
+                      showInteractionModeToggle={false}
+                      onAttachFiles={openAttachmentPicker}
+                      onSelectPlugin={insertPluginAtComposerCursor}
+                      onSelectSkill={insertSkillAtComposerCursor}
+                      onRuntimeModeChange={handleRuntimeModeChange}
+                      onInteractionModeChange={handleInteractionModeChange}
+                    />
                   )}
 
                   {newThreadMode ? (

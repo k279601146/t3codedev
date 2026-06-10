@@ -8,16 +8,9 @@ import { BotIcon } from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
+import type { ComposerPluginMention } from "../../composerPluginMentions";
 import { formatProviderSkillInstallSource } from "~/providerSkillPresentation";
 import { cn } from "~/lib/utils";
-import {
-  Command,
-  CommandGroup,
-  CommandGroupLabel,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "../ui/command";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
 
 export type ComposerCommandItem =
@@ -26,6 +19,13 @@ export type ComposerCommandItem =
       type: "path";
       path: string;
       pathKind: ProjectEntry["kind"];
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "plugin";
+      plugin: ComposerPluginMention;
       label: string;
       description: string;
     }
@@ -86,6 +86,18 @@ function groupCommandItems(
   if (triggerKind === "skill") {
     return items.length > 0 ? [{ id: "skills", label: "Skills", items }] : [];
   }
+  if (triggerKind === "path") {
+    const pluginItems = items.filter((item) => item.type === "plugin");
+    const pathItems = items.filter((item) => item.type === "path");
+    const groups: ComposerCommandGroup[] = [];
+    if (pluginItems.length > 0) {
+      groups.push({ id: "plugins", label: "插件", items: pluginItems });
+    }
+    if (pathItems.length > 0) {
+      groups.push({ id: "files", label: pluginItems.length > 0 ? "文件" : null, items: pathItems });
+    }
+    return groups;
+  }
   if (triggerKind !== "slash-command" || !groupSlashCommandSections) {
     return [{ id: "default", label: null, items }];
   }
@@ -120,6 +132,10 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
       groupCommandItems(props.items, props.triggerKind, props.groupSlashCommandSections ?? true),
     [props.groupSlashCommandSections, props.items, props.triggerKind],
   );
+  const hasPathItems = props.items.some((item) => item.type === "path");
+  const hasPluginItems = props.items.some((item) => item.type === "plugin");
+  const shouldShowPathHint =
+    props.triggerKind === "path" && hasPluginItems && !hasPathItems && !props.isLoading;
 
   useLayoutEffect(() => {
     if (!props.activeItemId || !listRef.current) return;
@@ -130,57 +146,54 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   }, [props.activeItemId]);
 
   return (
-    <Command
-      autoHighlight={false}
-      mode="none"
-      onItemHighlighted={(highlightedValue) => {
-        props.onHighlightedItemChange(
-          typeof highlightedValue === "string" ? highlightedValue : null,
-        );
-      }}
+    <div
+      ref={listRef}
+      className="relative overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs"
     >
-      <div
-        ref={listRef}
-        className="relative overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs"
-      >
-        <CommandList className="max-h-72">
-          {groups.map((group, groupIndex) => (
-            <div key={group.id}>
-              {groupIndex > 0 ? <CommandSeparator className="my-0.5" /> : null}
-              <CommandGroup>
-                {group.label ? (
-                  <CommandGroupLabel className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
-                    {group.label}
-                  </CommandGroupLabel>
-                ) : null}
-                {group.items.map((item) => (
-                  <ComposerCommandMenuItem
-                    key={item.id}
-                    item={item}
-                    resolvedTheme={props.resolvedTheme}
-                    isActive={props.activeItemId === item.id}
-                    onHighlight={props.onHighlightedItemChange}
-                    onSelect={props.onSelect}
-                  />
-                ))}
-              </CommandGroup>
+      <div className="max-h-72 overflow-y-auto p-2" role="listbox">
+        {groups.map((group, groupIndex) => (
+          <div key={group.id} role="group">
+            {groupIndex > 0 ? <div className="my-0.5 h-px bg-border" /> : null}
+            {group.label ? (
+              <div className="px-1 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
+                {group.label}
+              </div>
+            ) : null}
+            {group.items.map((item) => (
+              <ComposerCommandMenuItem
+                key={item.id}
+                item={item}
+                resolvedTheme={props.resolvedTheme}
+                isActive={props.activeItemId === item.id}
+                onHighlight={props.onHighlightedItemChange}
+                onSelect={props.onSelect}
+              />
+            ))}
+          </div>
+        ))}
+        {shouldShowPathHint ? (
+          <div role="group">
+            <div className="my-0.5 h-px bg-border" />
+            <div className="px-1 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
+              文件
             </div>
-          ))}
-        </CommandList>
+            <p className="px-1 py-1 text-muted-foreground/70 text-xs">输入内容搜索文件</p>
+          </div>
+        ) : null}
         {props.items.length === 0 ? (
-          <div className="px-3 py-2">
+          <div className="px-1 py-1.5">
             {props.triggerKind === "skill" ? (
-              <CommandGroup>
-                <CommandGroupLabel className="px-0 pt-0 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
+              <>
+                <div className="px-0 pb-1 pt-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
                   Skills
-                </CommandGroupLabel>
+                </div>
                 <p className="text-muted-foreground/70 text-xs">
                   {props.isLoading
                     ? "Searching workspace skills..."
                     : (props.emptyStateText ??
                       "No skills found. Try / to browse provider commands.")}
                 </p>
-              </CommandGroup>
+              </>
             ) : (
               <p className="text-muted-foreground/70 text-xs">
                 {props.isLoading
@@ -194,7 +207,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
           </div>
         ) : null}
       </div>
-    </Command>
+    </div>
   );
 });
 
@@ -209,12 +222,12 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
     props.item.type === "skill" ? formatProviderSkillInstallSource(props.item.skill) : null;
 
   return (
-    <CommandItem
-      value={props.item.id}
+    <button
+      type="button"
       data-composer-item-id={props.item.id}
       className={cn(
-        "cursor-pointer select-none gap-2 hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit",
-        props.isActive && "bg-accent! text-accent-foreground!",
+        "flex min-h-8 w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-left text-base outline-none hover:bg-accent sm:min-h-7 sm:text-sm",
+        props.isActive && "bg-accent text-accent-foreground",
       )}
       onMouseMove={() => {
         if (!props.isActive) props.onHighlight(props.item.id);
@@ -225,12 +238,20 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       onClick={() => {
         props.onSelect(props.item);
       }}
+      role="option"
+      aria-selected={props.isActive}
     >
       {props.item.type === "path" ? (
         <VscodeEntryIcon
           pathValue={props.item.path}
           kind={props.item.pathKind}
           theme={props.resolvedTheme}
+        />
+      ) : null}
+      {props.item.type === "plugin" ? (
+        <span
+          className="inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground/80"
+          dangerouslySetInnerHTML={{ __html: props.item.plugin.iconSvg }}
         />
       ) : null}
       {props.item.type === "slash-command" ? (
@@ -255,6 +276,6 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {skillSourceLabel ? (
         <span className="shrink-0 pl-2 text-muted-foreground/70 text-xs">{skillSourceLabel}</span>
       ) : null}
-    </CommandItem>
+    </button>
   );
 });
