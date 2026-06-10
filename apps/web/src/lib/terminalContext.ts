@@ -1,5 +1,7 @@
 import { type ThreadId } from "@t3tools/contracts";
 
+import { stripTrailingComposerPluginLaunchContext } from "../composerPluginLaunch";
+
 export interface TerminalContextSelection {
   terminalId: string;
   terminalLabel: string;
@@ -235,10 +237,11 @@ export function extractTrailingTerminalContexts(prompt: string): ExtractedTermin
 }
 
 export function deriveDisplayedUserMessageState(prompt: string): DisplayedUserMessageState {
-  const extractedContexts = extractTrailingTerminalContexts(prompt);
+  const promptWithoutPluginLaunchContext = stripTrailingComposerPluginLaunchContext(prompt);
+  const extractedContexts = extractTrailingTerminalContexts(promptWithoutPluginLaunchContext);
   return {
     visibleText: extractedContexts.promptText,
-    copyText: prompt,
+    copyText: promptWithoutPluginLaunchContext,
     contextCount: extractedContexts.contextCount,
     previewTitle: extractedContexts.previewTitle,
     contexts: extractedContexts.contexts,

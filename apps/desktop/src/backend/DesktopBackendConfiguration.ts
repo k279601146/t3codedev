@@ -25,6 +25,8 @@ import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
+import * as DesktopBrowserAutomationHost from "../browser/DesktopBrowserAutomationHost.ts";
+import * as DesktopComputerAutomationHost from "../computer/DesktopComputerAutomationHost.ts";
 
 export interface DesktopBackendConfigurationShape {
   readonly resolve: Effect.Effect<DesktopBackendManager.DesktopBackendStartConfig>;
@@ -56,6 +58,10 @@ const DESKTOP_BACKEND_ENV_NAMES = [
   "T3CODE_DESKTOP_HTTPS_ENDPOINTS",
   "T3CODE_TAILSCALE_SERVE",
   "T3CODE_TAILSCALE_SERVE_PORT",
+  "T3CODE_BROWSER_USE_ENDPOINT",
+  "T3CODE_BROWSER_USE_TOKEN",
+  "T3CODE_COMPUTER_USE_ENDPOINT",
+  "T3CODE_COMPUTER_USE_TOKEN",
 ] as const;
 
 const COMMERCIAL_ENGINE_DESKTOP_ENV_NAMES = [
@@ -151,6 +157,10 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     readonly windowsSandboxMode: CommercialEngineWindowsSandboxMode;
     readonly observabilitySettings: BackendObservabilitySettings;
     readonly telemetryEnabled: boolean;
+    readonly browserUseEndpoint: string;
+    readonly browserUseToken: string;
+    readonly computerUseEndpoint: string;
+    readonly computerUseToken: string;
   }): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
     never,
@@ -191,6 +201,10 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         MYIDE_ENGINE_BUILD: input.engineBuild,
         [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: input.windowsSandboxMode,
         T3CODE_TELEMETRY_ENABLED: input.telemetryEnabled ? "true" : "false",
+        T3CODE_BROWSER_USE_ENDPOINT: input.browserUseEndpoint,
+        T3CODE_BROWSER_USE_TOKEN: input.browserUseToken,
+        T3CODE_COMPUTER_USE_ENDPOINT: input.computerUseEndpoint,
+        T3CODE_COMPUTER_USE_TOKEN: input.computerUseToken,
         ...commercialEnv,
       },
       bootstrap: {
@@ -228,6 +242,9 @@ export const layer = Layer.effect(
     const engineUpdater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
     const windowsSandbox = yield* DesktopWindowsSandbox.DesktopWindowsSandbox;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
+    const browserAutomationHost = yield* DesktopBrowserAutomationHost.DesktopBrowserAutomationHost;
+    const computerAutomationHost =
+      yield* DesktopComputerAutomationHost.DesktopComputerAutomationHost;
     const tokenRef = yield* Ref.make(Option.none<string>());
 
     return DesktopBackendConfiguration.of({
@@ -323,6 +340,10 @@ export const layer = Layer.effect(
           windowsSandboxMode,
           observabilitySettings,
           telemetryEnabled,
+          browserUseEndpoint: browserAutomationHost.endpoint,
+          browserUseToken: browserAutomationHost.token,
+          computerUseEndpoint: computerAutomationHost.endpoint,
+          computerUseToken: computerAutomationHost.token,
         }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
           Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),

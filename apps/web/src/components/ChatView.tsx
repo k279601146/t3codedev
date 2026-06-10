@@ -2,6 +2,8 @@ import {
   CONVERSATION_PROJECT_ID,
   type ApprovalRequestId,
   DEFAULT_MODEL,
+  type DesktopBrowserAutomationState,
+  type DesktopComputerAutomationState,
   defaultInstanceIdForDriver,
   type EnvironmentId,
   type MessageId,
@@ -195,6 +197,7 @@ import {
 import { isImageGenerationWorkEntry, pickGeneratedImagePath } from "./chat/MessagesTimeline.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
+import { appendComposerPluginLaunchContext } from "../composerPluginLaunch";
 import {
   useServerAvailableEditors,
   useServerConfig,
@@ -224,6 +227,14 @@ const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+function getBrowserToolCallSequence(state: DesktopBrowserAutomationState): number {
+  return Number.isFinite(state.toolCallSequence) ? state.toolCallSequence : 0;
+}
+
+function getComputerToolCallSequence(state: DesktopComputerAutomationState): number {
+  return Number.isFinite(state.toolCallSequence) ? state.toolCallSequence : 0;
+}
+
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -831,6 +842,8 @@ export default function ChatView(props: ChatViewProps) {
     startX: number;
     startWidth: number;
   } | null>(null);
+  const lastOpenedBrowserToolSequenceRef = useRef(0);
+  const lastOpenedComputerToolSequenceRef = useRef(0);
 
   const terminalState = useTerminalStateStore((state) =>
     selectThreadTerminalState(state.terminalStateByThreadKey, routeThreadRef),
@@ -923,6 +936,34 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    if (!bridge?.onBrowserAutomationState) {
+      return;
+    }
+    return bridge.onBrowserAutomationState((state) => {
+      const sequence = getBrowserToolCallSequence(state);
+      if (sequence <= 0 || sequence <= lastOpenedBrowserToolSequenceRef.current) {
+        return;
+      }
+      lastOpenedBrowserToolSequenceRef.current = sequence;
+      openRightPanelSurface("browser", activeThreadKey);
+    });
+  }, [activeThreadKey, openRightPanelSurface]);
+  useEffect(() => {
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    if (!bridge?.onComputerAutomationState) {
+      return;
+    }
+    return bridge.onComputerAutomationState((state) => {
+      const sequence = getComputerToolCallSequence(state);
+      if (sequence <= 0 || sequence <= lastOpenedComputerToolSequenceRef.current) {
+        return;
+      }
+      lastOpenedComputerToolSequenceRef.current = sequence;
+      openRightPanelSurface("computer", activeThreadKey);
+    });
+  }, [activeThreadKey, openRightPanelSurface]);
   const existingOpenTerminalThreadKeys = useMemo(() => {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
@@ -2923,9 +2964,8 @@ export default function ChatView(props: ChatViewProps) {
 
     const composerImagesSnapshot = [...composerImages];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
-    const messageTextForSend = appendTerminalContextsToPrompt(
-      promptForSend,
-      composerTerminalContextsSnapshot,
+    const messageTextForSend = appendComposerPluginLaunchContext(
+      appendTerminalContextsToPrompt(promptForSend, composerTerminalContextsSnapshot),
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();

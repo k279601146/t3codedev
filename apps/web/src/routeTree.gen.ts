@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PluginsRouteImport } from './routes/plugins'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
@@ -33,6 +34,11 @@ const SkillsRoute = SkillsRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PluginsRoute = PluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PairRoute = PairRouteImport.update({
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/automations': typeof AutomationsRoute
   '/pair': typeof PairRoute
+  '/plugins': typeof PluginsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/automations': typeof AutomationsRoute
   '/pair': typeof PairRoute
+  '/plugins': typeof PluginsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/_chat': typeof ChatRouteWithChildren
   '/automations': typeof AutomationsRoute
   '/pair': typeof PairRoute
+  '/plugins': typeof PluginsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/'
     | '/automations'
     | '/pair'
+    | '/plugins'
     | '/settings'
     | '/skills'
     | '/settings/archived'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
   to:
     | '/automations'
     | '/pair'
+    | '/plugins'
     | '/settings'
     | '/skills'
     | '/settings/archived'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/_chat'
     | '/automations'
     | '/pair'
+    | '/plugins'
     | '/settings'
     | '/skills'
     | '/settings/archived'
@@ -207,6 +219,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   AutomationsRoute: typeof AutomationsRoute
   PairRoute: typeof PairRoute
+  PluginsRoute: typeof PluginsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SkillsRoute: typeof SkillsRoute
 }
@@ -225,6 +238,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plugins': {
+      id: '/plugins'
+      path: '/plugins'
+      fullPath: '/plugins'
+      preLoaderRoute: typeof PluginsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pair': {
@@ -363,6 +383,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   AutomationsRoute: AutomationsRoute,
   PairRoute: PairRoute,
+  PluginsRoute: PluginsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SkillsRoute: SkillsRoute,
 }

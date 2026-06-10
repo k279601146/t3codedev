@@ -11,6 +11,22 @@ export const FETCH_CLOUD_AUTH_CHANNEL = "desktop:fetch-cloud-auth";
 export const CLOUD_AUTH_CALLBACK_CHANNEL = "desktop:cloud-auth-callback";
 export const OPEN_PATH_CHANNEL = "desktop:open-path";
 export const MENU_ACTION_CHANNEL = "desktop:menu-action";
+export const BROWSER_AUTOMATION_GET_STATE_CHANNEL = "desktop:browser-automation-get-state";
+export const BROWSER_AUTOMATION_STATE_CHANNEL = "desktop:browser-automation-state";
+export const BROWSER_AUTOMATION_SET_BOUNDS_CHANNEL = "desktop:browser-automation-set-bounds";
+export const BROWSER_AUTOMATION_NAVIGATE_CHANNEL = "desktop:browser-automation-navigate";
+export const BROWSER_AUTOMATION_RELOAD_CHANNEL = "desktop:browser-automation-reload";
+export const BROWSER_AUTOMATION_GO_BACK_CHANNEL = "desktop:browser-automation-go-back";
+export const BROWSER_AUTOMATION_GO_FORWARD_CHANNEL = "desktop:browser-automation-go-forward";
+export const COMPUTER_AUTOMATION_GET_STATE_CHANNEL = "desktop:computer-automation-get-state";
+export const COMPUTER_AUTOMATION_STATE_CHANNEL = "desktop:computer-automation-state";
+export const COMPUTER_AUTOMATION_SET_PAUSED_CHANNEL = "desktop:computer-automation-set-paused";
+export const COMPUTER_AUTOMATION_ALLOW_FOREGROUND_APP_CHANNEL =
+  "desktop:computer-automation-allow-foreground-app";
+export const COMPUTER_AUTOMATION_REMOVE_APP_PERMISSION_CHANNEL =
+  "desktop:computer-automation-remove-app-permission";
+export const COMPUTER_AUTOMATION_CLEAR_APP_PERMISSIONS_CHANNEL =
+  "desktop:computer-automation-clear-app-permissions";
 export const UPDATE_STATE_CHANNEL = "desktop:update-state";
 export const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 export const UPDATE_SET_CHANNEL_CHANNEL = "desktop:update-set-channel";

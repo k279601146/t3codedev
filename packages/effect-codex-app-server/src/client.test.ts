@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
@@ -10,6 +11,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 
 import * as CodexClient from "./client.ts";
+import * as CodexSchema from "./schema.ts";
 
 const mockPeerPath = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(import.meta.dirname, "../test/fixtures/codex-app-server-mock-peer.ts"),
@@ -151,4 +153,21 @@ it.layer(NodeServices.layer)("effect-codex-app-server client", (it) => {
       assert.equal(initialized.userAgent, "mock-codex-app-server");
     }),
   );
+});
+
+it("preserves dynamicTools when encoding thread/start params", () => {
+  const dynamicTools = [
+    {
+      namespace: "t3_browser",
+      name: "browser_title",
+      description: "Read title",
+      inputSchema: { type: "object", properties: {} },
+    },
+  ];
+  const encoded = Schema.encodeUnknownSync(CodexSchema.V2ThreadStartParams)({
+    cwd: "/tmp/project",
+    dynamicTools,
+  });
+
+  assert.deepEqual((encoded as { dynamicTools?: unknown }).dynamicTools, dynamicTools);
 });

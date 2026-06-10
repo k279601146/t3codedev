@@ -229,6 +229,7 @@ export function BranchToolbarBranchSelector({
     () => branchesSearchData?.pages.flatMap((page) => page.refs) ?? [],
     [branchesSearchData?.pages],
   );
+  const isInitialBranchesLoadPending = isBranchesSearchPending && refs.length === 0;
   const currentGitBranch =
     branchStatusQuery.data?.refName ?? refs.find((refName) => refName.current)?.name ?? null;
   const sourceControlPresentation = useMemo(
@@ -294,7 +295,7 @@ export function BranchToolbarBranchSelector({
   const [isBranchActionPending, startBranchActionTransition] = useTransition();
   const shouldVirtualizeBranchList = filteredBranchPickerItems.length > 40;
   const totalBranchCount = branchesSearchData?.pages[0]?.totalCount ?? 0;
-  const branchStatusText = isBranchesSearchPending
+  const branchStatusText = isInitialBranchesLoadPending
     ? "Loading refs..."
     : isFetchingNextPage
       ? "Loading more refs..."

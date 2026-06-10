@@ -7,6 +7,8 @@ import { ThreadId } from "@t3tools/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexRpc from "effect-codex-app-server/rpc";
 
+import { buildT3BrowserDynamicTools, T3_BROWSER_TOOL_NAMESPACE } from "../browserTools.ts";
+import { buildT3ComputerDynamicTools, T3_COMPUTER_TOOL_NAMESPACE } from "../computerTools.ts";
 import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
@@ -197,6 +199,43 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
+  it("injects T3 browser and computer dynamic tools when starting a thread", async () => {
+    let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
+    const client = {
+      request: <M extends "thread/start" | "thread/resume">(
+        method: M,
+        payload: CodexRpc.ClientRequestParamsByMethod[M],
+      ) => {
+        if (method === "thread/start") {
+          startPayload = payload as CodexRpc.ClientRequestParamsByMethod["thread/start"];
+        }
+        return Effect.succeed(
+          makeThreadOpenResponse("fresh-thread") as CodexRpc.ClientRequestResponsesByMethod[M],
+        );
+      },
+    };
+
+    await Effect.runPromise(
+      openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: undefined,
+      }),
+    );
+
+    assert.ok(startPayload);
+    assert.deepStrictEqual(startPayload.dynamicTools, [
+      ...buildT3BrowserDynamicTools(),
+      ...buildT3ComputerDynamicTools(),
+    ]);
+    assert.equal(startPayload.dynamicTools?.[0]?.namespace, T3_BROWSER_TOOL_NAMESPACE);
+    assert.equal(startPayload.dynamicTools?.at(-1)?.namespace, T3_COMPUTER_TOOL_NAMESPACE);
+  });
+
   it("falls back to thread/start when resume fails recoverably", async () => {
     const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
     const started = makeThreadOpenResponse("fresh-thread");
