@@ -1569,6 +1569,11 @@ export default function ChatView(props: ChatViewProps) {
     threadError: activeThread?.error,
   });
   const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
+  const canSteerActiveTurn =
+    phase === "running" &&
+    isServerThread &&
+    activeThread?.session?.activeTurnId !== undefined &&
+    activeThread.session.provider === ProviderDriverKind.make("codex");
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
     activeLatestTurn,
     activeThread?.session ?? null,
@@ -2960,16 +2965,31 @@ export default function ChatView(props: ChatViewProps) {
     }
     if (!activeProject && !isConversationThread) return;
     const threadIdForSend = activeThread.id;
+    if (phase === "running" && !canSteerActiveTurn) {
+      setThreadError(threadIdForSend, "Current provider does not support steering a running turn.");
+      return;
+    }
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
+    const activeTurnIdForSteer = canSteerActiveTurn
+      ? (activeThread.session?.activeTurnId ?? null)
+      : null;
     const baseBranchForWorktree =
-      activeProject && isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
+      activeTurnIdForSteer === null &&
+      activeProject &&
+      isFirstMessage &&
+      sendEnvMode === "worktree" &&
+      !activeThread.worktreePath
         ? activeThreadBranch
         : null;
 
     // In worktree mode, require an explicit base branch so we don't silently
     // fall back to local execution when branch selection is missing.
     const shouldCreateWorktree = Boolean(
-      activeProject && isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath,
+      activeTurnIdForSteer === null &&
+        activeProject &&
+        isFirstMessage &&
+        sendEnvMode === "worktree" &&
+        !activeThread.worktreePath,
     );
     if (shouldCreateWorktree && !activeThreadBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
@@ -3058,6 +3078,62 @@ export default function ChatView(props: ChatViewProps) {
     promptRef.current = "";
     clearComposerDraftContent(composerDraftTarget);
     composerRef.current?.resetCursorState();
+
+    if (activeTurnIdForSteer !== null) {
+      let turnSteerSucceeded = false;
+      await (async () => {
+        const turnAttachments = await turnAttachmentsPromise;
+        await api.orchestration.dispatchCommand({
+          type: "thread.turn.steer",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          expectedTurnId: activeTurnIdForSteer,
+          message: {
+            messageId: messageIdForSend,
+            role: "user",
+            text: outgoingMessageText,
+            attachments: turnAttachments,
+          },
+          createdAt: messageCreatedAt,
+        });
+        turnSteerSucceeded = true;
+      })().catch(async (err: unknown) => {
+        if (
+          !turnSteerSucceeded &&
+          promptRef.current.length === 0 &&
+          composerImagesRef.current.length === 0 &&
+          composerTerminalContextsRef.current.length === 0
+        ) {
+          setOptimisticUserMessages((existing) => {
+            const removed = existing.filter((message) => message.id === messageIdForSend);
+            for (const message of removed) {
+              revokeUserMessagePreviewUrls(message);
+            }
+            const next = existing.filter((message) => message.id !== messageIdForSend);
+            return next.length === existing.length ? existing : next;
+          });
+          promptRef.current = promptForSend;
+          const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
+          composerImagesRef.current = retryComposerImages;
+          composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
+          setComposerDraftPrompt(composerDraftTarget, promptForSend);
+          addComposerDraftImages(composerDraftTarget, retryComposerImages);
+          setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
+          composerRef.current?.resetCursorState({
+            cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
+            prompt: promptForSend,
+            detectTrigger: true,
+          });
+        }
+        setThreadError(
+          threadIdForSend,
+          err instanceof Error ? err.message : "Failed to steer current turn.",
+        );
+      });
+      sendInFlightRef.current = false;
+      resetLocalDispatch();
+      return;
+    }
 
     let turnStartSucceeded = false;
     await (async () => {
@@ -3929,6 +4005,7 @@ export default function ChatView(props: ChatViewProps) {
       isServerThread={isServerThread}
       isLocalDraftThread={isLocalDraftThread}
       phase={phase}
+      canSteerRunningTurn={canSteerActiveTurn}
       isConnecting={isConnecting}
       isSendBusy={isSendBusy}
       isUsageLimitReached={usageLimitBlock !== null}

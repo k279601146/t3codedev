@@ -16,8 +16,10 @@ import {
   ProjectMetaUpdatedPayload,
   OrchestrationProposedPlan,
   OrchestrationSession,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProjectCreateCommand,
   ThreadMetaUpdatedPayload,
+  ThreadTurnSteerCommand,
   ThreadTurnStartCommand,
   ThreadCreatedPayload,
   ThreadTurnDiff,
@@ -32,6 +34,7 @@ const decodeProjectCreateCommand = Schema.decodeUnknownEffect(ProjectCreateComma
 const decodeProjectCreatedPayload = Schema.decodeUnknownEffect(ProjectCreatedPayload);
 const decodeProjectMetaUpdatedPayload = Schema.decodeUnknownEffect(ProjectMetaUpdatedPayload);
 const decodeThreadTurnStartCommand = Schema.decodeUnknownEffect(ThreadTurnStartCommand);
+const decodeThreadTurnSteerCommand = Schema.decodeUnknownEffect(ThreadTurnSteerCommand);
 const decodeThreadTurnStartRequestedPayload = Schema.decodeUnknownEffect(
   ThreadTurnStartRequestedPayload,
 );
@@ -45,6 +48,16 @@ function getOptionValue(
   id: string,
 ): unknown {
   return options?.find((option) => option.id === id)?.value;
+}
+
+function makeImageAttachment(index: number) {
+  return {
+    type: "image",
+    id: `image-${index}`,
+    name: `image-${index}.png`,
+    mimeType: "image/png",
+    sizeBytes: 1024,
+  } as const;
 }
 const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPayload);
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
@@ -220,6 +233,90 @@ it.effect("decodes thread.turn.start defaults for provider and runtime mode", ()
     assert.strictEqual(parsed.modelSelection, undefined);
     assert.strictEqual(parsed.runtimeMode, DEFAULT_RUNTIME_MODE);
     assert.strictEqual(parsed.interactionMode, DEFAULT_PROVIDER_INTERACTION_MODE);
+  }),
+);
+
+it.effect("decodes thread.turn.steer with expected active turn id", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnSteerCommand({
+      type: "thread.turn.steer",
+      commandId: "cmd-steer-1",
+      threadId: "thread-1",
+      expectedTurnId: "turn-running",
+      message: {
+        messageId: "msg-steer-1",
+        role: "user",
+        text: "please adjust course",
+        attachments: [],
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.expectedTurnId, "turn-running");
+    assert.strictEqual(parsed.message.text, "please adjust course");
+  }),
+);
+
+it.effect("rejects thread.turn.steer without expected turn id", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.exit(
+      decodeThreadTurnSteerCommand({
+        type: "thread.turn.steer",
+        commandId: "cmd-steer-2",
+        threadId: "thread-1",
+        message: {
+          messageId: "msg-steer-2",
+          role: "user",
+          text: "missing turn id",
+          attachments: [],
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    assert.strictEqual(result._tag, "Failure");
+  }),
+);
+
+it.effect("rejects thread.turn.steer with empty text and no attachments", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.exit(
+      decodeThreadTurnSteerCommand({
+        type: "thread.turn.steer",
+        commandId: "cmd-steer-empty",
+        threadId: "thread-1",
+        expectedTurnId: "turn-running",
+        message: {
+          messageId: "msg-steer-empty",
+          role: "user",
+          text: "   ",
+          attachments: [],
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    assert.strictEqual(result._tag, "Failure");
+  }),
+);
+
+it.effect("rejects thread.turn.steer when attachments exceed provider limit", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.exit(
+      decodeThreadTurnSteerCommand({
+        type: "thread.turn.steer",
+        commandId: "cmd-steer-too-many-attachments",
+        threadId: "thread-1",
+        expectedTurnId: "turn-running",
+        message: {
+          messageId: "msg-steer-too-many-attachments",
+          role: "user",
+          text: "",
+          attachments: Array.from({ length: PROVIDER_SEND_TURN_MAX_ATTACHMENTS + 1 }, (_, index) =>
+            makeImageAttachment(index),
+          ),
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    assert.strictEqual(result._tag, "Failure");
   }),
 );
 

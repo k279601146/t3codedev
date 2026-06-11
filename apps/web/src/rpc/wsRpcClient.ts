@@ -165,6 +165,16 @@ export interface WsRpcClient {
     readonly uninstall: RpcUnaryMethod<typeof WS_METHODS.skillsUninstall>;
     readonly content: RpcUnaryMethod<typeof WS_METHODS.skillsContent>;
   };
+  readonly automations: {
+    readonly list: RpcUnaryMethod<typeof WS_METHODS.automationsList>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.automationsGet>;
+    readonly upsert: RpcUnaryMethod<typeof WS_METHODS.automationsUpsert>;
+    readonly delete: RpcUnaryMethod<typeof WS_METHODS.automationsDelete>;
+    readonly runNow: RpcUnaryMethod<typeof WS_METHODS.automationsRunNow>;
+    readonly archiveRun: RpcUnaryMethod<typeof WS_METHODS.automationsArchiveRun>;
+    readonly markRunRead: RpcUnaryMethod<typeof WS_METHODS.automationsMarkRunRead>;
+    readonly subscribe: RpcStreamMethod<typeof WS_METHODS.automationsSubscribe>;
+  };
 }
 
 export function createWsRpcClient(transport: WsTransport): WsRpcClient {
@@ -347,6 +357,26 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       uninstall: (input) =>
         transport.request((client) => client[WS_METHODS.skillsUninstall](input)),
       content: (input) => transport.request((client) => client[WS_METHODS.skillsContent](input)),
+    },
+    automations: {
+      list: (input) => transport.request((client) => client[WS_METHODS.automationsList](input)),
+      get: (input) => transport.request((client) => client[WS_METHODS.automationsGet](input)),
+      upsert: (input) =>
+        transport.request((client) => client[WS_METHODS.automationsUpsert](input)),
+      delete: (input) =>
+        transport.request((client) => client[WS_METHODS.automationsDelete](input)),
+      runNow: (input) =>
+        transport.request((client) => client[WS_METHODS.automationsRunNow](input)),
+      archiveRun: (input) =>
+        transport.request((client) => client[WS_METHODS.automationsArchiveRun](input)),
+      markRunRead: (input) =>
+        transport.request((client) => client[WS_METHODS.automationsMarkRunRead](input)),
+      subscribe: (listener, options) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.automationsSubscribe]({}),
+          listener,
+          { ...options, tag: WS_METHODS.automationsSubscribe },
+        ),
     },
   };
 }

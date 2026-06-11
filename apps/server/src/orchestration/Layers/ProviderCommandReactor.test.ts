@@ -221,6 +221,12 @@ describe("ProviderCommandReactor", () => {
         turnId: asTurnId("turn-1"),
       }),
     );
+    const steerTurn = vi.fn((input: { readonly threadId: ThreadId; readonly expectedTurnId: TurnId }) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        turnId: input.expectedTurnId,
+      }),
+    );
     const interruptTurn = vi.fn((_: unknown) => Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
     const respondToUserInput = vi.fn<ProviderServiceShape["respondToUserInput"]>(() => Effect.void);
@@ -289,6 +295,7 @@ describe("ProviderCommandReactor", () => {
     const service: ProviderServiceShape = {
       startSession: startSession as ProviderServiceShape["startSession"],
       sendTurn: sendTurn as ProviderServiceShape["sendTurn"],
+      steerTurn: steerTurn as ProviderServiceShape["steerTurn"],
       interruptTurn: interruptTurn as ProviderServiceShape["interruptTurn"],
       respondToRequest: respondToRequest as ProviderServiceShape["respondToRequest"],
       respondToUserInput: respondToUserInput as ProviderServiceShape["respondToUserInput"],
@@ -420,6 +427,7 @@ describe("ProviderCommandReactor", () => {
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       startSession,
       sendTurn,
+      steerTurn,
       interruptTurn,
       respondToRequest,
       respondToUserInput,
@@ -472,6 +480,54 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("reacts to thread.turn.steer by steering the active provider turn", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-running-before-steer"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("turn-1"),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.steer",
+        commandId: CommandId.make("cmd-turn-steer"),
+        threadId: ThreadId.make("thread-1"),
+        expectedTurnId: asTurnId("turn-1"),
+        message: {
+          messageId: asMessageId("user-message-steer"),
+          role: "user",
+          text: "adjust the current work",
+          attachments: [],
+        },
+        createdAt: "2026-01-01T00:00:05.000Z",
+      }),
+    );
+
+    await waitFor(() => harness.steerTurn.mock.calls.length === 1);
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+    expect(harness.steerTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      expectedTurnId: asTurnId("turn-1"),
+      input: "adjust the current work",
+    });
   });
 
   it("uses an isolated lightweight cwd for conversation threads", async () => {

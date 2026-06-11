@@ -58,6 +58,7 @@ import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
 import { SkillsService } from "./skills/SkillsService.ts";
+import { AutomationService } from "./automations/Services/AutomationService.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
@@ -1022,6 +1023,78 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             {
               "rpc.aggregate": "skills",
             },
+          ),
+        [WS_METHODS.automationsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsList,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.list(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsGet]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsGet,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.get(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsUpsert]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsUpsert,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.upsert(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsDelete]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsDelete,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.delete(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsRunNow]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsRunNow,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.runNow(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsArchiveRun]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsArchiveRun,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.archiveRun(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsMarkRunRead]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationsMarkRunRead,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return yield* service.markRunRead(input);
+            }),
+            { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationsSubscribe]: (_input) =>
+          observeRpcStreamEffect(
+            WS_METHODS.automationsSubscribe,
+            Effect.gen(function* () {
+              const service = yield* AutomationService;
+              return service.stream;
+            }),
+            { "rpc.aggregate": "automations" },
           ),
         [WS_METHODS.projectsSearchEntries]: (input) =>
           observeRpcEffect(

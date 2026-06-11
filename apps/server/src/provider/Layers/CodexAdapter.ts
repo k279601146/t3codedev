@@ -25,6 +25,7 @@ import {
   ProviderApprovalDecision,
   ThreadId,
   ProviderSendTurnInput,
+  ProviderSteerTurnInput,
 } from "@t3tools/contracts";
 import path from "node:path";
 import * as Effect from "effect/Effect";
@@ -1668,7 +1669,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   };
 
   const resolveAttachment = Effect.fn("resolveAttachment")(function* (
-    input: ProviderSendTurnInput,
+    input: Pick<ProviderSendTurnInput | ProviderSteerTurnInput, "threadId">,
     attachment: NonNullable<ProviderSendTurnInput["attachments"]>[number],
   ) {
     const attachmentPath = resolveAttachmentPath({
@@ -1708,7 +1709,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     }
   });
 
-  const sendTurn: CodexAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+  const prepareRuntimeInput = Effect.fn("prepareRuntimeInput")(function* (
+    input: Pick<ProviderSendTurnInput | ProviderSteerTurnInput, "threadId" | "input" | "attachments">,
+  ) {
     const codexAttachments = yield* Effect.forEach(
       input.attachments ?? [],
       (attachment) => resolveAttachment(input, attachment),
@@ -1732,6 +1735,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       finalPrompt = finalPrompt ? `${finalPrompt}${extraTextInput}` : extraTextInput.trim();
     }
 
+    return {
+      ...(finalPrompt ? { input: finalPrompt } : {}),
+      ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}),
+    };
+  });
+
+  const sendTurn: CodexAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+    const runtimeInput = yield* prepareRuntimeInput(input);
     const session = yield* requireSession(input.threadId);
     const reasoningEffort =
       input.modelSelection?.instanceId === boundInstanceId
@@ -1743,7 +1754,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         : undefined;
     return yield* session.runtime
       .sendTurn({
-        ...(finalPrompt ? { input: finalPrompt } : {}),
+        ...runtimeInput,
         ...(input.modelSelection?.instanceId === boundInstanceId
           ? { model: input.modelSelection.model }
           : {}),
@@ -1754,7 +1765,6 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           : {}),
         ...(fastMode === true ? { serviceTier: "fast" } : {}),
         ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
-        ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}),
       })
       .pipe(Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "turn/start", cause)));
   });
@@ -1768,6 +1778,17 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       });
     }
     return session;
+  });
+
+  const steerTurn: CodexAdapterShape["steerTurn"] = Effect.fn("steerTurn")(function* (input) {
+    const runtimeInput = yield* prepareRuntimeInput(input);
+    const session = yield* requireSession(input.threadId);
+    return yield* session.runtime
+      .steerTurn({
+        expectedTurnId: input.expectedTurnId,
+        ...runtimeInput,
+      })
+      .pipe(Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "turn/steer", cause)));
   });
 
   const interruptTurn: CodexAdapterShape["interruptTurn"] = (threadId, turnId) =>
@@ -1922,6 +1943,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     },
     startSession,
     sendTurn,
+    steerTurn,
     interruptTurn,
     readThread,
     rollbackThread,

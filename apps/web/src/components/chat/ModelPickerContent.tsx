@@ -95,6 +95,13 @@ function getReasoningOptionLabel(label: string): string {
   return localized[normalized] ?? label;
 }
 
+function getReasoningGroupLabel(descriptor: ProviderOptionDescriptor): string {
+  if (descriptor.id === "reasoningEffort") {
+    return "推理";
+  }
+  return descriptor.label || "推理";
+}
+
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
   /** The instance currently selected in the composer (combobox "value"). */
   activeInstanceId: ProviderInstanceId;
@@ -136,6 +143,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     onInstanceModelChange,
   } = props;
   const [searchQuery, setSearchQuery] = useState("");
+  const [modelSubmenuOpen, setModelSubmenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRegionRef = useRef<HTMLDivElement>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
@@ -171,6 +179,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     reasoningDescriptor !== null &&
     reasoningDescriptor.options.length > 0 &&
     typeof props.onModelOptionsChange === "function";
+  const showReasoningFirstMenu = props.simplified && showReasoningSubmenu;
 
   const handleReasoningChange = useCallback(
     (value: string) => {
@@ -490,6 +499,25 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       new Map(filteredModels.map((model) => [`${model.instanceId}:${model.slug}`, model] as const)),
     [filteredModels],
   );
+  const reasoningFirstModels = useMemo(() => {
+    const scopedModels =
+      props.lockedProvider !== null
+        ? flatModels.filter((model) => matchesLockedProvider(model))
+        : flatModels.filter((model) => model.instanceId === props.activeInstanceId);
+
+    return sortProviderModelItems(scopedModels, {
+      favoriteModelKeys: favoritesSet,
+      groupFavorites: false,
+      instanceOrder,
+    });
+  }, [
+    favoritesSet,
+    flatModels,
+    instanceOrder,
+    matchesLockedProvider,
+    props.activeInstanceId,
+    props.lockedProvider,
+  ]);
   const modelJumpShortcutContext = useMemo(
     () =>
       ({
@@ -591,6 +619,109 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       window.clearTimeout(timeout);
     };
   }, [filteredModelKeys]);
+
+  if (showReasoningFirstMenu && reasoningDescriptor) {
+    const activeModel = reasoningFirstModels.find(
+      (item) => item.instanceId === props.activeInstanceId && item.slug === props.model,
+    );
+    const activeModelLabel = activeModel
+      ? getDisplayModelName(activeModel, { preferShortName: true })
+      : props.model;
+
+    return (
+      <TooltipProvider delay={0}>
+        <div
+          className="relative w-[200px] max-w-[calc(100vw-1rem)] select-none"
+          onMouseLeave={() => setModelSubmenuOpen(false)}
+        >
+          {modelSubmenuOpen ? (
+            <div
+              className="absolute right-[calc(100%+0.25rem)] bottom-0 z-20 w-[200px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[12px] border bg-popover p-1 text-popover-foreground shadow-lg/10 before:pointer-events-none before:absolute before:inset-0 before:rounded-[11px] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="px-2 pb-1 pt-1.5 text-[12px] leading-5 text-muted-foreground">
+                模型
+              </div>
+              <div className="max-h-[260px] overflow-y-auto">
+                {reasoningFirstModels.map((model) => {
+                  const selected =
+                    model.instanceId === props.activeInstanceId && model.slug === props.model;
+                  return (
+                    <button
+                      key={`${model.instanceId}:${model.slug}`}
+                      type="button"
+                      className={cn(
+                        "flex h-8 w-full items-center justify-between gap-3 rounded-[7px] px-2 text-left text-[13px] leading-none text-foreground outline-none transition-colors hover:bg-accent/70",
+                        selected && "bg-accent/60",
+                      )}
+                      onClick={() => handleModelSelect(model.slug, model.instanceId)}
+                    >
+                      <span className="min-w-0 truncate">
+                        {getDisplayModelName(model, { preferShortName: true })}
+                      </span>
+                      {selected ? (
+                        <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div
+            className="overflow-hidden rounded-[12px] border bg-popover p-1 text-popover-foreground shadow-lg/10 before:pointer-events-none before:absolute before:inset-0 before:rounded-[11px] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-2 pb-1 pt-1.5 text-[12px] leading-5 text-muted-foreground">
+              {getReasoningGroupLabel(reasoningDescriptor)}
+            </div>
+            <div className="space-y-0.5">
+              {reasoningDescriptor.options.map((option) => {
+                const selected = reasoningValue === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={cn(
+                      "flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[13px] leading-none text-foreground outline-none transition-colors hover:bg-accent/70",
+                      selected && "bg-accent/60",
+                    )}
+                    onClick={() => handleReasoningChange(option.id)}
+                  >
+                    <span>{getReasoningOptionLabel(option.label)}</span>
+                    {selected ? (
+                      <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mx-1 my-1 h-px bg-border" />
+            <button
+              type="button"
+              aria-expanded={modelSubmenuOpen}
+              aria-haspopup="menu"
+              data-model-picker-model-submenu-trigger="true"
+              className={cn(
+                "flex h-8 w-full items-center justify-between gap-3 rounded-[7px] px-2 text-left text-[13px] leading-none text-foreground outline-none transition-colors hover:bg-accent/70",
+                modelSubmenuOpen && "bg-accent/60",
+              )}
+              onClick={() => setModelSubmenuOpen((open) => !open)}
+              onFocus={() => setModelSubmenuOpen(true)}
+              onMouseEnter={() => setModelSubmenuOpen(true)}
+            >
+              <span className="min-w-0 truncate">{activeModelLabel}</span>
+              <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+            </button>
+          </div>
+        </div>
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider delay={0}>

@@ -34,6 +34,7 @@ import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import { ProviderSessionReaper } from "./provider/Services/ProviderSessionReaper.ts";
 import { ProjectWorkspaceConfig } from "./workspace/ProjectWorkspaceConfig.ts";
+import { AutomationService } from "./automations/Services/AutomationService.ts";
 import {
   formatHeadlessServeOutput,
   formatHostForUrl,
@@ -298,6 +299,7 @@ export const makeServerRuntimeStartup = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
   const keybindings = yield* Keybindings;
   const orchestrationReactor = yield* OrchestrationReactor;
+  const automationService = yield* AutomationService;
   const providerSessionReaper = yield* ProviderSessionReaper;
   const lifecycleEvents = yield* ServerLifecycleEvents;
   const serverSettings = yield* ServerSettingsService;
@@ -345,6 +347,7 @@ export const makeServerRuntimeStartup = Effect.gen(function* () {
       "reactors.start",
       Effect.gen(function* () {
         yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
+        yield* automationService.start().pipe(Scope.provide(reactorScope));
         yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
       }),
     );

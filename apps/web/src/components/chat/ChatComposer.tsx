@@ -346,6 +346,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
     isComplete: boolean;
   } | null;
   isRunning: boolean;
+  canSteerRunningTurn: boolean;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
@@ -369,6 +370,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         compact={props.compact}
         pendingAction={props.pendingAction}
         isRunning={props.isRunning}
+        canSteerRunningTurn={props.canSteerRunningTurn}
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
@@ -772,6 +774,7 @@ export interface ChatComposerProps {
 
   // Session phase
   phase: SessionPhase;
+  canSteerRunningTurn: boolean;
   isConnecting: boolean;
   isSendBusy: boolean;
   isUsageLimitReached?: boolean;
@@ -888,6 +891,7 @@ export const ChatComposer = memo(
       isServerThread: _isServerThread,
       isLocalDraftThread: _isLocalDraftThread,
       phase,
+      canSteerRunningTurn,
       isConnecting,
       isSendBusy,
       isUsageLimitReached = false,
@@ -1491,8 +1495,12 @@ export const ChatComposer = memo(
       [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
     );
     const collapsedComposerPrimaryActionDisabled =
-      phase === "running" || isSendBusy || isConnecting || !composerSendState.hasSendableContent;
-    const collapsedComposerPrimaryActionLabel = "Send message";
+      isSendBusy ||
+      isConnecting ||
+      !composerSendState.hasSendableContent ||
+      (phase === "running" && !canSteerRunningTurn);
+    const collapsedComposerPrimaryActionLabel =
+      phase === "running" && canSteerRunningTurn ? "Steer current turn" : "Send message";
     const showMobilePendingAnswerActions =
       isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -2547,7 +2555,7 @@ export const ChatComposer = memo(
         keybindings={keybindings}
         modelOptionsByInstance={modelOptionsByInstance}
         modelCapabilities={selectedModelCapabilities}
-        modelOptionSelections={selectedModelOptionSelections}
+        modelOptionSelections={selectedModelOptionSelections ?? null}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         {...(composerProviderState.modelPickerIconClassName
@@ -2731,6 +2739,7 @@ export const ChatComposer = memo(
                         compact
                         pendingAction={pendingPrimaryAction}
                         isRunning={false}
+                        canSteerRunningTurn={false}
                         showPlanFollowUpPrompt={false}
                         promptHasText={false}
                         isSendBusy={isSendBusy}
@@ -2965,6 +2974,7 @@ export const ChatComposer = memo(
                       compact
                       pendingAction={pendingPrimaryAction}
                       isRunning={false}
+                      canSteerRunningTurn={false}
                       showPlanFollowUpPrompt={false}
                       promptHasText={false}
                       isSendBusy={isSendBusy}
@@ -3127,6 +3137,7 @@ export const ChatComposer = memo(
                     activeContextWindow={activeContextWindow}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
+                    canSteerRunningTurn={canSteerRunningTurn}
                     showPlanFollowUpPrompt={
                       pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                     }

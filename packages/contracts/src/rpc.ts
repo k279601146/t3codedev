@@ -111,6 +111,20 @@ import {
   SkillsServiceError,
 } from "./skills.ts";
 import {
+  AutomationArchiveRunInput,
+  AutomationDeleteInput,
+  AutomationGetInput,
+  AutomationGetResult,
+  AutomationListInput,
+  AutomationListResult,
+  AutomationMarkRunReadInput,
+  AutomationRunNowInput,
+  AutomationServiceError,
+  AutomationStreamEvent,
+  AutomationUpsertInput,
+  Automation,
+} from "./automations.ts";
+import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
@@ -189,6 +203,16 @@ export const WS_METHODS = {
   skillsInstall: "skills.install",
   skillsUninstall: "skills.uninstall",
   skillsContent: "skills.content",
+
+  // Automations methods
+  automationsList: "automations.list",
+  automationsGet: "automations.get",
+  automationsUpsert: "automations.upsert",
+  automationsDelete: "automations.delete",
+  automationsRunNow: "automations.runNow",
+  automationsArchiveRun: "automations.archiveRun",
+  automationsMarkRunRead: "automations.markRunRead",
+  automationsSubscribe: "automations.subscribe",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -333,6 +357,54 @@ export const WsSkillsContentRpc = Rpc.make(WS_METHODS.skillsContent, {
   payload: SkillContentInput,
   success: SkillContentResult,
   error: SkillsServiceError,
+});
+
+export const WsAutomationsListRpc = Rpc.make(WS_METHODS.automationsList, {
+  payload: AutomationListInput,
+  success: AutomationListResult,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsGetRpc = Rpc.make(WS_METHODS.automationsGet, {
+  payload: AutomationGetInput,
+  success: AutomationGetResult,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsUpsertRpc = Rpc.make(WS_METHODS.automationsUpsert, {
+  payload: AutomationUpsertInput,
+  success: Automation,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsDeleteRpc = Rpc.make(WS_METHODS.automationsDelete, {
+  payload: AutomationDeleteInput,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsRunNowRpc = Rpc.make(WS_METHODS.automationsRunNow, {
+  payload: AutomationRunNowInput,
+  success: AutomationListResult,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsArchiveRunRpc = Rpc.make(WS_METHODS.automationsArchiveRun, {
+  payload: AutomationArchiveRunInput,
+  success: AutomationListResult,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsMarkRunReadRpc = Rpc.make(WS_METHODS.automationsMarkRunRead, {
+  payload: AutomationMarkRunReadInput,
+  success: AutomationListResult,
+  error: AutomationServiceError,
+});
+
+export const WsAutomationsSubscribeRpc = Rpc.make(WS_METHODS.automationsSubscribe, {
+  payload: Schema.Struct({}),
+  success: AutomationStreamEvent,
+  error: AutomationServiceError,
+  stream: true,
 });
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
@@ -589,6 +661,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsSkillsInstallRpc,
   WsSkillsUninstallRpc,
   WsSkillsContentRpc,
+  WsAutomationsListRpc,
+  WsAutomationsGetRpc,
+  WsAutomationsUpsertRpc,
+  WsAutomationsDeleteRpc,
+  WsAutomationsRunNowRpc,
+  WsAutomationsArchiveRunRpc,
+  WsAutomationsMarkRunReadRpc,
+  WsAutomationsSubscribeRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsListDirectoryRpc,

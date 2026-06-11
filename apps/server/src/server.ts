@@ -90,6 +90,8 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
+import { AutomationRepositoryLive } from "./automations/Layers/AutomationRepository.ts";
+import { AutomationServiceLive } from "./automations/Layers/AutomationService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -150,8 +152,7 @@ const PlatformServicesLive = Layer.unwrap(
   }),
 );
 
-const ReactorLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(OrchestrationReactorLive),
+const ReactorLayerLive = OrchestrationReactorLive.pipe(
   Layer.provideMerge(ProviderRuntimeIngestionLive),
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
@@ -176,6 +177,11 @@ const ProviderLayerLive = ProviderServiceLive.pipe(
 
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
 
+const OrchestrationRuntimeLayerLive = OrchestrationLayerLive.pipe(
+  Layer.provideMerge(RepositoryIdentityResolverLive),
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(
   Layer.provide(VcsProjectConfig.layer),
 );
@@ -188,11 +194,20 @@ const SourceControlProviderRegistryLayerLive = SourceControlProviderRegistry.lay
   Layer.provideMerge(VcsDriverRegistryLayerLive),
 );
 
+const ProviderInstanceRegistryLayerLive = ProviderInstanceRegistryHydrationLive.pipe(
+  Layer.provideMerge(ProviderEventLoggersLive),
+  Layer.provideMerge(ServerSettingsLive),
+);
+
+const TextGenerationLayerLive = TextGeneration.layer.pipe(
+  Layer.provideMerge(ProviderInstanceRegistryLayerLive),
+);
+
 const GitManagerLayerLive = GitManager.layer.pipe(
   Layer.provideMerge(ProjectSetupScriptRunnerLive),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
-  Layer.provideMerge(TextGeneration.layer),
+  Layer.provideMerge(TextGenerationLayerLive),
 );
 
 const GitLayerLive = Layer.empty.pipe(
@@ -254,7 +269,7 @@ const AuthLayerLive = ServerAuthLive.pipe(
 );
 
 const ProviderRegistryLayerLive = ProviderRegistryLive.pipe(
-  Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+  Layer.provideMerge(ProviderInstanceRegistryLayerLive),
   Layer.provideMerge(ProviderEventLoggersLive),
 );
 
@@ -266,9 +281,15 @@ const SkillsServiceLayerLive = SkillsServiceLive.pipe(
 
 const SkillsLayerLive = Layer.mergeAll(SkillsCatalogServiceLive, SkillsServiceLayerLive);
 
+const AutomationLayerLive = AutomationServiceLive.pipe(
+  Layer.provideMerge(AutomationRepositoryLive.pipe(Layer.provide(PersistenceLayerLive))),
+  Layer.provideMerge(OrchestrationRuntimeLayerLive),
+  Layer.provideMerge(GitWorkflowLayerLive),
+);
+
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
-  Layer.provideMerge(OrchestrationLayerLive),
+  Layer.provideMerge(OrchestrationRuntimeLayerLive),
 );
 
 const DynamicToolServicesLayerLive = Layer.mergeAll(
@@ -279,6 +300,7 @@ const DynamicToolServicesLayerLive = Layer.mergeAll(
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // Core Services
+  Layer.provideMerge(OrchestrationRuntimeLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
   Layer.provideMerge(GitLayerLive),
@@ -304,10 +326,10 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ServerSettingsLive),
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(ProjectFaviconResolverLive),
-  Layer.provideMerge(RepositoryIdentityResolverLive),
   Layer.provideMerge(ServerEnvironmentLive),
   Layer.provideMerge(AuthLayerLive),
   Layer.provideMerge(SkillsLayerLive),
+  Layer.provideMerge(AutomationLayerLive),
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
@@ -448,6 +470,8 @@ export const makeServerLayer = Layer.unwrap(
 
     return serverApplicationLayer.pipe(
       Layer.provideMerge(RuntimeServicesLive),
+      Layer.provide(OrchestrationRuntimeLayerLive),
+      Layer.provide(TerminalLayerLive),
       Layer.provideMerge(HttpServerLive),
       Layer.provide(ObservabilityLive),
       Layer.provideMerge(FetchHttpClient.layer),

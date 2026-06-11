@@ -14,6 +14,7 @@ import {
   type ProviderEvent,
   type ProviderSession,
   type ProviderTurnStartResult,
+  type ProviderTurnSteerResult,
   type ProviderUserInputAnswers,
   ThreadId,
   TurnId,
@@ -85,6 +86,18 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
       }),
   );
 
+  public readonly steerTurnImpl = vi.fn(
+    (_input: {
+      readonly expectedTurnId: TurnId;
+      readonly input?: string | undefined;
+      readonly attachments?: ReadonlyArray<{ readonly type: "image"; readonly url: string }> | undefined;
+    }): Promise<ProviderTurnSteerResult> =>
+      Promise.resolve({
+        threadId: this.options.threadId,
+        turnId: asTurnId("turn-1"),
+      }),
+  );
+
   public readonly interruptTurnImpl = vi.fn(
     (_turnId?: TurnId): Promise<void> => Promise.resolve(undefined),
   );
@@ -131,6 +144,14 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
 
   sendTurn(input: CodexSessionRuntimeSendTurnInput) {
     return Effect.promise(() => this.sendTurnImpl(input));
+  }
+
+  steerTurn(input: {
+    readonly expectedTurnId: TurnId;
+    readonly input?: string | undefined;
+    readonly attachments?: ReadonlyArray<{ readonly type: "image"; readonly url: string }> | undefined;
+  }) {
+    return Effect.promise(() => this.steerTurnImpl(input));
   }
 
   interruptTurn(turnId?: TurnId) {

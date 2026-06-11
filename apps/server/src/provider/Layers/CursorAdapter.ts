@@ -976,6 +976,15 @@ export function makeCursorAdapter(
         );
       });
 
+    const steerTurn: CursorAdapterShape["steerTurn"] = (input) =>
+      Effect.fail(
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/steer",
+          detail: `Provider '${PROVIDER}' does not support same-turn steering.`,
+        }),
+      );
+
     const respondToRequest: CursorAdapterShape["respondToRequest"] = (
       threadId,
       requestId,
@@ -1068,6 +1077,7 @@ export function makeCursorAdapter(
       capabilities: { sessionModelSwitch: "in-session" },
       startSession,
       sendTurn,
+      steerTurn,
       interruptTurn,
       readThread,
       rollbackThread,

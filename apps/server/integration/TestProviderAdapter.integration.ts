@@ -474,6 +474,11 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       Effect.sync(() => {
         sessions.clear();
       });
+    const steerTurn: ProviderAdapterShape<ProviderAdapterError>["steerTurn"] = (input) =>
+      Effect.sync(() => ({
+        threadId: input.threadId,
+        turnId: input.expectedTurnId,
+      }));
 
     const adapter: ProviderAdapterShape<ProviderAdapterError> = {
       provider,
@@ -482,6 +487,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       },
       startSession,
       sendTurn,
+      steerTurn,
       interruptTurn,
       respondToRequest,
       respondToUserInput,

@@ -1275,6 +1275,14 @@ export function makeOpenCodeAdapter(
       },
     );
 
+    const steerTurn: OpenCodeAdapterShape["steerTurn"] = Effect.fn("steerTurn")(function* (input) {
+      return yield* new ProviderAdapterRequestError({
+        provider: PROVIDER,
+        method: "turn/steer",
+        detail: `Provider '${PROVIDER}' does not support same-turn steering.`,
+      });
+    });
+
     const respondToRequest: OpenCodeAdapterShape["respondToRequest"] = Effect.fn(
       "respondToRequest",
     )(function* (threadId, requestId, decision) {
@@ -1418,6 +1426,7 @@ export function makeOpenCodeAdapter(
       },
       startSession,
       sendTurn,
+      steerTurn,
       interruptTurn,
       respondToRequest,
       respondToUserInput,

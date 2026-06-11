@@ -83,6 +83,11 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
 import { ServerSettingsService, type ServerSettingsShape } from "./serverSettings.ts";
+import {
+  SkillsCatalogService,
+  type SkillsCatalogServiceShape,
+} from "./skills/SkillsCatalogService.ts";
+import { SkillsService, type SkillsServiceShape } from "./skills/SkillsService.ts";
 import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager.ts";
 import {
   BrowserTraceCollector,
@@ -118,6 +123,10 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as Data from "effect/Data";
+import {
+  AutomationService,
+  type AutomationServiceShape,
+} from "./automations/Services/AutomationService.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -337,6 +346,9 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     repositoryIdentityResolver?: Partial<RepositoryIdentityResolverShape>;
+    skillsCatalogService?: Partial<SkillsCatalogServiceShape>;
+    skillsService?: Partial<SkillsServiceShape>;
+    automationService?: Partial<AutomationServiceShape>;
   };
 }) =>
   Effect.gen(function* () {
@@ -501,6 +513,68 @@ const buildAppUnderTest = (options?: {
           ...options.layers.vcsStatusBroadcaster,
         })
       : VcsStatusBroadcaster.layer.pipe(Layer.provide(gitWorkflowLayer));
+    const automationsAndSkillsLayer = Layer.mergeAll(
+      Layer.mock(SkillsCatalogService)({
+        getCatalog: () =>
+          Effect.succeed({
+            snapshots: [],
+            hasErrors: false,
+          }),
+        warmUp: Effect.void,
+        findCatalogItem: () => Effect.succeed(undefined),
+        resolveVendorAssetPath: () => Effect.succeed(null),
+        readCatalogContent: () => Effect.succeed(null),
+        ...options?.layers?.skillsCatalogService,
+      }),
+      Layer.mock(SkillsService)({
+        list: () => Effect.succeed({ skills: [] }),
+        catalog: () => Effect.succeed({ items: [] }),
+        install: () =>
+          Effect.succeed({
+            marketplaceName: "",
+            alreadyAdded: false,
+          }),
+        uninstall: () => Effect.succeed({ removed: true }),
+        content: () => Effect.succeed({ markdown: "" }),
+        resolveInstalledAssetPath: () => Effect.succeed(null),
+        warmUp: Effect.void,
+        ...options?.layers?.skillsService,
+      }),
+      Layer.mock(AutomationService)({
+        start: () => Effect.void,
+        list: () =>
+          Effect.succeed({
+            automations: [],
+            runs: [],
+          }),
+        get: () => Effect.die(new Error("测试未提供自动化详情")),
+        upsert: () => Effect.die(new Error("测试未提供自动化保存结果")),
+        delete: () => Effect.void,
+        runNow: () =>
+          Effect.succeed({
+            automations: [],
+            runs: [],
+          }),
+        archiveRun: () =>
+          Effect.succeed({
+            automations: [],
+            runs: [],
+          }),
+        markRunRead: () =>
+          Effect.succeed({
+            automations: [],
+            runs: [],
+          }),
+        stream: Stream.make({
+          kind: "snapshot",
+          snapshot: {
+            automations: [],
+            runs: [],
+          },
+        }),
+        ...options?.layers?.automationService,
+      }),
+    );
 
     const servedRoutesLayer = HttpRouter.serve(makeRoutesLayer, {
       disableListenLog: true,
@@ -530,6 +604,7 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.providerRegistry,
         }),
       ),
+      Layer.provide(automationsAndSkillsLayer),
       Layer.provide(
         Layer.mock(ServerSettingsService)({
           start: Effect.void,

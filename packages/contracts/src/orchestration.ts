@@ -200,6 +200,39 @@ export type ChatAttachment = typeof ChatAttachment.Type;
 const UploadChatAttachment = Schema.Union([UploadChatImageAttachment, UploadChatFileAttachment]);
 export type UploadChatAttachment = typeof UploadChatAttachment.Type;
 
+const hasMessageContent = (message: {
+  readonly text: string;
+  readonly attachments: ReadonlyArray<unknown>;
+}) => message.text.trim().length > 0 || message.attachments.length > 0;
+
+const nonEmptyMessageFilter = Schema.makeFilter<{
+  readonly text: string;
+  readonly attachments: ReadonlyArray<unknown>;
+}>(
+  (message) =>
+    hasMessageContent(message)
+      ? undefined
+      : { path: ["text"], issue: "Message text or attachments are required." },
+);
+
+const ThreadUserMessage = Schema.Struct({
+  messageId: MessageId,
+  role: Schema.Literal("user"),
+  text: Schema.String,
+  attachments: Schema.Array(ChatAttachment).check(
+    Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
+  ),
+}).check(nonEmptyMessageFilter);
+
+const ClientThreadUserMessage = Schema.Struct({
+  messageId: MessageId,
+  role: Schema.Literal("user"),
+  text: Schema.String,
+  attachments: Schema.Array(UploadChatAttachment).check(
+    Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
+  ),
+}).check(nonEmptyMessageFilter);
+
 export const ProjectScriptIcon = Schema.Literals([
   "play",
   "test",
@@ -590,12 +623,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.start"),
   commandId: CommandId,
   threadId: ThreadId,
-  message: Schema.Struct({
-    messageId: MessageId,
-    role: Schema.Literal("user"),
-    text: Schema.String,
-    attachments: Schema.Array(ChatAttachment),
-  }),
+  message: ThreadUserMessage,
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
@@ -611,18 +639,32 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.start"),
   commandId: CommandId,
   threadId: ThreadId,
-  message: Schema.Struct({
-    messageId: MessageId,
-    role: Schema.Literal("user"),
-    text: Schema.String,
-    attachments: Schema.Array(UploadChatAttachment),
-  }),
+  message: ClientThreadUserMessage,
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  createdAt: IsoDateTime,
+});
+
+export const ThreadTurnSteerCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.steer"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  expectedTurnId: TurnId,
+  message: ThreadUserMessage,
+  createdAt: IsoDateTime,
+});
+export type ThreadTurnSteerCommand = typeof ThreadTurnSteerCommand.Type;
+
+const ClientThreadTurnSteerCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.steer"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  expectedTurnId: TurnId,
+  message: ClientThreadUserMessage,
   createdAt: IsoDateTime,
 });
 
@@ -679,6 +721,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ThreadTurnStartCommand,
+  ThreadTurnSteerCommand,
   ThreadTurnInterruptCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
@@ -700,6 +743,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ClientThreadTurnStartCommand,
+  ClientThreadTurnSteerCommand,
   ThreadTurnInterruptCommand,
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
@@ -803,6 +847,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.interaction-mode-set",
   "thread.message-sent",
   "thread.turn-start-requested",
+  "thread.turn-steer-requested",
   "thread.turn-interrupt-requested",
   "thread.approval-response-requested",
   "thread.user-input-response-requested",
@@ -922,6 +967,13 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  createdAt: IsoDateTime,
+});
+
+export const ThreadTurnSteerRequestedPayload = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  expectedTurnId: TurnId,
   createdAt: IsoDateTime,
 });
 
@@ -1068,6 +1120,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.turn-start-requested"),
     payload: ThreadTurnStartRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-steer-requested"),
+    payload: ThreadTurnSteerRequestedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

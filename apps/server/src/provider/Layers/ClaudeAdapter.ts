@@ -3182,6 +3182,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     },
   );
 
+  const steerTurn: ClaudeAdapterShape["steerTurn"] = Effect.fn("steerTurn")(function* (input) {
+    return yield* new ProviderAdapterRequestError({
+      provider: PROVIDER,
+      method: "turn/steer",
+      detail: `Provider '${PROVIDER}' does not support same-turn steering.`,
+    });
+  });
+
   const readThread: ClaudeAdapterShape["readThread"] = Effect.fn("readThread")(
     function* (threadId) {
       const context = yield* requireSession(threadId);
@@ -3279,6 +3287,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     },
     startSession,
     sendTurn,
+    steerTurn,
     interruptTurn,
     readThread,
     rollbackThread,

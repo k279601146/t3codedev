@@ -197,7 +197,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       </PopoverTrigger>
       <PopoverPopup
         align={props.simplified ? "end" : "start"}
-        className="border-0 bg-transparent p-0 shadow-none before:hidden [--viewport-inline-padding:0] *:data-[slot=popover-viewport]:p-0"
+        className="overflow-visible border-0 bg-transparent p-0 shadow-none before:hidden [--viewport-inline-padding:0] *:data-[slot=popover-viewport]:overflow-visible *:data-[slot=popover-viewport]:p-0"
       >
         <ModelPickerContent
           activeInstanceId={activeInstanceId}
@@ -212,7 +212,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           terminalOpen={props.terminalOpen ?? false}
           onRequestClose={() => setIsMenuOpen(false)}
           onInstanceModelChange={handleInstanceModelChange}
-          onModelOptionsChange={props.onModelOptionsChange}
+          {...(props.onModelOptionsChange
+            ? { onModelOptionsChange: props.onModelOptionsChange }
+            : {})}
         />
       </PopoverPopup>
     </Popover>

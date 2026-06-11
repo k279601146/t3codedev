@@ -8,7 +8,9 @@ import type {
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
   ProviderSession,
+  ProviderSteerTurnInput,
   ProviderTurnStartResult,
+  ProviderTurnSteerResult,
 } from "@t3tools/contracts";
 import {
   ApprovalRequestId,
@@ -135,6 +137,26 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     },
   );
 
+  const steerTurn = vi.fn(
+    (
+      input: ProviderSteerTurnInput,
+    ): Effect.Effect<ProviderTurnSteerResult, ProviderAdapterError> => {
+      if (!sessions.has(input.threadId)) {
+        return Effect.fail(
+          new ProviderAdapterSessionNotFoundError({
+            provider,
+            threadId: input.threadId,
+          }),
+        );
+      }
+
+      return Effect.succeed({
+        threadId: input.threadId,
+        turnId: input.expectedTurnId,
+      });
+    },
+  );
+
   const interruptTurn = vi.fn(
     (_threadId: ThreadId, _turnId?: TurnId): Effect.Effect<void, ProviderAdapterError> =>
       Effect.void,
@@ -210,6 +232,7 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     },
     startSession,
     sendTurn,
+    steerTurn,
     interruptTurn,
     respondToRequest,
     respondToUserInput,

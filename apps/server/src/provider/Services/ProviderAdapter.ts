@@ -14,10 +14,12 @@ import type {
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
+  ProviderSteerTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
   ThreadId,
   ProviderTurnStartResult,
+  ProviderTurnSteerResult,
   TurnId,
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
@@ -62,6 +64,13 @@ export interface ProviderAdapterShape<TError> {
   readonly sendTurn: (
     input: ProviderSendTurnInput,
   ) => Effect.Effect<ProviderTurnStartResult, TError>;
+
+  /**
+   * Append user input to an active provider turn without creating a new turn.
+   */
+  readonly steerTurn: (
+    input: ProviderSteerTurnInput,
+  ) => Effect.Effect<ProviderTurnSteerResult, TError>;
 
   /**
    * Interrupt an active turn.

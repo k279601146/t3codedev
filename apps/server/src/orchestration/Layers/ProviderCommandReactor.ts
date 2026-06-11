@@ -54,6 +54,7 @@ type ProviderIntentEvent = Extract<
     type:
       | "thread.runtime-mode-set"
       | "thread.turn-start-requested"
+      | "thread.turn-steer-requested"
       | "thread.turn-interrupt-requested"
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
@@ -241,6 +242,7 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly kind:
       | "provider.turn.start.failed"
+      | "provider.turn.steer.failed"
       | "provider.turn.interrupt.failed"
       | "provider.approval.respond.failed"
       | "provider.user-input.respond.failed"
@@ -870,6 +872,66 @@ const make = Effect.gen(function* () {
     }
   });
 
+  const processTurnSteerRequested = Effect.fn("processTurnSteerRequested")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.turn-steer-requested" }>,
+  ) {
+    const thread = yield* resolveThread(event.payload.threadId);
+    if (!thread) {
+      return;
+    }
+
+    const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
+    if (!message || message.role !== "user") {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.steer.failed",
+        summary: "Provider turn steer failed",
+        detail: `User message '${event.payload.messageId}' was not found for turn steer request.`,
+        turnId: event.payload.expectedTurnId,
+        createdAt: event.payload.createdAt,
+      });
+      return;
+    }
+
+    const handleTurnSteerFailure = (cause: Cause.Cause<unknown>) => {
+      if (Cause.hasInterruptsOnly(cause)) {
+        return Effect.void;
+      }
+      const detail = formatFailureDetail(cause);
+      return appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.steer.failed",
+        summary: "Provider turn steer failed",
+        detail,
+        turnId: event.payload.expectedTurnId,
+        createdAt: event.payload.createdAt,
+      }).pipe(Effect.asVoid);
+    };
+
+    const recoverTurnSteerFailure = (cause: Cause.Cause<unknown>) =>
+      handleTurnSteerFailure(cause).pipe(
+        Effect.catchCause((recoveryCause) =>
+          Effect.logWarning("provider command reactor failed to recover turn steer failure", {
+            eventType: event.type,
+            threadId: event.payload.threadId,
+            cause: Cause.pretty(recoveryCause),
+            originalCause: Cause.pretty(cause),
+          }),
+        ),
+      );
+
+    const normalizedInput = toNonEmptyProviderInput(message.text);
+    const attachments = message.attachments ?? [];
+    yield* providerService
+      .steerTurn({
+        threadId: event.payload.threadId,
+        expectedTurnId: event.payload.expectedTurnId,
+        ...(normalizedInput ? { input: normalizedInput } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
+      .pipe(Effect.catchCause(recoverTurnSteerFailure), Effect.forkScoped);
+  });
+
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-interrupt-requested" }>,
   ) {
@@ -1040,6 +1102,9 @@ const make = Effect.gen(function* () {
       case "thread.turn-start-requested":
         yield* processTurnStartRequested(event);
         return;
+      case "thread.turn-steer-requested":
+        yield* processTurnSteerRequested(event);
+        return;
       case "thread.turn-interrupt-requested":
         yield* processTurnInterruptRequested(event);
         return;
@@ -1075,6 +1140,7 @@ const make = Effect.gen(function* () {
       if (
         event.type === "thread.runtime-mode-set" ||
         event.type === "thread.turn-start-requested" ||
+        event.type === "thread.turn-steer-requested" ||
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
