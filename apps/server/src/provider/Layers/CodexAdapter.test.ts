@@ -57,7 +57,8 @@ const asThreadId = (value: string): ThreadId => ThreadId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asEventId = (value: string): EventId => EventId.make(value);
 const asItemId = (value: string): ProviderItemId => ProviderItemId.make(value);
-const testConversationWorkspace = () => path.join(process.cwd(), "userdata", "conversation-workspace");
+const testConversationWorkspace = () =>
+  path.join(process.cwd(), "userdata", "conversation-workspace");
 
 class FakeCodexRuntime implements CodexSessionRuntimeShape {
   private readonly eventQueue = Effect.runSync(Queue.unbounded<ProviderEvent>());
@@ -490,6 +491,70 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       assert.equal(firstEvent.value.itemId, "msg_1");
       assert.equal(firstEvent.value.turnId, "turn-1");
       assert.equal(firstEvent.value.payload.itemType, "assistant_message");
+    }),
+  );
+
+  it.effect("maps Codex dynamic browser tool calls to transparent presentation metadata", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      const event: ProviderEvent = {
+        id: asEventId("evt-browser-tool-complete"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("tool-browser-1"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            id: "tool-browser-1",
+            type: "dynamicToolCall",
+            namespace: "t3_browser",
+            tool: "browser_click",
+            status: "completed",
+            success: true,
+            arguments: {
+              selector: "button[aria-label='注册']",
+            },
+            contentItems: [{ type: "inputText", text: "Clicked button[aria-label='注册']" }],
+          },
+        },
+      };
+
+      yield* runtime.emit(event);
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "item.completed");
+      if (firstEvent.value.type !== "item.completed") {
+        return;
+      }
+
+      assert.equal(firstEvent.value.payload.itemType, "dynamic_tool_call");
+      assert.equal(firstEvent.value.payload.title, "浏览器点击元素");
+      assert.equal(
+        firstEvent.value.payload.detail,
+        "参数: selector: button[aria-label='注册']\n输出: Clicked button[aria-label='注册']",
+      );
+      assert.deepEqual((firstEvent.value.payload.data as { presentation?: unknown }).presentation, {
+        title: "浏览器点击元素",
+        family: "browser",
+        toolName: "browser_click",
+        namespace: "t3_browser",
+        argumentsPreview: "selector: button[aria-label='注册']",
+        outputPreview: "Clicked button[aria-label='注册']",
+        detail:
+          "参数: selector: button[aria-label='注册']\n输出: Clicked button[aria-label='注册']",
+      });
     }),
   );
 

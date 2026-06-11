@@ -12,6 +12,10 @@ import {
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
+import {
+  deriveDynamicToolActivityPresentation,
+  type DynamicToolFamily,
+} from "@t3tools/shared/toolActivity";
 
 import type {
   ChatMessage,
@@ -57,6 +61,7 @@ export interface WorkLogEntry {
   changedFiles?: ReadonlyArray<string>;
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
+  toolFamily?: DynamicToolFamily;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   status?: "running" | "completed" | "failed";
@@ -496,7 +501,9 @@ export function deriveWorkLogEntries(
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
-    .filter((activity) => activity.kind !== "tool.started" || isImageGenerationStartActivity(activity))
+    .filter(
+      (activity) => activity.kind !== "tool.started" || isImageGenerationStartActivity(activity),
+    )
     .filter((activity) => activity.kind !== "task.started")
     .filter((activity) => activity.kind !== "context-window.updated")
     .filter((activity) => activity.summary !== "Checkpoint captured")
@@ -537,7 +544,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       : null;
   const commandPreview = extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
-  const title = extractToolTitle(payload);
+  const dynamicPresentation = extractDynamicToolPresentation(payload);
+  const title = dynamicPresentation?.title ?? extractToolTitle(payload);
   const isTaskActivity = activity.kind === "task.progress" || activity.kind === "task.completed";
   const taskSummary =
     isTaskActivity && typeof payload?.summary === "string" && payload.summary.length > 0
@@ -558,8 +566,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       payload.detail.length > 0
       ? stripTrailingExitCode(payload.detail).output
       : null
-    : extractRuntimeIssueDetail(activity.kind, payload) ??
-      extractToolDetail(payload, title ?? activity.summary);
+    : (extractRuntimeIssueDetail(activity.kind, payload) ??
+      dynamicPresentation?.detail ??
+      extractToolDetail(payload, title ?? activity.summary));
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
@@ -579,7 +588,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
         ? "running"
         : activity.tone === "error"
           ? "failed"
-        : "completed",
+          : "completed",
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -598,6 +607,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (title) {
     entry.toolTitle = title;
+  }
+  if (dynamicPresentation?.family) {
+    entry.toolFamily = dynamicPresentation.family;
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -951,6 +963,42 @@ function extractToolTitle(payload: Record<string, unknown> | null): string | nul
   return asTrimmedString(payload?.title);
 }
 
+function extractDynamicToolPresentation(payload: Record<string, unknown> | null) {
+  if (extractWorkLogItemType(payload) !== "dynamic_tool_call") {
+    return null;
+  }
+  const data = asRecord(payload?.data);
+  const explicitPresentation = asRecord(data?.presentation);
+  if (explicitPresentation) {
+    const title = asTrimmedString(explicitPresentation.title);
+    const family = asTrimmedString(explicitPresentation.family) as DynamicToolFamily | null;
+    if (title && family) {
+      return {
+        title,
+        family,
+        detail: asTrimmedString(explicitPresentation.detail) ?? undefined,
+      };
+    }
+  }
+
+  const item = asRecord(data?.item) ?? asRecord(payload?.item);
+  const presentation = deriveDynamicToolActivityPresentation({
+    tool: item?.tool ?? data?.tool ?? payload?.tool,
+    namespace: item?.namespace ?? data?.namespace ?? payload?.namespace,
+    arguments: item?.arguments ?? data?.arguments ?? payload?.arguments,
+    contentItems: item?.contentItems ?? data?.contentItems ?? payload?.contentItems,
+    success: item?.success ?? data?.success ?? payload?.success,
+    status: item?.status ?? data?.status ?? payload?.status,
+  });
+  return presentation
+    ? {
+        title: presentation.title,
+        family: presentation.family,
+        detail: presentation.detail,
+      }
+    : null;
+}
+
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
   const item = asRecord(data?.item) ?? asRecord(payload?.item);
@@ -1152,9 +1200,7 @@ function isRawImageGenerationPayload(payload: Record<string, unknown> | null): b
   const data = asRecord(payload?.data);
   const item = asRecord(data?.item) ?? asRecord(payload?.item);
   const itemId =
-    asTrimmedString(payload?.itemId) ??
-    asTrimmedString(data?.itemId) ??
-    asTrimmedString(item?.id);
+    asTrimmedString(payload?.itemId) ?? asTrimmedString(data?.itemId) ?? asTrimmedString(item?.id);
   if (itemId?.startsWith("ig_")) {
     return true;
   }

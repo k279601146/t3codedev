@@ -2,10 +2,17 @@ import {
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
+  type ProviderOptionDescriptor,
+  type ProviderOptionSelection,
 } from "@t3tools/contracts";
-import { resolveSelectableModel } from "@t3tools/shared/model";
+import {
+  buildProviderOptionSelectionsFromDescriptors,
+  getProviderOptionCurrentValue,
+  resolveSelectableModel,
+  setProviderOptionDescriptorCurrentValue,
+} from "@t3tools/shared/model";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { CheckIcon, SearchIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
@@ -57,6 +64,7 @@ const ModelPickerSimpleRow = memo(function ModelPickerSimpleRow(props: {
   index: number;
   model: ModelPickerItem;
   selected: boolean;
+  showSubmenuIndicator?: boolean;
 }) {
   return (
     <ComboboxItem
@@ -67,10 +75,25 @@ const ModelPickerSimpleRow = memo(function ModelPickerSimpleRow(props: {
       className="min-h-7 rounded-[6px] px-2.5 py-1 text-[13px] text-foreground hover:bg-accent/60 data-highlighted:bg-accent/70 data-selected:bg-transparent"
     >
       <span className="truncate">{getDisplayModelName(props.model, { preferShortName: true })}</span>
-      {props.selected ? <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+        {props.selected ? <CheckIcon className="size-3.5" /> : null}
+        {props.showSubmenuIndicator ? <ChevronRightIcon className="size-3.5" /> : null}
+      </span>
     </ComboboxItem>
   );
 });
+
+function getReasoningOptionLabel(label: string): string {
+  const normalized = label.trim().toLowerCase();
+  const localized: Record<string, string> = {
+    low: "低",
+    medium: "中",
+    high: "高",
+    xhigh: "超高",
+    "extra high": "超高",
+  };
+  return localized[normalized] ?? label;
+}
 
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
   /** The instance currently selected in the composer (combobox "value"). */
@@ -99,10 +122,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    * model set but are free to diverge via customModels).
    */
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
+  modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   simplified?: boolean;
   terminalOpen: boolean;
   onRequestClose?: () => void;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  onModelOptionsChange?: (nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined) => void;
 }) {
   const {
     keybindings: providedKeybindings,
@@ -131,6 +156,34 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     [providedKeybindings],
   );
   const { updateSettings } = useUpdateSettings();
+  const reasoningDescriptor = useMemo(
+    () =>
+      props.modelOptionDescriptors.find(
+        (
+          descriptor,
+        ): descriptor is Extract<ProviderOptionDescriptor, { type: "select" }> =>
+          descriptor.type === "select" && descriptor.id === "reasoningEffort",
+      ) ?? null,
+    [props.modelOptionDescriptors],
+  );
+  const reasoningValue = getProviderOptionCurrentValue(reasoningDescriptor);
+  const showReasoningSubmenu =
+    reasoningDescriptor !== null &&
+    reasoningDescriptor.options.length > 0 &&
+    typeof props.onModelOptionsChange === "function";
+
+  const handleReasoningChange = useCallback(
+    (value: string) => {
+      if (!reasoningDescriptor) return;
+      const nextDescriptors = props.modelOptionDescriptors.map((descriptor) =>
+        descriptor.id === reasoningDescriptor.id
+          ? setProviderOptionDescriptorCurrentValue(descriptor, value)
+          : descriptor,
+      );
+      props.onModelOptionsChange?.(buildProviderOptionSelectionsFromDescriptors(nextDescriptors));
+    },
+    [props, reasoningDescriptor],
+  );
 
   const focusSearchInput = useCallback(() => {
     searchInputRef.current?.focus({ preventScroll: true });
@@ -543,7 +596,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     <TooltipProvider delay={0}>
       <div
         className={cn(
-          "relative flex h-screen max-h-96 w-screen max-w-100 overflow-hidden rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+          "relative flex h-screen max-h-96 w-screen max-w-100 rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+          showReasoningSubmenu ? "overflow-visible" : "overflow-hidden",
           isLocked && !showLockedInstanceSidebar ? "flex-col" : "flex-row",
           props.simplified &&
             "h-auto max-h-[320px] w-[200px] max-w-[calc(100vw-1rem)] rounded-[10px] shadow-lg/10",
@@ -666,6 +720,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         index={index}
                         model={model}
                         selected={modelKey === activeModelKey}
+                        showSubmenuIndicator={modelKey === activeModelKey && showReasoningSubmenu}
                       />
                     );
                   }
@@ -683,6 +738,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       preferShortName={!isLocked}
                       useTriggerLabel={isLocked && !showLockedInstanceSidebar}
                       showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
+                      showSubmenuIndicator={modelKey === activeModelKey && showReasoningSubmenu}
                       jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
                       onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
                     />
@@ -695,6 +751,36 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             </ComboboxEmpty>
           </div>
         </Combobox>
+        {showReasoningSubmenu && reasoningDescriptor ? (
+          <div
+            className="absolute left-[calc(100%+0.25rem)] bottom-12 z-10 w-52 rounded-[14px] border bg-popover p-1 text-popover-foreground shadow-lg/10 before:pointer-events-none before:absolute before:inset-0 before:rounded-[13px] before:shadow-[0_1px_--theme(--color-black/4%)]"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-2 pb-1 pt-1.5 text-[13px] leading-5 text-muted-foreground">
+              {reasoningDescriptor.label || "推理"}
+            </div>
+            <div className="space-y-0.5">
+              {reasoningDescriptor.options.map((option) => {
+                const selected = reasoningValue === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={cn(
+                      "flex h-8 w-full items-center justify-between rounded-[6px] px-2 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-accent/70",
+                      selected && "bg-accent/60",
+                    )}
+                    onClick={() => handleReasoningChange(option.id)}
+                  >
+                    <span>{getReasoningOptionLabel(option.label)}</span>
+                    {selected ? <CheckIcon className="size-3.5 text-muted-foreground" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
     </TooltipProvider>
   );

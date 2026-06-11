@@ -30,7 +30,11 @@ import {
   GlobeIcon,
   HammerIcon,
   type LucideIcon,
+  AppWindowIcon,
   SquarePenIcon,
+  ChromeIcon,
+  MonitorIcon,
+  MousePointerClickIcon,
   TerminalSquareIcon,
   Undo2Icon,
   WrenchIcon,
@@ -963,46 +967,43 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
 
 function RunningStatusShimmer({ label, className }: { label: string; className?: string }) {
   return (
-<span
-  className={cn(
-    "inline-flex min-w-0 max-w-full items-center py-1",
-    className
-  )}
-  style={{
-    ...USER_MESSAGE_FONT_STYLE,
-    // 强制覆盖字号，确保清晰可见
-    fontSize: '14px', 
-  }}
-  aria-busy="true"
->
-  {/* 使用纯原生 CSS 注入动画与渐变，确保绝对兼容 */}
-  <span 
-    style={{
-      display: 'inline-block',
-      fontWeight: 500,
-      letterSpacing: '0.05em',
-      // 1. 设置渐变背景：深灰 -> 极亮白 -> 深灰
-      backgroundImage: 'linear-gradient(90deg, #71717a 0%, #fafafa 50%, #71717a 100%)',
-      backgroundSize: '200% 100%',
-      // 2. 核心：将背景裁剪到文字上
-      WebkitBackgroundClip: 'text',
-      backgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      // 3. 注入原生的扫光动画（无限循环）
-      animation: 'textShimmerMoving 2.5s linear infinite',
-    }}
-  >
-    {label}
+    <span
+      className={cn("inline-flex min-w-0 max-w-full items-center py-1", className)}
+      style={{
+        ...USER_MESSAGE_FONT_STYLE,
+        // 强制覆盖字号，确保清晰可见
+        fontSize: "14px",
+      }}
+      aria-busy="true"
+    >
+      {/* 使用纯原生 CSS 注入动画与渐变，确保绝对兼容 */}
+      <span
+        style={{
+          display: "inline-block",
+          fontWeight: 500,
+          letterSpacing: "0.05em",
+          // 1. 设置渐变背景：深灰 -> 极亮白 -> 深灰
+          backgroundImage: "linear-gradient(90deg, #71717a 0%, #fafafa 50%, #71717a 100%)",
+          backgroundSize: "200% 100%",
+          // 2. 核心：将背景裁剪到文字上
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          // 3. 注入原生的扫光动画（无限循环）
+          animation: "textShimmerMoving 2.5s linear infinite",
+        }}
+      >
+        {label}
 
-    {/* 注入全局动画的关键帧（只在组件渲染时生效，不污染全局） */}
-    <style>{`
+        {/* 注入全局动画的关键帧（只在组件渲染时生效，不污染全局） */}
+        <style>{`
       @keyframes textShimmerMoving {
         0% { background-position: 200% 0; }
         100% { background-position: -200% 0; }
       }
     `}</style>
-  </span>
-</span>
+      </span>
+    </span>
   );
 }
 
@@ -1730,6 +1731,12 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   if (workEntry.requestKind === "command") return TerminalSquareIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
+  if (workEntry.toolFamily === "browser") return AppWindowIcon;
+  if (workEntry.toolFamily === "external_browser") return ChromeIcon;
+  if (workEntry.toolFamily === "computer") {
+    if (workEntry.toolTitle?.includes("点击")) return MousePointerClickIcon;
+    return MonitorIcon;
+  }
 
   if (workEntry.itemType === "command_execution" || workEntry.command) {
     return TerminalSquareIcon;

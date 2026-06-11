@@ -5,6 +5,7 @@ import type {
   ProjectEntry,
   ProviderApprovalDecision,
   ProviderInteractionMode,
+  ProviderOptionSelection,
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
@@ -118,7 +119,7 @@ import {
 } from "lucide-react";
 import { useI18n, type TranslationKey } from "../../i18n";
 import { proposedPlanTitle } from "../../proposedPlan";
-import { getProviderInteractionModeToggle } from "../../providerModels";
+import { getProviderInteractionModeToggle, getProviderModelCapabilities } from "../../providerModels";
 import {
   deriveProviderInstanceEntries,
   resolveProviderDriverKindForInstanceSelection,
@@ -985,6 +986,10 @@ export const ChatComposer = memo(
       (store) => store.syncPersistedAttachments,
     );
     const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
+    const setComposerDraftModelSelection = useComposerDraftStore((store) => store.setModelSelection);
+    const setStickyComposerModelSelection = useComposerDraftStore(
+      (store) => store.setStickyModelSelection,
+    );
 
     // ------------------------------------------------------------------
     // Model state
@@ -1118,6 +1123,13 @@ export const ChatComposer = memo(
       () => selectedProviderEntry?.models ?? [],
       [selectedProviderEntry],
     );
+    const selectedModelOptionSelections =
+      composerModelOptions?.[selectedInstanceId] ??
+      composerModelOptions?.[ProviderInstanceId.make(selectedProvider)];
+    const selectedModelCapabilities = useMemo(
+      () => getProviderModelCapabilities(selectedProviderModels, selectedModel, selectedProvider),
+      [selectedModel, selectedProvider, selectedProviderModels],
+    );
 
     const composerProviderState = useMemo(
       () =>
@@ -1126,9 +1138,9 @@ export const ChatComposer = memo(
           model: selectedModel,
           models: selectedProviderModels,
           prompt,
-          modelOptions: composerModelOptions?.[selectedProvider],
+          modelOptions: selectedModelOptionSelections,
         }),
-      [composerModelOptions, prompt, selectedModel, selectedProvider, selectedProviderModels],
+      [prompt, selectedModel, selectedModelOptionSelections, selectedProvider, selectedProviderModels],
     );
 
     const selectedPromptEffort = composerProviderState.promptEffort;
@@ -1146,6 +1158,22 @@ export const ChatComposer = memo(
       () =>
         createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
       [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
+    );
+    const handleModelOptionsChange = useCallback(
+      (nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined) => {
+        const nextSelection = createModelSelection(selectedInstanceId, selectedModel, nextOptions);
+        setComposerDraftModelSelection(composerDraftTarget, nextSelection);
+        setStickyComposerModelSelection(nextSelection);
+        scheduleComposerFocus();
+      },
+      [
+        composerDraftTarget,
+        scheduleComposerFocus,
+        selectedInstanceId,
+        selectedModel,
+        setComposerDraftModelSelection,
+        setStickyComposerModelSelection,
+      ],
     );
     const selectedModelForPicker = selectedModel;
     // Instance-keyed option list so the picker can show each configured
@@ -1435,7 +1463,7 @@ export const ChatComposer = memo(
       ...(routeKind === "draft" && draftId ? { draftId } : {}),
       model: selectedModel,
       models: selectedProviderModels,
-      modelOptions: composerModelOptions?.[selectedProvider],
+      modelOptions: selectedModelOptionSelections,
       prompt,
       onPromptChange: setPromptFromTraits,
     });
@@ -1445,7 +1473,7 @@ export const ChatComposer = memo(
       ...(routeKind === "draft" && draftId ? { draftId } : {}),
       model: selectedModel,
       models: selectedProviderModels,
-      modelOptions: composerModelOptions?.[selectedProvider],
+      modelOptions: selectedModelOptionSelections,
       prompt,
       onPromptChange: setPromptFromTraits,
     });
@@ -2518,6 +2546,8 @@ export const ChatComposer = memo(
         instanceEntries={providerInstanceEntries}
         keybindings={keybindings}
         modelOptionsByInstance={modelOptionsByInstance}
+        modelCapabilities={selectedModelCapabilities}
+        modelOptionSelections={selectedModelOptionSelections}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         {...(composerProviderState.modelPickerIconClassName
@@ -2539,6 +2569,7 @@ export const ChatComposer = memo(
           }
         }}
         onInstanceModelChange={onProviderModelSelect}
+        onModelOptionsChange={handleModelOptionsChange}
       />
     );
 

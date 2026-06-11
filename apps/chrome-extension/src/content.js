@@ -52,29 +52,73 @@ function truncateText(text, maxLength = MAX_TEXT_LENGTH) {
   return `${text.slice(0, maxLength)}\n...[truncated ${text.length - maxLength} chars]`;
 }
 
+function cssAttrValue(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function selectorUnique(selector) {
+  try {
+    return document.querySelectorAll(selector).length === 1;
+  } catch {
+    return false;
+  }
+}
+
 function selectorFor(element) {
-  if (element.id) return `#${CSS.escape(element.id)}`;
+  const tag = element.tagName.toLowerCase();
+  const candidates = [];
+  for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title"]) {
+    const value = element.getAttribute(attr);
+    if (value) candidates.push(`${tag}[${attr}='${cssAttrValue(value)}']`);
+  }
+  if (element.id) candidates.push(`#${CSS.escape(element.id)}`);
+  for (const candidate of candidates) {
+    if (selectorUnique(candidate)) return candidate;
+  }
+
   const parts = [];
   let node = element;
-  while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 4) {
+  while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 6) {
     let part = node.tagName.toLowerCase();
-    if (node.name) part += `[name='${CSS.escape(node.name)}']`;
+    for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name"]) {
+      const value = node.getAttribute(attr);
+      if (value) {
+        part += `[${attr}='${cssAttrValue(value)}']`;
+        break;
+      }
+    }
+    if (node.id) part = `#${CSS.escape(node.id)}`;
     const parent = node.parentElement;
-    if (parent) {
+    if (parent && !node.id) {
       const siblings = [...parent.children].filter((child) => child.tagName === node.tagName);
       if (siblings.length > 1) part += `:nth-of-type(${[...parent.children].indexOf(node) + 1})`;
     }
     parts.unshift(part);
+    const selector = parts.join(" > ");
+    if (selectorUnique(selector)) return selector;
     node = parent;
   }
   return parts.join(" > ");
 }
 
 function textForElement(element) {
+  const labelledBy = element.getAttribute("aria-labelledby");
+  const labelledText = labelledBy
+    ? labelledBy
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.innerText || "")
+        .join(" ")
+    : "";
+  const labelElement = element.id
+    ? document.querySelector(`label[for='${cssAttrValue(element.id)}']`)
+    : null;
   return (
+    element.getAttribute("aria-label") ||
+    element.getAttribute("title") ||
+    labelledText ||
+    labelElement?.innerText ||
     element.innerText ||
     element.value ||
-    element.getAttribute("aria-label") ||
     element.placeholder ||
     element.name ||
     element.id ||
@@ -108,7 +152,9 @@ function domSnapshot() {
   lines.push(`URL: ${url}`);
   if (text) lines.push(`\nText:\n${text.slice(0, 45000)}`);
   const elements = [
-    ...document.querySelectorAll("a,button,input,textarea,select,[role=button],[contenteditable=true]"),
+    ...document.querySelectorAll(
+      "a,button,input,textarea,select,[role=button],[contenteditable=true]",
+    ),
   ].slice(0, 250);
   if (elements.length) {
     lines.push("\nInteractive elements:");
@@ -124,7 +170,9 @@ function domSnapshot() {
 
 function visibleDom() {
   return [
-    ...document.querySelectorAll("a,button,input,textarea,select,[role=button],[contenteditable=true]"),
+    ...document.querySelectorAll(
+      "a,button,input,textarea,select,[role=button],[contenteditable=true]",
+    ),
   ]
     .map((element) => {
       if (!isVisible(element)) return null;
@@ -133,6 +181,9 @@ function visibleDom() {
         selector: selectorFor(element),
         tag: element.tagName.toLowerCase(),
         text: textForElement(element).slice(0, 200),
+        role: element.getAttribute("role") || undefined,
+        type: element.getAttribute("type") || undefined,
+        disabled: element.disabled === true || element.getAttribute("aria-disabled") === "true",
         x: Math.round(rect.left + rect.width / 2),
         y: Math.round(rect.top + rect.height / 2),
       };
@@ -168,80 +219,91 @@ function elementPoint(selector) {
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
-if (shouldRegisterT3CodeListener) chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  try {
-    if (!message || message.source !== "t3code") return false;
-    switch (message.type) {
-      case "domSnapshot":
-        sendResponse({ ok: true, value: truncateText(domSnapshot()) });
-        return true;
-      case "visibleDom":
-        sendResponse({ ok: true, value: visibleDom() });
-        return true;
-      case "inspectRisk":
-        sendResponse({ ok: true, value: inspectRisk(message.selector) });
-        return true;
-      case "click": {
-        let x = message.x;
-        let y = message.y;
-        if (message.selector) {
-          const point = elementPoint(message.selector);
-          if (!point) throw new Error(`Element not found or not visible: ${message.selector}`);
-          x = point.x;
-          y = point.y;
+if (shouldRegisterT3CodeListener)
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    try {
+      if (!message || message.source !== "t3code") return false;
+      switch (message.type) {
+        case "domSnapshot":
+          sendResponse({ ok: true, value: truncateText(domSnapshot()) });
+          return true;
+        case "visibleDom":
+          sendResponse({ ok: true, value: visibleDom() });
+          return true;
+        case "inspectRisk":
+          sendResponse({ ok: true, value: inspectRisk(message.selector) });
+          return true;
+        case "click": {
+          let x = message.x;
+          let y = message.y;
+          if (message.selector) {
+            const point = elementPoint(message.selector);
+            if (!point) throw new Error(`Element not found or not visible: ${message.selector}`);
+            x = point.x;
+            y = point.y;
+          }
+          const target = document.elementFromPoint(x, y);
+          if (!target) throw new Error("No element at click point.");
+          target.dispatchEvent(
+            new MouseEvent("mousedown", { bubbles: true, clientX: x, clientY: y }),
+          );
+          target.dispatchEvent(
+            new MouseEvent("mouseup", { bubbles: true, clientX: x, clientY: y }),
+          );
+          target.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
+          sendResponse({ ok: true, value: `Clicked ${Math.round(x)},${Math.round(y)}` });
+          return true;
         }
-        const target = document.elementFromPoint(x, y);
-        if (!target) throw new Error("No element at click point.");
-        target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: x, clientY: y }));
-        target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: x, clientY: y }));
-        target.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
-        sendResponse({ ok: true, value: `Clicked ${Math.round(x)},${Math.round(y)}` });
-        return true;
-      }
-      case "fill": {
-        const element = document.querySelector(message.selector);
-        if (!element) throw new Error(`Element not found: ${message.selector}`);
-        element.focus();
-        element.value = message.value;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-        sendResponse({ ok: true, value: "Filled element." });
-        return true;
-      }
-      case "type": {
-        const element = message.selector ? document.querySelector(message.selector) : document.activeElement;
-        if (!element) throw new Error("No target element for typing.");
-        element.focus();
-        document.execCommand("insertText", false, message.text);
-        sendResponse({ ok: true, value: "Typed text." });
-        return true;
-      }
-      case "press": {
-        const eventInit = { bubbles: true, cancelable: true, key: message.key };
-        document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", eventInit));
-        document.activeElement?.dispatchEvent(new KeyboardEvent("keyup", eventInit));
-        sendResponse({ ok: true, value: `Pressed ${message.key}.` });
-        return true;
-      }
-      case "evaluateReadonly": {
-        if (DANGEROUS_READ_PATTERN.test(message.expression || "")) {
-          throw new Error("Reading cookies, storage, credentials, or password data is not allowed.");
+        case "fill": {
+          const element = document.querySelector(message.selector);
+          if (!element) throw new Error(`Element not found: ${message.selector}`);
+          element.focus();
+          element.value = message.value;
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+          element.dispatchEvent(new Event("change", { bubbles: true }));
+          sendResponse({ ok: true, value: "Filled element." });
+          return true;
         }
-        const value = Function(`"use strict"; return (${message.expression});`)();
-        sendResponse({ ok: true, value: truncateText(JSON.stringify(value, null, 2)) });
-        return true;
+        case "type": {
+          const element = message.selector
+            ? document.querySelector(message.selector)
+            : document.activeElement;
+          if (!element) throw new Error("No target element for typing.");
+          element.focus();
+          document.execCommand("insertText", false, message.text);
+          sendResponse({ ok: true, value: "Typed text." });
+          return true;
+        }
+        case "press": {
+          const eventInit = { bubbles: true, cancelable: true, key: message.key };
+          document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", eventInit));
+          document.activeElement?.dispatchEvent(new KeyboardEvent("keyup", eventInit));
+          sendResponse({ ok: true, value: `Pressed ${message.key}.` });
+          return true;
+        }
+        case "evaluateReadonly": {
+          if (DANGEROUS_READ_PATTERN.test(message.expression || "")) {
+            throw new Error(
+              "Reading cookies, storage, credentials, or password data is not allowed.",
+            );
+          }
+          const value = Function(`"use strict"; return (${message.expression});`)();
+          sendResponse({ ok: true, value: truncateText(JSON.stringify(value, null, 2)) });
+          return true;
+        }
+        case "consoleLogs": {
+          const limit = Number.isFinite(message.limit)
+            ? Math.max(1, Math.min(500, message.limit))
+            : 100;
+          sendResponse({ ok: true, value: globalThis.__t3CodeConsoleLogs.slice(-limit) });
+          return true;
+        }
+        default:
+          sendResponse({ ok: false, error: `Unsupported content command: ${message.type}` });
+          return true;
       }
-      case "consoleLogs": {
-        const limit = Number.isFinite(message.limit) ? Math.max(1, Math.min(500, message.limit)) : 100;
-        sendResponse({ ok: true, value: globalThis.__t3CodeConsoleLogs.slice(-limit) });
-        return true;
-      }
-      default:
-        sendResponse({ ok: false, error: `Unsupported content command: ${message.type}` });
-        return true;
+    } catch (error) {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      return true;
     }
-  } catch (error) {
-    sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
-    return true;
-  }
-});
+  });

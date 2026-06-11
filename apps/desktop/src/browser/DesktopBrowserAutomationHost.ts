@@ -304,6 +304,76 @@ function shouldBlockReadonlyExpression(expression: string): boolean {
 const domSnapshotScript = `
 (() => {
   const lines = [];
+  function cssIdentifier(value) {
+    return CSS.escape(String(value));
+  }
+  function cssAttrValue(value) {
+    return String(value).replace(/\\\\/g, "\\\\\\\\").replace(/'/g, "\\\\'");
+  }
+  function selectorUnique(selector) {
+    try {
+      return document.querySelectorAll(selector).length === 1;
+    } catch {
+      return false;
+    }
+  }
+  function selectorFor(element) {
+    const candidates = [];
+    const tag = element.tagName.toLowerCase();
+    for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title"]) {
+      const value = element.getAttribute(attr);
+      if (value) candidates.push(tag + "[" + attr + "='" + cssAttrValue(value) + "']");
+    }
+    if (element.id) candidates.push("#" + cssIdentifier(element.id));
+    for (const candidate of candidates) {
+      if (selectorUnique(candidate)) return candidate;
+    }
+    const parts = [];
+    let node = element;
+    while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 6) {
+      let part = node.tagName.toLowerCase();
+      for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name"]) {
+        const value = node.getAttribute(attr);
+        if (value) {
+          part += "[" + attr + "='" + cssAttrValue(value) + "']";
+          break;
+        }
+      }
+      if (node.id) part = "#" + cssIdentifier(node.id);
+      const parent = node.parentElement;
+      if (parent && !node.id) {
+        const sameTag = [...parent.children].filter((child) => child.tagName === node.tagName);
+        if (sameTag.length > 1) part += ":nth-of-type(" + (sameTag.indexOf(node) + 1) + ")";
+      }
+      parts.unshift(part);
+      const selector = parts.join(" > ");
+      if (selectorUnique(selector)) return selector;
+      node = parent;
+    }
+    return parts.join(" > ");
+  }
+  function labelFor(element) {
+    const byAria = element.getAttribute("aria-label") || element.getAttribute("title");
+    const labelledBy = element.getAttribute("aria-labelledby");
+    const labelledText = labelledBy
+      ? labelledBy
+          .split(/\\s+/)
+          .map((id) => document.getElementById(id)?.innerText || "")
+          .join(" ")
+      : "";
+    const labelElement = element.id ? document.querySelector("label[for='" + cssAttrValue(element.id) + "']") : null;
+    return (
+      byAria ||
+      labelledText ||
+      labelElement?.innerText ||
+      element.innerText ||
+      element.value ||
+      element.placeholder ||
+      element.name ||
+      element.id ||
+      ""
+    ).trim().replace(/\\s+/g, " ");
+  }
   const title = document.title || "";
   const url = location.href;
   const text = (document.body?.innerText || "").replace(/\\s+\\n/g, "\\n").trim();
@@ -318,8 +388,8 @@ const domSnapshotScript = `
       const visible = rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== "hidden";
       if (!visible) continue;
       const tag = element.tagName.toLowerCase();
-      const label = (element.innerText || element.value || element.getAttribute("aria-label") || element.placeholder || element.name || element.id || "").trim().replace(/\\s+/g, " ");
-      const selector = element.id ? "#" + CSS.escape(element.id) : tag + (element.name ? "[name='" + CSS.escape(element.name) + "']" : "");
+      const label = labelFor(element);
+      const selector = selectorFor(element);
       lines.push("- " + tag + " " + selector + (label ? " :: " + label.slice(0, 160) : ""));
     }
   }
@@ -329,22 +399,75 @@ const domSnapshotScript = `
 
 const visibleDomScript = `
 (() => {
+  function cssIdentifier(value) {
+    return CSS.escape(String(value));
+  }
+  function cssAttrValue(value) {
+    return String(value).replace(/\\\\/g, "\\\\\\\\").replace(/'/g, "\\\\'");
+  }
+  function selectorUnique(selector) {
+    try {
+      return document.querySelectorAll(selector).length === 1;
+    } catch {
+      return false;
+    }
+  }
   function selectorFor(element) {
-    if (element.id) return "#" + CSS.escape(element.id);
+    const tag = element.tagName.toLowerCase();
+    const candidates = [];
+    for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title"]) {
+      const value = element.getAttribute(attr);
+      if (value) candidates.push(tag + "[" + attr + "='" + cssAttrValue(value) + "']");
+    }
+    if (element.id) candidates.push("#" + cssIdentifier(element.id));
+    for (const candidate of candidates) {
+      if (selectorUnique(candidate)) return candidate;
+    }
     const parts = [];
     let node = element;
-    while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 4) {
+    while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 6) {
       let part = node.tagName.toLowerCase();
-      if (node.name) part += "[name='" + CSS.escape(node.name) + "']";
+      for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name"]) {
+        const value = node.getAttribute(attr);
+        if (value) {
+          part += "[" + attr + "='" + cssAttrValue(value) + "']";
+          break;
+        }
+      }
+      if (node.id) part = "#" + cssIdentifier(node.id);
       const parent = node.parentElement;
-      if (parent) {
+      if (parent && !node.id) {
         const siblings = [...parent.children].filter((child) => child.tagName === node.tagName);
         if (siblings.length > 1) part += ":nth-of-type(" + ([...parent.children].indexOf(node) + 1) + ")";
       }
       parts.unshift(part);
+      const selector = parts.join(" > ");
+      if (selectorUnique(selector)) return selector;
       node = parent;
     }
     return parts.join(" > ");
+  }
+  function labelFor(element) {
+    const byAria = element.getAttribute("aria-label") || element.getAttribute("title");
+    const labelledBy = element.getAttribute("aria-labelledby");
+    const labelledText = labelledBy
+      ? labelledBy
+          .split(/\\s+/)
+          .map((id) => document.getElementById(id)?.innerText || "")
+          .join(" ")
+      : "";
+    const labelElement = element.id ? document.querySelector("label[for='" + cssAttrValue(element.id) + "']") : null;
+    return (
+      byAria ||
+      labelledText ||
+      labelElement?.innerText ||
+      element.innerText ||
+      element.value ||
+      element.placeholder ||
+      element.name ||
+      element.id ||
+      ""
+    ).trim().replace(/\\s+/g, " ");
   }
   return [...document.querySelectorAll("a,button,input,textarea,select,[role=button],[contenteditable=true]")]
     .map((element) => {
@@ -355,7 +478,10 @@ const visibleDomScript = `
       return {
         selector: selectorFor(element),
         tag: element.tagName.toLowerCase(),
-        text: (element.innerText || element.value || element.getAttribute("aria-label") || element.placeholder || element.name || element.id || "").trim().replace(/\\s+/g, " ").slice(0, 200),
+        text: labelFor(element).slice(0, 200),
+        role: element.getAttribute("role") || undefined,
+        type: element.getAttribute("type") || undefined,
+        disabled: element.disabled === true || element.getAttribute("aria-disabled") === "true",
         x: Math.round(rect.left + rect.width / 2),
         y: Math.round(rect.top + rect.height / 2),
       };

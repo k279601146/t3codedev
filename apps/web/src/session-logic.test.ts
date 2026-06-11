@@ -1202,6 +1202,62 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
+  it("uses structured dynamic tool presentation for browser and computer tools", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "browser-click-complete",
+        kind: "tool.completed",
+        summary: "Tool call",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          data: {
+            item: {
+              id: "tool-browser-1",
+              type: "dynamicToolCall",
+              namespace: "t3_browser",
+              tool: "browser_click",
+              arguments: {
+                selector: "button[aria-label='注册']",
+              },
+              contentItems: [{ type: "inputText", text: "Clicked button[aria-label='注册']" }],
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "computer-screenshot-complete",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "tool.completed",
+        summary: "Tool call",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          data: {
+            item: {
+              id: "tool-computer-1",
+              type: "dynamicToolCall",
+              namespace: "t3_computer",
+              tool: "computer_screenshot",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries[0]).toMatchObject({
+      toolTitle: "浏览器点击元素",
+      toolFamily: "browser",
+      detail: "参数: selector: button[aria-label='注册']\n输出: Clicked button[aria-label='注册']",
+    });
+    expect(entries[1]).toMatchObject({
+      toolTitle: "电脑控制截图",
+      toolFamily: "computer",
+    });
+  });
+
   it("does not use command stdout as the detail when Cursor omits the command input", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

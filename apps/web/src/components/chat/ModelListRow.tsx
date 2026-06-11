@@ -1,6 +1,6 @@
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
-import { StarIcon } from "lucide-react";
+import { ChevronRightIcon, StarIcon } from "lucide-react";
 import {
   getDisplayModelName,
   getTriggerDisplayModelLabel,
@@ -31,6 +31,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   preferShortName?: boolean;
   useTriggerLabel?: boolean;
   showNewBadge?: boolean;
+  showSubmenuIndicator?: boolean;
   showFavorite?: boolean;
   jumpLabel?: string | null;
   onToggleFavorite: () => void;
@@ -99,11 +100,14 @@ export const ModelListRow = memo(function ModelListRow(props: {
               </span>
             ) : null}
           </div>
-          {props.jumpLabel ? (
-            <Kbd className="h-4 min-w-0 shrink-0 rounded-sm px-1.5 text-[10px]">
-              {props.jumpLabel}
-            </Kbd>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1">
+            {props.jumpLabel ? (
+              <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">{props.jumpLabel}</Kbd>
+            ) : null}
+            {props.showSubmenuIndicator ? (
+              <ChevronRightIcon className="size-3.5 text-muted-foreground/70" />
+            ) : null}
+          </div>
         </div>
         {props.showProvider && (
           <div className="flex items-center gap-1 mt-0.5">

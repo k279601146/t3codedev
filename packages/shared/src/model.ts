@@ -143,6 +143,13 @@ function withDescriptorCurrentValue(
   };
 }
 
+export function setProviderOptionDescriptorCurrentValue(
+  descriptor: ProviderOptionDescriptor,
+  currentValue: string | boolean | undefined,
+): ProviderOptionDescriptor {
+  return withDescriptorCurrentValue(descriptor, currentValue);
+}
+
 export function getProviderOptionDescriptors(input: {
   caps: ModelCapabilities;
   selections?: ReadonlyArray<ProviderOptionSelection> | null | undefined;

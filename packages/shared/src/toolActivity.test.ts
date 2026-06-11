@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveToolActivityPresentation } from "./toolActivity.ts";
+import {
+  deriveDynamicToolActivityPresentation,
+  deriveToolActivityPresentation,
+} from "./toolActivity.ts";
 
 describe("toolActivity", () => {
   it("normalizes command tools to a stable ran-command label", () => {
@@ -52,6 +55,45 @@ describe("toolActivity", () => {
       }),
     ).toEqual({
       summary: "Read file",
+    });
+  });
+
+  it("labels browser dynamic tools with arguments and output", () => {
+    expect(
+      deriveDynamicToolActivityPresentation({
+        namespace: "t3_browser",
+        tool: "browser_click",
+        arguments: {
+          selector: "button[aria-label='注册']",
+        },
+        contentItems: [{ type: "inputText", text: "Clicked button[aria-label='注册']" }],
+      }),
+    ).toMatchObject({
+      title: "浏览器点击元素",
+      family: "browser",
+      detail: "参数: selector: button[aria-label='注册']\n输出: Clicked button[aria-label='注册']",
+    });
+  });
+
+  it("distinguishes external browser and computer dynamic tools", () => {
+    expect(
+      deriveDynamicToolActivityPresentation({
+        namespace: "t3_browser_external",
+        tool: "browser_visible_dom",
+      }),
+    ).toMatchObject({
+      title: "外部浏览器读取可见元素",
+      family: "external_browser",
+    });
+
+    expect(
+      deriveDynamicToolActivityPresentation({
+        namespace: "t3_computer",
+        tool: "computer_screenshot",
+      }),
+    ).toMatchObject({
+      title: "电脑控制截图",
+      family: "computer",
     });
   });
 });

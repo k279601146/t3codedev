@@ -2,7 +2,13 @@ import {
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
+  type ModelCapabilities,
+  type ProviderOptionSelection,
 } from "@t3tools/contracts";
+import {
+  getProviderOptionCurrentLabel,
+  getProviderOptionDescriptors,
+} from "@t3tools/shared/model";
 import { memo, useEffect, useMemo, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { ChevronDownIcon } from "lucide-react";
@@ -33,6 +39,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   keybindings?: ResolvedKeybindingsConfig;
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
+  modelCapabilities?: ModelCapabilities | null;
+  modelOptionSelections?: ReadonlyArray<ProviderOptionSelection> | null;
   activeProviderIconClassName?: string;
   compact?: boolean;
   simplified?: boolean;
@@ -43,6 +51,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerClassName?: string;
   onOpenChange?: (open: boolean) => void;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  onModelOptionsChange?: (nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined) => void;
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
@@ -65,9 +74,29 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const selectedModel =
     selectedInstanceOptions.find((option) => option.slug === props.model) ??
     selectedInstanceOptions[0];
+  const modelOptionDescriptors = useMemo(
+    () =>
+      props.modelCapabilities
+        ? getProviderOptionDescriptors({
+            caps: props.modelCapabilities,
+            selections: props.modelOptionSelections,
+          })
+        : [],
+    [props.modelCapabilities, props.modelOptionSelections],
+  );
+  const reasoningDescriptor = modelOptionDescriptors.find(
+    (descriptor): descriptor is Extract<(typeof modelOptionDescriptors)[number], { type: "select" }> =>
+      descriptor.type === "select" && descriptor.id === "reasoningEffort",
+  );
+  const reasoningLabel = getReasoningDisplayLabel(
+    reasoningDescriptor ? getProviderOptionCurrentLabel(reasoningDescriptor) : undefined,
+  );
   const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
+  const triggerTitleWithOptions = reasoningLabel ? `${triggerTitle} ${reasoningLabel}` : triggerTitle;
   const triggerSubtitle = props.simplified ? null : selectedModel?.subProvider;
-  const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
+  const triggerLabel = selectedModel
+    ? `${getTriggerDisplayModelLabel(selectedModel)}${reasoningLabel ? ` ${reasoningLabel}` : ""}`
+    : props.model;
   const duplicateDriverCount = props.instanceEntries.filter(
     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
   ).length;
@@ -155,10 +184,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   <span aria-hidden="true" className="shrink-0 opacity-60">
                     ·
                   </span>
-                  <span className="min-w-0 truncate">{triggerTitle}</span>
+                  <span className="min-w-0 truncate">{triggerTitleWithOptions}</span>
                 </>
               ) : (
-                triggerTitle
+                triggerTitleWithOptions
               )}
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
@@ -178,12 +207,27 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           instanceEntries={props.instanceEntries}
           {...(props.keybindings ? { keybindings: props.keybindings } : {})}
           modelOptionsByInstance={props.modelOptionsByInstance}
+          modelOptionDescriptors={modelOptionDescriptors}
           simplified={props.simplified ?? false}
           terminalOpen={props.terminalOpen ?? false}
           onRequestClose={() => setIsMenuOpen(false)}
           onInstanceModelChange={handleInstanceModelChange}
+          onModelOptionsChange={props.onModelOptionsChange}
         />
       </PopoverPopup>
     </Popover>
   );
 });
+
+function getReasoningDisplayLabel(label: string | undefined): string | null {
+  if (!label) return null;
+  const normalized = label.trim().toLowerCase();
+  const localized: Record<string, string> = {
+    low: "低",
+    medium: "中",
+    high: "高",
+    xhigh: "超高",
+    "extra high": "超高",
+  };
+  return localized[normalized] ?? label;
+}

@@ -48,6 +48,22 @@ const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnErro
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
 const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 5_000;
 const COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS = 5_000;
+const COMMERCIAL_CODEX_MODEL_CAPABILITIES = createModelCapabilities({
+  optionDescriptors: [
+    {
+      id: "reasoningEffort",
+      label: "推理",
+      type: "select",
+      options: [
+        { id: "low", label: "低" },
+        { id: "medium", label: "中" },
+        { id: "high", label: "高", isDefault: true },
+        { id: "xhigh", label: "超高" },
+      ],
+      currentValue: "high",
+    },
+  ],
+});
 
 class CommercialModelCatalogError extends Data.TaggedError("CommercialModelCatalogError")<{
   readonly detail: string;
@@ -276,7 +292,7 @@ const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels
       slug,
       name: displayName && displayName.length > 0 ? displayName : slug,
       isCustom: false,
-      capabilities: null,
+      capabilities: COMMERCIAL_CODEX_MODEL_CAPABILITIES,
     });
   }
   return models;

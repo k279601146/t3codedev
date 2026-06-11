@@ -48,6 +48,7 @@ import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
 } from "@t3tools/shared/model";
+import { deriveDynamicToolActivityPresentation } from "@t3tools/shared/toolActivity";
 
 import {
   ProviderAdapterRequestError,
@@ -290,7 +291,26 @@ function itemTitle(itemType: CanonicalItemType): string | undefined {
   }
 }
 
+function dynamicToolPresentation(item: CodexLifecycleItem) {
+  if (!("type" in item) || item.type !== "dynamicToolCall") {
+    return undefined;
+  }
+  return deriveDynamicToolActivityPresentation({
+    tool: "tool" in item ? item.tool : undefined,
+    namespace: "namespace" in item ? item.namespace : undefined,
+    arguments: "arguments" in item ? item.arguments : undefined,
+    contentItems: "contentItems" in item ? item.contentItems : undefined,
+    success: "success" in item ? item.success : undefined,
+    status: "status" in item ? item.status : undefined,
+  });
+}
+
 function itemDetail(item: CodexLifecycleItem): string | undefined {
+  const dynamicDetail = dynamicToolPresentation(item)?.detail;
+  if (dynamicDetail) {
+    return dynamicDetail;
+  }
+
   const candidates = [
     "command" in item ? item.command : undefined,
     "title" in item ? item.title : undefined,
@@ -488,6 +508,7 @@ function mapItemLifecycle(
     return undefined;
   }
 
+  const dynamicPresentation = dynamicToolPresentation(item);
   const detail = itemDetail(item);
   const status =
     lifecycle === "item.started"
@@ -502,9 +523,24 @@ function mapItemLifecycle(
     payload: {
       itemType,
       ...(status ? { status } : {}),
-      ...(itemTitle(itemType) ? { title: itemTitle(itemType) } : {}),
+      ...((dynamicPresentation?.title ?? itemTitle(itemType))
+        ? { title: dynamicPresentation?.title ?? itemTitle(itemType) }
+        : {}),
       ...(detail ? { detail } : {}),
-      ...(event.payload !== undefined ? { data: event.payload } : {}),
+      ...(event.payload !== undefined
+        ? {
+            data: {
+              ...(typeof event.payload === "object" && event.payload !== null
+                ? (event.payload as Record<string, unknown>)
+                : { value: event.payload }),
+              ...(dynamicPresentation
+                ? {
+                    presentation: dynamicPresentation,
+                  }
+                : {}),
+            },
+          }
+        : {}),
     },
   };
 }
