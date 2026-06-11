@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off preferSchemaOverJson:off tryCatchInEffectGen:off anyUnknownInErrorContext:off
 /**
  * SkillsCatalogService — 拉取 + 缓存 vendored skill 推荐目录。
  *
@@ -327,7 +328,15 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
       .pipe(
         Effect.flatMap((response) =>
           response.status >= 200 && response.status < 300
-            ? response.text
+            ? response.text.pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new SkillsCatalogError({
+                      detail: `GET ${url} failed to read response text: ${String(cause)}`,
+                      cause,
+                    }),
+                ),
+              )
             : Effect.fail(
                 new SkillsCatalogError({
                   detail: `GET ${url} returned HTTP ${response.status}`,
@@ -351,7 +360,15 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
       .pipe(
         Effect.flatMap((response) =>
           response.status >= 200 && response.status < 300
-            ? response.arrayBuffer
+            ? response.arrayBuffer.pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new SkillsCatalogError({
+                      detail: `GET ${url} failed to read response bytes: ${String(cause)}`,
+                      cause,
+                    }),
+                ),
+              )
             : Effect.fail(
                 new SkillsCatalogError({
                   detail: `GET ${url} returned HTTP ${response.status}`,

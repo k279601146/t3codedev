@@ -255,9 +255,16 @@ const AuthLayerLive = ServerAuthLive.pipe(
 
 const ProviderRegistryLayerLive = ProviderRegistryLive.pipe(
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+  Layer.provideMerge(ProviderEventLoggersLive),
 );
 
-const SkillsLayerLive = SkillsServiceLive.pipe(Layer.provide(SkillsCatalogServiceLive));
+const SkillsServiceLayerLive = SkillsServiceLive.pipe(
+  Layer.provide(SkillsCatalogServiceLive),
+  Layer.provideMerge(ProviderRegistryLayerLive),
+  Layer.provideMerge(ServerSettingsLive),
+);
+
+const SkillsLayerLive = Layer.mergeAll(SkillsCatalogServiceLive, SkillsServiceLayerLive);
 
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
@@ -300,7 +307,6 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(RepositoryIdentityResolverLive),
   Layer.provideMerge(ServerEnvironmentLive),
   Layer.provideMerge(AuthLayerLive),
-  Layer.provideMerge(SkillsCatalogServiceLive),
   Layer.provideMerge(SkillsLayerLive),
 );
 

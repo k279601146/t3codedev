@@ -109,6 +109,8 @@ interface MutableHostState {
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const TOOL_CALL_TIMEOUT_MS = 30_000;
 const POLL_TIMEOUT_MS = 25_000;
+const EXTENSION_STALE_AFTER_MS = 45_000;
+const EXTENSION_WATCHDOG_INTERVAL_MS = 10_000;
 const T3_BROWSER_CONFIRMATION_REQUIRED_PREFIX = "T3_BROWSER_CONFIRMATION_REQUIRED:";
 
 function textResponse(text: string, success = true): ToolResponse {
@@ -167,7 +169,7 @@ function hostFromKnownTab(payload: ToolCallPayload, mutable: MutableHostState): 
   const tabId = readString(args, "tabId") ?? mutable.selectedTabId;
   const tab = tabId
     ? mutable.tabs.find((candidate) => candidate.id === tabId)
-    : mutable.tabs.find((candidate) => candidate.visible) ?? mutable.tabs[0];
+    : (mutable.tabs.find((candidate) => candidate.visible) ?? mutable.tabs[0]);
   return tab?.url ? hostFromTabUrl(tab.url) : null;
 }
 
@@ -260,6 +262,7 @@ const make = Effect.gen(function* () {
   const commandQueue: ExtensionCommand[] = [];
   const pollWaiters = new Set<(commands: ExtensionCommand[]) => void>();
   let endpoint = "";
+  let lastExtensionSeenAt = 0;
 
   const currentState = () => buildState({ endpoint, token, mutable });
   const publishState = () => {
@@ -354,6 +357,7 @@ const make = Effect.gen(function* () {
     const body = asRecord(raw);
     const tabs = Array.isArray(body.tabs) ? body.tabs : undefined;
     mutable.connected = true;
+    lastExtensionSeenAt = Date.now();
     mutable.extensionId = readString(body, "extensionId") ?? mutable.extensionId;
     mutable.browserName = readString(body, "browserName") ?? mutable.browserName;
     mutable.profileName = readString(body, "profileName") ?? mutable.profileName;
@@ -375,6 +379,14 @@ const make = Effect.gen(function* () {
     }
     publishState();
   };
+
+  const extensionWatchdog = setInterval(() => {
+    if (!mutable.connected || Date.now() - lastExtensionSeenAt <= EXTENSION_STALE_AFTER_MS) {
+      return;
+    }
+    mutable.connected = false;
+    publishState();
+  }, EXTENSION_WATCHDOG_INTERVAL_MS);
 
   const server = NodeHttp.createServer((request, response) => {
     void (async () => {
@@ -463,7 +475,9 @@ const make = Effect.gen(function* () {
           }
           pendingToolCalls.delete(id);
           const result = asRecord(body.result) as ToolResponse;
-          pending.resolve(result?.contentItems ? result : textResponse("Malformed extension result.", false));
+          pending.resolve(
+            result?.contentItems ? result : textResponse("Malformed extension result.", false),
+          );
           writeJson(response, 200, { ok: true });
           return;
         }
@@ -505,6 +519,7 @@ const make = Effect.gen(function* () {
               waiter([]);
             }
             pollWaiters.clear();
+            clearInterval(extensionWatchdog);
             server.close(() => resolve());
           }),
       ),

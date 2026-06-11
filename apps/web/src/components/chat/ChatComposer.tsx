@@ -31,6 +31,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
@@ -135,10 +136,11 @@ import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { getPrimaryEnvironmentConnection } from "../../environments/runtime";
 import {
-  COMPOSER_PLUGIN_MENTIONS,
+  getVisibleComposerPluginMentions,
   type ComposerPluginMention,
   searchComposerPluginMentions,
 } from "../../composerPluginMentions";
+import { useBrowserExternalPluginState } from "../../browserExternalPluginState";
 
 const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
@@ -394,6 +396,7 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
   traitsMenuContent?: React.ReactNode;
   onAttachFiles: () => void;
   onSelectPlugin: (plugin: ComposerPluginMention) => void;
+  pluginMentions: readonly ComposerPluginMention[];
   onSelectSkill: (skill: ServerProviderSkill) => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
   onInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -433,7 +436,7 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
             插件
           </MenuSubTrigger>
           <MenuSubPopup className="min-w-52">
-            {COMPOSER_PLUGIN_MENTIONS.map((plugin) => {
+            {props.pluginMentions.map((plugin) => {
               const Icon = plugin.kind === "computer" ? LaptopIcon : GlobeIcon;
               return (
                 <MenuItem key={plugin.id} onClick={() => props.onSelectPlugin(plugin)}>
@@ -618,8 +621,7 @@ const runtimeModeToneClassName: Record<
     menuIcon: "text-muted-foreground",
   },
   blue: {
-    trigger:
-      "text-[#147DFF] hover:bg-[#EAF5FF] hover:text-[#147DFF] dark:hover:bg-[#147DFF]/10",
+    trigger: "text-[#147DFF] hover:bg-[#EAF5FF] hover:text-[#147DFF] dark:hover:bg-[#147DFF]/10",
     icon: "text-[#147DFF]",
     menuIcon: "text-[#147DFF]",
   },
@@ -944,6 +946,15 @@ export const ChatComposer = memo(
       setThreadError,
       onExpandImage,
     } = props;
+    const navigate = useNavigate();
+    const browserExternalPlugin = useBrowserExternalPluginState();
+    const visiblePluginMentions = useMemo(
+      () =>
+        getVisibleComposerPluginMentions({
+          includeChrome: browserExternalPlugin.installed,
+        }),
+      [browserExternalPlugin.installed],
+    );
 
     // ------------------------------------------------------------------
     // Store subscriptions (prompt / images / terminal contexts)
@@ -1243,7 +1254,9 @@ export const ChatComposer = memo(
     const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
       if (!composerTrigger) return [];
       if (composerTrigger.kind === "path") {
-        const pluginItems = searchComposerPluginMentions(composerTrigger.query).map((plugin) => ({
+        const pluginItems = searchComposerPluginMentions(composerTrigger.query, {
+          includeChrome: browserExternalPlugin.installed,
+        }).map((plugin) => ({
           id: `plugin:${plugin.id}`,
           type: "plugin" as const,
           plugin,
@@ -1333,6 +1346,7 @@ export const ChatComposer = memo(
       });
       return composerMenuItems.find((item) => item.id === activeItemId) ?? null;
     }, [
+      browserExternalPlugin.installed,
       composerHighlightedItemId,
       composerHighlightedSearchKey,
       composerMenuItems,
@@ -2142,6 +2156,19 @@ export const ChatComposer = memo(
         if (isComposerApprovalState || activePendingProgress) {
           return;
         }
+        if (plugin.id === "Chrome" && !browserExternalPlugin.connected) {
+          toastManager.add({
+            type: "warning",
+            title: browserExternalPlugin.installed
+              ? "请先完成 Chrome 扩展配对"
+              : "请先安装 Browser Use External",
+            description: browserExternalPlugin.installed
+              ? "在插件页安装 Chrome 扩展，并将 Endpoint 与 Token 填入扩展弹窗。"
+              : "安装插件后，插件页会引导你安装 Chrome 扩展并完成 Endpoint/Token 配对。",
+          });
+          void navigate({ to: "/plugins" });
+          return;
+        }
         const snapshot = readComposerSnapshot();
         const needsLeadingSpacer = snapshot.value.length > 0 && !/\s$/.test(snapshot.value);
         const replacement = `${needsLeadingSpacer ? " " : ""}${plugin.token} `;
@@ -2164,7 +2191,10 @@ export const ChatComposer = memo(
       [
         activePendingProgress,
         applyPromptReplacement,
+        browserExternalPlugin.connected,
+        browserExternalPlugin.installed,
         isComposerApprovalState,
+        navigate,
         promptRef,
         readComposerSnapshot,
       ],
@@ -2958,6 +2988,7 @@ export const ChatComposer = memo(
                       traitsMenuContent={providerTraitsMenuContent}
                       onAttachFiles={openAttachmentPicker}
                       onSelectPlugin={insertPluginAtComposerCursor}
+                      pluginMentions={visiblePluginMentions}
                       onSelectSkill={insertSkillAtComposerCursor}
                       onRuntimeModeChange={handleRuntimeModeChange}
                       onInteractionModeChange={handleInteractionModeChange}
@@ -2976,6 +3007,7 @@ export const ChatComposer = memo(
                       showInteractionModeToggle={false}
                       onAttachFiles={openAttachmentPicker}
                       onSelectPlugin={insertPluginAtComposerCursor}
+                      pluginMentions={visiblePluginMentions}
                       onSelectSkill={insertSkillAtComposerCursor}
                       onRuntimeModeChange={handleRuntimeModeChange}
                       onInteractionModeChange={handleInteractionModeChange}

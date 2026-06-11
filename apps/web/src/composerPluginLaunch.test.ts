@@ -6,6 +6,7 @@ import {
   stripTrailingComposerPluginLaunchContext,
 } from "./composerPluginLaunch";
 import { searchComposerPluginMentions } from "./composerPluginMentions";
+import { promptUsesChromePlugin } from "./browserExternalPluginState";
 
 describe("composerPluginLaunch", () => {
   it("adds launch context for built-in plugin mentions", () => {
@@ -35,11 +36,19 @@ describe("composerPluginLaunch", () => {
     expect(stripTrailingComposerPluginLaunchContext(prompt)).toBe("@Computer 截屏看看");
   });
 
-  it("returns plugin suggestions for an empty @ query", () => {
+  it("hides Chrome suggestions until Browser Use External is installed", () => {
     expect(searchComposerPluginMentions("").map((mention) => mention.token)).toEqual([
       "@Browser",
-      "@Chrome",
       "@Computer",
     ]);
+    expect(
+      searchComposerPluginMentions("", { includeChrome: true }).map((mention) => mention.token),
+    ).toEqual(["@Browser", "@Chrome", "@Computer"]);
+  });
+
+  it("detects manually typed Chrome plugin mentions for send gating", () => {
+    expect(promptUsesChromePlugin("@Chrome 打开登录页")).toBe(true);
+    expect(promptUsesChromePlugin("请用 @chrome 打开登录页")).toBe(true);
+    expect(promptUsesChromePlugin("解释 @ChromeDriver")).toBe(false);
   });
 });

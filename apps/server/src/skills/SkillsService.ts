@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off instanceOfSchema:off unnecessaryFailYieldableError:off
 /**
  * SkillsService — 对 ws RPC 暴露的"已安装/推荐 + 安装/卸载"接口。
  *
@@ -218,10 +219,12 @@ const make = Effect.fn("makeSkillsService")(function* () {
   const catalog = yield* SkillsCatalogService;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const providerRegistry = yield* ProviderRegistry;
+  const config = yield* ServerConfig;
+  const settings = yield* ServerSettingsService;
 
   const refreshCodexProvidersInBackground = (reason: "install" | "uninstall", skillName: string) =>
     Effect.gen(function* () {
-      const providerRegistry = yield* ProviderRegistry;
       yield* Effect.logInfo("skills provider refresh scheduled", {
         reason,
         skillName,
@@ -257,7 +260,6 @@ const make = Effect.fn("makeSkillsService")(function* () {
 
   const findInstalledSkillDir = (skillName: string) =>
     Effect.gen(function* () {
-      const providerRegistry = yield* ProviderRegistry;
       const providers = yield* providerRegistry.getProviders;
       for (const provider of providers) {
         const found = provider.skills.find((s) => s.name === skillName);
@@ -270,7 +272,6 @@ const make = Effect.fn("makeSkillsService")(function* () {
 
   const list: SkillsServiceShape["list"] = () =>
     Effect.gen(function* () {
-      const providerRegistry = yield* ProviderRegistry;
       const providers = yield* providerRegistry.getProviders;
       const skills: InstalledSkill[] = [];
       const seen = new Set<string>();
@@ -361,8 +362,6 @@ const make = Effect.fn("makeSkillsService")(function* () {
 
   const install: SkillsServiceShape["install"] = (input) =>
     Effect.gen(function* () {
-      const config = yield* ServerConfig;
-      const settings = yield* ServerSettingsService;
       const item = yield* catalog
         .findCatalogItem(input.catalogItemId)
         .pipe(Effect.mapError((cause) => errorFromUnknown("skills.install", cause)));
@@ -434,8 +433,6 @@ const make = Effect.fn("makeSkillsService")(function* () {
 
   const uninstall: SkillsServiceShape["uninstall"] = (input) =>
     Effect.gen(function* () {
-      const config = yield* ServerConfig;
-      const settings = yield* ServerSettingsService;
       const skillDir = yield* findInstalledSkillDir(input.skillName);
 
       if (!skillDir) {

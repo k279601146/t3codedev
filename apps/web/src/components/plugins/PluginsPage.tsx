@@ -9,6 +9,7 @@ import {
   CheckIcon,
   CircleSlashIcon,
   CopyIcon,
+  DownloadIcon,
   EyeIcon,
   GlobeIcon,
   LaptopIcon,
@@ -29,6 +30,7 @@ import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { toastManager } from "~/components/ui/toast";
 import { cn } from "~/lib/utils";
+import { useBrowserExternalPluginState } from "~/browserExternalPluginState";
 
 type BuiltinPluginId = "browser_use" | "browser_use_external" | "computer_use";
 
@@ -64,6 +66,9 @@ const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
   },
 ];
 const DEFAULT_PLUGIN = BUILTIN_PLUGINS[0]!;
+const CHROME_EXTENSION_DOWNLOAD_URL = "/downloads/t3-code-chrome-extension.zip";
+const CHROME_EXTENSION_DOWNLOAD_NAME = "t3-code-chrome-extension.zip";
+const CHROME_EXTENSIONS_URL = "chrome://extensions";
 
 function formatTimestamp(value: string | null): string {
   if (!value) return "从未";
@@ -83,7 +88,9 @@ function describeDesktopBridgeError(error: unknown): string {
   return message;
 }
 
-function statusPill(status: "ready" | "paused" | "unavailable") {
+function statusPill(
+  status: "ready" | "paused" | "unavailable" | "not-installed" | "setup-required",
+) {
   switch (status) {
     case "ready":
       return (
@@ -106,6 +113,20 @@ function statusPill(status: "ready" | "paused" | "unavailable") {
           不可用
         </span>
       );
+    case "not-installed":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
+          <CircleSlashIcon className="size-3" />
+          未安装
+        </span>
+      );
+    case "setup-required":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+          <CircleSlashIcon className="size-3" />
+          待配置
+        </span>
+      );
   }
 }
 
@@ -117,7 +138,7 @@ function PluginCard({
 }: {
   readonly active: boolean;
   readonly plugin: BuiltinPlugin;
-  readonly status: "ready" | "paused" | "unavailable";
+  readonly status: "ready" | "paused" | "unavailable" | "not-installed" | "setup-required";
   readonly onSelect: () => void;
 }) {
   return (
@@ -141,13 +162,7 @@ function PluginCard({
   );
 }
 
-function SettingRow({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: React.ReactNode;
-}) {
+function SettingRow({ label, value }: { readonly label: string; readonly value: React.ReactNode }) {
   return (
     <div className="flex min-h-9 items-center justify-between gap-4 border-b border-border/50 py-2 last:border-b-0">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -186,7 +201,11 @@ function PermissionRow({
         onClick={() => onRemove(permission.appKey)}
         aria-label={`移除 ${permission.displayName}`}
       >
-        {removing ? <Loader2Icon className="size-3.5 animate-spin" /> : <Trash2Icon className="size-3.5" />}
+        {removing ? (
+          <Loader2Icon className="size-3.5 animate-spin" />
+        ) : (
+          <Trash2Icon className="size-3.5" />
+        )}
       </Button>
     </div>
   );
@@ -242,14 +261,23 @@ function BrowserPluginDetails({
 function BrowserExternalPluginDetails({
   state,
   refresh,
+  onRestartSetup,
 }: {
   readonly state: DesktopBrowserExternalAutomationState | null;
   readonly refresh: () => void;
+  readonly onRestartSetup: () => void;
 }) {
   const activeTab =
     state?.tabs.find((tab) => tab.id === state.selectedTabId) ?? state?.tabs[0] ?? null;
   return (
     <div className="space-y-5">
+      {!state?.connected ? (
+        <BrowserExternalSetupGuide
+          endpoint={state?.endpoint ?? null}
+          token={state?.token ?? null}
+          onRestartSetup={onRestartSetup}
+        />
+      ) : null}
       <section>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-foreground">Browser Use External 设置</h2>
@@ -261,9 +289,12 @@ function BrowserExternalPluginDetails({
         <div className="mt-3 rounded-md border border-border/70 px-3">
           <SettingRow
             label="插件状态"
-            value={statusPill(state?.connected ? "ready" : "unavailable")}
+            value={statusPill(state?.connected ? "ready" : "setup-required")}
           />
-          <SettingRow label="命名空间" value={<span className="font-mono">t3_browser_external</span>} />
+          <SettingRow
+            label="命名空间"
+            value={<span className="font-mono">t3_browser_external</span>}
+          />
           <SettingRow label="扩展 ID" value={state?.extensionId ?? "未连接"} />
           <SettingRow label="浏览器" value={state?.browserName ?? "未连接"} />
           <SettingRow label="当前标签页" value={activeTab?.title || "暂无"} />
@@ -285,23 +316,31 @@ function BrowserExternalPluginDetails({
         <div className="mt-3 rounded-md border border-border/70 px-3">
           <SettingRow
             label="Endpoint"
+            value={state?.endpoint ? <CopyConnectionValue value={state.endpoint} /> : "暂无"}
+          />
+          <SettingRow
+            label="Token"
+            value={state?.token ? <CopyConnectionValue value={state.token} secret /> : "暂无"}
+          />
+        </div>
+      </section>
+      <section>
+        <h3 className="text-[13px] font-medium text-muted-foreground">配置流程</h3>
+        <div className="mt-3 rounded-md border border-border/70 px-3">
+          <SettingRow label="1. T3 插件" value={statusPill("ready")} />
+          <SettingRow
+            label="2. Chrome 扩展"
             value={
-              state?.endpoint ? (
-                <CopyConnectionValue value={state.endpoint} />
+              state?.extensionId ? (
+                statusPill("ready")
               ) : (
-                "暂无"
+                <span className="text-muted-foreground">下载并安装 T3 Code Chrome Extension</span>
               )
             }
           />
           <SettingRow
-            label="Token"
-            value={
-              state?.token ? (
-                <CopyConnectionValue value={state.token} secret />
-              ) : (
-                "暂无"
-              )
-            }
+            label="3. Endpoint / Token 配对"
+            value={state?.connected ? statusPill("ready") : statusPill("setup-required")}
           />
         </div>
       </section>
@@ -309,13 +348,138 @@ function BrowserExternalPluginDetails({
         <div className="flex items-start gap-2">
           <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="text-xs leading-5 text-muted-foreground">
-            安装扩展后仍需把上方 Endpoint 与 Token 填入扩展弹窗完成配对。Token
-            会在每次重启 T3 Code 后更新，此时需要重新配对。连接后 @Chrome 会使用
-            browser_use_external。
+            安装扩展后仍需把上方 Endpoint 与 Token 填入扩展弹窗完成配对。Token 会在每次重启 T3 Code
+            后更新，此时需要重新配对。连接后 @Chrome 会使用 browser_use_external。
           </p>
         </div>
       </section>
     </div>
+  );
+}
+
+function BrowserExternalSetupGuide({
+  endpoint,
+  token,
+  onRestartSetup,
+}: {
+  readonly endpoint: string | null;
+  readonly token: string | null;
+  readonly onRestartSetup: () => void;
+}) {
+  return (
+    <section className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">下一步：安装并配对 Chrome 扩展</h2>
+          <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+            Browser Use External 已加入 T3 Code，但还不能使用。你需要先下载 T3 Code Chrome Extension
+            安装包，在 Chrome 中加载扩展，并把本页 Endpoint 与 Token 填入扩展弹窗。
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="xs" onClick={onRestartSetup}>
+          重新开始
+        </Button>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <SetupStep
+          index={1}
+          title="下载 Chrome 扩展"
+          description="下载 T3 Code 提供的 Chrome 扩展安装包，并解压到一个固定目录。"
+          action={<ChromeExtensionDownloadButton />}
+        />
+        <SetupStep
+          index={2}
+          title="在 Chrome 加载扩展"
+          description="打开 Chrome 扩展页，开启开发者模式，点击“加载已解压的扩展程序”，选择刚才解压后的扩展目录。"
+          action={<CopyConnectionValue value={CHROME_EXTENSIONS_URL} />}
+        />
+        <SetupStep
+          index={3}
+          title="配置扩展弹窗"
+          description="点击 Chrome 工具栏里的 T3 Code 扩展，把本页 Endpoint 与 Token 填入弹窗后点击连接。"
+          action={
+            <div className="grid gap-1.5">
+              {endpoint ? <CopyConnectionValue value={endpoint} /> : null}
+              {token ? <CopyConnectionValue value={token} secret /> : null}
+            </div>
+          }
+        />
+        <SetupStep
+          index={4}
+          title="确认连接"
+          description="扩展弹窗显示“已连接到 T3 Code”后，输入框菜单中的 Chrome 才会真正可用。"
+          action={<CopyConnectionValue value={CHROME_EXTENSIONS_URL} />}
+        />
+      </div>
+    </section>
+  );
+}
+
+function SetupStep({
+  index,
+  title,
+  description,
+  action,
+}: {
+  readonly index: number;
+  readonly title: string;
+  readonly description: string;
+  readonly action: ReactNode;
+}) {
+  return (
+    <div className="grid gap-2 rounded-md border border-border/70 bg-background/70 p-3">
+      <div className="flex items-start gap-2">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground">
+          {index}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-medium text-foreground">{title}</div>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="pl-7">{action}</div>
+    </div>
+  );
+}
+
+function BrowserExternalInstallDetails({ onInstall }: { readonly onInstall: () => void }) {
+  return (
+    <div className="space-y-5">
+      <section>
+        <h2 className="text-sm font-semibold text-foreground">安装 Browser Use External</h2>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          安装后，输入框插件菜单才会显示 Chrome。随后还需要安装 T3 Code Chrome Extension，并使用
+          Endpoint 与 Token 完成配对。
+        </p>
+        <div className="mt-4 rounded-md border border-border/70 bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
+          T3 Code 会提供已构建好的 Chrome 扩展安装包。点击安装后，请按下一步引导下载扩展包、 安装到
+          Chrome，并在扩展弹窗中填写 Endpoint 与 Token。
+        </div>
+        <Button type="button" className="mt-4" onClick={onInstall}>
+          <PlugIcon className="size-4" />
+          安装插件
+        </Button>
+      </section>
+      <section className="rounded-md border border-border/70 bg-muted/20 p-3">
+        <div className="text-xs leading-5 text-muted-foreground">
+          安装流程：安装 T3 插件 → 下载 Chrome 扩展 → 加载解压后的扩展目录 → 配置 Endpoint/Token →
+          扩展显示已连接。
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ChromeExtensionDownloadButton() {
+  return (
+    <Button
+      render={<a href={CHROME_EXTENSION_DOWNLOAD_URL} download={CHROME_EXTENSION_DOWNLOAD_NAME} />}
+      size="xs"
+    >
+      <DownloadIcon className="size-3.5" />
+      下载 Chrome 扩展
+    </Button>
   );
 }
 
@@ -483,7 +647,9 @@ function ComputerPluginDetails({
         <div className="flex items-start gap-2">
           <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="text-xs leading-5 text-muted-foreground">
-            Computer Use 会在使用未授权 App 前请求确认；执行桌面控制时 T3 Code 会让出前台，避免遮挡目标 App。终端应用、T3 Code 和 Codex 自身会被拦截，避免绕过会话权限与安全策略。
+            Computer Use 会在使用未授权 App 前请求确认；执行桌面控制时 T3 Code
+            会让出前台，避免遮挡目标 App。终端应用、T3 Code 和 Codex
+            自身会被拦截，避免绕过会话权限与安全策略。
           </p>
         </div>
       </section>
@@ -495,8 +661,8 @@ export function PluginsPage() {
   const [search, setSearch] = useState("");
   const [selectedPluginId, setSelectedPluginId] = useState<BuiltinPluginId>("browser_use");
   const [browserState, setBrowserState] = useState<DesktopBrowserAutomationState | null>(null);
-  const [browserExternalState, setBrowserExternalState] =
-    useState<DesktopBrowserExternalAutomationState | null>(null);
+  const browserExternalPlugin = useBrowserExternalPluginState();
+  const browserExternalState = browserExternalPlugin.state;
   const [computerState, setComputerState] = useState<DesktopComputerAutomationState | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -506,7 +672,10 @@ export function PluginsPage() {
       setBrowserState(null);
       return;
     }
-    void bridge.getBrowserAutomationState().then(setBrowserState).catch(() => setBrowserState(null));
+    void bridge
+      .getBrowserAutomationState()
+      .then(setBrowserState)
+      .catch(() => setBrowserState(null));
   }, []);
 
   const refreshComputer = useCallback(() => {
@@ -521,46 +690,43 @@ export function PluginsPage() {
       .catch(() => setComputerState(null));
   }, []);
 
-  const refreshBrowserExternal = useCallback(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge?.getBrowserExternalAutomationState) {
-      setBrowserExternalState(null);
-      return;
-    }
-    void bridge
-      .getBrowserExternalAutomationState()
-      .then(setBrowserExternalState)
-      .catch(() => setBrowserExternalState(null));
-  }, []);
+  const refreshBrowserExternal = browserExternalPlugin.refresh;
 
   useEffect(() => {
     refreshBrowser();
     refreshBrowserExternal();
     refreshComputer();
     const bridge = window.desktopBridge;
-    const unsubscribeBrowser = bridge?.onBrowserAutomationState?.((state) => setBrowserState(state));
-    const unsubscribeBrowserExternal = bridge?.onBrowserExternalAutomationState?.((state) =>
-      setBrowserExternalState(state),
+    const unsubscribeBrowser = bridge?.onBrowserAutomationState?.((state) =>
+      setBrowserState(state),
     );
     const unsubscribeComputer = bridge?.onComputerAutomationState?.((state) =>
       setComputerState(state),
     );
     return () => {
       unsubscribeBrowser?.();
-      unsubscribeBrowserExternal?.();
       unsubscribeComputer?.();
     };
   }, [refreshBrowser, refreshBrowserExternal, refreshComputer]);
 
   const filteredPlugins = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return BUILTIN_PLUGINS;
-    return BUILTIN_PLUGINS.filter((plugin) =>
-      [plugin.id, plugin.title, plugin.subtitle, ...plugin.tags].some((value) =>
-        value.toLowerCase().includes(query),
+    const matching = !query
+      ? BUILTIN_PLUGINS
+      : BUILTIN_PLUGINS.filter((plugin) =>
+          [plugin.id, plugin.title, plugin.subtitle, ...plugin.tags].some((value) =>
+            value.toLowerCase().includes(query),
+          ),
+        );
+    return {
+      installed: matching.filter(
+        (plugin) => plugin.id !== "browser_use_external" || browserExternalPlugin.installed,
       ),
-    );
-  }, [search]);
+      available: matching.filter(
+        (plugin) => plugin.id === "browser_use_external" && !browserExternalPlugin.installed,
+      ),
+    };
+  }, [browserExternalPlugin.installed, search]);
 
   const selectedPlugin =
     BUILTIN_PLUGINS.find((plugin) => plugin.id === selectedPluginId) ?? DEFAULT_PLUGIN;
@@ -616,14 +782,20 @@ export function PluginsPage() {
   }, [runComputerAction]);
 
   const pluginStatus = useCallback(
-    (pluginId: BuiltinPluginId): "ready" | "paused" | "unavailable" => {
+    (
+      pluginId: BuiltinPluginId,
+    ): "ready" | "paused" | "unavailable" | "not-installed" | "setup-required" => {
       if (pluginId === "browser_use") return browserState ? "ready" : "unavailable";
       if (pluginId === "browser_use_external")
-        return browserExternalState?.connected ? "ready" : "unavailable";
+        return !browserExternalPlugin.installed
+          ? "not-installed"
+          : browserExternalState?.connected
+            ? "ready"
+            : "setup-required";
       if (!computerState || !computerState.available) return "unavailable";
       return computerState.paused ? "paused" : "ready";
     },
-    [browserState, browserExternalState, computerState],
+    [browserExternalPlugin.installed, browserState, browserExternalState, computerState],
   );
 
   return (
@@ -667,13 +839,13 @@ export function PluginsPage() {
             <section className="mt-8">
               <h2 className="text-[13px] font-medium text-muted-foreground">已安装</h2>
               <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1">
-                {filteredPlugins.length === 0 ? (
+                {filteredPlugins.installed.length === 0 ? (
                   <div className="flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">
                     <BlocksIcon className="size-4" />
                     没有匹配的插件。
                   </div>
                 ) : (
-                  filteredPlugins.map((plugin) => (
+                  filteredPlugins.installed.map((plugin) => (
                     <PluginCard
                       key={plugin.id}
                       plugin={plugin}
@@ -685,6 +857,22 @@ export function PluginsPage() {
                 )}
               </div>
             </section>
+            {filteredPlugins.available.length > 0 ? (
+              <section className="mt-8">
+                <h2 className="text-[13px] font-medium text-muted-foreground">可安装</h2>
+                <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1">
+                  {filteredPlugins.available.map((plugin) => (
+                    <PluginCard
+                      key={plugin.id}
+                      plugin={plugin}
+                      active={selectedPlugin.id === plugin.id}
+                      status="not-installed"
+                      onSelect={() => setSelectedPluginId(plugin.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
 
           <aside className="min-w-0">
@@ -705,10 +893,17 @@ export function PluginsPage() {
               {selectedPlugin.id === "browser_use" ? (
                 <BrowserPluginDetails state={browserState} refresh={refreshBrowser} />
               ) : selectedPlugin.id === "browser_use_external" ? (
-                <BrowserExternalPluginDetails
-                  state={browserExternalState}
-                  refresh={refreshBrowserExternal}
-                />
+                browserExternalPlugin.installed ? (
+                  <BrowserExternalPluginDetails
+                    state={browserExternalState}
+                    refresh={refreshBrowserExternal}
+                    onRestartSetup={() => browserExternalPlugin.setInstalled(false)}
+                  />
+                ) : (
+                  <BrowserExternalInstallDetails
+                    onInstall={() => browserExternalPlugin.setInstalled(true)}
+                  />
+                )
               ) : (
                 <ComputerPluginDetails
                   state={computerState}

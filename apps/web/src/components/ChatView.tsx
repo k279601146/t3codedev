@@ -199,6 +199,10 @@ import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
 import { appendComposerPluginLaunchContext } from "../composerPluginLaunch";
 import {
+  promptUsesChromePlugin,
+  useBrowserExternalPluginState,
+} from "../browserExternalPluginState";
+import {
   useServerAvailableEditors,
   useServerConfig,
   useServerKeybindings,
@@ -713,6 +717,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
+  const browserExternalPlugin = useBrowserExternalPluginState();
   const rawSearch = useSearch({
     strict: false,
     select: (params) => parseDiffRouteSearch(params),
@@ -2889,6 +2894,19 @@ export default function ChatView(props: ChatViewProps) {
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
     const promptForSend = promptRef.current;
+    if (promptUsesChromePlugin(promptForSend) && !browserExternalPlugin.connected) {
+      toastManager.add({
+        type: "warning",
+        title: browserExternalPlugin.installed
+          ? "请先完成 Chrome 扩展配对"
+          : "请先安装 Browser Use External",
+        description: browserExternalPlugin.installed
+          ? "在插件页安装 Chrome 扩展，并将 Endpoint 与 Token 填入扩展弹窗。"
+          : "安装插件后，按照插件页引导安装 Chrome 扩展并完成 Endpoint/Token 配对。",
+      });
+      void navigate({ to: "/plugins" });
+      return;
+    }
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,

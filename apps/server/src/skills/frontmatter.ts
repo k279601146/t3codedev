@@ -109,12 +109,12 @@ function parseFrontmatterLines(lines: ReadonlyArray<string>): ParsedSkillFrontma
   flush();
 
   return {
-    name: out["name"] ?? undefined,
-    displayName: out["displayName"] ?? undefined,
-    description: out["description"] ?? undefined,
-    shortDescription: out["shortDescription"] ?? undefined,
-    iconSmall: out["iconSmall"] ?? undefined,
-    iconLarge: out["iconLarge"] ?? undefined,
+    ...(out["name"] ? { name: out["name"] } : {}),
+    ...(out["displayName"] ? { displayName: out["displayName"] } : {}),
+    ...(out["description"] ? { description: out["description"] } : {}),
+    ...(out["shortDescription"] ? { shortDescription: out["shortDescription"] } : {}),
+    ...(out["iconSmall"] ? { iconSmall: out["iconSmall"] } : {}),
+    ...(out["iconLarge"] ? { iconLarge: out["iconLarge"] } : {}),
   };
 }
 

@@ -101,13 +101,14 @@ type ToolResponse = {
 };
 
 type HelperRequest = {
-  readonly id: string;
-  readonly command: string;
-  readonly arguments?: Record<string, unknown>;
+  readonly id: number;
+  readonly method: string;
+  readonly params?: Record<string, unknown>;
+  readonly meta?: Record<string, unknown>;
 };
 
 type HelperResponse = {
-  readonly id?: string;
+  readonly id?: number;
   readonly ok?: boolean;
   readonly result?: unknown;
   readonly error?: unknown;
@@ -134,7 +135,7 @@ interface MutableHostState {
 interface HelperProcess {
   readonly child: NodeChildProcess.ChildProcessWithoutNullStreams;
   readonly pending: Map<
-    string,
+    number,
     {
       readonly resolve: (value: unknown) => void;
       readonly reject: (error: Error) => void;
@@ -142,14 +143,6 @@ interface HelperProcess {
     }
   >;
 }
-
-type CodexComputerUseResponse = {
-  readonly id?: number | string;
-  readonly ok?: boolean;
-  readonly result?: unknown;
-  readonly error?: unknown;
-  readonly approvalRequest?: unknown;
-};
 
 const NAMESPACE = "t3_computer";
 const CONFIRMATION_REQUIRED_PREFIX = "T3_COMPUTER_CONFIRMATION_REQUIRED:";
@@ -261,6 +254,16 @@ function readWindowId(
 
 function sanitizeScreenshotText(result: unknown, imageUrl?: string): unknown {
   const record = { ...asRecord(result) };
+  const screenshots = Array.isArray(record.screenshots) ? record.screenshots : null;
+  if (screenshots) {
+    record.screenshots = screenshots.map((entry) => {
+      const screenshot = asRecord(entry);
+      return {
+        ...screenshot,
+        url: imageUrl ? "<inputImage content item>" : readString(screenshot, "url"),
+      };
+    });
+  }
   const screenshot = asRecord(record.screenshot);
   if (Object.keys(screenshot).length > 0) {
     record.screenshot = {
@@ -286,10 +289,6 @@ function sanitizeScreenshotText(result: unknown, imageUrl?: string): unknown {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function userProfileHome(): string | null {
-  return process.env.USERPROFILE?.trim() || process.env.HOME?.trim() || null;
 }
 
 function parseDataUrlBytes(dataUrl: string): Buffer | null {
@@ -358,11 +357,17 @@ function foregroundFromUnknown(value: unknown): DesktopComputerAutomationForegro
 
 function windowFromUnknown(value: unknown): DesktopComputerAutomationWindow | null {
   const record = asRecord(value);
-  const id = readString(record, "id");
+  const rawId = readString(record, "id") ?? readNumber(record, "id")?.toString();
+  const id = rawId?.trim();
   if (!id) return null;
   const app = readString(record, "app") ?? null;
   const title = readString(record, "title") ?? "";
-  const processName = readString(record, "processName") ?? null;
+  const appProcessPath = app?.startsWith("process:") ? app.slice("process:".length) : app;
+  const processName =
+    readString(record, "processName") ??
+    (appProcessPath && /^[a-z]:\\/i.test(appProcessPath)
+      ? NodePath.basename(appProcessPath)
+      : null);
   const processId = readNumber(record, "processId") ?? null;
   const visible = readBoolean(record, "visible") ?? true;
   const isMinimized = readBoolean(record, "isMinimized") ?? false;
@@ -391,14 +396,17 @@ function compactProcessName(processName: string | null | undefined): string {
 function displayNameForForeground(
   foreground: DesktopComputerAutomationForegroundWindow | null,
 ): string {
+  const app = (foreground as { readonly app?: string | null } | null)?.app?.trim();
   const processName = foreground?.processName?.trim();
   const title = foreground?.title?.trim();
-  return processName || title || "Unknown app";
+  return processName || title || app || "Unknown app";
 }
 
 function appKeyForForeground(
   foreground: DesktopComputerAutomationForegroundWindow | null,
 ): string | null {
+  const app = (foreground as { readonly app?: string | null } | null)?.app?.trim();
+  if (app) return `app:${app.toLowerCase()}`;
   const processName = normalizeProcessName(foreground?.processName);
   if (processName) return `process:${processName}`;
   const title = foreground?.title?.trim().toLowerCase();
@@ -437,6 +445,7 @@ function protectedForegroundReason(
   options?: { readonly attemptedT3WindowYield?: boolean },
 ): string | null {
   const processName = normalizeProcessName(foreground?.processName);
+  const app = ((foreground as { readonly app?: string | null } | null)?.app ?? "").toLowerCase();
   const title = (foreground?.title ?? "").toLowerCase();
   const terminalProcesses = new Set([
     "cmd",
@@ -449,12 +458,17 @@ function protectedForegroundReason(
     "bash",
     "wsl",
   ]);
-  if (terminalProcesses.has(processName)) {
+  if (
+    terminalProcesses.has(processName) ||
+    /\b(cmd|powershell|pwsh|windowsterminal|conhost|openconsole)\.exe\b/i.test(app)
+  ) {
     return "computer_use cannot automate terminal applications because that could bypass T3 Code safety controls.";
   }
   const looksLikeSelf =
     compactProcessName(processName).includes("t3code") ||
     processName.includes("codex") ||
+    app.includes("t3code") ||
+    app.includes("codex") ||
     (processName === "electron" && (title.includes("t3 code") || title.includes("codex")));
   if (looksLikeSelf) {
     if (options?.attemptedT3WindowYield) {
@@ -470,10 +484,13 @@ function isT3OrCodexForeground(
 ): boolean {
   const processName = normalizeProcessName(foreground?.processName);
   const compactName = compactProcessName(processName);
+  const app = ((foreground as { readonly app?: string | null } | null)?.app ?? "").toLowerCase();
   const title = (foreground?.title ?? "").toLowerCase();
   return (
     compactName.includes("t3code") ||
     processName.includes("codex") ||
+    app.includes("t3code") ||
+    app.includes("codex") ||
     (processName === "electron" && (title.includes("t3 code") || title.includes("codex")))
   );
 }
@@ -578,10 +595,21 @@ const make = Effect.gen(function* () {
 
   yield* Effect.promise(loadPermissions);
 
+  type HelperWindow = {
+    readonly app: string;
+    readonly id: number;
+    readonly title: string;
+  };
+
+  const windowCache = new Map<string, HelperWindow>();
+
   const resolveHelperPath = async (): Promise<string> => {
-    for (const candidate of environment.resolveResourcePathCandidates(
-      "computer-use/windows-helper.ps1",
-    )) {
+    const candidates = [
+      ...environment.resolveResourcePathCandidates("computer-use/t3-computer-use.exe"),
+      ...environment.resolveResourcePathCandidates("computer-use/windows/t3-computer-use.exe"),
+      ...environment.resolveResourcePathCandidates("computer-use/bin/windows/t3-computer-use.exe"),
+    ];
+    for (const candidate of candidates) {
       if (
         await Effect.runPromise(
           fileSystem.exists(candidate).pipe(Effect.orElseSucceed(() => false)),
@@ -590,212 +618,187 @@ const make = Effect.gen(function* () {
         return candidate;
       }
     }
-    throw new Error("Windows computer_use helper was not found.");
-  };
-
-  const resolveCodexComputerUseHelperPath = async (): Promise<string | null> => {
-    const candidates = [
-      ...environment.resolveResourcePathCandidates("computer-use/codex-computer-use.exe"),
-      ...environment.resolveResourcePathCandidates("computer-use/bin/windows/codex-computer-use.exe"),
-    ];
-    const home = userProfileHome();
-    if (home) {
-      const bundledRoot = NodePath.join(
-        home,
-        ".codex",
-        "plugins",
-        "cache",
-        "openai-bundled",
-        "computer-use",
-      );
-      try {
-        const entries = await NodeFs.readdir(bundledRoot, { withFileTypes: true });
-        for (const entry of entries
-          .filter((item) => item.isDirectory())
-          .map((item) => item.name)
-          .sort()
-          .reverse()) {
-          candidates.push(
-            NodePath.join(
-              bundledRoot,
-              entry,
-              "node_modules",
-              "@oai",
-              "sky",
-              "bin",
-              "windows",
-              "codex-computer-use.exe",
-            ),
-          );
-        }
-      } catch {
-        // Official Codex plugin cache is optional.
-      }
-    }
-    for (const candidate of candidates) {
-      try {
-        await NodeFs.access(candidate);
-        return candidate;
-      } catch {
-        // Try the next candidate.
-      }
-    }
-    return null;
-  };
-
-  const requestCodexComputerUseHelper = async (
-    method: string,
-    params: Record<string, unknown>,
-    approvedApp: string | null,
-    timeoutMs = 12_000,
-  ): Promise<unknown> => {
-    const helperPath = await resolveCodexComputerUseHelperPath();
-    if (!helperPath) {
-      throw new Error("Codex Windows.Graphics.Capture helper is not installed.");
-    }
-    const child = NodeChildProcess.spawn(helperPath, ["--parent-pid", String(process.pid)], {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    const request = {
-      id: 1,
-      method,
-      params,
-      ...(approvedApp ? { meta: { "x-oai-cua-approved-app": approvedApp } } : {}),
-    };
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    const exit = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        child.kill();
-        reject(new Error(`Codex WGC helper timed out during ${method}.`));
-      }, timeoutMs);
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.once("exit", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-    });
-    child.stdin.end(`${JSON.stringify(request)}\n`, "utf8");
-    await exit;
-
-    const line = stdout
-      .split(/\r?\n/)
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .at(-1);
-    if (!line) {
-      throw new Error(
-        stderr.trim()
-          ? `Codex WGC helper returned no response: ${stderr.trim()}`
-          : "Codex WGC helper returned no response.",
-      );
-    }
-    const response = JSON.parse(line) as CodexComputerUseResponse;
-    if (response.ok === true) {
-      return response.result;
-    }
-    const approval = asRecord(response.approvalRequest);
-    const approvalDisplayName = readString(approval, "displayName") ?? readString(approval, "app");
-    if (approvalDisplayName) {
-      throw new Error(`Codex WGC helper requested approval for ${approvalDisplayName}.`);
-    }
-    throw new Error(String(response.error ?? "Codex WGC helper failed."));
-  };
-
-  const tryCaptureWindowWithCodexWgc = async (
-    window: DesktopComputerAutomationWindow | null,
-    filePath: string,
-  ): Promise<{ readonly result: unknown; readonly dataUrl: string; readonly filePath: string } | null> => {
-    if (!window?.app || !isNonEmptyString(window.id)) {
-      return null;
-    }
-    const numericWindowId = Number(window.id);
-    if (!Number.isInteger(numericWindowId) || numericWindowId < 0) {
-      return null;
-    }
-    const result = await requestCodexComputerUseHelper(
-      "get_window_state",
-      {
-        window: { app: window.app, id: numericWindowId },
-        include_screenshot: true,
-        include_text: false,
-      },
-      window.app,
+    throw new Error(
+      "T3 computer_use helper was not found. Expected apps/desktop/resources/computer-use/t3-computer-use.exe to be bundled with T3 Code.",
     );
-    const screenshots = asRecord(result).screenshots;
-    const firstScreenshot = Array.isArray(screenshots) ? asRecord(screenshots[0]) : {};
-    const screenshotUrl = readString(firstScreenshot, "url");
-    if (!screenshotUrl) {
-      throw new Error("Codex WGC helper did not return a screenshot URL.");
-    }
-    const bytes = parseDataUrlBytes(screenshotUrl);
-    if (!bytes) {
-      throw new Error("Codex WGC helper returned a non-PNG screenshot URL.");
-    }
-    await NodeFs.writeFile(filePath, bytes);
-    return {
-      result: {
-        ...asRecord(result),
-        screenshot: {
-          path: filePath,
-          id: readString(firstScreenshot, "id") ?? "window-0",
-          zIndex: readNumber(firstScreenshot, "zIndex") ?? 0,
-          originX: readNumber(firstScreenshot, "originX"),
-          originY: readNumber(firstScreenshot, "originY"),
-          width: readNumber(firstScreenshot, "width"),
-          height: readNumber(firstScreenshot, "height"),
-          scaleFactor: 1,
-          coordinateSpace: "window",
-          captureMethod: "windowsGraphicsCapture",
-          source: "codex-computer-use",
-        },
-      },
-      dataUrl: screenshotUrl,
-      filePath,
-    };
   };
 
-  const mergeWgcResult = (
-    fallbackResult: unknown,
-    wgcResult: unknown,
-    fallbackReason?: string,
-  ): unknown => {
-    const fallbackRecord = asRecord(fallbackResult);
-    const wgcRecord = asRecord(wgcResult);
-    return {
-      ...fallbackRecord,
-      ...wgcRecord,
-      selectedWindow: fallbackRecord.selectedWindow ?? wgcRecord.window,
-      window: fallbackRecord.selectedWindow ?? wgcRecord.window,
-      screenshot: {
-        ...asRecord(fallbackRecord.screenshot),
-        ...asRecord(wgcRecord.screenshot),
-        ...(fallbackReason ? { fallbackReason } : {}),
-      },
-    };
+  const helperWindowFromUnknown = (value: unknown): HelperWindow | null => {
+    const record = asRecord(value);
+    const app = readString(record, "app");
+    const id = readNumber(record, "id") ?? Number(readString(record, "id"));
+    const title = readString(record, "title") ?? "";
+    return app && Number.isInteger(id) ? { app, id, title } : null;
   };
 
-  const withScreenshotFallbackReason = (result: unknown, fallbackReason: string): unknown => {
+  const rememberWindow = (window: HelperWindow | null): DesktopComputerAutomationWindow | null => {
+    if (!window) return null;
+    windowCache.set(String(window.id), window);
+    const desktopWindow = windowFromUnknown(window);
+    if (desktopWindow) {
+      mutable.selectedWindow = desktopWindow;
+      if (!protectedForegroundReason(desktopWindow)) {
+        lastAllowableForegroundWindow = desktopWindow;
+      }
+    }
+    return desktopWindow;
+  };
+
+  const rememberWindowsFromResult = (result: unknown): void => {
+    if (Array.isArray(result)) {
+      for (const entry of result) {
+        rememberWindow(helperWindowFromUnknown(entry));
+        const windows = asRecord(entry).windows;
+        if (Array.isArray(windows)) {
+          for (const window of windows) {
+            rememberWindow(helperWindowFromUnknown(window));
+          }
+        }
+      }
+      return;
+    }
     const record = asRecord(result);
-    const screenshot = asRecord(record.screenshot);
+    rememberWindow(helperWindowFromUnknown(record.window));
+    rememberWindow(helperWindowFromUnknown(record.selectedWindow));
+    rememberWindow(helperWindowFromUnknown(result));
+  };
+
+  const normalizeWindowForText = (window: unknown): unknown => {
+    const helperWindow = helperWindowFromUnknown(window);
+    const desktopWindow = helperWindow ? windowFromUnknown(helperWindow) : windowFromUnknown(window);
+    return desktopWindow ?? window;
+  };
+
+  const normalizeHelperTextResult = (result: unknown): unknown => {
+    if (Array.isArray(result)) {
+      return result.map((entry) => {
+        const record = asRecord(entry);
+        if (Array.isArray(record.windows)) {
+          return {
+            ...record,
+            windows: record.windows.map(normalizeWindowForText),
+          };
+        }
+        return normalizeWindowForText(entry);
+      });
+    }
+    const record = asRecord(result);
+    if (Object.keys(record).length === 0) return result;
     return {
       ...record,
+      ...(record.window ? { window: normalizeWindowForText(record.window) } : {}),
+      ...(record.selectedWindow
+        ? { selectedWindow: normalizeWindowForText(record.selectedWindow) }
+        : {}),
+    };
+  };
+
+  const selectedHelperWindow = (): HelperWindow | null => {
+    const selected = mutable.selectedWindow;
+    if (!selected?.id) return null;
+    const cached = windowCache.get(selected.id);
+    if (cached) return cached;
+    if (!selected.app) return null;
+    const id = Number(selected.id);
+    return Number.isInteger(id) ? { app: selected.app, id, title: selected.title } : null;
+  };
+
+  const findHelperWindowById = async (windowId: string): Promise<HelperWindow | null> => {
+    const cached = windowCache.get(windowId);
+    if (cached) return cached;
+    const windows = await requestHelper("list_windows");
+    rememberWindowsFromResult(windows);
+    return windowCache.get(windowId) ?? null;
+  };
+
+  const resolveHelperWindow = async (
+    args: Record<string, unknown>,
+  ): Promise<HelperWindow> => {
+    const windowId = readWindowId(args, mutable.selectedWindow);
+    if (!windowId) {
+      const selected = selectedHelperWindow();
+      if (selected) return selected;
+      throw new Error("A target window is required. Call computer_list_windows, then pass windowId.");
+    }
+    const window = await findHelperWindowById(windowId);
+    if (!window) {
+      throw new Error(`Target window ${windowId} was not found. Call computer_list_windows again.`);
+    }
+    rememberWindow(window);
+    return window;
+  };
+
+  const filterListResult = (result: unknown, query: string): unknown => {
+    if (!query.trim() || !Array.isArray(result)) return result;
+    const needle = query.trim().toLowerCase();
+    return result.filter((entry) => {
+      const record = asRecord(entry);
+      const haystack = [
+        readString(record, "title"),
+        readString(record, "app"),
+        readString(record, "displayName"),
+        readString(record, "id"),
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+      if (haystack.includes(needle)) return true;
+      const windows = record.windows;
+      return (
+        Array.isArray(windows) &&
+        windows.some((window) => {
+          const windowRecord = asRecord(window);
+          return [
+            readString(windowRecord, "title"),
+            readString(windowRecord, "app"),
+            readString(windowRecord, "id"),
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .toLowerCase()
+            .includes(needle);
+        })
+      );
+    });
+  };
+
+  const firstScreenshotFromResult = (result: unknown): Record<string, unknown> => {
+    const record = asRecord(result);
+    const screenshots = record.screenshots;
+    if (Array.isArray(screenshots) && screenshots.length > 0) {
+      return asRecord(screenshots[0]);
+    }
+    return asRecord(record.screenshot);
+  };
+
+  const writeScreenshotDataUrl = async (
+    result: unknown,
+    filePath: string,
+  ): Promise<string | null> => {
+    const screenshot = firstScreenshotFromResult(result);
+    const screenshotUrl = readString(screenshot, "url");
+    if (!screenshotUrl) return null;
+    const bytes = parseDataUrlBytes(screenshotUrl);
+    if (!bytes) {
+      throw new Error("T3 computer_use helper returned a non-PNG screenshot URL.");
+    }
+    await NodeFs.writeFile(filePath, bytes);
+    return screenshotUrl;
+  };
+
+  const attachScreenshotMetadata = (result: unknown, filePath: string): unknown => {
+    const record = asRecord(result);
+    const screenshot = firstScreenshotFromResult(result);
+    if (Object.keys(screenshot).length === 0) return result;
+    return {
+      ...record,
+      window: normalizeWindowForText(record.window),
+      selectedWindow: normalizeWindowForText(record.window ?? record.selectedWindow),
       screenshot: {
         ...screenshot,
-        captureMethod: readString(screenshot, "captureMethod") ?? "printWindow",
-        fallbackReason,
+        path: filePath,
+        captureMethod: readString(screenshot, "captureMethod") ?? "windowsGraphicsCapture",
+        source: "t3-computer-use",
       },
     };
   };
@@ -821,14 +824,10 @@ const make = Effect.gen(function* () {
     }
 
     const helperPath = await resolveHelperPath();
-    const child = NodeChildProcess.spawn(
-      "powershell.exe",
-      ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", helperPath],
-      {
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      },
-    );
+    const child = NodeChildProcess.spawn(helperPath, ["--parent-pid", String(process.pid)], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
     const next: HelperProcess = { child, pending: new Map() };
     helper = next;
     const lines = NodeReadline.createInterface({ input: child.stdout });
@@ -839,7 +838,7 @@ const make = Effect.gen(function* () {
       } catch {
         return;
       }
-      const id = typeof payload.id === "string" ? payload.id : undefined;
+      const id = typeof payload.id === "number" ? payload.id : undefined;
       if (!id) return;
       const pending = next.pending.get(id);
       if (!pending) return;
@@ -848,7 +847,15 @@ const make = Effect.gen(function* () {
       if (payload.ok === true) {
         pending.resolve(payload.result);
       } else {
-        pending.reject(new Error(String(payload.error ?? "Computer helper failed.")));
+        const approval = asRecord(payload.approvalRequest);
+        const approvalDisplayName = readString(approval, "displayName") ?? readString(approval, "app");
+        pending.reject(
+          new Error(
+            approvalDisplayName
+              ? `T3 computer_use helper requested approval for ${approvalDisplayName}.`
+              : String(payload.error ?? "Computer helper failed."),
+          ),
+        );
       }
     });
     child.stderr.on("data", (chunk) => {
@@ -875,17 +882,25 @@ const make = Effect.gen(function* () {
   };
 
   const requestHelper = async (
-    command: string,
-    args: Record<string, unknown> = {},
+    method: string,
+    params: Record<string, unknown> = {},
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    approvedApp?: string | null,
   ): Promise<unknown> => {
     const running = await ensureHelper();
-    const id = `computer-${++helperSequence}`;
-    const request: HelperRequest = { id, command, arguments: args };
+    const id = ++helperSequence;
+    const request: HelperRequest = {
+      id,
+      method,
+      params,
+      ...(approvedApp
+        ? { meta: { "x-oai-cua-approved-app": approvedApp } }
+        : {}),
+    };
     return await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         running.pending.delete(id);
-        reject(new Error(`Computer helper command ${command} timed out.`));
+        reject(new Error(`Computer helper method ${method} timed out.`));
       }, timeoutMs);
       running.pending.set(id, { resolve, reject, timeout });
       running.child.stdin.write(`${JSON.stringify(request)}\n`, "utf8", (error) => {
@@ -899,8 +914,22 @@ const make = Effect.gen(function* () {
 
   const applyHelperState = (result: unknown) => {
     const record = asRecord(result);
-    const nextForeground = foregroundFromUnknown(record.foregroundWindow);
-    const nextSelectedWindow = windowFromUnknown(record.selectedWindow);
+    rememberWindowsFromResult(result);
+    const nextWindow =
+      windowFromUnknown(record.window) ??
+      windowFromUnknown(record.selectedWindow) ??
+      windowFromUnknown(result);
+    const nextForeground =
+      foregroundFromUnknown(record.foregroundWindow) ??
+      (nextWindow
+        ? {
+            title: nextWindow.title,
+            processId: nextWindow.processId,
+            processName: nextWindow.processName,
+            app: nextWindow.app,
+          }
+        : null);
+    const nextSelectedWindow = nextWindow ?? windowFromUnknown(record.selectedWindow);
     mutable.virtualScreen = rectFromUnknown(record.virtualScreen) ?? mutable.virtualScreen;
     mutable.cursor = pointFromUnknown(record.cursor) ?? mutable.cursor;
     mutable.foregroundWindow = nextForeground ?? mutable.foregroundWindow;
@@ -913,7 +942,7 @@ const make = Effect.gen(function* () {
   };
 
   const runStateRefresh = async () => {
-    const result = await requestHelper("state");
+    const result = await requestHelper("list_windows");
     applyHelperState(result);
     publishState();
     return currentState();
@@ -940,7 +969,7 @@ const make = Effect.gen(function* () {
 
   const refreshForegroundAfterT3Yield = async () => {
     attemptedT3WindowYieldForCurrentTool = false;
-    const result = await requestHelper("state");
+    const result = await requestHelper("list_windows");
     applyHelperState(result);
     if (!isT3OrCodexForeground(mutable.foregroundWindow)) {
       return;
@@ -952,13 +981,13 @@ const make = Effect.gen(function* () {
     await minimizeT3WindowsForComputerUse();
     await delay(350);
 
-    const refreshed = await requestHelper("state");
+    const refreshed = await requestHelper("list_windows");
     applyHelperState(refreshed);
     publishState();
   };
 
   const allowForegroundApp = async () => {
-    const result = await requestHelper("state");
+    const result = await requestHelper("list_windows");
     applyHelperState(result);
     const candidate = protectedForegroundReason(mutable.foregroundWindow)
       ? lastAllowableForegroundWindow
@@ -1000,12 +1029,57 @@ const make = Effect.gen(function* () {
   const resolveWindowTarget = async (
     args: Record<string, unknown>,
   ): Promise<DesktopComputerAutomationWindow | null> => {
-    const windowId = readWindowId(args, mutable.selectedWindow);
-    if (!windowId) return mutable.selectedWindow;
-    const result = await requestHelper("selectWindow", { windowId });
-    applyHelperState(result);
-    return mutable.selectedWindow;
+    const window = await resolveHelperWindow(args);
+    return rememberWindow(window);
   };
+
+  const getWindowState = async (
+    window: HelperWindow,
+    options: {
+      readonly includeScreenshot: boolean;
+      readonly includeText: boolean;
+      readonly timeoutMs?: number;
+    },
+  ): Promise<unknown> =>
+    await requestHelper(
+      "get_window_state",
+      {
+        window,
+        include_screenshot: options.includeScreenshot,
+        include_text: options.includeText,
+      },
+      options.timeoutMs ?? (options.includeText ? 45_000 : DEFAULT_TIMEOUT_MS),
+      window.app,
+    );
+
+  const buildWindowStateResponse = async (
+    result: unknown,
+    filePath: string | null,
+    label: string,
+  ): Promise<ToolResponse> => {
+    applyHelperState(result);
+    const dataUrl = filePath ? await writeScreenshotDataUrl(result, filePath) : null;
+    const textResult = filePath ? attachScreenshotMetadata(result, filePath) : result;
+    if (dataUrl) {
+      mutable.lastScreenshotDataUrl = dataUrl;
+      mutable.lastScreenshotPath = filePath;
+    }
+    publishState();
+    return imageAndTextResponse(
+      dataUrl,
+      `${label}${filePath && dataUrl ? `: ${filePath}` : ""}\n${JSON.stringify(
+        sanitizeScreenshotText(normalizeHelperTextResult(textResult), dataUrl ?? undefined),
+        null,
+        2,
+      )}`,
+    );
+  };
+
+  const unsupportedDesktopInputResponse = (tool: string): ToolResponse =>
+    textResponse(
+      `${tool} is not available in the WGC window-target helper. Use computer_list_windows, computer_select_window, then a *_window tool so coordinates are scoped to the target window.`,
+      false,
+    );
 
   const shouldRequireConfirmation = async (
     tool: string,
@@ -1090,98 +1164,83 @@ const make = Effect.gen(function* () {
           return textResponse(JSON.stringify(state, null, 2));
         }
         case "computer_screenshot": {
-          const filePath = NodePath.join(screenshotDir, `desktop-${Date.now()}.png`);
-          const result = await requestHelper("screenshot", { path: filePath }, DEFAULT_TIMEOUT_MS);
-          applyHelperState(result);
-          const png = await NodeFs.readFile(filePath);
-          const dataUrl = `data:image/png;base64,${png.toString("base64")}`;
-          mutable.lastScreenshotDataUrl = dataUrl;
-          mutable.lastScreenshotPath = filePath;
-          publishState();
-          return imageResponse(
-            dataUrl,
-            `Screenshot captured: ${filePath}\n${JSON.stringify(result, null, 2)}`,
+          const windowsResult = await requestHelper("list_windows");
+          const window =
+            selectedHelperWindow() ??
+            (Array.isArray(windowsResult) ? helperWindowFromUnknown(windowsResult[0]) : null);
+          if (!window) {
+            return textResponse("No target window is available for a WGC screenshot.", false);
+          }
+          rememberWindow(window);
+          const filePath = NodePath.join(screenshotDir, `window-${Date.now()}.png`);
+          const result = await getWindowState(window, {
+            includeScreenshot: true,
+            includeText: false,
+          });
+          return await buildWindowStateResponse(
+            result,
+            filePath,
+            "Window-target WGC screenshot captured",
           );
         }
         case "computer_list_apps": {
           const query = readString(args, "query") ?? "";
-          const result = await requestHelper("listApps", { query });
+          const result = filterListResult(await requestHelper("list_apps"), query);
           applyHelperState(result);
           publishState();
-          return textResponse(JSON.stringify(result, null, 2));
+          return textResponse(JSON.stringify(normalizeHelperTextResult(result), null, 2));
         }
         case "computer_list_windows": {
           const query = readString(args, "query") ?? "";
-          const result = await requestHelper("listWindows", { query });
+          const result = filterListResult(await requestHelper("list_windows"), query);
           applyHelperState(result);
           publishState();
-          return textResponse(JSON.stringify(result, null, 2));
+          return textResponse(JSON.stringify(normalizeHelperTextResult(result), null, 2));
         }
         case "computer_select_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
-          if (!windowId) return textResponse("computer_select_window requires windowId.", false);
-          const result = await requestHelper("selectWindow", { windowId });
+          const window = await resolveHelperWindow(args);
+          const result = await requestHelper("get_window", window, DEFAULT_TIMEOUT_MS, window.app);
           applyHelperState(result);
           publishState();
-          return textResponse(`Selected window for computer_use.\n${JSON.stringify(result, null, 2)}`);
-        }
-        case "computer_activate_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
-          if (!windowId) return textResponse("computer_activate_window requires windowId.", false);
-          const result = await requestHelper("activateWindow", { windowId });
-          applyHelperState(result);
-          publishState();
-          const protectedReason = protectedForegroundReason(mutable.foregroundWindow);
-          if (protectedReason) return textResponse(protectedReason, false);
-          return textResponse(`Activated window for computer_use.\n${JSON.stringify(result, null, 2)}`);
-        }
-        case "computer_window_screenshot": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
-          if (!windowId) return textResponse("computer_window_screenshot requires windowId.", false);
-          const filePath = NodePath.join(screenshotDir, `window-${Date.now()}.png`);
-          let result = await requestHelper(
-            "windowScreenshot",
-            { windowId, path: filePath },
-            DEFAULT_TIMEOUT_MS,
-          );
-          applyHelperState(result);
-          let dataUrl: string | null = null;
-          let screenshotPath = filePath;
-          try {
-            const wgc = await tryCaptureWindowWithCodexWgc(
-              mutable.selectedWindow,
-              NodePath.join(screenshotDir, `window-wgc-${Date.now()}.png`),
-            );
-            if (wgc) {
-              result = mergeWgcResult(result, wgc.result);
-              dataUrl = wgc.dataUrl;
-              screenshotPath = wgc.filePath;
-            }
-          } catch (error) {
-            result = withScreenshotFallbackReason(
-              result,
-              `Windows.Graphics.Capture unavailable: ${normalizeError(error)}`,
-            );
-          }
-          if (!dataUrl) {
-            const png = await NodeFs.readFile(filePath);
-            dataUrl = `data:image/png;base64,${png.toString("base64")}`;
-          }
-          mutable.lastScreenshotDataUrl = dataUrl;
-          mutable.lastScreenshotPath = screenshotPath;
-          publishState();
-          return imageResponse(
-            dataUrl,
-            `Window screenshot captured: ${screenshotPath}\n${JSON.stringify(
-              sanitizeScreenshotText(result, dataUrl),
+          return textResponse(
+            `Selected window for computer_use.\n${JSON.stringify(
+              normalizeHelperTextResult(result),
               null,
               2,
             )}`,
           );
         }
+        case "computer_activate_window": {
+          const window = await resolveHelperWindow(args);
+          const result = await requestHelper(
+            "activate_window",
+            { window },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
+          rememberWindow(window);
+          publishState();
+          const protectedReason = protectedForegroundReason(mutable.selectedWindow);
+          if (protectedReason) return textResponse(protectedReason, false);
+          return textResponse(
+            `Activated window for computer_use.\n${JSON.stringify(
+              normalizeHelperTextResult({ window, result }),
+              null,
+              2,
+            )}`,
+          );
+        }
+        case "computer_window_screenshot": {
+          const window = await resolveHelperWindow(args);
+          const filePath = NodePath.join(screenshotDir, `window-${Date.now()}.png`);
+          const result = await getWindowState(window, {
+            includeScreenshot: true,
+            includeText: false,
+          });
+          return await buildWindowStateResponse(result, filePath, "Window WGC screenshot captured");
+        }
         case "computer_get_window_state": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
-          if (!windowId) return textResponse("computer_get_window_state requires windowId.", false);
+          const window = await resolveHelperWindow(args);
           const includeScreenshot =
             readBooleanAlias(args, "includeScreenshot", "include_screenshot") ?? true;
           const includeText = readBooleanAlias(args, "includeText", "include_text") ?? false;
@@ -1193,58 +1252,24 @@ const make = Effect.gen(function* () {
           }
           const filePath = includeScreenshot
             ? NodePath.join(screenshotDir, `window-state-${Date.now()}.png`)
-            : "";
-          let result = await requestHelper(
-            "windowState",
-            { windowId, path: filePath, includeScreenshot, includeText },
-            includeText ? 45_000 : DEFAULT_TIMEOUT_MS,
-          );
-          applyHelperState(result);
-          let dataUrl: string | null = null;
-          let screenshotPath = filePath;
-          if (includeScreenshot) {
-            try {
-              const wgc = await tryCaptureWindowWithCodexWgc(
-                mutable.selectedWindow,
-                NodePath.join(screenshotDir, `window-state-wgc-${Date.now()}.png`),
-              );
-              if (wgc) {
-                result = mergeWgcResult(result, wgc.result);
-                dataUrl = wgc.dataUrl;
-                screenshotPath = wgc.filePath;
-              }
-            } catch (error) {
-              result = withScreenshotFallbackReason(
-                result,
-                `Windows.Graphics.Capture unavailable: ${normalizeError(error)}`,
-              );
-            }
-            if (!dataUrl) {
-              const png = await NodeFs.readFile(filePath);
-              dataUrl = `data:image/png;base64,${png.toString("base64")}`;
-            }
-            mutable.lastScreenshotDataUrl = dataUrl;
-            mutable.lastScreenshotPath = screenshotPath;
-          }
-          publishState();
-          return imageAndTextResponse(
-            dataUrl,
-            `Window state captured${includeScreenshot ? `: ${screenshotPath}` : ""}\n${JSON.stringify(
-              sanitizeScreenshotText(result, dataUrl ?? undefined),
-              null,
-              2,
-            )}`,
-          );
+            : null;
+          const result = await getWindowState(window, {
+            includeScreenshot,
+            includeText,
+            timeoutMs: includeText ? 45_000 : DEFAULT_TIMEOUT_MS,
+          });
+          return await buildWindowStateResponse(result, filePath, "Window state captured");
         }
         case "computer_accessibility_snapshot": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
-          if (!windowId) {
-            return textResponse("computer_accessibility_snapshot requires windowId.", false);
-          }
-          const result = await requestHelper("accessibilitySnapshot", { windowId }, 45_000);
+          const window = await resolveHelperWindow(args);
+          const result = await getWindowState(window, {
+            includeScreenshot: false,
+            includeText: true,
+            timeoutMs: 45_000,
+          });
           applyHelperState(result);
           publishState();
-          return textResponse(JSON.stringify(result, null, 2));
+          return textResponse(JSON.stringify(normalizeHelperTextResult(result), null, 2));
         }
         case "computer_focus_app": {
           const app = readString(args, "app") ?? readString(args, "name");
@@ -1257,68 +1282,53 @@ const make = Effect.gen(function* () {
               false,
             );
           }
-          applyHelperState(await requestHelper("focusApp", { app }));
+          const apps = filterListResult(await requestHelper("list_apps"), app);
+          rememberWindowsFromResult(apps);
+          const firstApp = Array.isArray(apps) ? asRecord(apps[0]) : {};
+          const windows = firstApp.windows;
+          const window = Array.isArray(windows)
+            ? helperWindowFromUnknown(windows[0])
+            : helperWindowFromUnknown(apps);
+          if (!window) {
+            return textResponse(`No visible window matched ${app}.`, false);
+          }
+          await requestHelper("activate_window", { window }, DEFAULT_TIMEOUT_MS, window.app);
+          rememberWindow(window);
           publishState();
-          const protectedReason = protectedForegroundReason(mutable.foregroundWindow);
+          const protectedReason = protectedForegroundReason(mutable.selectedWindow);
           if (protectedReason) {
             return textResponse(protectedReason, false);
           }
           return textResponse(
-            `Focused ${displayNameForForeground(mutable.foregroundWindow)} for computer_use.\n${JSON.stringify(
-              currentState().foregroundWindow,
+            `Focused ${displayNameForForeground(mutable.selectedWindow)} for computer_use.\n${JSON.stringify(
+              currentState().selectedWindow,
               null,
               2,
             )}`,
           );
         }
         case "computer_move_mouse": {
+          return unsupportedDesktopInputResponse(tool);
+        }
+        case "computer_move_mouse_window": {
           const x = readNumber(args, "x");
           const y = readNumber(args, "y");
           if (x === undefined || y === undefined) {
-            return textResponse("computer_move_mouse requires x and y.", false);
-          }
-          applyHelperState(await requestHelper("moveMouse", { x, y }));
-          publishState();
-          return textResponse(`Moved mouse to ${x},${y}`);
-        }
-        case "computer_move_mouse_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
-          const x = readNumber(args, "x");
-          const y = readNumber(args, "y");
-          if (!windowId || x === undefined || y === undefined) {
             return textResponse("computer_move_mouse_window requires windowId, x, and y.", false);
           }
-          const result = await requestHelper("moveMouseInWindow", { windowId, x, y });
-          applyHelperState(result);
-          publishState();
-          return textResponse(`Moved mouse in window ${windowId} to ${x},${y}`);
+          return textResponse(
+            "The WGC helper does not expose move-only mouse input. Use computer_click_window when you need to interact with a coordinate.",
+            false,
+          );
         }
         case "computer_click":
         case "computer_double_click": {
-          const cursor =
-            mutable.cursor ?? pointFromUnknown(asRecord(await requestHelper("state")).cursor);
-          const x = readNumber(args, "x") ?? cursor?.x;
-          const y = readNumber(args, "y") ?? cursor?.y;
-          if (x === undefined || y === undefined)
-            return textResponse(`${tool} requires x and y.`, false);
-          const button = readString(args, "button") ?? "left";
-          applyHelperState(
-            await requestHelper("click", {
-              x,
-              y,
-              button,
-              count: tool === "computer_double_click" ? 2 : 1,
-            }),
-          );
-          publishState();
-          return textResponse(
-            `${tool === "computer_double_click" ? "Double-clicked" : "Clicked"} ${button} at ${x},${y}`,
-          );
+          return unsupportedDesktopInputResponse(tool);
         }
         case "computer_click_element": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const elementIndex = readElementIndex(args);
-          if (!windowId || elementIndex === undefined) {
+          if (elementIndex === undefined) {
             return textResponse(
               "computer_click_element requires windowId and element_index.",
               false,
@@ -1326,68 +1336,63 @@ const make = Effect.gen(function* () {
           }
           const button = readString(args, "button") ?? "left";
           const count = Math.max(1, Math.min(3, readNumber(args, "click_count") ?? 1));
-          const result = await requestHelper("clickElement", {
-            windowId,
-            elementIndex,
-            button,
-            count,
-          });
+          await getWindowState(window, { includeScreenshot: false, includeText: true });
+          const result = await requestHelper(
+            "click_element",
+            {
+              window,
+              element_index: elementIndex,
+              button,
+              click_count: count,
+            },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
           return textResponse(
-            `Clicked ${button} on element_index ${elementIndex} in window ${windowId}.`,
+            `Clicked ${button} on element_index ${elementIndex} in window ${window.id}.`,
           );
         }
         case "computer_click_window":
         case "computer_double_click_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const x = readNumber(args, "x");
           const y = readNumber(args, "y");
-          if (!windowId || x === undefined || y === undefined) {
+          if (x === undefined || y === undefined) {
             return textResponse(`${tool} requires windowId, x, and y.`, false);
           }
           const button = readString(args, "button") ?? "left";
-          const result = await requestHelper("clickInWindow", {
-            windowId,
-            x,
-            y,
-            button,
-            count: tool === "computer_double_click_window" ? 2 : 1,
-          });
+          await getWindowState(window, { includeScreenshot: true, includeText: false });
+          const result = await requestHelper(
+            "click",
+            {
+              window,
+              x,
+              y,
+              button,
+              mouse_button: button,
+              click_count: tool === "computer_double_click_window" ? 2 : 1,
+            },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
           return textResponse(
-            `${tool === "computer_double_click_window" ? "Double-clicked" : "Clicked"} ${button} in window ${windowId} at ${x},${y}`,
+            `${tool === "computer_double_click_window" ? "Double-clicked" : "Clicked"} ${button} in window ${window.id} at ${x},${y}`,
           );
         }
         case "computer_drag": {
-          const fromX = readNumber(args, "fromX");
-          const fromY = readNumber(args, "fromY");
-          const toX = readNumber(args, "toX");
-          const toY = readNumber(args, "toY");
-          if (
-            fromX === undefined ||
-            fromY === undefined ||
-            toX === undefined ||
-            toY === undefined
-          ) {
-            return textResponse("computer_drag requires fromX, fromY, toX, and toY.", false);
-          }
-          const durationMs = Math.max(80, Math.min(5000, readNumber(args, "durationMs") ?? 500));
-          applyHelperState(
-            await requestHelper("drag", { fromX, fromY, toX, toY, durationMs }, durationMs + 5000),
-          );
-          publishState();
-          return textResponse(`Dragged from ${fromX},${fromY} to ${toX},${toY}`);
+          return unsupportedDesktopInputResponse(tool);
         }
         case "computer_drag_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const fromX = readNumber(args, "fromX");
           const fromY = readNumber(args, "fromY");
           const toX = readNumber(args, "toX");
           const toY = readNumber(args, "toY");
           if (
-            !windowId ||
             fromX === undefined ||
             fromY === undefined ||
             toX === undefined ||
@@ -1399,141 +1404,169 @@ const make = Effect.gen(function* () {
             );
           }
           const durationMs = Math.max(80, Math.min(5000, readNumber(args, "durationMs") ?? 500));
+          await getWindowState(window, { includeScreenshot: true, includeText: false });
           const result = await requestHelper(
-            "dragInWindow",
-            { windowId, fromX, fromY, toX, toY, durationMs },
+            "drag",
+            { window, fromX, fromY, toX, toY, durationMs },
             durationMs + 5000,
+            window.app,
           );
           applyHelperState(result);
           publishState();
-          return textResponse(`Dragged in window ${windowId} from ${fromX},${fromY} to ${toX},${toY}`);
+          return textResponse(`Dragged in window ${window.id} from ${fromX},${fromY} to ${toX},${toY}`);
         }
         case "computer_scroll": {
-          const cursor =
-            mutable.cursor ?? pointFromUnknown(asRecord(await requestHelper("state")).cursor);
-          const x = readNumber(args, "x") ?? cursor?.x;
-          const y = readNumber(args, "y") ?? cursor?.y;
-          if (x === undefined || y === undefined)
-            return textResponse("computer_scroll requires x and y.", false);
-          const deltaX = readNumber(args, "deltaX") ?? 0;
-          const deltaY = readNumber(args, "deltaY") ?? -600;
-          applyHelperState(await requestHelper("scroll", { x, y, deltaX, deltaY }));
-          publishState();
-          return textResponse(`Scrolled at ${x},${y}`);
+          return unsupportedDesktopInputResponse(tool);
         }
         case "computer_scroll_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const x = readNumber(args, "x");
           const y = readNumber(args, "y");
-          if (!windowId || x === undefined || y === undefined) {
+          if (x === undefined || y === undefined) {
             return textResponse("computer_scroll_window requires windowId, x, and y.", false);
           }
           const deltaX = readNumber(args, "deltaX") ?? 0;
           const deltaY = readNumber(args, "deltaY") ?? -600;
-          const result = await requestHelper("scrollInWindow", {
-            windowId,
-            x,
-            y,
-            deltaX,
-            deltaY,
-          });
+          await getWindowState(window, { includeScreenshot: true, includeText: false });
+          const result = await requestHelper(
+            "scroll",
+            {
+              window,
+              x,
+              y,
+              scrollX: deltaX,
+              scrollY: deltaY,
+            },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
-          return textResponse(`Scrolled in window ${windowId} at ${x},${y}`);
+          return textResponse(`Scrolled in window ${window.id} at ${x},${y}`);
         }
         case "computer_type": {
           const text = readString(args, "text");
           if (text === undefined) return textResponse("computer_type requires text.", false);
-          applyHelperState(await requestHelper("type", { text }));
+          const window = await resolveHelperWindow(args);
+          applyHelperState(
+            await requestHelper("type_text", { window, text }, DEFAULT_TIMEOUT_MS, window.app),
+          );
           publishState();
-          return textResponse(`Typed ${text.length} characters.`);
+          return textResponse(`Typed ${text.length} characters in window ${window.id}.`);
         }
         case "computer_type_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const text = readString(args, "text");
-          if (!windowId || text === undefined) {
+          if (text === undefined) {
             return textResponse("computer_type_window requires windowId and text.", false);
           }
-          const result = await requestHelper("typeInWindow", { windowId, text });
+          const result = await requestHelper(
+            "type_text",
+            { window, text },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
-          return textResponse(`Typed ${text.length} characters in window ${windowId}.`);
+          return textResponse(`Typed ${text.length} characters in window ${window.id}.`);
         }
         case "computer_press": {
           const key = readString(args, "key");
           if (!key) return textResponse("computer_press requires key.", false);
-          applyHelperState(await requestHelper("press", { key }));
+          const window = await resolveHelperWindow(args);
+          applyHelperState(
+            await requestHelper("press_key", { window, key }, DEFAULT_TIMEOUT_MS, window.app),
+          );
           publishState();
-          return textResponse(`Pressed ${key}`);
+          return textResponse(`Pressed ${key} in window ${window.id}`);
         }
         case "computer_press_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const key = readString(args, "key");
-          if (!windowId || !key) {
+          if (!key) {
             return textResponse("computer_press_window requires windowId and key.", false);
           }
-          const result = await requestHelper("pressInWindow", { windowId, key });
+          const result = await requestHelper(
+            "press_key",
+            { window, key },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
-          return textResponse(`Pressed ${key} in window ${windowId}`);
+          return textResponse(`Pressed ${key} in window ${window.id}`);
         }
         case "computer_hotkey": {
           const keys = readStringArray(args, "keys");
           if (!keys || keys.length === 0)
             return textResponse("computer_hotkey requires keys.", false);
-          applyHelperState(await requestHelper("hotkey", { keys }));
+          const window = await resolveHelperWindow(args);
+          const key = keys.join("+");
+          applyHelperState(
+            await requestHelper("press_key", { window, key }, DEFAULT_TIMEOUT_MS, window.app),
+          );
           publishState();
-          return textResponse(`Pressed hotkey ${keys.join("+")}`);
+          return textResponse(`Pressed hotkey ${key} in window ${window.id}`);
         }
         case "computer_hotkey_window": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const keys = readStringArray(args, "keys");
-          if (!windowId || !keys || keys.length === 0) {
+          if (!keys || keys.length === 0) {
             return textResponse("computer_hotkey_window requires windowId and keys.", false);
           }
-          const result = await requestHelper("hotkeyInWindow", { windowId, keys });
+          const key = keys.join("+");
+          const result = await requestHelper(
+            "press_key",
+            { window, key },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
-          return textResponse(`Pressed hotkey ${keys.join("+")} in window ${windowId}`);
+          return textResponse(`Pressed hotkey ${key} in window ${window.id}`);
         }
         case "computer_set_value": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const elementIndex = readElementIndex(args);
           const value = readString(args, "value");
-          if (!windowId || elementIndex === undefined || value === undefined) {
+          if (elementIndex === undefined || value === undefined) {
             return textResponse(
               "computer_set_value requires windowId, element_index, and value.",
               false,
             );
           }
-          const result = await requestHelper("setElementValue", {
-            windowId,
-            elementIndex,
-            value,
-          });
+          await getWindowState(window, { includeScreenshot: false, includeText: true });
+          const result = await requestHelper(
+            "set_value",
+            { window, element_index: elementIndex, value },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
-          return textResponse(`Set value on element_index ${elementIndex} in window ${windowId}.`);
+          return textResponse(`Set value on element_index ${elementIndex} in window ${window.id}.`);
         }
         case "computer_perform_secondary_action": {
-          const windowId = readWindowId(args, mutable.selectedWindow);
+          const window = await resolveHelperWindow(args);
           const elementIndex = readElementIndex(args);
           const action = readString(args, "action");
-          if (!windowId || elementIndex === undefined || !action) {
+          if (elementIndex === undefined || !action) {
             return textResponse(
               "computer_perform_secondary_action requires windowId, element_index, and action.",
               false,
             );
           }
-          const result = await requestHelper("performSecondaryAction", {
-            windowId,
-            elementIndex,
-            action,
-          });
+          await getWindowState(window, { includeScreenshot: false, includeText: true });
+          const result = await requestHelper(
+            "perform_secondary_action",
+            { window, element_index: elementIndex, action },
+            DEFAULT_TIMEOUT_MS,
+            window.app,
+          );
           applyHelperState(result);
           publishState();
           return textResponse(
-            `Performed ${action} on element_index ${elementIndex} in window ${windowId}.`,
+            `Performed ${action} on element_index ${elementIndex} in window ${window.id}.`,
           );
         }
         case "computer_wait": {

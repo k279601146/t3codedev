@@ -61,10 +61,22 @@ export function getComposerPluginMentionCaseInsensitive(
   return MENTIONS_BY_LOWER_TOKEN.get(normalized.toLowerCase()) ?? null;
 }
 
-export function searchComposerPluginMentions(query: string): readonly ComposerPluginMention[] {
+export function getVisibleComposerPluginMentions(options?: {
+  readonly includeChrome?: boolean;
+}): readonly ComposerPluginMention[] {
+  return options?.includeChrome
+    ? COMPOSER_PLUGIN_MENTIONS
+    : COMPOSER_PLUGIN_MENTIONS.filter((mention) => mention.id !== "Chrome");
+}
+
+export function searchComposerPluginMentions(
+  query: string,
+  options?: { readonly includeChrome?: boolean },
+): readonly ComposerPluginMention[] {
+  const mentions = getVisibleComposerPluginMentions(options);
   const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return COMPOSER_PLUGIN_MENTIONS;
-  return COMPOSER_PLUGIN_MENTIONS.filter((mention) =>
+  if (!normalizedQuery) return mentions;
+  return mentions.filter((mention) =>
     [mention.id, mention.label, mention.menuLabel, mention.description].some((value) =>
       value.toLowerCase().includes(normalizedQuery),
     ),
