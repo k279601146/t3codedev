@@ -26,6 +26,7 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as DesktopCommercialAuth from "../settings/DesktopCommercialAuth.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 import * as DesktopBrowserAutomationHost from "../browser/DesktopBrowserAutomationHost.ts";
+import * as DesktopBrowserExternalAutomationHost from "../browser/DesktopBrowserExternalAutomationHost.ts";
 import * as DesktopComputerAutomationHost from "../computer/DesktopComputerAutomationHost.ts";
 
 export interface DesktopBackendConfigurationShape {
@@ -60,6 +61,8 @@ const DESKTOP_BACKEND_ENV_NAMES = [
   "T3CODE_TAILSCALE_SERVE_PORT",
   "T3CODE_BROWSER_USE_ENDPOINT",
   "T3CODE_BROWSER_USE_TOKEN",
+  "T3CODE_BROWSER_USE_EXTERNAL_ENDPOINT",
+  "T3CODE_BROWSER_USE_EXTERNAL_TOKEN",
   "T3CODE_COMPUTER_USE_ENDPOINT",
   "T3CODE_COMPUTER_USE_TOKEN",
 ] as const;
@@ -159,6 +162,8 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     readonly telemetryEnabled: boolean;
     readonly browserUseEndpoint: string;
     readonly browserUseToken: string;
+    readonly browserUseExternalEndpoint: string;
+    readonly browserUseExternalToken: string;
     readonly computerUseEndpoint: string;
     readonly computerUseToken: string;
   }): Effect.fn.Return<
@@ -203,6 +208,8 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         T3CODE_TELEMETRY_ENABLED: input.telemetryEnabled ? "true" : "false",
         T3CODE_BROWSER_USE_ENDPOINT: input.browserUseEndpoint,
         T3CODE_BROWSER_USE_TOKEN: input.browserUseToken,
+        T3CODE_BROWSER_USE_EXTERNAL_ENDPOINT: input.browserUseExternalEndpoint,
+        T3CODE_BROWSER_USE_EXTERNAL_TOKEN: input.browserUseExternalToken,
         T3CODE_COMPUTER_USE_ENDPOINT: input.computerUseEndpoint,
         T3CODE_COMPUTER_USE_TOKEN: input.computerUseToken,
         ...commercialEnv,
@@ -243,6 +250,8 @@ export const layer = Layer.effect(
     const windowsSandbox = yield* DesktopWindowsSandbox.DesktopWindowsSandbox;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const browserAutomationHost = yield* DesktopBrowserAutomationHost.DesktopBrowserAutomationHost;
+    const browserExternalAutomationHost =
+      yield* DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHost;
     const computerAutomationHost =
       yield* DesktopComputerAutomationHost.DesktopComputerAutomationHost;
     const tokenRef = yield* Ref.make(Option.none<string>());
@@ -342,6 +351,8 @@ export const layer = Layer.effect(
           telemetryEnabled,
           browserUseEndpoint: browserAutomationHost.endpoint,
           browserUseToken: browserAutomationHost.token,
+          browserUseExternalEndpoint: browserExternalAutomationHost.endpoint,
+          browserUseExternalToken: browserExternalAutomationHost.token,
           computerUseEndpoint: computerAutomationHost.endpoint,
           computerUseToken: computerAutomationHost.token,
         }).pipe(

@@ -1,0 +1,15 @@
+{
+  "name": "@t3tools/chrome-extension",
+  "version": "0.0.23",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node -e \"process.exit(0)\"",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

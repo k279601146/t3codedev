@@ -59,6 +59,7 @@ import {
 } from "../Errors.ts";
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import * as BrowserToolServiceLayer from "./BrowserToolService.ts";
+import * as BrowserExternalToolServiceLayer from "./BrowserExternalToolService.ts";
 import * as ComputerToolServiceLayer from "./ComputerToolService.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -1542,7 +1543,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ((runtimeOptions: CodexSessionRuntimeOptions) =>
             makeCodexSessionRuntime(runtimeOptions).pipe(
               Effect.provide(
-                Layer.mergeAll(BrowserToolServiceLayer.layer, ComputerToolServiceLayer.layer),
+                Layer.mergeAll(
+                  BrowserToolServiceLayer.layer,
+                  BrowserExternalToolServiceLayer.layer,
+                  ComputerToolServiceLayer.layer,
+                ),
               ),
             ));
         const prewarmedChild = yield* acquireWarmProcess(runtimeInput.cwd);

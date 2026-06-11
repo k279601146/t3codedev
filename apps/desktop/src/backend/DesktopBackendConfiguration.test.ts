@@ -21,6 +21,7 @@ import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 import * as DesktopBrowserAutomationHost from "../browser/DesktopBrowserAutomationHost.ts";
+import * as DesktopBrowserExternalAutomationHost from "../browser/DesktopBrowserExternalAutomationHost.ts";
 import * as DesktopComputerAutomationHost from "../computer/DesktopComputerAutomationHost.ts";
 
 const PersistedServerObservabilitySettingsDocument = Schema.Struct({
@@ -134,6 +135,31 @@ const computerAutomationState = {
   updatedAt: "2026-06-09T00:00:00.000Z",
 } satisfies DesktopComputerAutomationHost.DesktopComputerAutomationState;
 
+const browserExternalAutomationState = {
+  endpoint: "http://127.0.0.1:49878",
+  token: "browser-external-token",
+  connected: false,
+  extensionId: null,
+  browserName: null,
+  profileName: null,
+  selectedTabId: null,
+  tabs: [],
+  permissions: [],
+  lastError: null,
+  lastToolCallAt: null,
+  toolCallSequence: 0,
+  updatedAt: "2026-06-09T00:00:00.000Z",
+} satisfies DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationState;
+
+const browserExternalAutomationHostLayer = Layer.succeed(
+  DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHost,
+  DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHost.of({
+    endpoint: "http://127.0.0.1:49878",
+    token: "browser-external-token",
+    state: Effect.succeed(browserExternalAutomationState),
+  } satisfies DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHostShape),
+);
+
 const computerAutomationHostLayer = Layer.succeed(
   DesktopComputerAutomationHost.DesktopComputerAutomationHost,
   DesktopComputerAutomationHost.DesktopComputerAutomationHost.of({
@@ -209,6 +235,7 @@ const withHarness = <A, E, R>(
           Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
           Layer.provideMerge(serverExposureLayer),
           Layer.provideMerge(browserAutomationHostLayer),
+          Layer.provideMerge(browserExternalAutomationHostLayer),
           Layer.provideMerge(computerAutomationHostLayer),
           Layer.provideMerge(makeEnvironmentLayer(baseDir)),
         ),
@@ -262,6 +289,11 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.env.ELECTRON_RUN_AS_NODE, "1");
         assert.equal(first.env.T3CODE_BROWSER_USE_ENDPOINT, "http://127.0.0.1:49876");
         assert.equal(first.env.T3CODE_BROWSER_USE_TOKEN, "browser-token");
+        assert.equal(
+          first.env.T3CODE_BROWSER_USE_EXTERNAL_ENDPOINT,
+          "http://127.0.0.1:49878",
+        );
+        assert.equal(first.env.T3CODE_BROWSER_USE_EXTERNAL_TOKEN, "browser-external-token");
         assert.equal(first.env.T3CODE_COMPUTER_USE_ENDPOINT, "http://127.0.0.1:49877");
         assert.equal(first.env.T3CODE_COMPUTER_USE_TOKEN, "computer-token");
         assert.isUndefined(first.env.T3CODE_PORT);
@@ -373,6 +405,7 @@ describe("DesktopBackendConfiguration", () => {
             Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(browserAutomationHostLayer),
+            Layer.provideMerge(browserExternalAutomationHostLayer),
             Layer.provideMerge(computerAutomationHostLayer),
             Layer.provideMerge(
               makeEnvironmentLayer(baseDir, {
@@ -462,6 +495,7 @@ describe("DesktopBackendConfiguration", () => {
               Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(browserAutomationHostLayer),
+              Layer.provideMerge(browserExternalAutomationHostLayer),
               Layer.provideMerge(computerAutomationHostLayer),
               Layer.provideMerge(makeEnvironmentLayer(baseDir)),
             ),

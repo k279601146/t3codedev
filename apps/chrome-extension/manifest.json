@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "T3 Code Chrome Extension",
+  "description": "Connect Chrome to T3 Code browser_use_external.",
+  "version": "0.0.23",
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "tabGroups"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "T3 Code",
+    "default_popup": "src/popup.html"
+  }
+}

@@ -18,6 +18,10 @@ export const BROWSER_AUTOMATION_NAVIGATE_CHANNEL = "desktop:browser-automation-n
 export const BROWSER_AUTOMATION_RELOAD_CHANNEL = "desktop:browser-automation-reload";
 export const BROWSER_AUTOMATION_GO_BACK_CHANNEL = "desktop:browser-automation-go-back";
 export const BROWSER_AUTOMATION_GO_FORWARD_CHANNEL = "desktop:browser-automation-go-forward";
+export const BROWSER_EXTERNAL_AUTOMATION_GET_STATE_CHANNEL =
+  "desktop:browser-external-automation-get-state";
+export const BROWSER_EXTERNAL_AUTOMATION_STATE_CHANNEL =
+  "desktop:browser-external-automation-state";
 export const COMPUTER_AUTOMATION_GET_STATE_CHANNEL = "desktop:computer-automation-get-state";
 export const COMPUTER_AUTOMATION_STATE_CHANNEL = "desktop:computer-automation-state";
 export const COMPUTER_AUTOMATION_SET_PAUSED_CHANNEL = "desktop:computer-automation-set-paused";

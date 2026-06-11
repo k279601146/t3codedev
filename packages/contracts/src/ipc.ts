@@ -482,6 +482,29 @@ export interface DesktopBrowserAutomationState {
   updatedAt: string;
 }
 
+export interface DesktopBrowserExternalAutomationPermission {
+  host: string;
+  decision: "allow" | "block";
+  scope: "session" | "always";
+  updatedAt: string;
+}
+
+export interface DesktopBrowserExternalAutomationState {
+  endpoint: string;
+  token: string;
+  connected: boolean;
+  extensionId: string | null;
+  browserName: string | null;
+  profileName: string | null;
+  selectedTabId: string | null;
+  tabs: readonly DesktopBrowserAutomationTabState[];
+  permissions: readonly DesktopBrowserExternalAutomationPermission[];
+  lastError: string | null;
+  lastToolCallAt: string | null;
+  toolCallSequence: number;
+  updatedAt: string;
+}
+
 export interface DesktopBrowserAutomationBounds {
   x: number;
   y: number;
@@ -618,6 +641,10 @@ export interface DesktopBridge {
   setBrowserAutomationBounds?: (bounds: DesktopBrowserAutomationBounds) => Promise<void>;
   onBrowserAutomationState?: (
     listener: (state: DesktopBrowserAutomationState) => void,
+  ) => () => void;
+  getBrowserExternalAutomationState?: () => Promise<DesktopBrowserExternalAutomationState>;
+  onBrowserExternalAutomationState?: (
+    listener: (state: DesktopBrowserExternalAutomationState) => void,
   ) => () => void;
   getComputerAutomationState?: () => Promise<DesktopComputerAutomationState>;
   setComputerAutomationPaused?: (paused: boolean) => Promise<DesktopComputerAutomationState>;

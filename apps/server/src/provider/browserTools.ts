@@ -1,6 +1,7 @@
 import type * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 export const T3_BROWSER_TOOL_NAMESPACE = "t3_browser";
+export const T3_BROWSER_EXTERNAL_TOOL_NAMESPACE = "t3_browser_external";
 
 export const T3_BROWSER_TOOL_NAMES = [
   "browser_new_tab",
@@ -28,6 +29,15 @@ export const T3_BROWSER_TOOL_NAMES = [
 ] as const;
 
 export type T3BrowserToolName = (typeof T3_BROWSER_TOOL_NAMES)[number];
+
+export const T3_BROWSER_EXTERNAL_TOOL_NAMES = T3_BROWSER_TOOL_NAMES.filter(
+  (tool) =>
+    tool !== "browser_set_viewport" &&
+    tool !== "browser_reset_viewport" &&
+    tool !== "browser_set_visibility",
+);
+
+export type T3BrowserExternalToolName = (typeof T3_BROWSER_EXTERNAL_TOOL_NAMES)[number];
 
 const objectSchema = (properties: Record<string, unknown>, required: ReadonlyArray<string> = []) => ({
   type: "object",
@@ -228,15 +238,41 @@ const browserToolSpecs: ReadonlyArray<{
   },
 ];
 
+export function buildT3BrowserDynamicToolsForNamespace(
+  namespace: string,
+  toolNames: ReadonlyArray<T3BrowserToolName> = T3_BROWSER_TOOL_NAMES,
+): ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> {
+  const selectedNames = new Set<T3BrowserToolName>(toolNames);
+  return browserToolSpecs
+    .filter((tool) => selectedNames.has(tool.name))
+    .map((tool) => ({
+      ...tool,
+      namespace,
+    }));
+}
+
 export function buildT3BrowserDynamicTools(): ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> {
-  return browserToolSpecs.map((tool) => ({
+  return buildT3BrowserDynamicToolsForNamespace(T3_BROWSER_TOOL_NAMESPACE);
+}
+
+export function buildT3BrowserExternalDynamicTools(): ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> {
+  return buildT3BrowserDynamicToolsForNamespace(
+    T3_BROWSER_EXTERNAL_TOOL_NAMESPACE,
+    T3_BROWSER_EXTERNAL_TOOL_NAMES,
+  ).map((tool) => ({
     ...tool,
-    namespace: T3_BROWSER_TOOL_NAMESPACE,
+    description: tool.description
+      .replaceAll("T3 in-app browser", "T3 external Chrome browser")
+      .replaceAll("current page", "current Chrome page"),
   }));
 }
 
 export function isT3BrowserToolName(value: string): value is T3BrowserToolName {
   return T3_BROWSER_TOOL_NAMES.includes(value as T3BrowserToolName);
+}
+
+export function isT3BrowserExternalToolName(value: string): value is T3BrowserExternalToolName {
+  return T3_BROWSER_EXTERNAL_TOOL_NAMES.includes(value as T3BrowserExternalToolName);
 }
 
 export type T3BrowserDynamicTool = EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec;

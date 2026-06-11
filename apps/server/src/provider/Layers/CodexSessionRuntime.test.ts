@@ -7,7 +7,12 @@ import { ThreadId } from "@t3tools/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexRpc from "effect-codex-app-server/rpc";
 
-import { buildT3BrowserDynamicTools, T3_BROWSER_TOOL_NAMESPACE } from "../browserTools.ts";
+import {
+  buildT3BrowserDynamicTools,
+  buildT3BrowserExternalDynamicTools,
+  T3_BROWSER_EXTERNAL_TOOL_NAMESPACE,
+  T3_BROWSER_TOOL_NAMESPACE,
+} from "../browserTools.ts";
 import { buildT3ComputerDynamicTools, T3_COMPUTER_TOOL_NAMESPACE } from "../computerTools.ts";
 import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
@@ -199,7 +204,7 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
-  it("injects T3 browser and computer dynamic tools when starting a thread", async () => {
+  it("injects T3 browser, external browser, and computer dynamic tools when starting a thread", async () => {
     let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
     const client = {
       request: <M extends "thread/start" | "thread/resume">(
@@ -230,9 +235,18 @@ describe("openCodexThread", () => {
     assert.ok(startPayload);
     assert.deepStrictEqual(startPayload.dynamicTools, [
       ...buildT3BrowserDynamicTools(),
+      ...buildT3BrowserExternalDynamicTools(),
       ...buildT3ComputerDynamicTools(),
     ]);
     assert.equal(startPayload.dynamicTools?.[0]?.namespace, T3_BROWSER_TOOL_NAMESPACE);
+    assert.equal(
+      startPayload.dynamicTools?.[buildT3BrowserDynamicTools().length]?.namespace,
+      T3_BROWSER_EXTERNAL_TOOL_NAMESPACE,
+    );
+    const externalToolNames = buildT3BrowserExternalDynamicTools().map((tool) => tool.name);
+    assert.equal(externalToolNames.includes("browser_set_viewport"), false);
+    assert.equal(externalToolNames.includes("browser_reset_viewport"), false);
+    assert.equal(externalToolNames.includes("browser_set_visibility"), false);
     assert.equal(startPayload.dynamicTools?.at(-1)?.namespace, T3_COMPUTER_TOOL_NAMESPACE);
   });
 

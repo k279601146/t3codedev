@@ -47,7 +47,7 @@ export function buildComposerPluginLaunchContext(prompt: string): string | null 
   }
   if (plugins.includes("Chrome")) {
     lines.push(
-      "- @Chrome: use computer_list_windows with query \"Chrome\", select the matching Chrome window, then computer_get_window_state. Prefer browser_use for normal webpage automation; use computer_use only for Chrome app UI or extension UI.",
+      "- @Chrome: use browser_use_external with the t3_browser_external namespace for Chrome webpage automation. Use computer_use only for Chrome app UI or extension UI.",
     );
   }
   for (const appName of apps) {

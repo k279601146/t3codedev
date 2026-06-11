@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>T3 Code</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="logo">T3</div>
+        <div>
+          <h1>T3 Code</h1>
+          <p id="status">正在读取状态...</p>
+        </div>
+      </header>
+      <label>
+        Endpoint
+        <input id="endpoint" spellcheck="false" placeholder="http://127.0.0.1:49878" />
+      </label>
+      <label>
+        Token
+        <input id="token" spellcheck="false" type="password" placeholder="从 T3 Code 插件页复制" />
+      </label>
+      <button id="save" type="button">连接</button>
+      <p id="error"></p>
+    </main>
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>

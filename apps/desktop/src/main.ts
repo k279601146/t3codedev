@@ -32,6 +32,7 @@ import * as DesktopAssets from "./app/DesktopAssets.ts";
 import * as DesktopBackendConfiguration from "./backend/DesktopBackendConfiguration.ts";
 import * as DesktopBackendManager from "./backend/DesktopBackendManager.ts";
 import * as DesktopBrowserAutomationHost from "./browser/DesktopBrowserAutomationHost.ts";
+import * as DesktopBrowserExternalAutomationHost from "./browser/DesktopBrowserExternalAutomationHost.ts";
 import * as DesktopComputerAutomationHost from "./computer/DesktopComputerAutomationHost.ts";
 import * as DesktopEngineIntegrity from "./engine/DesktopEngineIntegrity.ts";
 import * as DesktopEngineUpdater from "./engine/DesktopEngineUpdater.ts";
@@ -145,6 +146,7 @@ const desktopBackendLayer = DesktopBackendManager.layer.pipe(
   Layer.provideMerge(DesktopAppIdentity.layer),
   Layer.provideMerge(DesktopBackendConfiguration.layer),
   Layer.provideMerge(DesktopBrowserAutomationHost.layer),
+  Layer.provideMerge(DesktopBrowserExternalAutomationHost.layer),
   Layer.provideMerge(DesktopComputerAutomationHost.layer),
   Layer.provideMerge(desktopApmLayer),
   Layer.provideMerge(desktopWindowLayer),
@@ -228,11 +230,24 @@ const desktopComputerAutomationIpcLayer = Layer.effectDiscard(
   }),
 );
 
+const desktopBrowserExternalAutomationIpcLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const ipc = yield* DesktopIpc.DesktopIpc;
+    const host =
+      yield* DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHost;
+    yield* ipc.handle({
+      channel: IpcChannels.BROWSER_EXTERNAL_AUTOMATION_GET_STATE_CHANNEL,
+      handler: () => host.state,
+    });
+  }),
+);
+
 const desktopApplicationLayer = Layer.mergeAll(
   DesktopLifecycle.layer,
   DesktopApplicationMenu.layer,
   DesktopShellEnvironment.layer,
   desktopBrowserAutomationIpcLayer,
+  desktopBrowserExternalAutomationIpcLayer,
   desktopComputerAutomationIpcLayer,
   desktopSshLayer,
 ).pipe(Layer.provideMerge(DesktopUpdates.layer), Layer.provideMerge(desktopBackendLayer));

@@ -51,7 +51,12 @@ import {
   buildCodexProcessEnv,
   type BundledEngineResolvedConfig,
 } from "../BundledEngineConfig.ts";
-import { buildT3BrowserDynamicTools, T3_BROWSER_TOOL_NAMESPACE } from "../browserTools.ts";
+import {
+  buildT3BrowserDynamicTools,
+  buildT3BrowserExternalDynamicTools,
+  T3_BROWSER_EXTERNAL_TOOL_NAMESPACE,
+  T3_BROWSER_TOOL_NAMESPACE,
+} from "../browserTools.ts";
 import {
   buildT3ComputerDynamicTools,
   isT3ComputerInputToolName,
@@ -59,6 +64,7 @@ import {
   T3_COMPUTER_TOOL_NAMESPACE,
 } from "../computerTools.ts";
 import * as BrowserToolService from "../Services/BrowserToolService.ts";
+import * as BrowserExternalToolService from "../Services/BrowserExternalToolService.ts";
 import * as ComputerToolService from "../Services/ComputerToolService.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
@@ -321,7 +327,11 @@ function buildThreadStartParams(input: {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
     sandbox: config.sandbox,
-    dynamicTools: [...buildT3BrowserDynamicTools(), ...buildT3ComputerDynamicTools()],
+    dynamicTools: [
+      ...buildT3BrowserDynamicTools(),
+      ...buildT3BrowserExternalDynamicTools(),
+      ...buildT3ComputerDynamicTools(),
+    ],
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
   };
@@ -783,6 +793,7 @@ function readComputerConfirmationMessage(
 
 function withBrowserUserConfirmation(
   payload: EffectCodexSchema.DynamicToolCallParams,
+  options: { readonly alwaysAllowHost?: boolean } = {},
 ): EffectCodexSchema.DynamicToolCallParams {
   const args =
     payload.arguments && typeof payload.arguments === "object" && !Array.isArray(payload.arguments)
@@ -793,6 +804,8 @@ function withBrowserUserConfirmation(
     arguments: {
       ...args,
       userConfirmed: true,
+      t3UserConfirmed: true,
+      ...(options.alwaysAllowHost ? { userAlwaysAllowHost: true } : {}),
     },
   };
 }
@@ -882,6 +895,7 @@ export const makeCodexSessionRuntime = (
   CodexSessionRuntimeShape,
   CodexErrors.CodexAppServerError,
   | BrowserToolService.BrowserToolService
+  | BrowserExternalToolService.BrowserExternalToolService
   | ComputerToolService.ComputerToolService
   | ChildProcessSpawner.ChildProcessSpawner
   | Scope.Scope
@@ -910,6 +924,7 @@ export const makeCodexSessionRuntime = (
       bundledConfig,
     });
     const browserTools = yield* BrowserToolService.BrowserToolService;
+    const browserExternalTools = yield* BrowserExternalToolService.BrowserExternalToolService;
     const computerTools = yield* ComputerToolService.ComputerToolService;
 
     const child =
@@ -1328,17 +1343,33 @@ export const makeCodexSessionRuntime = (
         let confirmationHeader = "工具确认";
         let confirmationMessage: string | undefined;
         let retryAfterConfirmation: () => Promise<EffectCodexSchema.DynamicToolCallResponse>;
+        let supportsAlwaysAllowBrowserHost = false;
         let supportsAlwaysAllowApp = false;
+        let browserToolRunner:
+          | ((
+              nextPayload: EffectCodexSchema.DynamicToolCallParams,
+            ) => Promise<EffectCodexSchema.DynamicToolCallResponse>)
+          | undefined;
 
-        if (payload.namespace === T3_BROWSER_TOOL_NAMESPACE) {
-          const initialResponse = yield* Effect.promise(() => browserTools.call(payload));
+        if (
+          payload.namespace === T3_BROWSER_TOOL_NAMESPACE ||
+          payload.namespace === T3_BROWSER_EXTERNAL_TOOL_NAMESPACE
+        ) {
+          const targetBrowserTools =
+            payload.namespace === T3_BROWSER_EXTERNAL_TOOL_NAMESPACE
+              ? browserExternalTools
+              : browserTools;
+          browserToolRunner = (nextPayload) => targetBrowserTools.call(nextPayload);
+          const initialResponse = yield* Effect.promise(() => targetBrowserTools.call(payload));
           confirmationMessage = readBrowserConfirmationMessage(initialResponse);
           if (!confirmationMessage) {
             return initialResponse;
           }
           confirmationQuestionId = "browser_confirmation";
           confirmationHeader = "浏览器确认";
-          retryAfterConfirmation = () => browserTools.call(withBrowserUserConfirmation(payload));
+          supportsAlwaysAllowBrowserHost = true;
+          retryAfterConfirmation = () =>
+            targetBrowserTools.call(withBrowserUserConfirmation(payload));
         } else if (payload.namespace === T3_COMPUTER_TOOL_NAMESPACE) {
           const payloadWithRuntimeMode = withComputerRuntimeContext(payload, options.runtimeMode);
           if (
@@ -1415,6 +1446,14 @@ export const makeCodexSessionRuntime = (
                         },
                       ]
                     : []),
+                  ...(supportsAlwaysAllowBrowserHost
+                    ? [
+                        {
+                          label: "Always allow",
+                          description: "始终允许 browser_use 使用当前网站。",
+                        },
+                      ]
+                    : []),
                   {
                     label: "Decline",
                     description: "拒绝这一次操作。",
@@ -1440,12 +1479,21 @@ export const makeCodexSessionRuntime = (
           return dynamicTextResponse("Dynamic tool action declined by the user.", false);
         }
 
+        const alwaysAllow = userInputAnswerIncludes(answer, "Always allow");
+        if (supportsAlwaysAllowBrowserHost) {
+          if (!browserToolRunner) {
+            return dynamicTextResponse("Browser tool service is unavailable.", false);
+          }
+          return yield* Effect.promise(() =>
+            browserToolRunner(withBrowserUserConfirmation(payload, { alwaysAllowHost: alwaysAllow })),
+          );
+        }
+
         if (supportsAlwaysAllowApp) {
-          const alwaysAllowApp = userInputAnswerIncludes(answer, "Always allow");
           return yield* Effect.promise(() =>
             computerTools.call(
               withComputerUserConfirmation(payload, options.runtimeMode, {
-                alwaysAllowApp,
+                alwaysAllowApp: alwaysAllow,
               }),
             ),
           );

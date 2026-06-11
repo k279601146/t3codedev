@@ -16,7 +16,7 @@ describe("composerPluginLaunch", () => {
       "@Browser: use the T3 in-app browser tools",
     );
     expect(buildComposerPluginLaunchContext("@Chrome 检查登录页")).toContain(
-      '@Chrome: use computer_list_windows with query "Chrome"',
+      "@Chrome: use browser_use_external with the t3_browser_external namespace",
     );
   });
 

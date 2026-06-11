@@ -28,6 +28,7 @@ import { ProviderEventLoggersLive } from "./provider/Layers/ProviderEventLoggers
 import { ProviderServiceLive } from "./provider/Layers/ProviderService.ts";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper.ts";
 import * as BrowserToolService from "./provider/Layers/BrowserToolService.ts";
+import * as BrowserExternalToolService from "./provider/Layers/BrowserExternalToolService.ts";
 import * as ComputerToolService from "./provider/Layers/ComputerToolService.ts";
 import { OpenCodeRuntimeLive } from "./provider/opencodeRuntime.ts";
 import { CheckpointDiffQueryLive } from "./checkpointing/Layers/CheckpointDiffQuery.ts";
@@ -265,6 +266,7 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
 
 const DynamicToolServicesLayerLive = Layer.mergeAll(
   BrowserToolService.layer,
+  BrowserExternalToolService.layer,
   ComputerToolService.layer,
 );
 

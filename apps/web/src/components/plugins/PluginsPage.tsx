@@ -1,5 +1,6 @@
 import type {
   DesktopBrowserAutomationState,
+  DesktopBrowserExternalAutomationState,
   DesktopComputerAutomationAppPermission,
   DesktopComputerAutomationState,
 } from "@t3tools/contracts";
@@ -7,10 +8,12 @@ import {
   BlocksIcon,
   CheckIcon,
   CircleSlashIcon,
+  CopyIcon,
   EyeIcon,
   GlobeIcon,
   LaptopIcon,
   Loader2Icon,
+  PlugIcon,
   PauseIcon,
   PlayIcon,
   RefreshCcwIcon,
@@ -27,7 +30,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { toastManager } from "~/components/ui/toast";
 import { cn } from "~/lib/utils";
 
-type BuiltinPluginId = "browser_use" | "computer_use";
+type BuiltinPluginId = "browser_use" | "browser_use_external" | "computer_use";
 
 interface BuiltinPlugin {
   readonly id: BuiltinPluginId;
@@ -51,6 +54,13 @@ const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
     subtitle: "Windows 桌面截图、鼠标、键盘和 App 级授权控制。",
     icon: <LaptopIcon className="size-5" />,
     tags: ["computer_use", "t3_computer", "desktop"],
+  },
+  {
+    id: "browser_use_external",
+    title: "Browser Use External",
+    subtitle: "通过 T3 Code Chrome Extension 控制用户 Chrome。",
+    icon: <PlugIcon className="size-5" />,
+    tags: ["browser_use_external", "chrome", "t3_browser_external"],
   },
 ];
 const DEFAULT_PLUGIN = BUILTIN_PLUGINS[0]!;
@@ -229,6 +239,119 @@ function BrowserPluginDetails({
   );
 }
 
+function BrowserExternalPluginDetails({
+  state,
+  refresh,
+}: {
+  readonly state: DesktopBrowserExternalAutomationState | null;
+  readonly refresh: () => void;
+}) {
+  const activeTab =
+    state?.tabs.find((tab) => tab.id === state.selectedTabId) ?? state?.tabs[0] ?? null;
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-foreground">Browser Use External 设置</h2>
+          <Button type="button" variant="ghost" size="xs" onClick={refresh}>
+            <RefreshCcwIcon className="size-3.5" />
+            刷新
+          </Button>
+        </div>
+        <div className="mt-3 rounded-md border border-border/70 px-3">
+          <SettingRow
+            label="插件状态"
+            value={statusPill(state?.connected ? "ready" : "unavailable")}
+          />
+          <SettingRow label="命名空间" value={<span className="font-mono">t3_browser_external</span>} />
+          <SettingRow label="扩展 ID" value={state?.extensionId ?? "未连接"} />
+          <SettingRow label="浏览器" value={state?.browserName ?? "未连接"} />
+          <SettingRow label="当前标签页" value={activeTab?.title || "暂无"} />
+          <SettingRow
+            label="当前 URL"
+            value={
+              activeTab?.url ? (
+                <span className="block max-w-[420px] truncate font-mono">{activeTab.url}</span>
+              ) : (
+                "暂无"
+              )
+            }
+          />
+          <SettingRow label="最后错误" value={state?.lastError ?? "暂无"} />
+        </div>
+      </section>
+      <section>
+        <h3 className="text-[13px] font-medium text-muted-foreground">扩展连接信息</h3>
+        <div className="mt-3 rounded-md border border-border/70 px-3">
+          <SettingRow
+            label="Endpoint"
+            value={
+              state?.endpoint ? (
+                <CopyConnectionValue value={state.endpoint} />
+              ) : (
+                "暂无"
+              )
+            }
+          />
+          <SettingRow
+            label="Token"
+            value={
+              state?.token ? (
+                <CopyConnectionValue value={state.token} secret />
+              ) : (
+                "暂无"
+              )
+            }
+          />
+        </div>
+      </section>
+      <section className="rounded-md border border-border/70 bg-muted/20 p-3">
+        <div className="flex items-start gap-2">
+          <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <p className="text-xs leading-5 text-muted-foreground">
+            安装扩展后仍需把上方 Endpoint 与 Token 填入扩展弹窗完成配对。Token
+            会在每次重启 T3 Code 后更新，此时需要重新配对。连接后 @Chrome 会使用
+            browser_use_external。
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CopyConnectionValue({
+  value,
+  secret = false,
+}: {
+  readonly value: string;
+  readonly secret?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(() => {
+    void navigator.clipboard?.writeText(value).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1_200);
+    });
+  }, [value]);
+  const displayValue = secret ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+
+  return (
+    <div className="flex min-w-0 items-center justify-end gap-2">
+      <span className="block max-w-[340px] truncate font-mono">{displayValue}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={copied ? "已复制" : "复制"}
+        title={copied ? "已复制" : "复制"}
+        onClick={copy}
+      >
+        {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+      </Button>
+    </div>
+  );
+}
+
 function ComputerPluginDetails({
   state,
   refresh,
@@ -372,6 +495,8 @@ export function PluginsPage() {
   const [search, setSearch] = useState("");
   const [selectedPluginId, setSelectedPluginId] = useState<BuiltinPluginId>("browser_use");
   const [browserState, setBrowserState] = useState<DesktopBrowserAutomationState | null>(null);
+  const [browserExternalState, setBrowserExternalState] =
+    useState<DesktopBrowserExternalAutomationState | null>(null);
   const [computerState, setComputerState] = useState<DesktopComputerAutomationState | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -396,19 +521,36 @@ export function PluginsPage() {
       .catch(() => setComputerState(null));
   }, []);
 
+  const refreshBrowserExternal = useCallback(() => {
+    const bridge = window.desktopBridge;
+    if (!bridge?.getBrowserExternalAutomationState) {
+      setBrowserExternalState(null);
+      return;
+    }
+    void bridge
+      .getBrowserExternalAutomationState()
+      .then(setBrowserExternalState)
+      .catch(() => setBrowserExternalState(null));
+  }, []);
+
   useEffect(() => {
     refreshBrowser();
+    refreshBrowserExternal();
     refreshComputer();
     const bridge = window.desktopBridge;
     const unsubscribeBrowser = bridge?.onBrowserAutomationState?.((state) => setBrowserState(state));
+    const unsubscribeBrowserExternal = bridge?.onBrowserExternalAutomationState?.((state) =>
+      setBrowserExternalState(state),
+    );
     const unsubscribeComputer = bridge?.onComputerAutomationState?.((state) =>
       setComputerState(state),
     );
     return () => {
       unsubscribeBrowser?.();
+      unsubscribeBrowserExternal?.();
       unsubscribeComputer?.();
     };
-  }, [refreshBrowser, refreshComputer]);
+  }, [refreshBrowser, refreshBrowserExternal, refreshComputer]);
 
   const filteredPlugins = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -476,10 +618,12 @@ export function PluginsPage() {
   const pluginStatus = useCallback(
     (pluginId: BuiltinPluginId): "ready" | "paused" | "unavailable" => {
       if (pluginId === "browser_use") return browserState ? "ready" : "unavailable";
+      if (pluginId === "browser_use_external")
+        return browserExternalState?.connected ? "ready" : "unavailable";
       if (!computerState || !computerState.available) return "unavailable";
       return computerState.paused ? "paused" : "ready";
     },
-    [browserState, computerState],
+    [browserState, browserExternalState, computerState],
   );
 
   return (
@@ -490,6 +634,7 @@ export function PluginsPage() {
           variant="ghost"
           onClick={() => {
             refreshBrowser();
+            refreshBrowserExternal();
             refreshComputer();
           }}
         >
@@ -559,6 +704,11 @@ export function PluginsPage() {
               </div>
               {selectedPlugin.id === "browser_use" ? (
                 <BrowserPluginDetails state={browserState} refresh={refreshBrowser} />
+              ) : selectedPlugin.id === "browser_use_external" ? (
+                <BrowserExternalPluginDetails
+                  state={browserExternalState}
+                  refresh={refreshBrowserExternal}
+                />
               ) : (
                 <ComputerPluginDetails
                   state={computerState}
