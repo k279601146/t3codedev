@@ -10,6 +10,7 @@ import {
   type ModelSelection,
   type ProjectScript,
   type ProjectId,
+  type OrchestrationGoalStatus,
   type ProviderApprovalDecision,
   ProviderInstanceId,
   type ServerProvider,
@@ -37,6 +38,11 @@ import {
 } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import {
+  GOAL_OBJECTIVE_MAX_CHARS,
+  isValidGoalObjective,
+  normalizeGoalObjective,
+} from "@t3tools/shared/goal";
 import { Debouncer } from "@tanstack/react-pacer";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -506,6 +512,7 @@ function useLocalDispatchState(input: {
 
 const LOCAL_DISPATCH_BY_THREAD_KEY = new Map<string, LocalDispatchSnapshot>();
 const OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY = new Map<string, ChatMessage[]>();
+const GOAL_MESSAGE_IDS_BY_THREAD_KEY = new Map<string, MessageId[]>();
 
 interface PersistentThreadTerminalDrawerProps {
   threadRef: { environmentId: EnvironmentId; threadId: ThreadId };
@@ -780,6 +787,10 @@ export default function ChatView(props: ChatViewProps) {
   const [optimisticUserMessages, setOptimisticUserMessagesState] = useState<ChatMessage[]>(
     () => OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [],
   );
+  const [goalMessageIdsByThreadKey, setGoalMessageIdsByThreadKey] = useState<
+    Record<string, MessageId[]>
+  >(() => Object.fromEntries(GOAL_MESSAGE_IDS_BY_THREAD_KEY));
+  const [goalModeByThreadKey, setGoalModeByThreadKey] = useState<Record<string, boolean>>({});
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
   optimisticUserMessagesRef.current = optimisticUserMessages;
   const setOptimisticUserMessages = useCallback(
@@ -941,6 +952,9 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const goalModeEnabled = Boolean(
+    (activeThreadKey ? goalModeByThreadKey[activeThreadKey] : false) || activeThread?.goal,
+  );
   useEffect(() => {
     const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
     if (!bridge?.onBrowserAutomationState) {
@@ -1784,6 +1798,33 @@ export default function ChatView(props: ChatViewProps) {
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
     [activeThread?.proposedPlans, timelineMessages, workLogEntries],
   );
+  const goalMessageIds = useMemo(() => {
+    const ids = new Set<MessageId>(
+      activeThreadKey ? (goalMessageIdsByThreadKey[activeThreadKey] ?? []) : [],
+    );
+    const normalizedGoal = activeThread?.goal
+      ? normalizeGoalObjective(activeThread.goal.objective)
+      : "";
+    if (normalizedGoal.length > 0) {
+      for (const message of activeThread?.messages ?? []) {
+        if (message.role === "user" && normalizeGoalObjective(message.text) === normalizedGoal) {
+          ids.add(message.id);
+        }
+      }
+      for (const message of optimisticUserMessages) {
+        if (message.role === "user" && normalizeGoalObjective(message.text) === normalizedGoal) {
+          ids.add(message.id);
+        }
+      }
+    }
+    return ids;
+  }, [
+    activeThread?.goal,
+    activeThread?.messages,
+    activeThreadKey,
+    goalMessageIdsByThreadKey,
+    optimisticUserMessages,
+  ]);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
   const rightPanelArtifacts = useMemo<RightPanelArtifact[]>(() => {
@@ -3013,6 +3054,24 @@ export default function ChatView(props: ChatViewProps) {
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
+    const goalObjectiveForTurn = goalModeEnabled
+      ? normalizeGoalObjective(outgoingMessageText)
+      : null;
+    if (goalModeEnabled && !isValidGoalObjective(goalObjectiveForTurn ?? "")) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: "目标内容无效",
+          description:
+            goalObjectiveForTurn?.length === 0
+              ? "目标不能为空。"
+              : `目标最多 ${GOAL_OBJECTIVE_MAX_CHARS} 个字符。`,
+        }),
+      );
+      sendInFlightRef.current = false;
+      resetLocalDispatch();
+      return;
+    }
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (attachment) => ({
         type: attachment.type,
@@ -3060,6 +3119,13 @@ export default function ChatView(props: ChatViewProps) {
         streaming: false,
       },
     ]);
+    if (goalObjectiveForTurn && activeThreadKey) {
+      setGoalMessageIdsByThreadKey((existing) => {
+        const nextIds = [...(existing[activeThreadKey] ?? []), messageIdForSend];
+        GOAL_MESSAGE_IDS_BY_THREAD_KEY.set(activeThreadKey, nextIds);
+        return { ...existing, [activeThreadKey]: nextIds };
+      });
+    }
 
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
@@ -3083,6 +3149,16 @@ export default function ChatView(props: ChatViewProps) {
       let turnSteerSucceeded = false;
       await (async () => {
         const turnAttachments = await turnAttachmentsPromise;
+        if (goalObjectiveForTurn) {
+          await api.orchestration.dispatchCommand({
+            type: "thread.goal.set",
+            commandId: newCommandId(),
+            threadId: threadIdForSend,
+            objective: goalObjectiveForTurn,
+            status: "active",
+            createdAt: messageCreatedAt,
+          });
+        }
         await api.orchestration.dispatchCommand({
           type: "thread.turn.steer",
           commandId: newCommandId(),
@@ -3216,6 +3292,7 @@ export default function ChatView(props: ChatViewProps) {
         titleSeed: title,
         runtimeMode,
         interactionMode,
+        ...(goalObjectiveForTurn ? { goalObjective: goalObjectiveForTurn } : {}),
         ...(bootstrap ? { bootstrap } : {}),
         createdAt: messageCreatedAt,
       });
@@ -3858,6 +3935,49 @@ export default function ChatView(props: ChatViewProps) {
     }
     void onRevertToTurnCountRef.current(targetTurnCount);
   }, []);
+  const clearThreadGoal = useCallback(async () => {
+    const api = readEnvironmentApi(environmentId);
+    if (!api || !activeThreadId) return;
+    const createdAt = new Date().toISOString();
+    await api.orchestration.dispatchCommand({
+      type: "thread.goal.clear",
+      commandId: newCommandId(),
+      threadId: activeThreadId,
+      createdAt,
+    });
+  },
+    [activeThreadId, environmentId],
+  );
+  const onGoalModeChange = useCallback(
+    (enabled: boolean) => {
+      if (!activeThreadKey) return;
+      setGoalModeByThreadKey((existing) => ({ ...existing, [activeThreadKey]: enabled }));
+      if (!enabled && activeThread?.goal) {
+        void clearThreadGoal().catch((error) => {
+          setThreadError(activeThreadId, error instanceof Error ? error.message : "清除目标失败。");
+        });
+      }
+    },
+    [activeThread?.goal, activeThreadId, activeThreadKey, clearThreadGoal, setThreadError],
+  );
+  const onSetGoalStatus = useCallback(
+    (status: OrchestrationGoalStatus) => {
+      const api = readEnvironmentApi(environmentId);
+      if (!api || !activeThreadId) return;
+      void api.orchestration
+        .dispatchCommand({
+          type: "thread.goal.status.set",
+          commandId: newCommandId(),
+          threadId: activeThreadId,
+          status,
+          createdAt: new Date().toISOString(),
+        })
+        .catch((error) => {
+          setThreadError(activeThreadId, error instanceof Error ? error.message : "更新目标失败。");
+        });
+    },
+    [activeThreadId, environmentId, setThreadError],
+  );
   const selectRightPanelSurface = useCallback(
     (surface: RightPanelSurface) => {
       setRightPanelSurface(surface, activeThreadKey);
@@ -4028,6 +4148,8 @@ export default function ChatView(props: ChatViewProps) {
       planSidebarOpen={summaryPanelOpen}
       runtimeMode={runtimeMode}
       interactionMode={interactionMode}
+      goalModeEnabled={goalModeEnabled}
+      goal={activeThread.goal ?? null}
       lockedProvider={lockedProvider}
       providerStatuses={providerStatuses as ServerProvider[]}
       activeProjectDefaultModelSelection={activeProject?.defaultModelSelection}
@@ -4061,6 +4183,8 @@ export default function ChatView(props: ChatViewProps) {
       toggleInteractionMode={toggleInteractionMode}
       handleRuntimeModeChange={handleRuntimeModeChange}
       handleInteractionModeChange={handleInteractionModeChange}
+      onGoalModeChange={onGoalModeChange}
+      onSetGoalStatus={onSetGoalStatus}
       togglePlanSidebar={togglePlanSidebar}
       focusComposer={focusComposer}
       scheduleComposerFocus={scheduleComposerFocus}
@@ -4171,6 +4295,7 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenTurnDiff={onOpenTurnDiff}
                   revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                   onRevertUserMessage={onRevertUserMessage}
+                  goalMessageIds={goalMessageIds}
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImage}
                   markdownCwd={gitCwd ?? undefined}

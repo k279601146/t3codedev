@@ -102,6 +102,10 @@
     "./workspaceConfig": {
       "types": "./src/workspaceConfig.ts",
       "import": "./src/workspaceConfig.ts"
+    },
+    "./goal": {
+      "types": "./src/goal.ts",
+      "import": "./src/goal.ts"
     }
   },
   "scripts": {

@@ -11,6 +11,8 @@ import {
 import {
   ChatAttachment,
   ModelSelection,
+  OrchestrationGoal,
+  OrchestrationGoalStatus,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ProviderApprovalDecision,
@@ -126,6 +128,47 @@ export const ProviderRespondToUserInputInput = Schema.Struct({
   answers: ProviderUserInputAnswers,
 });
 export type ProviderRespondToUserInputInput = typeof ProviderRespondToUserInputInput.Type;
+
+export const ProviderGoalSetInput = Schema.Struct({
+  threadId: ThreadId,
+  objective: OrchestrationGoal.fields.objective,
+  status: Schema.optional(OrchestrationGoalStatus),
+});
+export type ProviderGoalSetInput = typeof ProviderGoalSetInput.Type;
+
+export const ProviderGoalStatusSetInput = Schema.Struct({
+  threadId: ThreadId,
+  status: OrchestrationGoalStatus,
+});
+export type ProviderGoalStatusSetInput = typeof ProviderGoalStatusSetInput.Type;
+
+export const ProviderGoalClearInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type ProviderGoalClearInput = typeof ProviderGoalClearInput.Type;
+
+export const ProviderGoalGetInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type ProviderGoalGetInput = typeof ProviderGoalGetInput.Type;
+
+export const ProviderGoalSetResult = Schema.Struct({
+  threadId: ThreadId,
+  goal: OrchestrationGoal,
+});
+export type ProviderGoalSetResult = typeof ProviderGoalSetResult.Type;
+
+export const ProviderGoalGetResult = Schema.Struct({
+  threadId: ThreadId,
+  goal: Schema.NullOr(OrchestrationGoal),
+});
+export type ProviderGoalGetResult = typeof ProviderGoalGetResult.Type;
+
+export const ProviderGoalClearResult = Schema.Struct({
+  threadId: ThreadId,
+  cleared: Schema.Boolean,
+});
+export type ProviderGoalClearResult = typeof ProviderGoalClearResult.Type;
 
 const ProviderEventKind = Schema.Literals(["session", "notification", "request", "error"]);
 

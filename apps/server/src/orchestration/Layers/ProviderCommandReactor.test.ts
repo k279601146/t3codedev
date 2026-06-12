@@ -230,6 +230,38 @@ describe("ProviderCommandReactor", () => {
     const interruptTurn = vi.fn((_: unknown) => Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
     const respondToUserInput = vi.fn<ProviderServiceShape["respondToUserInput"]>(() => Effect.void);
+    const setGoal = vi.fn<ProviderServiceShape["setGoal"]>((input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        goal: {
+          objective: input.objective,
+          status: input.status ?? "active",
+          updatedAt: now,
+        },
+      }),
+    );
+    const setGoalStatus = vi.fn<ProviderServiceShape["setGoalStatus"]>((input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        goal: {
+          objective: "测试目标",
+          status: input.status,
+          updatedAt: now,
+        },
+      }),
+    );
+    const getGoal = vi.fn<ProviderServiceShape["getGoal"]>((input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        goal: null,
+      }),
+    );
+    const clearGoal = vi.fn<ProviderServiceShape["clearGoal"]>((input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        cleared: true,
+      }),
+    );
     const stopSession = vi.fn((input: unknown) =>
       Effect.sync(() => {
         const threadId =
@@ -299,6 +331,10 @@ describe("ProviderCommandReactor", () => {
       interruptTurn: interruptTurn as ProviderServiceShape["interruptTurn"],
       respondToRequest: respondToRequest as ProviderServiceShape["respondToRequest"],
       respondToUserInput: respondToUserInput as ProviderServiceShape["respondToUserInput"],
+      setGoal,
+      setGoalStatus,
+      getGoal,
+      clearGoal,
       stopSession: stopSession as ProviderServiceShape["stopSession"],
       listSessions: () => Effect.succeed(runtimeSessions),
       getCapabilities: (_provider) =>

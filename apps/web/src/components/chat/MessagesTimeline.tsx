@@ -27,6 +27,7 @@ import {
   CircleAlertIcon,
   FileIcon,
   EyeIcon,
+  GoalIcon,
   GlobeIcon,
   HammerIcon,
   type LucideIcon,
@@ -94,6 +95,7 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
+  goalMessageIds: ReadonlySet<MessageId>;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   /** Turn-process collapse: per assistant-message id, is the upstream
@@ -129,6 +131,7 @@ const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 
 // Use PingFang SC explicitly for chat content so the increased font size keeps the
 // preferred Chinese-first typeface across all platforms.
@@ -154,6 +157,7 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
+  goalMessageIds?: ReadonlySet<MessageId>;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
@@ -183,6 +187,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
+  goalMessageIds = EMPTY_GOAL_MESSAGE_IDS,
   isRevertingCheckpoint,
   onImageExpand,
   activeThreadEnvironmentId,
@@ -465,6 +470,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      goalMessageIds,
       onImageExpand,
       onOpenTurnDiff,
       collapsedAssistantMessageIds,
@@ -484,6 +490,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      goalMessageIds,
       onImageExpand,
       onOpenTurnDiff,
       collapsedAssistantMessageIds,
@@ -814,6 +821,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               className="border-border/55 bg-background/80 text-muted-foreground/70 shadow-none hover:border-border/75 hover:bg-background hover:text-foreground"
             />
           )}
+          {ctx.goalMessageIds.has(row.message.id) ? <GoalMessageMarker /> : null}
           {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
           <span className="px-0.5 text-[11px] text-muted-foreground/50">
             {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
@@ -848,6 +856,27 @@ function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
       </TooltipTrigger>
       <TooltipPopup>
         <p>Restore files and chat to before this message</p>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function GoalMessageMarker() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="inline-flex h-6 select-none items-center gap-1.5 rounded-md px-1.5 text-[12px] font-normal text-muted-foreground/70"
+            aria-label="目标"
+          />
+        }
+      >
+        <GoalIcon className="size-3.5" />
+        <span>目标</span>
+      </TooltipTrigger>
+      <TooltipPopup>
+        <p>这条消息以目标模式发送</p>
       </TooltipPopup>
     </Tooltip>
   );

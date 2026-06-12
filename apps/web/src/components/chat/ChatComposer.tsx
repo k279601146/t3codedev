@@ -2,6 +2,8 @@ import type {
   ApprovalRequestId,
   EnvironmentId,
   ModelSelection,
+  OrchestrationGoal,
+  OrchestrationGoalStatus,
   ProjectEntry,
   ProviderApprovalDecision,
   ProviderInteractionMode,
@@ -31,6 +33,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -105,15 +108,20 @@ import {
   BookOpenIcon,
   CheckIcon,
   FileIcon,
+  GoalIcon,
   GlobeIcon,
   HandIcon,
   LaptopIcon,
   ListTodoIcon,
+  PauseCircleIcon,
+  PencilIcon,
+  PlayCircleIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
+  Trash2Icon,
   type LucideIcon,
   XIcon,
 } from "lucide-react";
@@ -391,6 +399,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 
 const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
   disabled: boolean;
+  goalModeEnabled: boolean;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   skills: ReadonlyArray<ServerProviderSkill>;
@@ -398,6 +407,7 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
   showInteractionModeToggle: boolean;
   traitsMenuContent?: React.ReactNode;
   onAttachFiles: () => void;
+  onGoalModeChange: (enabled: boolean) => void;
   onSelectPlugin: (plugin: ComposerPluginMention) => void;
   pluginMentions: readonly ComposerPluginMention[];
   onSelectSkill: (skill: ServerProviderSkill) => void;
@@ -527,9 +537,19 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
             {props.traitsMenuContent}
           </>
         ) : null}
+        <MenuSeparator />
+        <MenuCheckboxItem
+          checked={props.goalModeEnabled}
+          variant="switch"
+          onCheckedChange={(checked) => props.onGoalModeChange(Boolean(checked))}
+        >
+          <span className="inline-flex items-center gap-2">
+            <GoalIcon className="size-4 shrink-0 opacity-80" />
+            追求目标
+          </span>
+        </MenuCheckboxItem>
         {props.showInteractionModeToggle ? (
           <>
-            <MenuSeparator />
             <MenuCheckboxItem
               checked={props.interactionMode === "plan"}
               variant="switch"
@@ -716,6 +736,158 @@ const NewThreadPlanModeStatusChip = memo(function NewThreadPlanModeStatusChip(pr
   );
 });
 
+const ComposerGoalStatusChip = memo(function ComposerGoalStatusChip(props: {
+  onClear: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClear}
+      aria-label="关闭目标模式"
+      title="关闭目标模式"
+      className="group inline-flex h-7 shrink-0 animate-in items-center gap-1.5 rounded-full bg-muted px-2 text-[12px] font-normal text-muted-foreground fade-in slide-in-from-left-1 zoom-in-95 duration-200 hover:bg-muted/90 hover:text-foreground active:bg-muted/80"
+    >
+      <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center">
+        <GoalIcon className="absolute size-3.5 opacity-100 transition-opacity duration-150 group-hover:opacity-0" />
+        <span className="absolute inline-flex size-3.5 items-center justify-center rounded-full bg-muted-foreground/65 text-background opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <XIcon className="size-2.5 stroke-[2.5px]" />
+        </span>
+      </span>
+      <span>目标</span>
+    </button>
+  );
+});
+
+const ComposerGoalProgressPanel = memo(function ComposerGoalProgressPanel(props: {
+  goal: OrchestrationGoal | null;
+  draftObjective: string;
+  collapsed: boolean;
+  onEdit: () => void;
+  onTogglePaused: () => void;
+  onClear: () => void;
+  onToggleCollapsed: () => void;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timerId = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+  const goal = props.goal;
+  const objective = goal?.objective ?? props.draftObjective.trim();
+  const hasSyncedGoal = goal !== null;
+  const paused = goal?.status === "paused";
+  const canPauseResume = goal?.status === "active" || goal?.status === "paused";
+  const title = resolveGoalPanelTitle(goal?.status);
+  const elapsed = goal ? formatGoalElapsed(goal.updatedAt, nowMs) : null;
+  const displayObjective = objective || "发送下一条消息后会作为目标";
+
+  return (
+    <div className="mb-2 rounded-2xl border border-border/75 bg-background px-3 py-2 shadow-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <GoalIcon className="size-4 shrink-0 text-muted-foreground/75" />
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{title}</span>
+        {elapsed ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{elapsed}</span>
+        ) : null}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <IconToolbarButton label="编辑目标" onClick={props.onEdit}>
+            <PencilIcon className="size-3.5" />
+          </IconToolbarButton>
+          <IconToolbarButton
+            label={paused ? "恢复目标" : "暂停目标"}
+            disabled={!hasSyncedGoal || !canPauseResume}
+            onClick={props.onTogglePaused}
+          >
+            {paused ? (
+              <PlayCircleIcon className="size-3.5" />
+            ) : (
+              <PauseCircleIcon className="size-3.5" />
+            )}
+          </IconToolbarButton>
+          <IconToolbarButton label="清除目标" onClick={props.onClear}>
+            <Trash2Icon className="size-3.5" />
+          </IconToolbarButton>
+          <IconToolbarButton
+            label={props.collapsed ? "展开目标" : "收起目标"}
+            onClick={props.onToggleCollapsed}
+          >
+            <ChevronDownIcon
+              className={cn("size-3.5 transition-transform", props.collapsed && "-rotate-90")}
+            />
+          </IconToolbarButton>
+        </div>
+      </div>
+      {!props.collapsed ? (
+        <p className="mt-1.5 line-clamp-2 break-words pl-6 text-[13px] leading-5 text-muted-foreground">
+          {displayObjective}
+        </p>
+      ) : null}
+    </div>
+  );
+});
+
+function IconToolbarButton(props: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            disabled={props.disabled}
+            aria-label={props.label}
+            title={props.label}
+            className="size-6 rounded-md text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+            onClick={props.onClick}
+          />
+        }
+      >
+        {props.children}
+      </TooltipTrigger>
+      <TooltipPopup>
+        <p>{props.label}</p>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function resolveGoalPanelTitle(status: OrchestrationGoalStatus | undefined): string {
+  switch (status) {
+    case "paused":
+      return "已暂停的目标";
+    case "blocked":
+      return "受阻的目标";
+    case "usageLimited":
+      return "用量受限的目标";
+    case "budgetLimited":
+      return "预算受限的目标";
+    case "complete":
+      return "已完成的目标";
+    case "active":
+    case undefined:
+      return "进行中的目标";
+  }
+}
+
+function formatGoalElapsed(startIso: string, nowMs: number): string | null {
+  const startedAt = Date.parse(startIso);
+  if (Number.isNaN(startedAt) || nowMs < startedAt) return null;
+  const seconds = Math.max(1, Math.floor((nowMs - startedAt) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
 // --------------------------------------------------------------------------
@@ -812,6 +984,8 @@ export interface ChatComposerProps {
   // Mode
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
+  goalModeEnabled: boolean;
+  goal: OrchestrationGoal | null;
 
   // Provider / model
   lockedProvider: ProviderDriverKind | null;
@@ -865,6 +1039,8 @@ export interface ChatComposerProps {
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
+  onGoalModeChange: (enabled: boolean) => void;
+  onSetGoalStatus: (status: OrchestrationGoalStatus) => void;
   togglePlanSidebar: () => void;
 
   focusComposer: () => void;
@@ -914,6 +1090,8 @@ export const ChatComposer = memo(
       planSidebarOpen,
       runtimeMode,
       interactionMode,
+      goalModeEnabled,
+      goal,
       lockedProvider,
       providerStatuses,
       activeProjectDefaultModelSelection,
@@ -945,6 +1123,8 @@ export const ChatComposer = memo(
       toggleInteractionMode,
       handleRuntimeModeChange,
       handleInteractionModeChange,
+      onGoalModeChange,
+      onSetGoalStatus,
       togglePlanSidebar,
       focusComposer,
       scheduleComposerFocus,
@@ -1226,6 +1406,7 @@ export const ChatComposer = memo(
     const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
     const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
     const [isComposerFocused, setIsComposerFocused] = useState(false);
+    const [goalPanelCollapsed, setGoalPanelCollapsed] = useState(false);
     const isMobileViewport = useMediaQuery("max-sm");
     const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
 
@@ -1513,6 +1694,25 @@ export const ChatComposer = memo(
       },
       [composerDraftTarget, setComposerDraftPrompt],
     );
+
+    const editGoalFromPanel = useCallback(() => {
+      const nextPrompt = goal?.objective ?? prompt;
+      promptRef.current = nextPrompt;
+      setPrompt(nextPrompt);
+      const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
+      scheduleComposerFocus();
+    }, [goal?.objective, prompt, promptRef, scheduleComposerFocus, setPrompt]);
+
+    const toggleGoalPaused = useCallback(() => {
+      if (!goal) return;
+      onSetGoalStatus(goal.status === "paused" ? "active" : "paused");
+    }, [goal, onSetGoalStatus]);
+
+    const clearGoalFromPanel = useCallback(() => {
+      onGoalModeChange(false);
+    }, [onGoalModeChange]);
 
     const addComposerImage = useCallback(
       (image: ComposerImageAttachment) => {
@@ -2839,6 +3039,21 @@ export const ChatComposer = memo(
               {!isComposerCollapsedMobile &&
                 !isComposerApprovalState &&
                 pendingUserInputs.length === 0 &&
+                goalModeEnabled ? (
+                  <ComposerGoalProgressPanel
+                    goal={goal}
+                    draftObjective={prompt}
+                    collapsed={goalPanelCollapsed}
+                    onEdit={editGoalFromPanel}
+                    onTogglePaused={toggleGoalPaused}
+                    onClear={clearGoalFromPanel}
+                    onToggleCollapsed={() => setGoalPanelCollapsed((value) => !value)}
+                  />
+                ) : null}
+
+              {!isComposerCollapsedMobile &&
+                !isComposerApprovalState &&
+                pendingUserInputs.length === 0 &&
                 composerImages.length > 0 && (
                   <div className="mb-3 flex flex-wrap gap-2">
                     {composerImages.map((image) => (
@@ -3021,6 +3236,7 @@ export const ChatComposer = memo(
                         isComposerApprovalState ||
                         (environmentUnavailable !== null && activePendingProgress === null)
                       }
+                      goalModeEnabled={goalModeEnabled}
                       interactionMode={interactionMode}
                       runtimeMode={runtimeMode}
                       skills={selectedProviderStatus?.skills ?? []}
@@ -3028,6 +3244,7 @@ export const ChatComposer = memo(
                       showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                       traitsMenuContent={providerTraitsMenuContent}
                       onAttachFiles={openAttachmentPicker}
+                      onGoalModeChange={onGoalModeChange}
                       onSelectPlugin={insertPluginAtComposerCursor}
                       pluginMentions={visiblePluginMentions}
                       onSelectSkill={insertSkillAtComposerCursor}
@@ -3041,12 +3258,14 @@ export const ChatComposer = memo(
                         isComposerApprovalState ||
                         (environmentUnavailable !== null && activePendingProgress === null)
                       }
+                      goalModeEnabled={goalModeEnabled}
                       interactionMode={interactionMode}
                       runtimeMode={runtimeMode}
                       skills={selectedProviderStatus?.skills ?? []}
                       showRuntimeModeControl={false}
                       showInteractionModeToggle={false}
                       onAttachFiles={openAttachmentPicker}
+                      onGoalModeChange={onGoalModeChange}
                       onSelectPlugin={insertPluginAtComposerCursor}
                       pluginMentions={visiblePluginMentions}
                       onSelectSkill={insertSkillAtComposerCursor}
@@ -3080,6 +3299,10 @@ export const ChatComposer = memo(
                     <NewThreadPlanModeStatusChip
                       onClear={() => handleInteractionModeChange("default")}
                     />
+                  ) : null}
+
+                  {newThreadMode && goalModeEnabled ? (
+                    <ComposerGoalStatusChip onClear={clearGoalFromPanel} />
                   ) : null}
 
                   {newThreadMode ? null : isComposerFooterCompact ? (
@@ -3121,6 +3344,10 @@ export const ChatComposer = memo(
                       />
                     </>
                   )}
+
+                  {!newThreadMode && goalModeEnabled ? (
+                    <ComposerGoalStatusChip onClear={clearGoalFromPanel} />
+                  ) : null}
                 </div>
 
                 {/* Right side: send / stop button */}

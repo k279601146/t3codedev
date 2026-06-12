@@ -53,6 +53,9 @@ type ProviderIntentEvent = Extract<
   {
     type:
       | "thread.runtime-mode-set"
+      | "thread.goal-set-requested"
+      | "thread.goal-status-set-requested"
+      | "thread.goal-clear-requested"
       | "thread.turn-start-requested"
       | "thread.turn-steer-requested"
       | "thread.turn-interrupt-requested"
@@ -838,6 +841,26 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    if (event.payload.goalObjective !== undefined) {
+      const result = yield* providerService
+        .setGoal({
+          threadId: event.payload.threadId,
+          objective: event.payload.goalObjective,
+          status: "active",
+        })
+        .pipe(
+          Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(null))),
+        );
+      if (result === null) {
+        return;
+      }
+      yield* syncGoal({
+        threadId: event.payload.threadId,
+        goal: result.goal,
+        createdAt: event.payload.createdAt,
+      });
+    }
+
     yield* providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
@@ -1074,6 +1097,60 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const syncGoal = Effect.fn("syncGoal")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly goal: Extract<OrchestrationEvent, { type: "thread.goal-synced" }>["payload"]["goal"];
+    readonly createdAt: string;
+  }) {
+    yield* orchestrationEngine.dispatch({
+      type: "thread.goal.synced",
+      commandId: CommandId.make(`provider-goal:${input.threadId}:${crypto.randomUUID()}`),
+      threadId: input.threadId,
+      goal: input.goal,
+      createdAt: input.createdAt,
+    });
+  });
+
+  const processGoalSetRequested = Effect.fn("processGoalSetRequested")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.goal-set-requested" }>,
+  ) {
+    const result = yield* providerService.setGoal({
+      threadId: event.payload.threadId,
+      objective: event.payload.objective,
+      status: event.payload.status,
+    });
+    yield* syncGoal({
+      threadId: event.payload.threadId,
+      goal: result.goal,
+      createdAt: event.payload.createdAt,
+    });
+  });
+
+  const processGoalStatusSetRequested = Effect.fn("processGoalStatusSetRequested")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.goal-status-set-requested" }>,
+  ) {
+    const result = yield* providerService.setGoalStatus({
+      threadId: event.payload.threadId,
+      status: event.payload.status,
+    });
+    yield* syncGoal({
+      threadId: event.payload.threadId,
+      goal: result.goal,
+      createdAt: event.payload.createdAt,
+    });
+  });
+
+  const processGoalClearRequested = Effect.fn("processGoalClearRequested")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.goal-clear-requested" }>,
+  ) {
+    yield* providerService.clearGoal({ threadId: event.payload.threadId });
+    yield* syncGoal({
+      threadId: event.payload.threadId,
+      goal: null,
+      createdAt: event.payload.createdAt,
+    });
+  });
+
   const processDomainEvent = Effect.fn("processDomainEvent")(function* (
     event: ProviderIntentEvent,
   ) {
@@ -1099,6 +1176,15 @@ const make = Effect.gen(function* () {
         );
         return;
       }
+      case "thread.goal-set-requested":
+        yield* processGoalSetRequested(event);
+        return;
+      case "thread.goal-status-set-requested":
+        yield* processGoalStatusSetRequested(event);
+        return;
+      case "thread.goal-clear-requested":
+        yield* processGoalClearRequested(event);
+        return;
       case "thread.turn-start-requested":
         yield* processTurnStartRequested(event);
         return;
@@ -1139,6 +1225,9 @@ const make = Effect.gen(function* () {
     const processEvent = Effect.fn("processEvent")(function* (event: OrchestrationEvent) {
       if (
         event.type === "thread.runtime-mode-set" ||
+        event.type === "thread.goal-set-requested" ||
+        event.type === "thread.goal-status-set-requested" ||
+        event.type === "thread.goal-clear-requested" ||
         event.type === "thread.turn-start-requested" ||
         event.type === "thread.turn-steer-requested" ||
         event.type === "thread.turn-interrupt-requested" ||
@@ -1154,6 +1243,20 @@ const make = Effect.gen(function* () {
     ) {
       if (event.type === "turn.completed") {
         yield* processDeferredFirstTurnEnhancement(event);
+      }
+      if (event.type === "thread.goal.updated") {
+        yield* syncGoal({
+          threadId: event.threadId,
+          goal: event.payload.goal,
+          createdAt: event.createdAt,
+        });
+      }
+      if (event.type === "thread.goal.cleared") {
+        yield* syncGoal({
+          threadId: event.threadId,
+          goal: null,
+          createdAt: event.createdAt,
+        });
       }
     });
 

@@ -15,6 +15,7 @@ import {
   ProviderDriverKind,
   type ProviderEvent,
   ProviderInstanceId,
+  type OrchestrationGoal,
   type ProviderRuntimeEvent,
   type ProviderRequestKind,
   type ProviderSession,
@@ -1123,6 +1124,38 @@ function mapToRuntimeEvents(
     ];
   }
 
+  if (event.method === "thread/goal/updated") {
+    const payload = readPayload(EffectCodexSchema.V2ThreadGoalUpdatedNotification, event.payload);
+    if (!payload) {
+      return [];
+    }
+    const goal: OrchestrationGoal = {
+      objective: payload.goal.objective,
+      status: payload.goal.status,
+      updatedAt: event.createdAt,
+    };
+    return [
+      {
+        type: "thread.goal.updated",
+        ...runtimeEventBase(event, canonicalThreadId),
+        payload: { goal },
+      },
+    ];
+  }
+
+  if (event.method === "thread/goal/cleared") {
+    if (!readPayload(EffectCodexSchema.V2ThreadGoalClearedNotification, event.payload)) {
+      return [];
+    }
+    return [
+      {
+        type: "thread.goal.cleared",
+        ...runtimeEventBase(event, canonicalThreadId),
+        payload: {},
+      },
+    ];
+  }
+
   if (event.method === "deprecationNotice") {
     const payload = readPayload(EffectCodexSchema.V2DeprecationNoticeNotification, event.payload);
     if (!payload) {
@@ -1840,6 +1873,65 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
   };
 
+  const setGoal: NonNullable<CodexAdapterShape["setGoal"]> = Effect.fn("setGoal")(function* (
+    input,
+  ) {
+    const session = yield* requireSession(input.threadId);
+    const goal = yield* session.runtime
+      .setGoal({
+        objective: input.objective,
+        ...(input.status ? { status: input.status } : {}),
+      })
+      .pipe(
+        Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "thread/goal/set", cause)),
+      );
+    return {
+      threadId: input.threadId,
+      goal,
+    };
+  });
+
+  const setGoalStatus: NonNullable<CodexAdapterShape["setGoalStatus"]> = Effect.fn(
+    "setGoalStatus",
+  )(function* (input) {
+    const session = yield* requireSession(input.threadId);
+    const goal = yield* session.runtime.setGoalStatus(input.status).pipe(
+      Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "thread/goal/set", cause)),
+    );
+    return {
+      threadId: input.threadId,
+      goal,
+    };
+  });
+
+  const getGoal: NonNullable<CodexAdapterShape["getGoal"]> = (threadId) =>
+    requireSession(threadId).pipe(
+      Effect.flatMap((session) => session.runtime.getGoal),
+      Effect.mapError((cause) =>
+        cause._tag === "ProviderAdapterSessionNotFoundError"
+          ? cause
+          : mapCodexRuntimeError(threadId, "thread/goal/get", cause),
+      ),
+      Effect.map((goal) => ({
+        threadId,
+        goal,
+      })),
+    );
+
+  const clearGoal: NonNullable<CodexAdapterShape["clearGoal"]> = (threadId) =>
+    requireSession(threadId).pipe(
+      Effect.flatMap((session) => session.runtime.clearGoal),
+      Effect.mapError((cause) =>
+        cause._tag === "ProviderAdapterSessionNotFoundError"
+          ? cause
+          : mapCodexRuntimeError(threadId, "thread/goal/clear", cause),
+      ),
+      Effect.map((cleared) => ({
+        threadId,
+        cleared,
+      })),
+    );
+
   const respondToRequest: CodexAdapterShape["respondToRequest"] = (threadId, requestId, decision) =>
     requireSession(threadId).pipe(
       Effect.flatMap((session) => session.runtime.respondToRequest(requestId, decision)),
@@ -1947,6 +2039,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     interruptTurn,
     readThread,
     rollbackThread,
+    setGoal,
+    setGoalStatus,
+    getGoal,
+    clearGoal,
     respondToRequest,
     respondToUserInput,
     stopSession,

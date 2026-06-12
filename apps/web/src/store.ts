@@ -248,6 +248,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     archivedAt: thread.archivedAt,
     updatedAt: thread.updatedAt,
     latestTurn: thread.latestTurn,
+    goal: thread.goal ?? null,
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
@@ -278,12 +279,14 @@ function mapThreadShell(
     createdAt: thread.createdAt,
     archivedAt: thread.archivedAt,
     updatedAt: thread.updatedAt,
+    goal: thread.goal ?? null,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
   };
   const session = thread.session ? mapSession(thread.session) : null;
   const turnState: ThreadTurnState = {
     latestTurn: thread.latestTurn,
+    goal: thread.goal ?? null,
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
   };
   const summary: SidebarThreadSummary = {
@@ -297,6 +300,7 @@ function mapThreadShell(
     archivedAt: thread.archivedAt,
     updatedAt: thread.updatedAt,
     latestTurn: thread.latestTurn,
+    goal: thread.goal ?? null,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     latestUserMessageAt: thread.latestUserMessageAt,
@@ -326,6 +330,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     createdAt: thread.createdAt,
     archivedAt: thread.archivedAt,
     updatedAt: thread.updatedAt,
+    goal: thread.goal ?? null,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
   };
@@ -334,6 +339,7 @@ function toThreadShell(thread: Thread): ThreadShell {
 function toThreadTurnState(thread: Thread): ThreadTurnState {
   return {
     latestTurn: thread.latestTurn,
+    goal: thread.goal ?? null,
     ...(thread.pendingSourceProposedPlan
       ? { pendingSourceProposedPlan: thread.pendingSourceProposedPlan }
       : {}),
@@ -363,6 +369,16 @@ function latestTurnsEqual(
     left.completedAt === right.completedAt &&
     left.assistantMessageId === right.assistantMessageId &&
     sourceProposedPlansEqual(left.sourceProposedPlan, right.sourceProposedPlan)
+  );
+}
+
+function goalsEqual(left: Thread["goal"] | undefined, right: Thread["goal"] | undefined): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return false;
+  return (
+    left.objective === right.objective &&
+    left.status === right.status &&
+    left.updatedAt === right.updatedAt
   );
 }
 
@@ -398,6 +414,7 @@ function sidebarThreadSummariesEqual(
     left.archivedAt === right.archivedAt &&
     left.updatedAt === right.updatedAt &&
     latestTurnsEqual(left.latestTurn, right.latestTurn) &&
+    goalsEqual(left.goal, right.goal) &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
     left.latestUserMessageAt === right.latestUserMessageAt &&
@@ -422,6 +439,7 @@ function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): b
     left.createdAt === right.createdAt &&
     left.archivedAt === right.archivedAt &&
     left.updatedAt === right.updatedAt &&
+    goalsEqual(left.goal, right.goal) &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath
   );
@@ -431,6 +449,7 @@ function threadTurnStatesEqual(left: ThreadTurnState | undefined, right: ThreadT
   return (
     left !== undefined &&
     latestTurnsEqual(left.latestTurn, right.latestTurn) &&
+    goalsEqual(left.goal, right.goal) &&
     sourceProposedPlansEqual(left.pendingSourceProposedPlan, right.pendingSourceProposedPlan)
   );
 }

@@ -11,6 +11,11 @@ import type {
   ApprovalRequestId,
   ProviderApprovalDecision,
   ProviderDriverKind,
+  ProviderGoalClearResult,
+  ProviderGoalGetResult,
+  ProviderGoalSetInput,
+  ProviderGoalSetResult,
+  ProviderGoalStatusSetInput,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
@@ -94,6 +99,28 @@ export interface ProviderAdapterShape<TError> {
     requestId: ApprovalRequestId,
     answers: ProviderUserInputAnswers,
   ) => Effect.Effect<void, TError>;
+
+  /**
+   * 设置或更新线程目标。默认 provider 可以不支持，调用方应返回清晰错误。
+   */
+  readonly setGoal?: (input: ProviderGoalSetInput) => Effect.Effect<ProviderGoalSetResult, TError>;
+
+  /**
+   * 仅更新线程目标状态。
+   */
+  readonly setGoalStatus?: (
+    input: ProviderGoalStatusSetInput,
+  ) => Effect.Effect<ProviderGoalSetResult, TError>;
+
+  /**
+   * 读取 provider 侧线程目标。
+   */
+  readonly getGoal?: (threadId: ThreadId) => Effect.Effect<ProviderGoalGetResult, TError>;
+
+  /**
+   * 清除 provider 侧线程目标。
+   */
+  readonly clearGoal?: (threadId: ThreadId) => Effect.Effect<ProviderGoalClearResult, TError>;
 
   /**
    * Stop one provider session.

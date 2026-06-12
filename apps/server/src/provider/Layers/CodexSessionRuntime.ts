@@ -6,6 +6,8 @@ import {
   ProviderDriverKind,
   ProviderItemId,
   type ProviderInstanceId,
+  type OrchestrationGoal,
+  type OrchestrationGoalStatus,
   type ProviderApprovalDecision,
   type ProviderEvent,
   type ProviderInteractionMode,
@@ -71,6 +73,15 @@ const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V
 const decodeV2TurnSteerParams = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnSteerParams);
 const decodeV2TurnSteerResponse = Schema.decodeUnknownEffect(
   EffectCodexSchema.V2TurnSteerResponse,
+);
+const decodeV2ThreadGoalSetResponse = Schema.decodeUnknownEffect(
+  EffectCodexSchema.V2ThreadGoalSetResponse,
+);
+const decodeV2ThreadGoalGetResponse = Schema.decodeUnknownEffect(
+  EffectCodexSchema.V2ThreadGoalGetResponse,
+);
+const decodeV2ThreadGoalClearResponse = Schema.decodeUnknownEffect(
+  EffectCodexSchema.V2ThreadGoalClearResponse,
 );
 
 const PROVIDER = ProviderDriverKind.make("codex");
@@ -197,6 +208,15 @@ export interface CodexSessionRuntimeShape {
     requestId: ApprovalRequestId,
     answers: ProviderUserInputAnswers,
   ) => Effect.Effect<void, CodexSessionRuntimeError>;
+  readonly setGoal: (input: {
+    readonly objective: string;
+    readonly status?: OrchestrationGoalStatus;
+  }) => Effect.Effect<OrchestrationGoal, CodexSessionRuntimeError>;
+  readonly setGoalStatus: (
+    status: OrchestrationGoalStatus,
+  ) => Effect.Effect<OrchestrationGoal, CodexSessionRuntimeError>;
+  readonly getGoal: Effect.Effect<OrchestrationGoal | null, CodexSessionRuntimeError>;
+  readonly clearGoal: Effect.Effect<boolean, CodexSessionRuntimeError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -589,6 +609,8 @@ function readNotificationThreadId(notification: CodexServerNotification): string
     case "thread/unarchived":
     case "thread/closed":
     case "thread/name/updated":
+    case "thread/goal/updated":
+    case "thread/goal/cleared":
     case "thread/tokenUsage/updated":
     case "turn/started":
     case "hook/started":
@@ -719,6 +741,8 @@ function shouldSuppressChildConversationNotification(
     method === "thread/closed" ||
     method === "thread/compacted" ||
     method === "thread/name/updated" ||
+    method === "thread/goal/updated" ||
+    method === "thread/goal/cleared" ||
     method === "thread/tokenUsage/updated" ||
     method === "turn/started" ||
     method === "turn/completed" ||
@@ -914,6 +938,29 @@ function parseThreadSnapshot(
       id: TurnId.make(turn.id),
       items: turn.items,
     })),
+  };
+}
+
+function toOrchestrationGoalStatus(
+  status:
+    | EffectCodexSchema.V2ThreadGoalGetResponse__ThreadGoalStatus
+    | EffectCodexSchema.V2ThreadGoalSetResponse__ThreadGoalStatus
+    | EffectCodexSchema.V2ThreadGoalUpdatedNotification__ThreadGoalStatus,
+): OrchestrationGoalStatus {
+  return status;
+}
+
+function toOrchestrationGoal(
+  goal:
+    | EffectCodexSchema.V2ThreadGoalGetResponse__ThreadGoal
+    | EffectCodexSchema.V2ThreadGoalSetResponse__ThreadGoal
+    | EffectCodexSchema.V2ThreadGoalUpdatedNotification__ThreadGoal,
+  updatedAt: string,
+): OrchestrationGoal {
+  return {
+    objective: goal.objective,
+    status: toOrchestrationGoalStatus(goal.status),
+    updatedAt,
   };
 }
 
@@ -1778,6 +1825,68 @@ export const makeCodexSessionRuntime = (
           });
           return parseThreadSnapshot(response);
         }),
+      setGoal: (input) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const rawResponse = yield* client.raw.request("thread/goal/set", {
+            threadId: providerThreadId,
+            objective: input.objective,
+            ...(input.status ? { status: input.status } : {}),
+          });
+          const response = yield* decodeV2ThreadGoalSetResponse(rawResponse).pipe(
+            Effect.mapError((error) =>
+              toProtocolParseError("Invalid thread/goal/set response payload", error),
+            ),
+          );
+          return toOrchestrationGoal(response.goal, yield* nowIso);
+        }),
+      setGoalStatus: (status) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const current = yield* client.request("thread/goal/get", {
+            threadId: providerThreadId,
+          });
+          if (!current.goal) {
+            return yield* CodexErrors.CodexAppServerRequestError.invalidParams(
+              "Cannot update goal status because no goal is set.",
+            );
+          }
+          const rawResponse = yield* client.raw.request("thread/goal/set", {
+            threadId: providerThreadId,
+            objective: current.goal.objective,
+            status,
+          });
+          const response = yield* decodeV2ThreadGoalSetResponse(rawResponse).pipe(
+            Effect.mapError((error) =>
+              toProtocolParseError("Invalid thread/goal/set response payload", error),
+            ),
+          );
+          return toOrchestrationGoal(response.goal, yield* nowIso);
+        }),
+      getGoal: Effect.gen(function* () {
+        const providerThreadId = yield* readProviderThreadId;
+        const rawResponse = yield* client.raw.request("thread/goal/get", {
+          threadId: providerThreadId,
+        });
+        const response = yield* decodeV2ThreadGoalGetResponse(rawResponse).pipe(
+          Effect.mapError((error) =>
+            toProtocolParseError("Invalid thread/goal/get response payload", error),
+          ),
+        );
+        return response.goal ? toOrchestrationGoal(response.goal, yield* nowIso) : null;
+      }),
+      clearGoal: Effect.gen(function* () {
+        const providerThreadId = yield* readProviderThreadId;
+        const rawResponse = yield* client.raw.request("thread/goal/clear", {
+          threadId: providerThreadId,
+        });
+        const response = yield* decodeV2ThreadGoalClearResponse(rawResponse).pipe(
+          Effect.mapError((error) =>
+            toProtocolParseError("Invalid thread/goal/clear response payload", error),
+          ),
+        );
+        return response.cleared;
+      }),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);

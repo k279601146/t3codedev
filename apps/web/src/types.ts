@@ -1,5 +1,6 @@
 import type {
   EnvironmentId,
+  OrchestrationGoal,
   ModelSelection,
   OrchestrationLatestTurn,
   OrchestrationProposedPlanId,
@@ -119,6 +120,7 @@ export interface Thread {
   archivedAt: string | null;
   updatedAt?: string | undefined;
   latestTurn: OrchestrationLatestTurn | null;
+  goal?: OrchestrationGoal | null;
   pendingSourceProposedPlan?: OrchestrationLatestTurn["sourceProposedPlan"];
   branch: string | null;
   worktreePath: string | null;
@@ -139,12 +141,14 @@ export interface ThreadShell {
   createdAt: string;
   archivedAt: string | null;
   updatedAt?: string | undefined;
+  goal?: OrchestrationGoal | null;
   branch: string | null;
   worktreePath: string | null;
 }
 
 export interface ThreadTurnState {
   latestTurn: OrchestrationLatestTurn | null;
+  goal?: OrchestrationGoal | null;
   pendingSourceProposedPlan?: OrchestrationLatestTurn["sourceProposedPlan"];
 }
 
@@ -159,6 +163,7 @@ export interface SidebarThreadSummary {
   archivedAt: string | null;
   updatedAt?: string | undefined;
   latestTurn: OrchestrationLatestTurn | null;
+  goal?: OrchestrationGoal | null;
   branch: string | null;
   worktreePath: string | null;
   latestUserMessageAt: string | null;

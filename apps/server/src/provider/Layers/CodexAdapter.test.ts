@@ -12,6 +12,8 @@ import {
   ProviderItemId,
   type ProviderApprovalDecision,
   type ProviderEvent,
+  type OrchestrationGoal,
+  type OrchestrationGoalStatus,
   type ProviderSession,
   type ProviderTurnStartResult,
   type ProviderTurnSteerResult,
@@ -64,6 +66,7 @@ const testConversationWorkspace = () =>
 class FakeCodexRuntime implements CodexSessionRuntimeShape {
   private readonly eventQueue = Effect.runSync(Queue.unbounded<ProviderEvent>());
   private readonly now = "2026-01-01T00:00:00.000Z";
+  private goal: OrchestrationGoal | null = null;
 
   public readonly startImpl = vi.fn(() =>
     Promise.resolve({
@@ -171,6 +174,35 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   respondToUserInput(requestId: ApprovalRequestId, answers: ProviderUserInputAnswers) {
     return Effect.promise(() => this.respondToUserInputImpl(requestId, answers));
   }
+
+  setGoal(input: { readonly objective: string; readonly status?: OrchestrationGoalStatus }) {
+    return Effect.sync(() => {
+      this.goal = {
+        objective: input.objective,
+        status: input.status ?? "active",
+        updatedAt: this.now,
+      };
+      return this.goal;
+    });
+  }
+
+  setGoalStatus(status: OrchestrationGoalStatus) {
+    return Effect.sync(() => {
+      this.goal = {
+        objective: this.goal?.objective ?? "测试目标",
+        status,
+        updatedAt: this.now,
+      };
+      return this.goal;
+    });
+  }
+
+  getGoal = Effect.sync(() => this.goal);
+
+  clearGoal = Effect.sync(() => {
+    this.goal = null;
+    return true;
+  });
 
   get events() {
     return Stream.fromQueue(this.eventQueue);

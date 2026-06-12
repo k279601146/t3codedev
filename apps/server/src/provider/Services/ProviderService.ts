@@ -13,6 +13,13 @@
  */
 import type {
   ProviderInterruptTurnInput,
+  ProviderGoalClearInput,
+  ProviderGoalClearResult,
+  ProviderGoalGetInput,
+  ProviderGoalGetResult,
+  ProviderGoalSetInput,
+  ProviderGoalSetResult,
+  ProviderGoalStatusSetInput,
   ProviderInstanceId,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
@@ -80,6 +87,22 @@ export interface ProviderServiceShape {
   readonly respondToUserInput: (
     input: ProviderRespondToUserInputInput,
   ) => Effect.Effect<void, ProviderServiceError>;
+
+  readonly setGoal: (
+    input: ProviderGoalSetInput,
+  ) => Effect.Effect<ProviderGoalSetResult, ProviderServiceError>;
+
+  readonly setGoalStatus: (
+    input: ProviderGoalStatusSetInput,
+  ) => Effect.Effect<ProviderGoalSetResult, ProviderServiceError>;
+
+  readonly getGoal: (
+    input: ProviderGoalGetInput,
+  ) => Effect.Effect<ProviderGoalGetResult, ProviderServiceError>;
+
+  readonly clearGoal: (
+    input: ProviderGoalClearInput,
+  ) => Effect.Effect<ProviderGoalClearResult, ProviderServiceError>;
 
   /**
    * Stop a provider session.

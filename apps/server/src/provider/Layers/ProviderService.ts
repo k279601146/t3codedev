@@ -13,6 +13,10 @@ import {
   ModelSelection,
   NonNegativeInt,
   ThreadId,
+  ProviderGoalClearInput,
+  ProviderGoalGetInput,
+  ProviderGoalSetInput,
+  ProviderGoalStatusSetInput,
   ProviderInterruptTurnInput,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
@@ -933,6 +937,99 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
+  const setGoal: ProviderServiceShape["setGoal"] = Effect.fn("setGoal")(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.setGoal",
+      schema: ProviderGoalSetInput,
+      payload: rawInput,
+    });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.setGoal",
+      allowRecovery: true,
+    });
+    if (!routed.adapter.setGoal) {
+      return yield* toValidationError(
+        "ProviderService.setGoal",
+        `Provider '${routed.adapter.provider}' does not support goals.`,
+      );
+    }
+    yield* Effect.annotateCurrentSpan({
+      "provider.operation": "set-goal",
+      "provider.kind": routed.adapter.provider,
+      "provider.thread_id": input.threadId,
+    });
+    return yield* routed.adapter.setGoal(input);
+  });
+
+  const setGoalStatus: ProviderServiceShape["setGoalStatus"] = Effect.fn("setGoalStatus")(
+    function* (rawInput) {
+      const input = yield* decodeInputOrValidationError({
+        operation: "ProviderService.setGoalStatus",
+        schema: ProviderGoalStatusSetInput,
+        payload: rawInput,
+      });
+      const routed = yield* resolveRoutableSession({
+        threadId: input.threadId,
+        operation: "ProviderService.setGoalStatus",
+        allowRecovery: true,
+      });
+      if (!routed.adapter.setGoalStatus) {
+        return yield* toValidationError(
+          "ProviderService.setGoalStatus",
+          `Provider '${routed.adapter.provider}' does not support goals.`,
+        );
+      }
+      yield* Effect.annotateCurrentSpan({
+        "provider.operation": "set-goal-status",
+        "provider.kind": routed.adapter.provider,
+        "provider.thread_id": input.threadId,
+        "provider.goal_status": input.status,
+      });
+      return yield* routed.adapter.setGoalStatus(input);
+    },
+  );
+
+  const getGoal: ProviderServiceShape["getGoal"] = Effect.fn("getGoal")(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.getGoal",
+      schema: ProviderGoalGetInput,
+      payload: rawInput,
+    });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.getGoal",
+      allowRecovery: true,
+    });
+    if (!routed.adapter.getGoal) {
+      return yield* toValidationError(
+        "ProviderService.getGoal",
+        `Provider '${routed.adapter.provider}' does not support goals.`,
+      );
+    }
+    return yield* routed.adapter.getGoal(input.threadId);
+  });
+
+  const clearGoal: ProviderServiceShape["clearGoal"] = Effect.fn("clearGoal")(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.clearGoal",
+      schema: ProviderGoalClearInput,
+      payload: rawInput,
+    });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.clearGoal",
+      allowRecovery: true,
+    });
+    if (!routed.adapter.clearGoal) {
+      return yield* toValidationError(
+        "ProviderService.clearGoal",
+        `Provider '${routed.adapter.provider}' does not support goals.`,
+      );
+    }
+    return yield* routed.adapter.clearGoal(input.threadId);
+  });
+
   const listSessions: ProviderServiceShape["listSessions"] = Effect.fn("listSessions")(
     function* () {
       const currentAdapters = yield* getAdapterEntries;
@@ -1121,6 +1218,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     interruptTurn,
     respondToRequest,
     respondToUserInput,
+    setGoal,
+    setGoalStatus,
+    getGoal,
+    clearGoal,
     stopSession,
     listSessions,
     getCapabilities,
