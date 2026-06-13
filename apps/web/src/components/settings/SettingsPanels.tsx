@@ -540,25 +540,45 @@ function SandboxPermissionsSection({
       />
       {sandboxProviders.length === 0 ? (
         <SettingsRow
-          title="Windows helper"
-          description="尚未收到 Codex provider 的 Windows sandbox snapshot。刷新 provider 状态后会显示 readiness。"
+          title="Agent 沙箱设置"
+          description="尚未收到 Codex provider 的 Windows sandbox readiness。可以直接初始化 elevated 沙箱，或刷新后重新检查。"
           control={
-            <Button type="button" size="xs" variant="outline" onClick={onRefreshProviders}>
-              <RefreshCwIcon className="size-3" />
-              <span>刷新</span>
-            </Button>
+            <span className="flex gap-2">
+              {codexProviders[0] ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="default"
+                  disabled={settingUpInstanceId === codexProviders[0].instanceId}
+                  onClick={() => void handleSetup(codexProviders[0]!.instanceId)}
+                >
+                  {settingUpInstanceId === codexProviders[0].instanceId ? (
+                    <LoaderIcon className="size-3 animate-spin" />
+                  ) : (
+                    <ShieldCheckIcon className="size-3" />
+                  )}
+                  <span>初始化 elevated 沙箱</span>
+                </Button>
+              ) : null}
+              <Button type="button" size="xs" variant="outline" onClick={onRefreshProviders}>
+                <RefreshCwIcon className="size-3" />
+                <span>刷新</span>
+              </Button>
+            </span>
           }
         />
       ) : (
         sandboxProviders.map((provider) => {
           const sandbox = provider.windowsSandbox!;
           const needsSetup =
-            sandbox.readiness === "notConfigured" || sandbox.readiness === "updateRequired";
+            sandbox.readiness === "notConfigured" ||
+            sandbox.readiness === "updateRequired" ||
+            sandbox.readiness === "error";
           const settingUp = settingUpInstanceId === provider.instanceId;
           return (
             <SettingsRow
               key={provider.instanceId}
-              title={provider.displayName ?? provider.instanceId}
+              title={`${provider.displayName ?? provider.instanceId} Agent 沙箱`}
               description={
                 sandbox.lastError ??
                 (needsSetup
@@ -592,7 +612,9 @@ function SandboxPermissionsSection({
                     <span>
                       {sandbox.readiness === "updateRequired"
                         ? "更新 elevated 沙箱"
-                        : "初始化 elevated 沙箱"}
+                        : sandbox.readiness === "error"
+                          ? "重新初始化 elevated 沙箱"
+                          : "初始化 elevated 沙箱"}
                     </span>
                   </Button>
                 ) : (

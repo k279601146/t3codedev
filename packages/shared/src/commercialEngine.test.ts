@@ -112,6 +112,7 @@ describe("commercialEngine", () => {
         HOME: "/home/user",
         AWS_SECRET_ACCESS_KEY: "must-not-leak",
         OPENAI_API_KEY: "must-not-leak",
+        SystemDrive: "C:",
       },
       {
         CODEX_HOME: "/home/user/.bahew/engine",
@@ -121,9 +122,21 @@ describe("commercialEngine", () => {
 
     assert.equal(env.PATH, "/bin");
     assert.equal(env.HOME, "/home/user");
+    assert.equal(env.SystemDrive, "C:");
     assert.equal(env.CODEX_HOME, "/home/user/.bahew/engine");
     assert.equal(env[COMMERCIAL_ENGINE_IDE_JWT_ENV], "jwt-token");
     assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
     assert.equal(env.OPENAI_API_KEY, undefined);
+  });
+
+  it("keeps Windows shell environment variables needed by sandboxed command runners", () => {
+    const toml = generateCommercialEngineTomlConfig({});
+    const shellIncludeLine = toml
+      .split("\n")
+      .find((line) => line.trim().startsWith("include_only = "));
+
+    assert.match(shellIncludeLine ?? "", /"SystemDrive"/);
+    assert.doesNotMatch(shellIncludeLine ?? "", /"MYIDE_IDE_JWT"/);
+    assert.doesNotMatch(shellIncludeLine ?? "", /"OPENAI_API_KEY"/);
   });
 });

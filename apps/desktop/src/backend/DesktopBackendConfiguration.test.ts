@@ -1,5 +1,7 @@
+import assert from "node:assert/strict";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, describe, it } from "@effect/vitest";
+import { describe, it } from "@effect/vitest";
 import {
   COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV,
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
@@ -289,16 +291,13 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.env.ELECTRON_RUN_AS_NODE, "1");
         assert.equal(first.env.T3CODE_BROWSER_USE_ENDPOINT, "http://127.0.0.1:49876");
         assert.equal(first.env.T3CODE_BROWSER_USE_TOKEN, "browser-token");
-        assert.equal(
-          first.env.T3CODE_BROWSER_USE_EXTERNAL_ENDPOINT,
-          "http://127.0.0.1:49878",
-        );
+        assert.equal(first.env.T3CODE_BROWSER_USE_EXTERNAL_ENDPOINT, "http://127.0.0.1:49878");
         assert.equal(first.env.T3CODE_BROWSER_USE_EXTERNAL_TOKEN, "browser-external-token");
         assert.equal(first.env.T3CODE_COMPUTER_USE_ENDPOINT, "http://127.0.0.1:49877");
         assert.equal(first.env.T3CODE_COMPUTER_USE_TOKEN, "computer-token");
-        assert.isUndefined(first.env.T3CODE_PORT);
-        assert.isUndefined(first.env.T3CODE_MODE);
-        assert.isUndefined(first.env.T3CODE_DESKTOP_LAN_HOST);
+        assert.equal(first.env.T3CODE_PORT, undefined);
+        assert.equal(first.env.T3CODE_MODE, undefined);
+        assert.equal(first.env.T3CODE_DESKTOP_LAN_HOST, undefined);
 
         assert.equal(first.bootstrap.mode, "desktop");
         assert.equal(first.bootstrap.noBrowser, true);
@@ -346,8 +345,8 @@ describe("DesktopBackendConfiguration", () => {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
         const config = yield* configuration.resolve;
 
-        assert.isUndefined(config.bootstrap.otlpTracesUrl);
-        assert.isUndefined(config.bootstrap.otlpMetricsUrl);
+        assert.equal(config.bootstrap.otlpTracesUrl, undefined);
+        assert.equal(config.bootstrap.otlpMetricsUrl, undefined);
       }),
     ),
   );
@@ -425,6 +424,7 @@ describe("DesktopBackendConfiguration", () => {
         [COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV]: "https://api.example.com/v1",
         [COMMERCIAL_ENGINE_IDE_JWT_ENV]: "jwt-token",
         MYIDE_API_KEY: "legacy-real-key",
+        SystemDrive: "C:",
       },
       withHarness(
         Effect.gen(function* () {
@@ -438,7 +438,8 @@ describe("DesktopBackendConfiguration", () => {
             "https://api.example.com/v1",
           );
           assert.equal(config.env[COMMERCIAL_ENGINE_IDE_JWT_ENV], "jwt-token");
-          assert.isUndefined(config.env.MYIDE_API_KEY);
+          assert.equal(config.env.SystemDrive, "C:");
+          assert.equal(config.env.MYIDE_API_KEY, undefined);
 
           const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);

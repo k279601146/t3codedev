@@ -14,6 +14,7 @@ import * as Path from "effect/Path";
 import { type FilesystemBrowseInput, type ProjectEntry } from "@t3tools/contracts";
 import type { ProjectDirectoryTreeNode } from "@t3tools/contracts";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
+import { isWindowsSandboxWorkspaceArtifactRootName } from "@t3tools/shared/windowsSandboxArtifacts";
 import {
   insertRankedSearchResult,
   normalizeSearchQuery,
@@ -137,7 +138,10 @@ function scoreEntry(entry: SearchableWorkspaceEntry, query: string): number | nu
 function isPathInIgnoredDirectory(relativePath: string): boolean {
   const firstSegment = relativePath.split("/")[0];
   if (!firstSegment) return false;
-  return IGNORED_DIRECTORY_NAMES.has(firstSegment);
+  return (
+    IGNORED_DIRECTORY_NAMES.has(firstSegment) ||
+    isWindowsSandboxWorkspaceArtifactRootName(firstSegment)
+  );
 }
 
 function directoryAncestorsOf(relativePath: string): string[] {
@@ -328,7 +332,11 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
           if (!dirent.name || dirent.name === "." || dirent.name === "..") {
             continue;
           }
-          if (dirent.isDirectory() && IGNORED_DIRECTORY_NAMES.has(dirent.name)) {
+          if (
+            dirent.isDirectory() &&
+            (IGNORED_DIRECTORY_NAMES.has(dirent.name) ||
+              isWindowsSandboxWorkspaceArtifactRootName(dirent.name))
+          ) {
             continue;
           }
           if (!dirent.isDirectory() && !dirent.isFile()) {
@@ -517,7 +525,12 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
     });
 
     const visibleDirents = dirents
-      .filter((dirent) => !dirent.name.startsWith(".") && dirent.name !== "node_modules")
+      .filter(
+        (dirent) =>
+          !dirent.name.startsWith(".") &&
+          dirent.name !== "node_modules" &&
+          !isWindowsSandboxWorkspaceArtifactRootName(dirent.name),
+      )
       .toSorted((left, right) => {
         if (left.isDirectory() !== right.isDirectory()) {
           return left.isDirectory() ? -1 : 1;

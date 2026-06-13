@@ -190,9 +190,21 @@ export interface ToolActivityPresentationInput {
 export interface ToolActivityPresentation {
   readonly summary: string;
   readonly detail?: string | undefined;
+  readonly family?: DynamicToolFamily | undefined;
+  readonly toolName?: string | undefined;
+  readonly argumentsPreview?: string | undefined;
+  readonly outputPreview?: string | undefined;
 }
 
-export type DynamicToolFamily = "browser" | "external_browser" | "computer" | "other";
+export type DynamicToolFamily =
+  | "browser"
+  | "external_browser"
+  | "computer"
+  | "command"
+  | "file"
+  | "search"
+  | "mcp"
+  | "other";
 
 export interface DynamicToolActivityInput {
   readonly tool?: unknown;
@@ -298,6 +310,14 @@ function dynamicToolFamilyLabel(family: DynamicToolFamily): string {
       return "外部浏览器";
     case "computer":
       return "电脑控制";
+    case "command":
+      return "命令";
+    case "file":
+      return "文件";
+    case "search":
+      return "搜索";
+    case "mcp":
+      return "MCP";
     default:
       return "工具";
   }
@@ -335,7 +355,7 @@ function stringifyPreview(value: unknown, maxLength = 280): string | undefined {
   return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength).trimEnd()}...` : trimmed;
 }
 
-function summarizeDynamicToolArguments(value: unknown): string | undefined {
+function summarizeStructuredArguments(value: unknown): string | undefined {
   const args = asRecord(value);
   if (!args) {
     return stringifyPreview(value);
@@ -353,7 +373,14 @@ function summarizeDynamicToolArguments(value: unknown): string | undefined {
     "x",
     "y",
     "query",
+    "pattern",
+    "path",
+    "filePath",
+    "relativePath",
+    "filename",
     "expression",
+    "command",
+    "args",
   ];
   const parts: string[] = [];
   for (const key of preferredKeys) {
@@ -370,6 +397,83 @@ function summarizeDynamicToolArguments(value: unknown): string | undefined {
     }
   }
   return parts.length > 0 ? parts.join(", ") : stringifyPreview(args);
+}
+
+function summarizeDynamicToolArguments(value: unknown): string | undefined {
+  return summarizeStructuredArguments(value);
+}
+
+function summarizeTextOutput(value: string): string | undefined {
+  const cleaned = stripTrailingExitCode(value) ?? value;
+  const lines = cleaned
+    .split(/\r?\n/u)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+  return stringifyPreview(lines.slice(0, 3).join("\n"), 600);
+}
+
+function summarizeContentArray(value: readonly unknown[]): string | undefined {
+  const textItems = value
+    .map((entry) => {
+      const text = asTrimmedString(entry);
+      if (text) {
+        return text;
+      }
+      const record = asRecord(entry);
+      if (!record) {
+        return undefined;
+      }
+      return asTrimmedString(record.text) ?? asTrimmedString(record.content);
+    })
+    .filter((entry): entry is string => entry !== undefined);
+  return textItems.length > 0 ? summarizeTextOutput(textItems.join("\n")) : undefined;
+}
+
+function summarizeRawOutput(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return stringifyPreview(value, 600);
+  }
+  const totalFiles = typeof record.totalFiles === "number" ? record.totalFiles : undefined;
+  if (totalFiles !== undefined && Number.isFinite(totalFiles)) {
+    const suffix = record.truncated === true ? "+" : "";
+    return `${totalFiles.toLocaleString()} file${totalFiles === 1 ? "" : "s"}${suffix}`;
+  }
+  if (Array.isArray(record.content)) {
+    const contentSummary = summarizeContentArray(record.content);
+    if (contentSummary) {
+      return contentSummary;
+    }
+  }
+  for (const key of [
+    "content",
+    "stdout",
+    "stderr",
+    "text",
+    "message",
+    "result",
+    "aggregatedOutput",
+  ]) {
+    const text = asTrimmedString(record[key]);
+    if (text) {
+      return summarizeTextOutput(text);
+    }
+  }
+  if (record.structuredContent !== undefined) {
+    return stringifyPreview(record.structuredContent, 600);
+  }
+  return stringifyPreview(record, 600);
+}
+
+function detailFromPreviews(input: {
+  readonly argumentsPreview?: string | undefined;
+  readonly outputPreview?: string | undefined;
+}): string | undefined {
+  const detailParts = [
+    input.argumentsPreview ? `参数: ${input.argumentsPreview}` : undefined,
+    input.outputPreview ? `输出: ${input.outputPreview}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return detailParts.length > 0 ? detailParts.join("\n") : undefined;
 }
 
 function summarizeDynamicToolContentItems(value: unknown): string | undefined {
@@ -414,10 +518,7 @@ export function deriveDynamicToolActivityPresentation(
   const title = family === "other" ? action : `${familyLabel}${action}`;
   const argumentsPreview = summarizeDynamicToolArguments(input.arguments);
   const outputPreview = summarizeDynamicToolContentItems(input.contentItems);
-  const detailParts = [
-    argumentsPreview ? `参数: ${argumentsPreview}` : undefined,
-    outputPreview ? `输出: ${outputPreview}` : undefined,
-  ].filter((part): part is string => part !== undefined);
+  const detail = detailFromPreviews({ argumentsPreview, outputPreview });
 
   return {
     title,
@@ -426,8 +527,72 @@ export function deriveDynamicToolActivityPresentation(
     ...(namespace ? { namespace } : {}),
     ...(argumentsPreview ? { argumentsPreview } : {}),
     ...(outputPreview ? { outputPreview } : {}),
-    ...(detailParts.length > 0 ? { detail: detailParts.join("\n") } : {}),
+    ...(detail ? { detail } : {}),
   };
+}
+
+function isGenericToolTitle(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "tool" ||
+    normalized === "tool call" ||
+    normalized === "mcp tool call" ||
+    normalized === "dynamic tool call"
+  );
+}
+
+function extractToolName(data: Record<string, unknown> | undefined): string | undefined {
+  const item = asRecord(data?.item);
+  const rawInput = asRecord(data?.rawInput);
+  const candidates = [
+    data?.tool,
+    data?.name,
+    data?.kind,
+    item?.tool,
+    item?.name,
+    item?.type,
+    rawInput?.tool,
+    rawInput?.name,
+  ];
+  return candidates.map((candidate) => asTrimmedString(candidate)).find(Boolean);
+}
+
+function titleFromToolName(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.replace(/[_-]+/gu, " ").replace(/\s+/gu, " ").trim();
+}
+
+function genericMcpTitle(title: string | undefined, fallbackSummary: string): string {
+  if (!isGenericToolTitle(title)) {
+    return title ?? fallbackSummary;
+  }
+  return fallbackSummary === "Tool" ? "MCP 工具调用" : fallbackSummary;
+}
+
+function extractSearchDetail(data: Record<string, unknown> | undefined): string | undefined {
+  const rawInput = asRecord(data?.rawInput);
+  const item = asRecord(data?.item);
+  const action = asRecord(item?.action) ?? asRecord(data?.action) ?? asRecord(rawInput?.action);
+  const query =
+    asTrimmedString(rawInput?.query) ??
+    asTrimmedString(rawInput?.pattern) ??
+    asTrimmedString(rawInput?.searchTerm) ??
+    asTrimmedString(item?.query) ??
+    asTrimmedString(action?.query);
+  if (query) {
+    return query;
+  }
+
+  const url =
+    asTrimmedString(rawInput?.url) ?? asTrimmedString(item?.url) ?? asTrimmedString(action?.url);
+  const pattern = asTrimmedString(action?.pattern);
+  if (url && pattern) {
+    return `${pattern} ${url}`;
+  }
+  return url ?? pattern;
 }
 
 export function deriveToolActivityPresentation(
@@ -439,6 +604,12 @@ export function deriveToolActivityPresentation(
   const data = asRecord(input.data);
   const command = extractToolCommand(data, title);
   const primaryPath = extractPrimaryPath(data);
+  const item = asRecord(data?.item);
+  const inputValue = data?.rawInput ?? item?.arguments;
+  const outputValue =
+    data?.rawOutput ?? item?.result ?? (input.itemType === "command_execution" ? item : undefined);
+  const argumentsPreview = summarizeStructuredArguments(inputValue);
+  const outputPreview = summarizeRawOutput(outputValue);
   const action = classifyToolAction({
     itemType: input.itemType,
     title,
@@ -448,7 +619,9 @@ export function deriveToolActivityPresentation(
   if (action === "command") {
     return {
       summary: "Ran command",
+      family: "command",
       ...(command ? { detail: command } : {}),
+      ...(outputPreview ? { outputPreview } : {}),
     };
   }
 
@@ -456,40 +629,74 @@ export function deriveToolActivityPresentation(
     if (primaryPath) {
       return {
         summary: "Read file",
+        family: "file",
         detail: primaryPath,
       };
     }
     return {
       summary: "Read file",
+      family: "file",
     };
   }
 
   if (action === "file_change") {
     return {
       summary: "Changed files",
+      family: "file",
       ...(primaryPath ? { detail: primaryPath } : {}),
     };
   }
 
   if (action === "search") {
-    const query =
-      asTrimmedString(asRecord(data?.rawInput)?.query) ??
-      asTrimmedString(asRecord(data?.rawInput)?.pattern) ??
-      asTrimmedString(asRecord(data?.rawInput)?.searchTerm);
+    const query = extractSearchDetail(data);
+    const summary = input.itemType === "web_search" ? "Searched web" : "Searched files";
     return {
-      summary: "Searched files",
+      summary,
+      family: "search",
       ...(query ? { detail: query } : {}),
+    };
+  }
+
+  const previewDetail = detailFromPreviews({ argumentsPreview, outputPreview });
+  const toolName = extractToolName(data);
+  const readableToolName = titleFromToolName(toolName);
+
+  if (input.itemType === "mcp_tool_call") {
+    return {
+      summary: readableToolName
+        ? `MCP ${readableToolName}`
+        : genericMcpTitle(title, fallbackSummary),
+      family: "mcp",
+      ...(toolName ? { toolName } : {}),
+      ...(argumentsPreview ? { argumentsPreview } : {}),
+      ...(outputPreview ? { outputPreview } : {}),
+      ...(previewDetail ? { detail: previewDetail } : {}),
+    };
+  }
+
+  if (input.itemType === "dynamic_tool_call" || input.itemType === "collab_agent_tool_call") {
+    return {
+      summary: isGenericToolTitle(title)
+        ? (readableToolName ?? "工具调用")
+        : (title ?? fallbackSummary),
+      family: "other",
+      ...(toolName ? { toolName } : {}),
+      ...(argumentsPreview ? { argumentsPreview } : {}),
+      ...(outputPreview ? { outputPreview } : {}),
+      ...(previewDetail ? { detail: previewDetail } : {}),
     };
   }
 
   if (detail && !isEquivalent(detail, title) && !isEquivalent(detail, fallbackSummary)) {
     return {
       summary: title ?? fallbackSummary,
+      family: "other",
       detail,
     };
   }
 
   return {
     summary: title ?? fallbackSummary,
+    family: "other",
   };
 }

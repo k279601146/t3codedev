@@ -5,7 +5,14 @@ import {
   derivePendingUserInputProgress,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
-import { CheckIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CornerDownLeftIcon,
+  InfoIcon,
+} from "lucide-react";
 import { cn } from "~/lib/utils";
 
 interface PendingUserInputPanelProps {
@@ -15,6 +22,9 @@ interface PendingUserInputPanelProps {
   questionIndex: number;
   onToggleOption: (questionId: string, optionLabel: string) => void;
   onAdvance: () => void;
+  onPreviousQuestion: () => void;
+  onSelectQuestion: (questionIndex: number) => void;
+  onIgnore: () => void;
 }
 
 export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserInputPanel({
@@ -24,6 +34,9 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   questionIndex,
   onToggleOption,
   onAdvance,
+  onPreviousQuestion,
+  onSelectQuestion,
+  onIgnore,
 }: PendingUserInputPanelProps) {
   if (pendingUserInputs.length === 0) return null;
   const activePrompt = pendingUserInputs[0];
@@ -38,6 +51,9 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       questionIndex={questionIndex}
       onToggleOption={onToggleOption}
       onAdvance={onAdvance}
+      onPreviousQuestion={onPreviousQuestion}
+      onSelectQuestion={onSelectQuestion}
+      onIgnore={onIgnore}
     />
   );
 });
@@ -49,6 +65,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   questionIndex,
   onToggleOption,
   onAdvance,
+  onPreviousQuestion,
+  onSelectQuestion,
+  onIgnore,
 }: {
   prompt: PendingUserInput;
   isResponding: boolean;
@@ -56,6 +75,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   questionIndex: number;
   onToggleOption: (questionId: string, optionLabel: string) => void;
   onAdvance: () => void;
+  onPreviousQuestion: () => void;
+  onSelectQuestion: (questionIndex: number) => void;
+  onIgnore: () => void;
 }) {
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
@@ -66,7 +88,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     onAdvanceRef.current = onAdvance;
   }, [onAdvance]);
 
-  // Clear auto-advance timer on unmount
+  // 卸载时清理单选自动推进计时器。
   useEffect(() => {
     return () => {
       if (autoAdvanceTimerRef.current !== null) {
@@ -89,9 +111,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     }, 200);
   });
 
-  // Keyboard shortcut: number keys 1-9 select corresponding options when focus is
-  // outside editable fields. Multi-select prompts toggle options in place; single-
-  // select prompts keep the existing auto-advance behavior.
+  // 数字键 1-9 选择对应选项；Esc 忽略本轮结构化问题。
   useEffect(() => {
     if (!activeQuestion || isResponding) return;
     const handler = (event: globalThis.KeyboardEvent) => {
@@ -106,6 +126,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       ) {
         return;
       }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onIgnore();
+        return;
+      }
       const digit = Number.parseInt(event.key, 10);
       if (Number.isNaN(digit) || digit < 1 || digit > 9) return;
       const optionIndex = digit - 1;
@@ -117,31 +142,77 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeQuestion, isResponding]);
+  }, [activeQuestion, isResponding, onIgnore]);
 
   if (!activeQuestion) {
     return null;
   }
 
   return (
-    <div className="px-4 py-3 sm:px-5">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
+    <div className="px-3 py-3 sm:px-4">
+      <div className="rounded-[20px] border border-border/55 bg-background/96 p-2.5 shadow-[0_18px_50px_rgba(15,23,42,0.10)] dark:bg-background/94 dark:shadow-[0_18px_50px_rgba(0,0,0,0.32)]">
+        <div className="flex min-w-0 items-center justify-between gap-3 px-1.5 pb-2">
+          <p className="min-w-0 truncate text-[14px] font-semibold leading-5 text-foreground/92">
+            {activeQuestion.question}
+          </p>
           {prompt.questions.length > 1 ? (
-            <span className="flex h-5 items-center rounded-md bg-muted/60 px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/60">
-              {questionIndex + 1}/{prompt.questions.length}
-            </span>
+            <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground/60">
+              <button
+                type="button"
+                className="inline-flex size-6 items-center justify-center rounded-full transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+                disabled={isResponding || progress.questionIndex === 0}
+                aria-label="上一个问题"
+                title="上一个问题"
+                onClick={onPreviousQuestion}
+              >
+                <ChevronLeftIcon className="size-4" />
+              </button>
+              <span className="tabular-nums">
+                {progress.questionIndex + 1} of {prompt.questions.length}
+              </span>
+              <button
+                type="button"
+                className="inline-flex size-6 items-center justify-center rounded-full transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+                disabled={isResponding || progress.questionIndex >= prompt.questions.length - 1}
+                aria-label="下一个问题"
+                title="下一个问题"
+                onClick={onAdvance}
+              >
+                <ChevronRightIcon className="size-4" />
+              </button>
+            </div>
           ) : null}
-          <span className="text-[11px] font-semibold tracking-widest text-muted-foreground/50 uppercase">
-            {activeQuestion.header}
-          </span>
         </div>
-      </div>
-      <p className="mt-1.5 text-sm text-foreground/90">{activeQuestion.question}</p>
-      {activeQuestion.multiSelect ? (
-        <p className="mt-1 text-xs text-muted-foreground/65">Select one or more options.</p>
-      ) : null}
-      <div className="mt-3 space-y-1">
+
+        {prompt.questions.length > 1 ? (
+          <div className="mb-1.5 flex items-center gap-1 px-1.5">
+            {prompt.questions.map((question, index) => {
+              const isActive = index === progress.questionIndex;
+              const isAnswered = Boolean(answers[question.id]?.customAnswer?.trim()) ||
+                Boolean(answers[question.id]?.selectedOptionLabels?.length);
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  className={cn(
+                    "h-1.5 min-w-6 flex-1 rounded-full transition-colors",
+                    isActive
+                      ? "bg-blue-500"
+                      : isAnswered
+                        ? "bg-blue-500/35"
+                        : "bg-muted-foreground/15",
+                  )}
+                  disabled={isResponding}
+                  aria-label={`切换到第 ${index + 1} 个问题`}
+                  title={`切换到第 ${index + 1} 个问题`}
+                  onClick={() => onSelectQuestion(index)}
+                />
+              );
+            })}
+          </div>
+        ) : null}
+
+        <div className="space-y-1">
         {activeQuestion.options.map((option, index) => {
           const isSelected = progress.selectedOptionLabels.includes(option.label);
           const shortcutKey = index < 9 ? index + 1 : null;
@@ -152,37 +223,77 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               disabled={isResponding}
               onClick={() => handleOptionSelection(activeQuestion.id, option.label)}
               className={cn(
-                "group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all duration-150",
+                "group flex h-9 w-full items-center gap-3 rounded-xl px-2.5 text-left transition-all duration-150",
                 isSelected
-                  ? "border-blue-500/40 bg-blue-500/8 text-foreground"
-                  : "border-transparent bg-muted/20 text-foreground/80 hover:bg-muted/40 hover:border-border/40",
+                  ? "bg-muted text-foreground"
+                  : "text-foreground/74 hover:bg-muted/55 hover:text-foreground",
                 isResponding && "opacity-50 cursor-not-allowed",
               )}
             >
               {shortcutKey !== null ? (
                 <kbd
                   className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-medium tabular-nums transition-colors duration-150",
+                    "flex size-5 shrink-0 items-center justify-center rounded-md text-[12px] font-medium tabular-nums transition-colors duration-150",
                     isSelected
-                      ? "bg-blue-500/20 text-blue-400"
-                      : "bg-muted/40 text-muted-foreground/50 group-hover:bg-muted/60 group-hover:text-muted-foreground/70",
+                      ? "text-muted-foreground/60"
+                      : "text-muted-foreground/45 group-hover:text-muted-foreground/70",
                   )}
                 >
-                  {shortcutKey}
+                  {shortcutKey}.
                 </kbd>
               ) : null}
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-medium">{option.label}</span>
+                <span className="truncate text-[13px] font-semibold">{option.label}</span>
                 {option.description && option.description !== option.label ? (
-                  <span className="ml-2 text-xs text-muted-foreground/50">
+                  <span className="ml-2 truncate text-[12px] text-muted-foreground/62">
                     {option.description}
                   </span>
                 ) : null}
               </div>
-              {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-blue-400" /> : null}
+              {option.description && option.description !== option.label ? (
+                <InfoIcon className="size-3.5 shrink-0 text-muted-foreground/40" />
+              ) : null}
+              {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-blue-500" /> : null}
             </button>
           );
         })}
+        </div>
+
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-3 px-1.5">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground/72 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+            disabled={isResponding}
+            onClick={onIgnore}
+          >
+            忽略
+            <kbd className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground/70">
+              ESC
+            </kbd>
+          </button>
+          <div className="flex items-center gap-1.5">
+            {prompt.questions.length > 1 ? (
+              <button
+                type="button"
+                className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px] font-medium text-muted-foreground/70 transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+                disabled={isResponding || progress.questionIndex === 0}
+                onClick={onPreviousQuestion}
+              >
+                <ChevronDownIcon className="size-3.5 rotate-90" />
+                返回
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-blue-500 px-3 text-[12px] font-semibold text-white shadow-sm shadow-blue-500/20 transition-colors hover:bg-blue-600 disabled:pointer-events-none disabled:opacity-50"
+              disabled={isResponding || !progress.canAdvance}
+              onClick={onAdvance}
+            >
+              {progress.isLastQuestion ? "继续" : "下一题"}
+              <CornerDownLeftIcon className="size-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

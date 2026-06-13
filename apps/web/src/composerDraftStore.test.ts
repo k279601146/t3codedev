@@ -523,6 +523,51 @@ describe("composerDraftStore terminal contexts", () => {
     expect(mergedState.draftThreadsByThreadKey).toEqual({});
     expect(mergedState.logicalProjectDraftThreadKeyByLogicalProjectKey).toEqual({});
   });
+
+  it("migrates legacy full-access draft overrides to the safe default", () => {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
+    const mergedState = persistApi.getOptions().merge(
+      {
+        draftsByThreadKey: {
+          [threadKey]: {
+            prompt: "hello",
+            attachments: [],
+            runtimeMode: "full-access",
+          },
+        },
+        draftThreadsByThreadKey: {
+          [threadKey]: {
+            threadId,
+            environmentId: TEST_ENVIRONMENT_ID,
+            projectId: ProjectId.make("project-a"),
+            logicalProjectKey: "project-a",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            envMode: "local",
+            promotedTo: null,
+          },
+        },
+        logicalProjectDraftThreadKeyByLogicalProjectKey: {
+          "project-a": threadKey,
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+
+    expect(mergedState.draftsByThreadKey[threadKey]?.runtimeMode).toBe(DEFAULT_RUNTIME_MODE);
+    expect(mergedState.draftThreadsByThreadKey[threadKey]?.runtimeMode).toBe(DEFAULT_RUNTIME_MODE);
+  });
 });
 
 describe("composerDraftStore project draft thread mapping", () => {

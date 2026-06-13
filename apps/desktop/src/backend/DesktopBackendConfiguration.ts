@@ -84,6 +84,7 @@ const DESKTOP_BACKEND_PROCESS_ENV_NAMES = [
   "TEMP",
   "TMP",
   "SystemRoot",
+  "SystemDrive",
   "ComSpec",
   "PATHEXT",
   "WINDIR",

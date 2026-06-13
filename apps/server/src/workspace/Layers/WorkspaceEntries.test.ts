@@ -221,6 +221,30 @@ it.layer(TestLayer)("WorkspaceEntriesLive", (it) => {
       }),
     );
 
+    it.effect("excludes Windows sandbox system cache artifacts in non-git workspaces", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-windows-sandbox-artifacts-" });
+        yield* writeTextFile(cwd, "hello.py", "print('hello')\n");
+        yield* writeTextFile(
+          cwd,
+          "%SystemDrive%/ProgramData/Microsoft/Windows/Caches/cversions.2.db",
+          "cache",
+        );
+
+        const result = yield* searchWorkspaceEntries({ cwd, query: "", limit: 100 });
+        const paths = result.entries.map((entry) => entry.path);
+
+        expect(paths).toContain("hello.py");
+        expect(paths.some((entryPath) => entryPath.startsWith("%SystemDrive%"))).toBe(false);
+
+        const workspaceEntries = yield* WorkspaceEntries;
+        const directory = yield* workspaceEntries.listDirectory({ cwd, depth: 6 });
+        const rootChildren = directory.tree.children?.map((entry) => entry.name) ?? [];
+        expect(rootChildren).toContain("hello.py");
+        expect(rootChildren).not.toContain("%SystemDrive%");
+      }),
+    );
+
     it.effect("deduplicates concurrent index builds for the same cwd", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-concurrent-build-" });

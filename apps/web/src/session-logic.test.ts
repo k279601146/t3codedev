@@ -1258,6 +1258,40 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
+  it("derives transparent presentation for generic MCP tools without backend metadata", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "mcp-tool-complete",
+        kind: "tool.completed",
+        summary: "MCP tool call",
+        payload: {
+          itemType: "mcp_tool_call",
+          title: "MCP tool call",
+          data: {
+            toolCallId: "tool-mcp-1",
+            tool: "github_create_issue",
+            rawInput: {
+              path: "apps/web/src/Register.tsx",
+              title: "修复注册入口",
+            },
+            rawOutput: {
+              stdout: "created issue #42\nhttps://example.test/issues/42",
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      toolTitle: "MCP github create issue",
+      toolFamily: "mcp",
+      detail:
+        "参数: path: apps/web/src/Register.tsx\n输出: created issue #42\nhttps://example.test/issues/42",
+      itemType: "mcp_tool_call",
+    });
+  });
+
   it("does not use command stdout as the detail when Cursor omits the command input", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
@@ -1291,6 +1325,39 @@ describe("deriveWorkLogEntries", () => {
     });
     expect(entry?.detail).toBeUndefined();
     expect(entry?.command).toBeUndefined();
+  });
+
+  it("uses Codex command aggregated output as the expandable command detail", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "codex-command-complete",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          title: "Ran command",
+          detail: "bun test",
+          data: {
+            item: {
+              id: "cmd_1",
+              type: "commandExecution",
+              command: "bun test",
+              aggregatedOutput: "ok\n1 pass",
+              status: "completed",
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      command: "bun test",
+      detail: "ok",
+      itemType: "command_execution",
+      toolTitle: "Ran command",
+      toolFamily: "command",
+    });
   });
 
   it("collapses legacy completed tool rows that are missing tool metadata", () => {
@@ -1332,6 +1399,68 @@ describe("deriveWorkLogEntries", () => {
       itemType: "dynamic_tool_call",
     });
     expect(entries[0]?.detail).toBeUndefined();
+  });
+
+  it("derives Codex web-search detail from query and action url", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "web-search-complete",
+        kind: "tool.completed",
+        summary: "Web search",
+        payload: {
+          itemType: "web_search",
+          title: "Web search",
+          data: {
+            item: {
+              id: "ws_1",
+              type: "webSearch",
+              query: "Codex plugins .codex-plugin plugin.json skills",
+              action: {
+                type: "search",
+                query: "Codex plugins .codex-plugin plugin.json skills",
+              },
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "web-open-complete",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "tool.completed",
+        summary: "Web search",
+        payload: {
+          itemType: "web_search",
+          title: "Web search",
+          data: {
+            item: {
+              id: "ws_2",
+              type: "webSearch",
+              query: "",
+              action: {
+                type: "openPage",
+                url: "https://developers.openai.com/codex/app-server",
+              },
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toMatchObject([
+      {
+        id: "web-search-complete",
+        itemType: "web_search",
+        toolFamily: "search",
+        detail: "Codex plugins .codex-plugin plugin.json skills",
+      },
+      {
+        id: "web-open-complete",
+        itemType: "web_search",
+        toolFamily: "search",
+        detail: "https://developers.openai.com/codex/app-server",
+      },
+    ]);
   });
 
   it("collapses repeated lifecycle updates for the same tool call into one entry", () => {

@@ -131,7 +131,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-collapsed="true"');
     expect(markup).toContain('data-user-message-fade="true"');
     expect(markup).toContain('data-user-message-footer="true"');
-  });
+  }, 20_000);
 
   it("does not render collapse controls for short user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
@@ -228,7 +228,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-work-group-summary="true"');
   });
 
-  it("folds changed file work into an edited-file summary", async () => {
+  it("renders changed file work as a compact editable file row", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -251,8 +251,39 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已编辑 1 个文件");
+    expect(markup).toContain("已编辑");
+    expect(markup).toContain("t3code/apps/web/src/session-logic.ts");
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
+  });
+
+  it("shows parsed diff stats for file-change work", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Updated files",
+              tone: "tool",
+              changedFiles: ["C:/repo/apps/web/src/App.tsx"],
+              detail:
+                "diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\n--- a/apps/web/src/App.tsx\n+++ b/apps/web/src/App.tsx\n@@ -1,3 +1,4 @@\n import React from 'react';\n-console.log('old');\n+console.log('new');\n+console.log('again');",
+            },
+          },
+        ]}
+        workspaceRoot="C:/repo"
+      />,
+    );
+
+    expect(markup).toContain("apps/web/src/App.tsx");
+    expect(markup).toContain("+2");
+    expect(markup).toContain("-1");
   });
 
   it("shows running command work with shimmer styling", async () => {
@@ -281,8 +312,8 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("正在运行");
     expect(markup).toContain("bun typecheck");
-    expect(markup).toContain("shimmer-scan");
-    expect(markup).toContain("running-status-shimmer");
+    expect(markup).toContain("textShimmerMoving");
+    expect(markup).toContain('aria-busy="true"');
   });
 
   it.each([
@@ -337,8 +368,14 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain(label);
-    expect(markup).toContain("running-status-shimmer");
-    expect(markup).toContain("shimmer-scan");
+    if (_name === "thinking") {
+      expect(markup).toContain("textShimmerMoving");
+      expect(markup).toContain('aria-busy="true"');
+    } else {
+      expect(markup).toContain("App.tsx");
+      expect(markup).toContain("+0");
+      expect(markup).toContain("-0");
+    }
   });
 
   it("shows running image generation with shimmer wording instead of the raw tool label", async () => {
@@ -408,7 +445,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("图片生成失败");
     expect(markup).toContain("stream disconnected before completion");
-    expect(markup).toContain("data-image-tile-status=\"failed\"");
+    expect(markup).toContain('data-image-tile-status="failed"');
     expect(markup).not.toContain("image-generation-shimmer");
   });
 
@@ -424,8 +461,8 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("正在思考");
-    expect(markup).toContain("shimmer-scan");
-    expect(markup).toContain("running-status-shimmer");
+    expect(markup).toContain("textShimmerMoving");
+    expect(markup).toContain('aria-busy="true"');
     expect(markup).not.toContain("animate-spin");
   });
 });

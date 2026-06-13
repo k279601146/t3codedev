@@ -19,6 +19,7 @@ describe("toolActivity", () => {
       }),
     ).toEqual({
       summary: "Ran command",
+      family: "command",
       detail: "bun run lint",
     });
   });
@@ -37,6 +38,7 @@ describe("toolActivity", () => {
       }),
     ).toEqual({
       summary: "Read file",
+      family: "file",
       detail: "/tmp/app.ts",
     });
   });
@@ -55,6 +57,113 @@ describe("toolActivity", () => {
       }),
     ).toEqual({
       summary: "Read file",
+      family: "file",
+    });
+  });
+
+  it("summarizes generic MCP tools with parameters and output", () => {
+    expect(
+      deriveToolActivityPresentation({
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        data: {
+          tool: "github_create_issue",
+          rawInput: {
+            title: "修复注册入口",
+            path: "apps/web/src/Register.tsx",
+          },
+          rawOutput: {
+            stdout: "created issue #42\nhttps://example.test/issues/42",
+          },
+        },
+        fallbackSummary: "MCP tool call",
+      }),
+    ).toEqual({
+      summary: "MCP github create issue",
+      family: "mcp",
+      toolName: "github_create_issue",
+      argumentsPreview: "path: apps/web/src/Register.tsx",
+      outputPreview: "created issue #42\nhttps://example.test/issues/42",
+      detail:
+        "参数: path: apps/web/src/Register.tsx\n输出: created issue #42\nhttps://example.test/issues/42",
+    });
+  });
+
+  it("summarizes Codex MCP item arguments and result content", () => {
+    expect(
+      deriveToolActivityPresentation({
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        data: {
+          item: {
+            type: "mcpToolCall",
+            tool: "list_repositories",
+            server: "github",
+            arguments: {
+              query: "t3 code",
+            },
+            result: {
+              content: [{ type: "text", text: "t3codedev\ncodex-monitor" }],
+            },
+          },
+        },
+        fallbackSummary: "MCP tool call",
+      }),
+    ).toEqual({
+      summary: "MCP list repositories",
+      family: "mcp",
+      toolName: "list_repositories",
+      argumentsPreview: "query: t3 code",
+      outputPreview: "t3codedev\ncodex-monitor",
+      detail: "参数: query: t3 code\n输出: t3codedev\ncodex-monitor",
+    });
+  });
+
+  it("extracts Codex web-search queries and opened pages from official item shape", () => {
+    expect(
+      deriveToolActivityPresentation({
+        itemType: "web_search",
+        title: "Web search",
+        data: {
+          item: {
+            id: "ws_1",
+            type: "webSearch",
+            query: "Codex plugins .codex-plugin plugin.json",
+            action: {
+              type: "search",
+              query: "Codex plugins .codex-plugin plugin.json",
+            },
+          },
+        },
+        fallbackSummary: "Web search",
+      }),
+    ).toEqual({
+      summary: "Searched web",
+      family: "search",
+      detail: "Codex plugins .codex-plugin plugin.json",
+    });
+
+    expect(
+      deriveToolActivityPresentation({
+        itemType: "web_search",
+        title: "Web search",
+        data: {
+          item: {
+            id: "ws_2",
+            type: "webSearch",
+            query: "",
+            action: {
+              type: "openPage",
+              url: "https://developers.openai.com/codex/app-server",
+            },
+          },
+        },
+        fallbackSummary: "Web search",
+      }),
+    ).toMatchObject({
+      summary: "Searched web",
+      family: "search",
+      detail: "https://developers.openai.com/codex/app-server",
     });
   });
 

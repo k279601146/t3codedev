@@ -615,6 +615,124 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("maps Codex command execution items to transparent presentation metadata", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      const event: ProviderEvent = {
+        id: asEventId("evt-command-tool-complete"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("cmd_1"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            id: "cmd_1",
+            type: "commandExecution",
+            command: "bun test",
+            commandActions: [],
+            cwd: "D:/workspace/t3codedev",
+            status: "completed",
+            exitCode: 0,
+            aggregatedOutput: "ok",
+          },
+        },
+      };
+
+      yield* runtime.emit(event);
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "item.completed");
+      if (firstEvent.value.type !== "item.completed") {
+        return;
+      }
+
+      assert.equal(firstEvent.value.payload.itemType, "command_execution");
+      assert.equal(firstEvent.value.payload.title, "Ran command");
+      assert.equal(firstEvent.value.payload.detail, "bun test");
+      assert.deepEqual((firstEvent.value.payload.data as { presentation?: unknown }).presentation, {
+        title: "Ran command",
+        detail: "bun test",
+        family: "command",
+        outputPreview: "ok",
+      });
+    }),
+  );
+
+  it.effect("maps Codex MCP tool calls to transparent presentation metadata", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      const event: ProviderEvent = {
+        id: asEventId("evt-mcp-tool-complete"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("mcp_1"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            id: "mcp_1",
+            type: "mcpToolCall",
+            server: "github",
+            tool: "list_repositories",
+            status: "completed",
+            arguments: {
+              query: "t3 code",
+            },
+            result: {
+              content: [{ type: "text", text: "t3codedev\ncodex-monitor" }],
+            },
+          },
+        },
+      };
+
+      yield* runtime.emit(event);
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "item.completed");
+      if (firstEvent.value.type !== "item.completed") {
+        return;
+      }
+
+      assert.equal(firstEvent.value.payload.itemType, "mcp_tool_call");
+      assert.equal(firstEvent.value.payload.title, "MCP list repositories");
+      assert.equal(
+        firstEvent.value.payload.detail,
+        "参数: query: t3 code\n输出: t3codedev\ncodex-monitor",
+      );
+      assert.deepEqual((firstEvent.value.payload.data as { presentation?: unknown }).presentation, {
+        title: "MCP list repositories",
+        detail: "参数: query: t3 code\n输出: t3codedev\ncodex-monitor",
+        family: "mcp",
+        toolName: "list_repositories",
+        argumentsPreview: "query: t3 code",
+        outputPreview: "t3codedev\ncodex-monitor",
+      });
+    }),
+  );
+
   it.effect("maps completed plan items to canonical proposed-plan completion events", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

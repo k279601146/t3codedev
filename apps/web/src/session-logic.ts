@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import {
   deriveDynamicToolActivityPresentation,
+  deriveToolActivityPresentation,
   type DynamicToolFamily,
 } from "@t3tools/shared/toolActivity";
 
@@ -72,6 +73,11 @@ export interface WorkLogEntry {
     status?: string;
     type?: string;
     revisedPrompt?: string;
+  };
+  userInputSummary?: {
+    status: "requested" | "resolved";
+    questions: ReadonlyArray<UserInputQuestion>;
+    answers?: Record<string, string | string[]>;
   };
 }
 
@@ -499,6 +505,17 @@ export function deriveWorkLogEntries(
   latestTurnId: TurnId | undefined,
 ): WorkLogEntry[] {
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const resolvedUserInputRequestIds = new Set<string>();
+  for (const activity of ordered) {
+    if (activity.kind !== "user-input.resolved") {
+      continue;
+    }
+    const requestId = extractActivityRequestId(activity);
+    if (requestId) {
+      resolvedUserInputRequestIds.add(requestId);
+    }
+  }
+  const requestedUserInputQuestionsByRequestId = new Map<string, ReadonlyArray<UserInputQuestion>>();
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
     .filter(
@@ -508,7 +525,26 @@ export function deriveWorkLogEntries(
     .filter((activity) => activity.kind !== "context-window.updated")
     .filter((activity) => activity.summary !== "Checkpoint captured")
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
-    .map(toDerivedWorkLogEntry);
+    .filter((activity) => {
+      if (activity.kind !== "user-input.requested") {
+        return true;
+      }
+      const requestId = extractActivityRequestId(activity);
+      return !requestId || !resolvedUserInputRequestIds.has(requestId);
+    })
+    .map((activity) => {
+      const requestId = extractActivityRequestId(activity);
+      if (activity.kind === "user-input.requested" && requestId) {
+        const questions = parseUserInputQuestions(asRecord(activity.payload));
+        if (questions) {
+          requestedUserInputQuestionsByRequestId.set(requestId, questions);
+        }
+      }
+      return toDerivedWorkLogEntry(
+        activity,
+        requestId ? requestedUserInputQuestionsByRequestId.get(requestId) : undefined,
+      );
+    });
   return collapseDerivedWorkLogEntries(entries).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
@@ -537,15 +573,18 @@ function isImageGenerationStartActivity(activity: OrchestrationThreadActivity): 
   return extractWorkLogItemType(payload) === "image_view" || isRawImageGenerationPayload(payload);
 }
 
-function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
+function toDerivedWorkLogEntry(
+  activity: OrchestrationThreadActivity,
+  requestedUserInputQuestions?: ReadonlyArray<UserInputQuestion>,
+): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
       ? (activity.payload as Record<string, unknown>)
       : null;
   const commandPreview = extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
-  const dynamicPresentation = extractDynamicToolPresentation(payload);
-  const title = dynamicPresentation?.title ?? extractToolTitle(payload);
+  const toolPresentation = deriveWorkLogToolActivityPresentation(payload);
+  const title = toolPresentation?.title ?? extractToolTitle(payload);
   const isTaskActivity = activity.kind === "task.progress" || activity.kind === "task.completed";
   const taskSummary =
     isTaskActivity && typeof payload?.summary === "string" && payload.summary.length > 0
@@ -567,7 +606,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? stripTrailingExitCode(payload.detail).output
       : null
     : (extractRuntimeIssueDetail(activity.kind, payload) ??
-      dynamicPresentation?.detail ??
+      (toolPresentation?.family === "command" ? null : toolPresentation?.detail) ??
       extractToolDetail(payload, title ?? activity.summary));
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
@@ -608,8 +647,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (title) {
     entry.toolTitle = title;
   }
-  if (dynamicPresentation?.family) {
-    entry.toolFamily = dynamicPresentation.family;
+  if (toolPresentation?.family) {
+    entry.toolFamily = toolPresentation.family;
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -623,11 +662,100 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolCallId) {
     entry.toolCallId = toolCallId;
   }
+  const userInputSummary = deriveUserInputWorkSummary(activity, payload, requestedUserInputQuestions);
+  if (userInputSummary) {
+    entry.userInputSummary = userInputSummary;
+    entry.label =
+      userInputSummary.status === "resolved"
+        ? `已询问 ${userInputSummary.questions.length} 个问题`
+        : "正在询问问题";
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry.collapseKey = collapseKey;
   }
   return entry;
+}
+
+function extractActivityRequestId(activity: OrchestrationThreadActivity): string | null {
+  const payload = asRecord(activity.payload);
+  return asTrimmedString(payload?.requestId);
+}
+
+function parseUserInputAnswers(value: unknown): Record<string, string | string[]> | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  const answers: Record<string, string | string[]> = {};
+  for (const [questionId, rawAnswer] of Object.entries(record)) {
+    const id = questionId.trim();
+    if (id.length === 0) {
+      continue;
+    }
+    if (typeof rawAnswer === "string") {
+      const answer = rawAnswer.trim();
+      if (answer.length > 0) {
+        answers[id] = answer;
+      }
+      continue;
+    }
+    if (Array.isArray(rawAnswer)) {
+      const answer = rawAnswer
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      if (answer.length > 0) {
+        answers[id] = answer;
+      }
+      continue;
+    }
+    const answerRecord = asRecord(rawAnswer);
+    if (Array.isArray(answerRecord?.answers)) {
+      const answer = answerRecord.answers
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      if (answer.length > 0) {
+        answers[id] = answer;
+      }
+    }
+  }
+  return Object.keys(answers).length > 0 ? answers : null;
+}
+
+function deriveUserInputWorkSummary(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown> | null,
+  requestedUserInputQuestions: ReadonlyArray<UserInputQuestion> | undefined,
+): WorkLogEntry["userInputSummary"] | null {
+  if (activity.kind === "user-input.requested") {
+    const questions = parseUserInputQuestions(payload);
+    return questions ? { status: "requested", questions } : null;
+  }
+  if (activity.kind !== "user-input.resolved") {
+    return null;
+  }
+  const answers = parseUserInputAnswers(payload?.answers);
+  const questions =
+    requestedUserInputQuestions ??
+    (answers
+      ? Object.keys(answers).map((questionId) => ({
+          id: questionId,
+          header: "",
+          question: questionId,
+          options: [],
+          multiSelect: Array.isArray(answers[questionId]),
+        }))
+      : []);
+  if (questions.length === 0 && !answers) {
+    return null;
+  }
+  return {
+    status: "resolved",
+    questions,
+    ...(answers ? { answers } : {}),
+  };
 }
 
 function collapseDerivedWorkLogEntries(
@@ -963,8 +1091,20 @@ function extractToolTitle(payload: Record<string, unknown> | null): string | nul
   return asTrimmedString(payload?.title);
 }
 
-function extractDynamicToolPresentation(payload: Record<string, unknown> | null) {
-  if (extractWorkLogItemType(payload) !== "dynamic_tool_call") {
+function isGenericToolPresentationTitle(value: string | null): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "tool" ||
+    normalized === "tool call" ||
+    normalized === "mcp tool call" ||
+    normalized === "dynamic tool call"
+  );
+}
+
+function deriveWorkLogToolActivityPresentation(payload: Record<string, unknown> | null) {
+  const itemType = extractWorkLogItemType(payload);
+  if (!itemType) {
     return null;
   }
   const data = asRecord(payload?.data);
@@ -972,31 +1112,53 @@ function extractDynamicToolPresentation(payload: Record<string, unknown> | null)
   if (explicitPresentation) {
     const title = asTrimmedString(explicitPresentation.title);
     const family = asTrimmedString(explicitPresentation.family) as DynamicToolFamily | null;
-    if (title && family) {
+    if (title) {
       return {
         title,
-        family,
+        ...(family ? { family } : {}),
         detail: asTrimmedString(explicitPresentation.detail) ?? undefined,
       };
     }
   }
 
-  const item = asRecord(data?.item) ?? asRecord(payload?.item);
-  const presentation = deriveDynamicToolActivityPresentation({
-    tool: item?.tool ?? data?.tool ?? payload?.tool,
-    namespace: item?.namespace ?? data?.namespace ?? payload?.namespace,
-    arguments: item?.arguments ?? data?.arguments ?? payload?.arguments,
-    contentItems: item?.contentItems ?? data?.contentItems ?? payload?.contentItems,
-    success: item?.success ?? data?.success ?? payload?.success,
-    status: item?.status ?? data?.status ?? payload?.status,
-  });
-  return presentation
-    ? {
+  if (itemType === "dynamic_tool_call") {
+    const item = asRecord(data?.item) ?? asRecord(payload?.item);
+    const presentation = deriveDynamicToolActivityPresentation({
+      tool: item?.tool ?? data?.tool ?? payload?.tool,
+      namespace: item?.namespace ?? data?.namespace ?? payload?.namespace,
+      arguments: item?.arguments ?? data?.arguments ?? payload?.arguments,
+      contentItems: item?.contentItems ?? data?.contentItems ?? payload?.contentItems,
+      success: item?.success ?? data?.success ?? payload?.success,
+      status: item?.status ?? data?.status ?? payload?.status,
+    });
+    if (presentation) {
+      return {
         title: presentation.title,
         family: presentation.family,
         detail: presentation.detail,
-      }
-    : null;
+      };
+    }
+  }
+
+  const presentation = deriveToolActivityPresentation({
+    itemType,
+    title: extractToolTitle(payload),
+    detail: asTrimmedString(payload?.detail),
+    data,
+    fallbackSummary: asTrimmedString(payload?.title) ?? asTrimmedString(payload?.summary) ?? "Tool",
+  });
+  const existingTitle = extractToolTitle(payload);
+  const shouldKeepExistingGenericTitle =
+    presentation.summary === "工具调用" && !presentation.detail && existingTitle !== null;
+  return {
+    title: shouldKeepExistingGenericTitle
+      ? existingTitle
+      : isGenericToolPresentationTitle(existingTitle)
+        ? presentation.summary
+        : (existingTitle ?? presentation.summary),
+    family: presentation.family,
+    detail: presentation.detail,
+  };
 }
 
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
@@ -1065,7 +1227,8 @@ function normalizePreviewForComparison(value: string | null | undefined): string
 }
 
 function summarizeToolTextOutput(value: string): string | null {
-  const lines = value
+  const cleaned = stripTrailingExitCode(value).output ?? value;
+  const lines = cleaned
     .split(/\r?\n/u)
     .map((line) => normalizeInlinePreview(line))
     .filter((line) => line.length > 0);
@@ -1081,7 +1244,12 @@ function summarizeToolTextOutput(value: string): string | null {
 
 function summarizeToolRawOutput(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
-  const rawOutput = asRecord(data?.rawOutput);
+  const item = asRecord(data?.item);
+  const itemType = extractWorkLogItemType(payload);
+  const rawOutput =
+    asRecord(data?.rawOutput) ??
+    asRecord(item?.result) ??
+    (itemType === "command_execution" ? item : null);
   if (!rawOutput) {
     return null;
   }
@@ -1100,6 +1268,11 @@ function summarizeToolRawOutput(payload: Record<string, unknown> | null): string
   const stdout = asTrimmedString(rawOutput.stdout);
   if (stdout) {
     return summarizeToolTextOutput(stdout);
+  }
+
+  const aggregatedOutput = asTrimmedString(rawOutput.aggregatedOutput);
+  if (aggregatedOutput) {
+    return summarizeToolTextOutput(aggregatedOutput);
   }
 
   return null;
@@ -1125,16 +1298,27 @@ function extractToolDetail(
   const detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
   const normalizedHeading = normalizePreviewForComparison(heading);
   const normalizedDetail = normalizePreviewForComparison(detail);
+  const rawOutputSummary = summarizeToolRawOutput(payload);
+
+  if (isCommandToolDetail(payload, heading)) {
+    const command = extractToolCommand(payload).command;
+    const normalizedCommand = normalizePreviewForComparison(command);
+    const normalizedRawOutputSummary = normalizePreviewForComparison(rawOutputSummary);
+    if (
+      command &&
+      rawOutputSummary &&
+      normalizedRawOutputSummary !== normalizedHeading &&
+      normalizedRawOutputSummary !== normalizedCommand
+    ) {
+      return rawOutputSummary;
+    }
+    return detail && normalizedHeading !== normalizedDetail ? detail : null;
+  }
 
   if (detail && normalizedHeading !== normalizedDetail) {
     return detail;
   }
-  //这里好像可以控制前端界面命令行输出的内容 null或者detail
-  if (isCommandToolDetail(payload, heading)) {
-    return detail;
-  }
 
-  const rawOutputSummary = summarizeToolRawOutput(payload);
   if (rawOutputSummary) {
     const normalizedRawOutputSummary = normalizePreviewForComparison(rawOutputSummary);
     if (normalizedRawOutputSummary !== normalizedHeading) {

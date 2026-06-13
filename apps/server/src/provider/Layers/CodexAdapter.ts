@@ -27,10 +27,13 @@ import {
   ThreadId,
   ProviderSendTurnInput,
   ProviderSteerTurnInput,
+  isToolLifecycleItemType,
   type ServerProviderWindowsSandbox,
   type WindowsSandboxMode,
 } from "@t3tools/contracts";
 import path from "node:path";
+import fsPromises from "node:fs/promises";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -54,7 +57,11 @@ import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
 } from "@t3tools/shared/model";
-import { deriveDynamicToolActivityPresentation } from "@t3tools/shared/toolActivity";
+import {
+  deriveDynamicToolActivityPresentation,
+  deriveToolActivityPresentation,
+} from "@t3tools/shared/toolActivity";
+import { WINDOWS_SANDBOX_SYSTEM_CACHE_RELATIVE_PATH } from "@t3tools/shared/windowsSandboxArtifacts";
 
 import {
   ProviderAdapterRequestError,
@@ -175,6 +182,13 @@ type CodexToolUserInputQuestion =
   | EffectCodexSchema.ServerRequest__ToolRequestUserInputQuestion
   | EffectCodexSchema.ToolRequestUserInputParams__ToolRequestUserInputQuestion;
 
+class WindowsSandboxArtifactCleanupError extends Data.TaggedError(
+  "WindowsSandboxArtifactCleanupError",
+)<{
+  readonly cwd: string;
+  readonly cause: unknown;
+}> {}
+
 const ApprovalDecisionPayload = Schema.Struct({
   decision: ProviderApprovalDecision,
 });
@@ -190,6 +204,60 @@ function readPayload<A>(
 function trimText(value: string | undefined | null): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isPathInsideRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function shouldCleanupWindowsSandboxArtifacts(event: ProviderEvent): boolean {
+  if (event.method !== "item/completed") {
+    return false;
+  }
+  const payload = readPayload(EffectCodexSchema.V2ItemCompletedNotification, event.payload);
+  return toCanonicalItemType(payload?.item.type) === "command_execution";
+}
+
+function cleanupWindowsSandboxWorkspaceArtifacts(cwd: string): Effect.Effect<void> {
+  const workspaceRoot = path.resolve(cwd);
+  const cachePath = path.resolve(
+    workspaceRoot,
+    ...WINDOWS_SANDBOX_SYSTEM_CACHE_RELATIVE_PATH.split("/"),
+  );
+  if (!isPathInsideRoot(workspaceRoot, cachePath)) {
+    return Effect.void;
+  }
+
+  return Effect.tryPromise({
+    try: async () => {
+      await fsPromises.rm(cachePath, { force: true, recursive: true });
+      let current = path.dirname(cachePath);
+      while (current !== workspaceRoot && isPathInsideRoot(workspaceRoot, current)) {
+        try {
+          await fsPromises.rmdir(current);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            current = path.dirname(current);
+            continue;
+          }
+          break;
+        }
+        current = path.dirname(current);
+      }
+    },
+    catch: (cause) => new WindowsSandboxArtifactCleanupError({ cwd, cause }),
+  }).pipe(
+    Effect.catch((error: WindowsSandboxArtifactCleanupError) =>
+      Effect.logDebug("failed to cleanup Windows sandbox workspace artifacts", {
+        cwd,
+        error,
+      }),
+    ),
+  );
 }
 
 const FATAL_CODEX_STDERR_SNIPPETS = ["failed to connect to websocket"];
@@ -528,7 +596,43 @@ function mapItemLifecycle(
   }
 
   const dynamicPresentation = dynamicToolPresentation(item);
-  const detail = itemDetail(item);
+  const rawData =
+    event.payload !== undefined
+      ? typeof event.payload === "object" && event.payload !== null
+        ? (event.payload as Record<string, unknown>)
+        : { value: event.payload }
+      : undefined;
+  const fallbackTitle = itemTitle(itemType);
+  const toolPresentation =
+    isToolLifecycleItemType(itemType) && !dynamicPresentation
+      ? deriveToolActivityPresentation({
+          itemType,
+          title: fallbackTitle,
+          detail: itemDetail(item),
+          data: rawData,
+          fallbackSummary: fallbackTitle,
+        })
+      : undefined;
+  const presentationTitle =
+    dynamicPresentation?.title ?? toolPresentation?.summary ?? fallbackTitle;
+  const presentationDetail = dynamicPresentation?.detail ?? toolPresentation?.detail;
+  const presentation =
+    dynamicPresentation ??
+    (toolPresentation
+      ? {
+          title: toolPresentation.summary,
+          ...(toolPresentation.detail ? { detail: toolPresentation.detail } : {}),
+          ...(toolPresentation.family ? { family: toolPresentation.family } : {}),
+          ...(toolPresentation.toolName ? { toolName: toolPresentation.toolName } : {}),
+          ...(toolPresentation.argumentsPreview
+            ? { argumentsPreview: toolPresentation.argumentsPreview }
+            : {}),
+          ...(toolPresentation.outputPreview
+            ? { outputPreview: toolPresentation.outputPreview }
+            : {}),
+        }
+      : undefined);
+  const detail = presentationDetail ?? itemDetail(item);
   const status =
     lifecycle === "item.started"
       ? "inProgress"
@@ -542,19 +646,15 @@ function mapItemLifecycle(
     payload: {
       itemType,
       ...(status ? { status } : {}),
-      ...((dynamicPresentation?.title ?? itemTitle(itemType))
-        ? { title: dynamicPresentation?.title ?? itemTitle(itemType) }
-        : {}),
+      ...(presentationTitle ? { title: presentationTitle } : {}),
       ...(detail ? { detail } : {}),
-      ...(event.payload !== undefined
+      ...(rawData
         ? {
             data: {
-              ...(typeof event.payload === "object" && event.payload !== null
-                ? (event.payload as Record<string, unknown>)
-                : { value: event.payload }),
-              ...(dynamicPresentation
+              ...rawData,
+              ...(presentation
                 ? {
-                    presentation: dynamicPresentation,
+                    presentation,
                   }
                 : {}),
             },
@@ -1822,6 +1922,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
           Effect.gen(function* () {
             yield* writeNativeEvent(event);
+            if (shouldCleanupWindowsSandboxArtifacts(event)) {
+              yield* cleanupWindowsSandboxWorkspaceArtifacts(runtimeInput.cwd);
+            }
             const runtimeEvents = mapToRuntimeEvents(event, event.threadId);
             if (runtimeEvents.length === 0) {
               yield* Effect.logDebug("ignoring unhandled Codex provider event", {

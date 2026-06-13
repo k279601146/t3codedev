@@ -158,7 +158,11 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
-import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import {
+  ChatComposer,
+  type ChatComposerHandle,
+  type PendingSteerDraftView,
+} from "./chat/ChatComposer";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -173,6 +177,7 @@ import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
+import { WindowsSandboxSetupBanner } from "./chat/WindowsSandboxSetupBanner";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
@@ -250,6 +255,19 @@ type EnvironmentUnavailableState = {
   readonly label: string;
   readonly connectionState: "connecting" | "disconnected" | "error";
 };
+
+interface PendingSteerMessage {
+  id: MessageId;
+  threadId: ThreadId;
+  expectedTurnId: TurnId;
+  prompt: string;
+  text: string;
+  images: ComposerImageAttachment[];
+  terminalContexts: TerminalContextDraft[];
+  attachments: ChatAttachment[];
+  goalObjective: string | null;
+  createdAt: string;
+}
 
 type ThreadPlanCatalogEntry = Pick<Thread, "id" | "proposedPlans">;
 
@@ -787,6 +805,7 @@ export default function ChatView(props: ChatViewProps) {
   const [optimisticUserMessages, setOptimisticUserMessagesState] = useState<ChatMessage[]>(
     () => OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [],
   );
+  const [pendingSteerMessage, setPendingSteerMessage] = useState<PendingSteerMessage | null>(null);
   const [goalMessageIdsByThreadKey, setGoalMessageIdsByThreadKey] = useState<
     Record<string, MessageId[]>
   >(() => Object.fromEntries(GOAL_MESSAGE_IDS_BY_THREAD_KEY));
@@ -807,6 +826,62 @@ export default function ChatView(props: ChatViewProps) {
     },
     [routeThreadKey],
   );
+  const clearPendingSteerMessage = useCallback((options?: { revokePreviewUrls?: boolean }) => {
+    setPendingSteerMessage((current) => {
+      if (options?.revokePreviewUrls) {
+        for (const image of current?.images ?? []) {
+          revokeBlobPreviewUrl(image.previewUrl);
+        }
+      }
+      return null;
+    });
+  }, []);
+  const restorePendingSteerMessageToComposer = useCallback(
+    (message: PendingSteerMessage) => {
+      for (const image of composerImagesRef.current) {
+        revokeBlobPreviewUrl(image.previewUrl);
+      }
+      clearComposerDraftContent(composerDraftTarget);
+      promptRef.current = message.prompt;
+      const retryComposerImages = message.images.map(cloneComposerImageForRetry);
+      composerImagesRef.current = retryComposerImages;
+      composerTerminalContextsRef.current = message.terminalContexts;
+      setComposerDraftPrompt(composerDraftTarget, message.prompt);
+      addComposerDraftImages(composerDraftTarget, retryComposerImages);
+      setComposerDraftTerminalContexts(composerDraftTarget, message.terminalContexts);
+      composerRef.current?.resetCursorState({
+        cursor: collapseExpandedComposerCursor(message.prompt, message.prompt.length),
+        prompt: message.prompt,
+        detectTrigger: true,
+      });
+    },
+    [
+      addComposerDraftImages,
+      clearComposerDraftContent,
+      composerDraftTarget,
+      composerImagesRef,
+      composerRef,
+      composerTerminalContextsRef,
+      promptRef,
+      setComposerDraftPrompt,
+      setComposerDraftTerminalContexts,
+    ],
+  );
+  const onEditPendingSteerMessage = useCallback(() => {
+    setPendingSteerMessage((current) => {
+      if (current) {
+        restorePendingSteerMessageToComposer(current);
+        for (const image of current.images) {
+          revokeBlobPreviewUrl(image.previewUrl);
+        }
+      }
+      return null;
+    });
+    composerRef.current?.focusAtEnd();
+  }, [composerRef, restorePendingSteerMessageToComposer]);
+  const onDiscardPendingSteerMessage = useCallback(() => {
+    clearPendingSteerMessage({ revokePreviewUrls: true });
+  }, [clearPendingSteerMessage]);
   const [localDraftErrorsByDraftId, setLocalDraftErrorsByDraftId] = useState<
     Record<string, string | null>
   >({});
@@ -940,7 +1015,11 @@ export default function ChatView(props: ChatViewProps) {
         : undefined;
   const isServerThread = activeServerThread !== undefined;
   const activeThread = activeServerThread ?? localDraftThread;
-  const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+  const activeThreadRuntimeMode =
+    !isServerThread && activeThread?.runtimeMode === "full-access"
+      ? DEFAULT_RUNTIME_MODE
+      : activeThread?.runtimeMode;
+  const runtimeMode = composerRuntimeMode ?? activeThreadRuntimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode =
     composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
@@ -1588,6 +1667,16 @@ export default function ChatView(props: ChatViewProps) {
     isServerThread &&
     activeThread?.session?.activeTurnId !== undefined &&
     activeThread.session.provider === ProviderDriverKind.make("codex");
+  const pendingSteerDraftView = useMemo<PendingSteerDraftView | null>(() => {
+    if (!pendingSteerMessage) {
+      return null;
+    }
+    return {
+      text: pendingSteerMessage.prompt,
+      attachments: pendingSteerMessage.attachments,
+      terminalContextCount: pendingSteerMessage.terminalContexts.length,
+    };
+  }, [pendingSteerMessage]);
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
     activeLatestTurn,
     activeThread?.session ?? null,
@@ -1597,6 +1686,12 @@ export default function ChatView(props: ChatViewProps) {
     const nextOptimisticMessages = OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [];
     optimisticUserMessagesRef.current = nextOptimisticMessages;
     setOptimisticUserMessagesState(nextOptimisticMessages);
+    setPendingSteerMessage((current) => {
+      for (const image of current?.images ?? []) {
+        revokeBlobPreviewUrl(image.previewUrl);
+      }
+      return null;
+    });
   }, [routeThreadKey]);
 
   useEffect(() => {
@@ -2909,6 +3004,124 @@ export default function ChatView(props: ChatViewProps) {
     ],
   );
 
+  const onConfirmPendingSteerMessage = useCallback(async () => {
+    const pending = pendingSteerMessage;
+    if (
+      !pending ||
+      isSendBusy ||
+      isConnecting ||
+      activeEnvironmentUnavailable ||
+      sendInFlightRef.current
+    ) {
+      return;
+    }
+    const api = readEnvironmentApi(environmentId);
+    if (!api || !activeThread || activeThread.id !== pending.threadId) {
+      return;
+    }
+    if (
+      phase !== "running" ||
+      activeThread.session?.activeTurnId === undefined ||
+      activeThread.session.activeTurnId !== pending.expectedTurnId
+    ) {
+      setThreadError(pending.threadId, "当前任务已经不再接受这条引导消息。");
+      return;
+    }
+
+    sendInFlightRef.current = true;
+    beginLocalDispatch({ preparingWorktree: false });
+    setThreadError(pending.threadId, null);
+    setPendingSteerMessage(null);
+
+    isAtEndRef.current = true;
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
+    await legendListRef.current?.scrollToEnd?.({ animated: false });
+
+    setOptimisticUserMessages((existing) => [
+      ...existing,
+      {
+        id: pending.id,
+        role: "user",
+        text: pending.text,
+        ...(pending.attachments.length > 0 ? { attachments: pending.attachments } : {}),
+        createdAt: pending.createdAt,
+        streaming: false,
+      },
+    ]);
+    if (pending.goalObjective && activeThreadKey) {
+      setGoalMessageIdsByThreadKey((existing) => {
+        const nextIds = [...(existing[activeThreadKey] ?? []), pending.id];
+        GOAL_MESSAGE_IDS_BY_THREAD_KEY.set(activeThreadKey, nextIds);
+        return { ...existing, [activeThreadKey]: nextIds };
+      });
+    }
+
+    let turnSteerSucceeded = false;
+    await (async () => {
+      const turnAttachments = await Promise.all(
+        pending.images.map(async (attachment) => ({
+          type: attachment.type,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          dataUrl: await readFileAsDataUrl(attachment.file),
+        })),
+      );
+      if (pending.goalObjective) {
+        await api.orchestration.dispatchCommand({
+          type: "thread.goal.set",
+          commandId: newCommandId(),
+          threadId: pending.threadId,
+          objective: pending.goalObjective,
+          status: "active",
+          createdAt: pending.createdAt,
+        });
+      }
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.steer",
+        commandId: newCommandId(),
+        threadId: pending.threadId,
+        expectedTurnId: pending.expectedTurnId,
+        message: {
+          messageId: pending.id,
+          role: "user",
+          text: pending.text,
+          attachments: turnAttachments,
+        },
+        createdAt: pending.createdAt,
+      });
+      turnSteerSucceeded = true;
+    })().catch((err: unknown) => {
+      if (!turnSteerSucceeded) {
+        setOptimisticUserMessages((existing) => {
+          const next = existing.filter((message) => message.id !== pending.id);
+          return next.length === existing.length ? existing : next;
+        });
+        setPendingSteerMessage(pending);
+      }
+      setThreadError(
+        pending.threadId,
+        err instanceof Error ? err.message : "Failed to steer current turn.",
+      );
+    });
+    sendInFlightRef.current = false;
+    resetLocalDispatch();
+  }, [
+    activeEnvironmentUnavailable,
+    activeThread,
+    activeThreadKey,
+    beginLocalDispatch,
+    environmentId,
+    isConnecting,
+    isSendBusy,
+    pendingSteerMessage,
+    phase,
+    resetLocalDispatch,
+    setOptimisticUserMessages,
+    setThreadError,
+  ]);
+
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readEnvironmentApi(environmentId);
@@ -3027,18 +3240,15 @@ export default function ChatView(props: ChatViewProps) {
     // fall back to local execution when branch selection is missing.
     const shouldCreateWorktree = Boolean(
       activeTurnIdForSteer === null &&
-        activeProject &&
-        isFirstMessage &&
-        sendEnvMode === "worktree" &&
-        !activeThread.worktreePath,
+      activeProject &&
+      isFirstMessage &&
+      sendEnvMode === "worktree" &&
+      !activeThread.worktreePath,
     );
     if (shouldCreateWorktree && !activeThreadBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
     }
-
-    sendInFlightRef.current = true;
-    beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
 
     const composerImagesSnapshot = [...composerImages];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
@@ -3068,19 +3278,8 @@ export default function ChatView(props: ChatViewProps) {
               : `目标最多 ${GOAL_OBJECTIVE_MAX_CHARS} 个字符。`,
         }),
       );
-      sendInFlightRef.current = false;
-      resetLocalDispatch();
       return;
     }
-    const turnAttachmentsPromise = Promise.all(
-      composerImagesSnapshot.map(async (attachment) => ({
-        type: attachment.type,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
-        sizeBytes: attachment.sizeBytes,
-        dataUrl: await readFileAsDataUrl(attachment.file),
-      })),
-    );
     const optimisticAttachments: ChatAttachment[] = composerImagesSnapshot.map((attachment) =>
       attachment.type === "image"
         ? {
@@ -3099,6 +3298,57 @@ export default function ChatView(props: ChatViewProps) {
             sizeBytes: attachment.sizeBytes,
             ...(attachment.previewUrl ? { previewUrl: attachment.previewUrl } : {}),
           },
+    );
+
+    if (activeTurnIdForSteer !== null) {
+      const pendingMessage: PendingSteerMessage = {
+        id: messageIdForSend,
+        threadId: threadIdForSend,
+        expectedTurnId: activeTurnIdForSteer,
+        prompt: promptForSend,
+        text: outgoingMessageText,
+        images: composerImagesSnapshot,
+        terminalContexts: composerTerminalContextsSnapshot,
+        attachments: optimisticAttachments,
+        goalObjective: goalObjectiveForTurn,
+        createdAt: messageCreatedAt,
+      };
+      setPendingSteerMessage((current) => {
+        for (const image of current?.images ?? []) {
+          revokeBlobPreviewUrl(image.previewUrl);
+        }
+        return pendingMessage;
+      });
+      setThreadError(threadIdForSend, null);
+      if (expiredTerminalContextCount > 0) {
+        const toastCopy = buildExpiredTerminalContextToastCopy(
+          expiredTerminalContextCount,
+          "omitted",
+        );
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: toastCopy.title,
+            description: toastCopy.description,
+          }),
+        );
+      }
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+      return;
+    }
+
+    sendInFlightRef.current = true;
+    beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
+    const turnAttachmentsPromise = Promise.all(
+      composerImagesSnapshot.map(async (attachment) => ({
+        type: attachment.type,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        dataUrl: await readFileAsDataUrl(attachment.file),
+      })),
     );
     // Scroll to the current end *before* adding the optimistic message.
     // This sets LegendList's internal isAtEnd=true so maintainScrollAtEnd
@@ -3144,72 +3394,6 @@ export default function ChatView(props: ChatViewProps) {
     promptRef.current = "";
     clearComposerDraftContent(composerDraftTarget);
     composerRef.current?.resetCursorState();
-
-    if (activeTurnIdForSteer !== null) {
-      let turnSteerSucceeded = false;
-      await (async () => {
-        const turnAttachments = await turnAttachmentsPromise;
-        if (goalObjectiveForTurn) {
-          await api.orchestration.dispatchCommand({
-            type: "thread.goal.set",
-            commandId: newCommandId(),
-            threadId: threadIdForSend,
-            objective: goalObjectiveForTurn,
-            status: "active",
-            createdAt: messageCreatedAt,
-          });
-        }
-        await api.orchestration.dispatchCommand({
-          type: "thread.turn.steer",
-          commandId: newCommandId(),
-          threadId: threadIdForSend,
-          expectedTurnId: activeTurnIdForSteer,
-          message: {
-            messageId: messageIdForSend,
-            role: "user",
-            text: outgoingMessageText,
-            attachments: turnAttachments,
-          },
-          createdAt: messageCreatedAt,
-        });
-        turnSteerSucceeded = true;
-      })().catch(async (err: unknown) => {
-        if (
-          !turnSteerSucceeded &&
-          promptRef.current.length === 0 &&
-          composerImagesRef.current.length === 0 &&
-          composerTerminalContextsRef.current.length === 0
-        ) {
-          setOptimisticUserMessages((existing) => {
-            const removed = existing.filter((message) => message.id === messageIdForSend);
-            for (const message of removed) {
-              revokeUserMessagePreviewUrls(message);
-            }
-            const next = existing.filter((message) => message.id !== messageIdForSend);
-            return next.length === existing.length ? existing : next;
-          });
-          promptRef.current = promptForSend;
-          const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
-          composerImagesRef.current = retryComposerImages;
-          composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
-          setComposerDraftPrompt(composerDraftTarget, promptForSend);
-          addComposerDraftImages(composerDraftTarget, retryComposerImages);
-          setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
-          composerRef.current?.resetCursorState({
-            cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
-            prompt: promptForSend,
-            detectTrigger: true,
-          });
-        }
-        setThreadError(
-          threadIdForSend,
-          err instanceof Error ? err.message : "Failed to steer current turn.",
-        );
-      });
-      sendInFlightRef.current = false;
-      resetLocalDispatch();
-      return;
-    }
 
     let turnStartSucceeded = false;
     await (async () => {
@@ -3518,6 +3702,23 @@ export default function ChatView(props: ChatViewProps) {
     }
     setActivePendingUserInputQuestionIndex(Math.max(activePendingProgress.questionIndex - 1, 0));
   }, [activePendingProgress, setActivePendingUserInputQuestionIndex]);
+
+  const onSelectActivePendingUserInputQuestion = useCallback(
+    (questionIndex: number) => {
+      if (!activePendingUserInput) {
+        return;
+      }
+      setActivePendingUserInputQuestionIndex(questionIndex);
+    },
+    [activePendingUserInput, setActivePendingUserInputQuestionIndex],
+  );
+
+  const onIgnoreActivePendingUserInput = useCallback(() => {
+    if (!activePendingUserInput) {
+      return;
+    }
+    void onRespondToUserInput(activePendingUserInput.requestId, {});
+  }, [activePendingUserInput, onRespondToUserInput]);
 
   const onSubmitPlanFollowUp = useCallback(
     async ({
@@ -3945,9 +4146,7 @@ export default function ChatView(props: ChatViewProps) {
       threadId: activeThreadId,
       createdAt,
     });
-  },
-    [activeThreadId, environmentId],
-  );
+  }, [activeThreadId, environmentId]);
   const onGoalModeChange = useCallback(
     (enabled: boolean) => {
       if (!activeThreadKey) return;
@@ -4131,6 +4330,7 @@ export default function ChatView(props: ChatViewProps) {
       isUsageLimitReached={usageLimitBlock !== null}
       isPreparingWorktree={isPreparingWorktree}
       environmentUnavailable={activeEnvironmentUnavailableState}
+      pendingSteerDraft={pendingSteerDraftView}
       activePendingApproval={activePendingApproval}
       pendingApprovals={pendingApprovals}
       pendingUserInputs={pendingUserInputs}
@@ -4173,11 +4373,16 @@ export default function ChatView(props: ChatViewProps) {
       scheduleStickToBottom={scrollToEnd}
       onSend={onSend}
       onInterrupt={onInterrupt}
+      onConfirmPendingSteerDraft={onConfirmPendingSteerMessage}
+      onEditPendingSteerDraft={onEditPendingSteerMessage}
+      onDiscardPendingSteerDraft={onDiscardPendingSteerMessage}
       onImplementPlanInNewThread={onImplementPlanInNewThread}
       onRespondToApproval={onRespondToApproval}
       onSelectActivePendingUserInputOption={onSelectActivePendingUserInputOption}
       onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
       onPreviousActivePendingUserInputQuestion={onPreviousActivePendingUserInputQuestion}
+      onSelectActivePendingUserInputQuestion={onSelectActivePendingUserInputQuestion}
+      onIgnoreActivePendingUserInput={onIgnoreActivePendingUserInput}
       onChangeActivePendingUserInputCustomAnswer={onChangeActivePendingUserInputCustomAnswer}
       onProviderModelSelect={onProviderModelSelect}
       toggleInteractionMode={toggleInteractionMode}
@@ -4245,6 +4450,11 @@ export default function ChatView(props: ChatViewProps) {
       {/* Error banner */}
       <div className="shrink-0">
         <ProviderStatusBanner status={activeProviderStatus} />
+        <WindowsSandboxSetupBanner
+          provider={activeProviderStatus}
+          platformOs={serverConfig?.environment.platform.os}
+          onOpenSettings={() => void navigate({ to: "/settings/providers" })}
+        />
         <ThreadErrorBanner
           error={activeThread.error}
           onDismiss={() => setThreadError(activeThread.id, null)}

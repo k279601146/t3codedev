@@ -24,6 +24,7 @@ export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
   "TEMP",
   "TMP",
   "SystemRoot",
+  "SystemDrive",
   "HOMEDRIVE",
   "HOMEPATH",
 ] as const;
@@ -39,6 +40,7 @@ const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
   "TEMP",
   "TMP",
   "SystemRoot",
+  "SystemDrive",
   "HOMEDRIVE",
   "HOMEPATH",
   "Path",

@@ -95,6 +95,10 @@
       "types": "./src/commercialEngine.ts",
       "import": "./src/commercialEngine.ts"
     },
+    "./windowsSandboxArtifacts": {
+      "types": "./src/windowsSandboxArtifacts.ts",
+      "import": "./src/windowsSandboxArtifacts.ts"
+    },
     "./commercialUsage": {
       "types": "./src/commercialUsage.ts",
       "import": "./src/commercialUsage.ts"

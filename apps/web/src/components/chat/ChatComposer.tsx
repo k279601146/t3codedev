@@ -80,7 +80,6 @@ import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
   getComposerProviderState,
-  renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
@@ -123,6 +122,8 @@ import {
   ShieldAlertIcon,
   ShieldCheckIcon,
   Trash2Icon,
+  CornerDownLeftIcon,
+  MoreHorizontalIcon,
   type LucideIcon,
   XIcon,
 } from "lucide-react";
@@ -137,7 +138,7 @@ import {
 } from "../../providerInstances";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
-import type { SessionPhase, Thread } from "../../types";
+import type { ChatAttachment, SessionPhase, Thread } from "../../types";
 import type { PendingUserInputDraftAnswer } from "../../pendingUserInput";
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import { deriveLatestContextWindowSnapshot } from "../../lib/contextWindow";
@@ -250,7 +251,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   const { t } = useI18n();
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
-  const runtimeModeLabel = t(runtimeModeOption.labelKey);
+  const runtimeModeLabel = t(runtimeModeOption.shortLabelKey);
   const runtimeModeDescription = t(runtimeModeOption.descriptionKey);
   const runtimeModeStatus = t(runtimeModeOption.statusKey);
 
@@ -414,7 +415,6 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
   skills: ReadonlyArray<ServerProviderSkill>;
   showRuntimeModeControl: boolean;
   showInteractionModeToggle: boolean;
-  traitsMenuContent?: React.ReactNode;
   onAttachFiles: () => void;
   onGoalModeChange: (enabled: boolean) => void;
   onSelectPlugin: (plugin: ComposerPluginMention) => void;
@@ -540,12 +540,6 @@ const NewThreadPlusMenu = memo(function NewThreadPlusMenu(props: {
             </div>
           </MenuSubPopup>
         </MenuSub>
-        {props.traitsMenuContent ? (
-          <>
-            <MenuSeparator />
-            {props.traitsMenuContent}
-          </>
-        ) : null}
         <MenuSeparator />
         <MenuCheckboxItem
           checked={props.goalModeEnabled}
@@ -901,6 +895,90 @@ function formatGoalElapsed(startIso: string, nowMs: number): string | null {
   return `${Math.floor(hours / 24)}d`;
 }
 
+export interface PendingSteerDraftView {
+  text: string;
+  attachments: ChatAttachment[];
+  terminalContextCount: number;
+}
+
+const ComposerPendingSteerDraftPanel = memo(function ComposerPendingSteerDraftPanel(props: {
+  draft: PendingSteerDraftView;
+  confirmDisabled: boolean;
+  onConfirm: () => void;
+  onEdit: () => void;
+  onDiscard: () => void;
+}) {
+  const summary = props.draft.text.trim() || "附件消息";
+  const attachmentCount = props.draft.attachments.length;
+  const terminalContextCount = props.draft.terminalContextCount;
+
+  return (
+    <div
+      data-chat-composer-pending-steer="true"
+      className="flex min-w-0 items-center gap-2 border-b border-border/60 bg-muted/15 px-3 py-2 sm:px-4"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <CornerDownLeftIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
+        <div className="min-w-0">
+          <div className="truncate text-[13px] leading-5 text-foreground/85">{summary}</div>
+          {attachmentCount > 0 || terminalContextCount > 0 ? (
+            <div className="truncate text-[11px] leading-4 text-muted-foreground/70">
+              {[
+                attachmentCount > 0 ? `${attachmentCount} 个附件` : null,
+                terminalContextCount > 0 ? `${terminalContextCount} 个终端上下文` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-background px-2.5 text-[12px] font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+        disabled={props.confirmDisabled}
+        onClick={props.onConfirm}
+      >
+        <CornerDownLeftIcon className="size-3.5" />
+        引导
+      </button>
+      <button
+        type="button"
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground/75 transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        aria-label="丢弃引导消息"
+        title="丢弃引导消息"
+        onClick={props.onDiscard}
+      >
+        <Trash2Icon className="size-3.5" />
+      </button>
+      <Menu>
+        <MenuTrigger
+          render={
+            <button
+              type="button"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground/75 transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              aria-label="引导消息操作"
+              title="引导消息操作"
+            />
+          }
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </MenuTrigger>
+        <MenuPopup align="end" side="top">
+          <MenuItem onClick={props.onEdit}>
+            <PencilIcon className="size-4 shrink-0 opacity-80" />
+            编辑消息
+          </MenuItem>
+          <MenuItem onClick={props.onDiscard}>
+            <Trash2Icon className="size-4 shrink-0 opacity-80" />
+            关闭排队
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+    </div>
+  );
+});
+
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
 // --------------------------------------------------------------------------
@@ -968,6 +1046,7 @@ export interface ChatComposerProps {
     readonly label: string;
     readonly connectionState: "connecting" | "disconnected" | "error";
   } | null;
+  pendingSteerDraft: PendingSteerDraftView | null;
 
   // Pending approvals / inputs
   activePendingApproval: PendingApproval | null;
@@ -1032,6 +1111,9 @@ export interface ChatComposerProps {
   // Callbacks
   onSend: (e?: { preventDefault: () => void }) => void;
   onInterrupt: () => void;
+  onConfirmPendingSteerDraft: () => void;
+  onEditPendingSteerDraft: () => void;
+  onDiscardPendingSteerDraft: () => void;
   onImplementPlanInNewThread: () => void;
   onRespondToApproval: (
     requestId: ApprovalRequestId,
@@ -1040,6 +1122,8 @@ export interface ChatComposerProps {
   onSelectActivePendingUserInputOption: (questionId: string, optionLabel: string) => void;
   onAdvanceActivePendingUserInput: () => void;
   onPreviousActivePendingUserInputQuestion: () => void;
+  onSelectActivePendingUserInputQuestion: (questionIndex: number) => void;
+  onIgnoreActivePendingUserInput: () => void;
   onChangeActivePendingUserInputCustomAnswer: (
     questionId: string,
     value: string,
@@ -1086,6 +1170,7 @@ export const ChatComposer = memo(
       isUsageLimitReached = false,
       isPreparingWorktree,
       environmentUnavailable,
+      pendingSteerDraft,
       activePendingApproval,
       pendingApprovals,
       pendingUserInputs,
@@ -1126,11 +1211,16 @@ export const ChatComposer = memo(
       scheduleStickToBottom,
       onSend,
       onInterrupt,
+      onConfirmPendingSteerDraft,
+      onEditPendingSteerDraft,
+      onDiscardPendingSteerDraft,
       onImplementPlanInNewThread,
       onRespondToApproval,
       onSelectActivePendingUserInputOption,
       onAdvanceActivePendingUserInput,
       onPreviousActivePendingUserInputQuestion,
+      onSelectActivePendingUserInputQuestion,
+      onIgnoreActivePendingUserInput,
       onChangeActivePendingUserInputCustomAnswer,
       onProviderModelSelect,
       toggleInteractionMode,
@@ -1663,16 +1753,6 @@ export const ChatComposer = memo(
       [composerDraftTarget, promptRef, scheduleComposerFocus, setComposerDraftPrompt],
     );
 
-    const providerTraitsMenuContent = renderProviderTraitsMenuContent({
-      provider: selectedProvider,
-      ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
-      ...(routeKind === "draft" && draftId ? { draftId } : {}),
-      model: selectedModel,
-      models: selectedProviderModels,
-      modelOptions: selectedModelOptionSelections,
-      prompt,
-      onPromptChange: setPromptFromTraits,
-    });
     const providerTraitsPicker = renderProviderTraitsPicker({
       provider: selectedProvider,
       ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
@@ -2896,6 +2976,24 @@ export const ChatComposer = memo(
                     questionIndex={activePendingQuestionIndex}
                     onToggleOption={onSelectActivePendingUserInputOption}
                     onAdvance={onAdvanceActivePendingUserInput}
+                    onPreviousQuestion={onPreviousActivePendingUserInputQuestion}
+                    onSelectQuestion={onSelectActivePendingUserInputQuestion}
+                    onIgnore={onIgnoreActivePendingUserInput}
+                  />
+                </div>
+              ) : pendingSteerDraft ? (
+                <div className="overflow-hidden rounded-t-[14px] bg-muted/15">
+                  <ComposerPendingSteerDraftPanel
+                    draft={pendingSteerDraft}
+                    confirmDisabled={
+                      phase !== "running" ||
+                      isSendBusy ||
+                      isConnecting ||
+                      environmentUnavailable !== null
+                    }
+                    onConfirm={onConfirmPendingSteerDraft}
+                    onEdit={onEditPendingSteerDraft}
+                    onDiscard={onDiscardPendingSteerDraft}
                   />
                 </div>
               ) : showPlanFollowUpPrompt && activeProposedPlan ? (
@@ -2936,6 +3034,9 @@ export const ChatComposer = memo(
                   questionIndex={activePendingQuestionIndex}
                   onToggleOption={onSelectActivePendingUserInputOption}
                   onAdvance={onAdvanceActivePendingUserInput}
+                  onPreviousQuestion={onPreviousActivePendingUserInputQuestion}
+                  onSelectQuestion={onSelectActivePendingUserInputQuestion}
+                  onIgnore={onIgnoreActivePendingUserInput}
                 />
                 <div className="px-3 pb-3 sm:px-4">
                   <div
@@ -2981,6 +3082,24 @@ export const ChatComposer = memo(
                     ) : null}
                   </div>
                 </div>
+              </div>
+            ) : isComposerCollapsedMobile && pendingSteerDraft ? (
+              <div
+                className="overflow-hidden rounded-t-[18px] bg-muted/15"
+                data-chat-composer-collapsed-controls="true"
+              >
+                <ComposerPendingSteerDraftPanel
+                  draft={pendingSteerDraft}
+                  confirmDisabled={
+                    phase !== "running" ||
+                    isSendBusy ||
+                    isConnecting ||
+                    environmentUnavailable !== null
+                  }
+                  onConfirm={onConfirmPendingSteerDraft}
+                  onEdit={onEditPendingSteerDraft}
+                  onDiscard={onDiscardPendingSteerDraft}
+                />
               </div>
             ) : null}
 
@@ -3297,7 +3416,6 @@ export const ChatComposer = memo(
                       skills={selectedProviderStatus?.skills ?? []}
                       showRuntimeModeControl
                       showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
-                      traitsMenuContent={providerTraitsMenuContent}
                       onAttachFiles={openAttachmentPicker}
                       onGoalModeChange={onGoalModeChange}
                       onSelectPlugin={insertPluginAtComposerCursor}
@@ -3368,7 +3486,6 @@ export const ChatComposer = memo(
                       planSidebarOpen={planSidebarOpen}
                       runtimeMode={runtimeMode}
                       showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
-                      traitsMenuContent={providerTraitsMenuContent}
                       onToggleInteractionMode={toggleInteractionMode}
                       onTogglePlanSidebar={togglePlanSidebar}
                       onRuntimeModeChange={handleRuntimeModeChange}

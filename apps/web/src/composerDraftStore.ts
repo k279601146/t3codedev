@@ -47,7 +47,7 @@ const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
 export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
-const COMPOSER_DRAFT_STORAGE_VERSION = 7;
+const COMPOSER_DRAFT_STORAGE_VERSION = 8;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 
@@ -1391,7 +1391,9 @@ function normalizePersistedDraftThreads(
             ? createdAt
             : new Date().toISOString(),
         runtimeMode: isRuntimeMode(candidateDraftThread.runtimeMode)
-          ? candidateDraftThread.runtimeMode
+          ? candidateDraftThread.runtimeMode === "full-access"
+            ? DEFAULT_RUNTIME_MODE
+            : candidateDraftThread.runtimeMode
           : DEFAULT_RUNTIME_MODE,
         interactionMode:
           candidateDraftThread.interactionMode === "plan" ||
@@ -1512,7 +1514,9 @@ function normalizePersistedDraftsByThreadId(
         })
       : [];
     const runtimeMode = isRuntimeMode(draftCandidate.runtimeMode)
-      ? draftCandidate.runtimeMode
+      ? draftCandidate.runtimeMode === "full-access"
+        ? DEFAULT_RUNTIME_MODE
+        : draftCandidate.runtimeMode
       : null;
     const interactionMode =
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"

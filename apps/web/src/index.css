@@ -76,6 +76,17 @@
       filter: blur(0);
     }
   }
+  @keyframes diff-stat-bounce {
+    0% {
+      transform: translateY(0) scale(1);
+    }
+    35% {
+      transform: translateY(-3px) scale(1.12);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+    }
+  }
 }
 
 @layer base {

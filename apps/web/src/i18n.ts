@@ -186,22 +186,19 @@ const TRANSLATIONS = {
       "The skill will be deleted from your machine. You can reinstall it later from the catalog.",
     "skills.cancel": "Cancel",
     "skills.loadMore": "Loading more...",
-    "composer.permission.approvalRequired": "Read-only supervision",
+    "composer.permission.approvalRequired": "Ask approval",
     "composer.permission.approvalRequiredDescription":
-      "sandbox_mode=read-only, approval_policy=untrusted. Ask before writes and untrusted commands.",
-    "composer.permission.approvalRequiredStatus":
-      "Read-only · network off · strict approval · Windows elevated",
-    "composer.permission.autoAcceptEdits": "Workspace write",
+      "Always ask before editing external files or using the internet.",
+    "composer.permission.approvalRequiredStatus": "",
+    "composer.permission.autoAcceptEdits": "Auto approve",
     "composer.permission.autoAcceptEditsDescription":
-      "sandbox_mode=workspace-write, approval_policy=on-request. Recommended for local project work.",
-    "composer.permission.autoAcceptEditsStatus":
-      "Workspace write · network off · approval on · Windows elevated",
+      "Only ask for approval when a risky operation is detected.",
+    "composer.permission.autoAcceptEditsStatus": "",
     "composer.permission.fullAccessShort": "Full access",
-    "composer.permission.fullAccess": "Full access",
+    "composer.permission.fullAccess": "Full access permissions",
     "composer.permission.fullAccessDescription":
-      "sandbox_mode=danger-full-access, approval_policy=never. Use only when you trust the repo and task.",
-    "composer.permission.fullAccessStatus":
-      "Full access · network on · no approval · Windows elevated",
+      "Can access the internet and any file on your computer without restriction.",
+    "composer.permission.fullAccessStatus": "",
     "composer.permission.control": "Permission control",
     "composer.model.label": "Model",
     "composer.model.empty": "No models found",
@@ -376,22 +373,19 @@ const TRANSLATIONS = {
     "skills.confirmUninstallDescription": "该技能将从本机删除，需要时可以再次从市场安装。",
     "skills.cancel": "取消",
     "skills.loadMore": "正在加载更多...",
-    "composer.permission.approvalRequired": "只读监督",
+    "composer.permission.approvalRequired": "请求批准",
     "composer.permission.approvalRequiredDescription":
-      "sandbox_mode=read-only，approval_policy=untrusted。写入和非信任命令需要审批。",
-    "composer.permission.approvalRequiredStatus":
-      "只读监督 · 网络关闭 · 严格审批 · Windows elevated",
-    "composer.permission.autoAcceptEdits": "工作区写入",
+      "编辑外部文件和使用互联网时始终询问",
+    "composer.permission.approvalRequiredStatus": "",
+    "composer.permission.autoAcceptEdits": "替我审批",
     "composer.permission.autoAcceptEditsDescription":
-      "sandbox_mode=workspace-write，approval_policy=on-request。推荐用于本地项目开发。",
-    "composer.permission.autoAcceptEditsStatus":
-      "工作区写入 · 网络关闭 · 审批开启 · Windows elevated",
+      "仅对检测到的风险操作请求批准",
+    "composer.permission.autoAcceptEditsStatus": "",
     "composer.permission.fullAccessShort": "完全访问",
     "composer.permission.fullAccess": "完全访问权限",
     "composer.permission.fullAccessDescription":
-      "sandbox_mode=danger-full-access，approval_policy=never。仅在信任仓库和任务时使用。",
-    "composer.permission.fullAccessStatus":
-      "完全访问 · 网络开启 · 无审批 · Windows elevated",
+      "可不受限制地访问互联网和您电脑上的任何文件",
+    "composer.permission.fullAccessStatus": "",
     "composer.permission.control": "权限控制",
     "composer.model.label": "模型",
     "composer.model.empty": "没有可用模型",

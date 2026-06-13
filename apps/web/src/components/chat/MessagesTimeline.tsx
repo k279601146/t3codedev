@@ -2,6 +2,7 @@ import {
   type EnvironmentId,
   type MessageId,
   type ServerProviderSkill,
+  type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
 import {
@@ -18,6 +19,7 @@ import {
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
 import { type TurnDiffSummary } from "../../types";
+import { getPatchDisplayPath, parseUnifiedDiff, type UnifiedDiffLine } from "../../lib/unifiedDiff";
 import { summarizeTurnDiffStats } from "../../lib/turnDiffTree";
 import ChatMarkdown from "../ChatMarkdown";
 import {
@@ -25,6 +27,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CircleAlertIcon,
+  CopyIcon,
   FileIcon,
   EyeIcon,
   GoalIcon,
@@ -1277,8 +1280,28 @@ const WorkGroupSection = memo(function WorkGroupSection({
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
   const [isExpanded, setIsExpanded] = useState(false);
+  const compactRequestErrorMessage = getCompactRequestErrorMessage(groupedEntries);
   const summary = summarizeWorkGroup(groupedEntries);
   const showLiveScan = groupedEntries.some((entry) => entry.status === "running");
+
+  if (compactRequestErrorMessage) {
+    return <CompactRequestErrorRow message={compactRequestErrorMessage} />;
+  }
+
+  if (groupedEntries.length === 1 && groupedEntries[0]?.userInputSummary) {
+    return <UserInputSummaryTimelineRow workEntry={groupedEntries[0]} />;
+  }
+
+  if (groupedEntries.length === 1 && isFileChangeWorkEntry(groupedEntries[0]!)) {
+    return (
+      <div className="pt-2 pb-3 pl-1">
+        <SimpleWorkEntryRow workEntry={groupedEntries[0]!} workspaceRoot={workspaceRoot} />
+      </div>
+    );
+  }
+
+  const isSearchGroup = isSearchWorkGroup(groupedEntries);
+  const SummaryIcon = isSearchGroup ? GlobeIcon : TerminalSquareIcon;
 
   return (
     <div className="pt-2 pb-3 pl-1">
@@ -1290,7 +1313,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
         data-work-group-summary="true"
         onClick={() => setIsExpanded((value) => !value)}
       >
-        <TerminalSquareIcon className="size-4 shrink-0 text-[#999999]" />
+        <SummaryIcon className="size-4 shrink-0 text-[#999999]" />
         {showLiveScan ? (
           <RunningStatusShimmer className="-my-0.5" label={summary.liveLabel} />
         ) : (
@@ -1305,15 +1328,117 @@ const WorkGroupSection = memo(function WorkGroupSection({
       </button>
       {isExpanded ? (
         <div className="mt-1 space-y-0.5 pl-4" data-work-group-details="true">
-          {groupedEntries.map((workEntry) => (
-            <SimpleWorkEntryRow
-              key={`work-row:${workEntry.id}`}
-              workEntry={workEntry}
-              workspaceRoot={workspaceRoot}
-            />
-          ))}
+          {isSearchGroup ? (
+            <SearchWorkGroupDetails groupedEntries={groupedEntries} />
+          ) : (
+            groupedEntries.map((workEntry) => (
+              <SimpleWorkEntryRow
+                key={`work-row:${workEntry.id}`}
+                workEntry={workEntry}
+                workspaceRoot={workspaceRoot}
+              />
+            ))
+          )}
         </div>
       ) : null}
+    </div>
+  );
+});
+
+function isSearchWorkEntry(entry: TimelineWorkEntry): boolean {
+  return entry.toolFamily === "search" || entry.itemType === "web_search";
+}
+
+function isSearchWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): boolean {
+  return entries.length > 0 && entries.every(isSearchWorkEntry);
+}
+
+function isFileChangeWorkEntry(entry: TimelineWorkEntry): boolean {
+  return (
+    entry.requestKind === "file-change" ||
+    entry.itemType === "file_change" ||
+    (entry.changedFiles?.length ?? 0) > 0
+  );
+}
+
+function searchWorkEntryDetail(entry: TimelineWorkEntry): string | null {
+  const detail = workEntryPreview(entry, undefined)?.trim();
+  if (detail) {
+    return detail;
+  }
+  const label = normalizeCompactToolLabel(entry.toolTitle ?? entry.label).trim();
+  return label.length > 0 ? label : null;
+}
+
+const SearchWorkGroupDetails = memo(function SearchWorkGroupDetails({
+  groupedEntries,
+}: {
+  groupedEntries: ReadonlyArray<TimelineWorkEntry>;
+}) {
+  const details = [
+    ...new Set(
+      groupedEntries
+        .map(searchWorkEntryDetail)
+        .filter((detail): detail is string => detail !== null),
+    ),
+  ];
+
+  if (details.length === 0) {
+    return <p className="px-0.5 text-[13px] leading-5 text-muted-foreground/55">搜索详情不可用</p>;
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {details.map((detail) => (
+        <p
+          key={detail}
+          className="px-0.5 text-[13px] leading-5 text-muted-foreground/65 wrap-break-word"
+          title={detail}
+        >
+          {detail}
+        </p>
+      ))}
+    </div>
+  );
+});
+
+function getCompactRequestErrorMessage(entries: ReadonlyArray<TimelineWorkEntry>): string | null {
+  if (entries.length !== 1) {
+    return null;
+  }
+  const entry = entries[0];
+  if (!entry || entry.tone !== "error") {
+    return null;
+  }
+  if (
+    entry.command ||
+    entry.rawCommand ||
+    entry.requestKind ||
+    (entry.changedFiles?.length ?? 0) > 0 ||
+    entry.toolFamily === "command" ||
+    entry.toolFamily === "file"
+  ) {
+    return null;
+  }
+  const message = (entry.detail || entry.label).trim();
+  return message.length > 0 ? message : null;
+}
+
+const CompactRequestErrorRow = memo(function CompactRequestErrorRow({
+  message,
+}: {
+  message: string;
+}) {
+  return (
+    <div className="pt-2 pb-3">
+      <div
+        className="flex min-h-10 items-center gap-3 rounded-2xl border border-border/75 bg-background px-4 py-2.5 text-[13px] leading-5 text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+        style={USER_MESSAGE_FONT_STYLE}
+        title={message}
+      >
+        <CircleAlertIcon className="size-4 shrink-0 text-foreground/80" />
+        <p className="min-w-0 flex-1 truncate">{message}</p>
+      </div>
     </div>
   );
 });
@@ -1322,6 +1447,15 @@ function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
   label: string;
   liveLabel: string;
 } {
+  if (isSearchWorkGroup(entries)) {
+    const runningEntry = entries.find((entry) => entry.status === "running") ?? null;
+    const preview = runningEntry ? searchWorkEntryDetail(runningEntry) : null;
+    return {
+      label: `已搜索网页 ${entries.length} 次`,
+      liveLabel: preview ? `正在搜索 ${preview}` : "正在搜索网页",
+    };
+  }
+
   const commandCount = entries.filter(isCommandWorkEntry).length;
   const changedFileCount = new Set(entries.flatMap((entry) => [...(entry.changedFiles ?? [])]))
     .size;
@@ -1358,7 +1492,10 @@ function runningWorkEntryLabel(entry: TimelineWorkEntry): string {
     const preview = workEntryPreview(entry, undefined);
     return preview ? `${statusLabel ?? "正在运行"} ${preview}` : "正在运行命令";
   }
-  if (statusLabel) return statusLabel;
+  if (statusLabel) {
+    const preview = workEntryPreview(entry, undefined);
+    return preview ? `${statusLabel} ${preview}` : statusLabel;
+  }
   return `正在处理 ${toolWorkEntryHeading(entry)}`;
 }
 
@@ -1458,6 +1595,171 @@ function AssistantChangedFilesSectionInner({
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+interface InlineDiffFileSummary {
+  path: string;
+  displayPath: string;
+  additions: number;
+  deletions: number;
+  patch: ReturnType<typeof parseUnifiedDiff>[number] | null;
+}
+
+function AnimatedDiffStatLabel(props: { additions: number; deletions: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[12px] tabular-nums">
+      <AnimatedDiffNumber value={props.additions} tone="add" />
+      <AnimatedDiffNumber value={props.deletions} tone="delete" />
+    </span>
+  );
+}
+
+function AnimatedDiffNumber(props: { value: number; tone: "add" | "delete" }) {
+  const [pulseKey, setPulseKey] = useState(0);
+  const previousValueRef = useRef(props.value);
+
+  useEffect(() => {
+    if (previousValueRef.current !== props.value) {
+      previousValueRef.current = props.value;
+      setPulseKey((value) => value + 1);
+    }
+  }, [props.value]);
+
+  const className = props.tone === "add" ? "text-emerald-600" : "text-red-500";
+  const prefix = props.tone === "add" ? "+" : "-";
+  return (
+    <span
+      key={`${props.tone}:${pulseKey}`}
+      className={cn(
+        "inline-block min-w-[2ch] animate-[diff-stat-bounce_260ms_cubic-bezier(0.2,0.8,0.2,1)]",
+        className,
+      )}
+    >
+      {prefix}
+      {props.value}
+    </span>
+  );
+}
+
+function InlineChangedFilesDiff(props: { files: ReadonlyArray<InlineDiffFileSummary> }) {
+  const renderableFiles = props.files.filter((file) => file.patch);
+  return (
+    <div className="mt-1 max-h-[360px] overflow-y-auto rounded-lg border border-border/55 bg-card shadow-sm">
+      {renderableFiles.length > 0 ? (
+        renderableFiles.map((file) =>
+          file.patch ? <InlineDiffFile key={file.path} file={file} patch={file.patch} /> : null,
+        )
+      ) : (
+        <div className="px-3 py-2 text-[12px] text-muted-foreground/65">
+          当前工具事件只提供了文件路径，暂未包含可展示的 diff 内容。
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineDiffFile(props: {
+  file: InlineDiffFileSummary;
+  patch: ReturnType<typeof parseUnifiedDiff>[number];
+}) {
+  const [copied, setCopied] = useState(false);
+  const copyPatch = useCallback(() => {
+    const text = props.patch.hunks
+      .flatMap((hunk) =>
+        hunk.lines.map(
+          (line) => `${line.type === "add" ? "+" : line.type === "remove" ? "-" : " "}${line.text}`,
+        ),
+      )
+      .join("\n");
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 900);
+    });
+  }, [props.patch]);
+
+  return (
+    <div className="border-b border-border/45 last:border-b-0">
+      <div className="flex min-w-0 items-center gap-2 bg-muted/45 px-3 py-1.5">
+        <span
+          className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-muted-foreground/90 hover:text-foreground"
+          title={props.file.displayPath}
+        >
+          {props.file.displayPath}
+        </span>
+        <AnimatedDiffStatLabel additions={props.file.additions} deletions={props.file.deletions} />
+        <button
+          type="button"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-background/80 hover:text-foreground"
+          title={copied ? "已复制" : "复制 diff"}
+          aria-label={copied ? "已复制 diff" : "复制 diff"}
+          onClick={copyPatch}
+        >
+          {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+        </button>
+      </div>
+      <div className="overflow-x-auto py-1">
+        {props.patch.hunks.map((hunk, hunkIndex) => (
+          <InlineDiffHunk key={`${hunk.oldStart}:${hunk.newStart}:${hunkIndex}`} hunk={hunk} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InlineDiffHunk(props: {
+  hunk: ReturnType<typeof parseUnifiedDiff>[number]["hunks"][number];
+}) {
+  let oldLineNumber = props.hunk.oldStart;
+  let newLineNumber = props.hunk.newStart;
+
+  return (
+    <div className="min-w-max">
+      {props.hunk.lines.map((line, index) => {
+        const oldDisplay = line.type === "add" ? null : oldLineNumber;
+        const newDisplay = line.type === "remove" ? null : newLineNumber;
+        if (line.type !== "add") oldLineNumber += 1;
+        if (line.type !== "remove") newLineNumber += 1;
+        return (
+          <InlineDiffLine
+            key={`${props.hunk.oldStart}:${props.hunk.newStart}:${index}`}
+            line={line}
+            oldLineNumber={oldDisplay}
+            newLineNumber={newDisplay}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function InlineDiffLine(props: {
+  line: UnifiedDiffLine;
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
+}) {
+  const lineClassName =
+    props.line.type === "add"
+      ? "border-l-2 border-emerald-500 bg-emerald-500/12 text-emerald-700"
+      : props.line.type === "remove"
+        ? "border-l-2 border-red-500 bg-red-500/10 text-red-600"
+        : "border-l-2 border-transparent text-foreground/80";
+  const displayLineNumber = props.newLineNumber ?? props.oldLineNumber ?? "";
+
+  return (
+    <div
+      className={cn(
+        "grid min-w-max grid-cols-[4rem_1fr] font-mono text-[12px] leading-5",
+        lineClassName,
+      )}
+    >
+      <span className="select-none px-3 text-right text-muted-foreground/70">
+        {displayLineNumber}
+      </span>
+      <code className="whitespace-pre px-3">
+        {props.line.text.length > 0 ? props.line.text : " "}
+      </code>
     </div>
   );
 }
@@ -1766,6 +2068,14 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
     if (workEntry.toolTitle?.includes("点击")) return MousePointerClickIcon;
     return MonitorIcon;
   }
+  if (workEntry.toolFamily === "command") return TerminalSquareIcon;
+  if (workEntry.toolFamily === "file") {
+    return workEntry.itemType === "file_change" || (workEntry.changedFiles?.length ?? 0) > 0
+      ? SquarePenIcon
+      : EyeIcon;
+  }
+  if (workEntry.toolFamily === "search") return GlobeIcon;
+  if (workEntry.toolFamily === "mcp") return WrenchIcon;
 
   if (workEntry.itemType === "command_execution" || workEntry.command) {
     return TerminalSquareIcon;
@@ -1823,11 +2133,184 @@ function shouldAnimateWorkEntryText(workEntry: TimelineWorkEntry, displayText: s
   return /^(?:working|running|thinking|\u6b63\u5728)/i.test(normalizedDisplayText);
 }
 
+function countPatchLines(
+  patch: ReturnType<typeof parseUnifiedDiff>[number],
+  type: UnifiedDiffLine["type"],
+): number {
+  return patch.hunks.reduce(
+    (count, hunk) => count + hunk.lines.filter((line) => line.type === type).length,
+    0,
+  );
+}
+
+function normalizeComparablePath(value: string): string {
+  return value
+    .replace(/\\/g, "/")
+    .replace(/^[a-z]:/i, "")
+    .replace(/^\/+/, "");
+}
+
+function findPatchForChangedFile(
+  filePath: string,
+  patches: ReadonlyArray<ReturnType<typeof parseUnifiedDiff>[number]>,
+): ReturnType<typeof parseUnifiedDiff>[number] | null {
+  const comparableFilePath = normalizeComparablePath(filePath);
+  return (
+    patches.find((patch) => {
+      const displayPath = getPatchDisplayPath(patch);
+      if (!displayPath) {
+        return false;
+      }
+      const comparablePatchPath = normalizeComparablePath(displayPath);
+      return (
+        comparablePatchPath === comparableFilePath ||
+        comparableFilePath.endsWith(`/${comparablePatchPath}`) ||
+        comparablePatchPath.endsWith(`/${comparableFilePath}`)
+      );
+    }) ?? null
+  );
+}
+
+function buildFileChangeSummaries(
+  workEntry: TimelineWorkEntry,
+  workspaceRoot: string | undefined,
+): InlineDiffFileSummary[] {
+  const patches = workEntry.detail ? parseUnifiedDiff(workEntry.detail) : [];
+  const patchPaths = new Set<string>();
+  const summaries: InlineDiffFileSummary[] = [];
+
+  for (const filePath of workEntry.changedFiles ?? []) {
+    const patch = findPatchForChangedFile(filePath, patches);
+    const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
+    if (patch) {
+      const patchPath = getPatchDisplayPath(patch);
+      if (patchPath) {
+        patchPaths.add(patchPath);
+      }
+    }
+    summaries.push({
+      path: filePath,
+      displayPath,
+      additions: patch ? countPatchLines(patch, "add") : 0,
+      deletions: patch ? countPatchLines(patch, "remove") : 0,
+      patch,
+    });
+  }
+
+  for (const patch of patches) {
+    const patchPath = getPatchDisplayPath(patch);
+    if (!patchPath || patchPaths.has(patchPath)) {
+      continue;
+    }
+    summaries.push({
+      path: patchPath,
+      displayPath: formatWorkspaceRelativePath(patchPath, workspaceRoot),
+      additions: countPatchLines(patch, "add"),
+      deletions: countPatchLines(patch, "remove"),
+      patch,
+    });
+  }
+
+  return summaries;
+}
+
+function fileChangeVerb(workEntry: TimelineWorkEntry, files: ReadonlyArray<InlineDiffFileSummary>) {
+  const isRunning = workEntry.status === "running";
+  const allFilesAreNew =
+    files.length > 0 && files.every((file) => file.patch?.oldPath === null && file.patch.newPath);
+  if (allFilesAreNew) {
+    return isRunning ? "正在新增" : "已新增";
+  }
+  return isRunning ? "正在编辑" : "已编辑";
+}
+
+const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
+  workEntry: TimelineWorkEntry;
+  workspaceRoot: string | undefined;
+}) {
+  const { workEntry, workspaceRoot } = props;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const files = useMemo(
+    () => buildFileChangeSummaries(workEntry, workspaceRoot),
+    [workEntry, workspaceRoot],
+  );
+  const summaryStat = files.reduce(
+    (stat, file) => ({
+      additions: stat.additions + file.additions,
+      deletions: stat.deletions + file.deletions,
+    }),
+    { additions: 0, deletions: 0 },
+  );
+  const verb = fileChangeVerb(workEntry, files);
+  const firstFile = files[0] ?? null;
+  const title =
+    files.length === 1 && firstFile
+      ? `${verb} ${firstFile.displayPath}`
+      : `${verb} ${files.length} 个文件`;
+
+  return (
+    <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
+      <button
+        type="button"
+        className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/75 transition-colors hover:bg-muted/15 hover:text-foreground/85"
+        aria-expanded={isExpanded}
+        title={title}
+        onClick={() => setIsExpanded((value) => !value)}
+      >
+        <SquarePenIcon className="size-3.5 shrink-0 text-muted-foreground/65" />
+        <span className="shrink-0">{verb}</span>
+        {files.length === 1 && firstFile ? (
+          <span className="min-w-0 truncate font-mono text-[#147DFF]">{firstFile.displayPath}</span>
+        ) : (
+          <span className="shrink-0">{files.length} 个文件</span>
+        )}
+        <AnimatedDiffStatLabel
+          additions={summaryStat.additions}
+          deletions={summaryStat.deletions}
+        />
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/file-change:text-muted-foreground/70",
+            isExpanded && "rotate-180",
+          )}
+        />
+      </button>
+      {files.length > 1 ? (
+        <div className="mt-0.5 space-y-0.5 pl-6">
+          {files.slice(0, isExpanded ? files.length : 2).map((file) => (
+            <div
+              key={`${workEntry.id}:${file.path}`}
+              className="flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-muted-foreground/75"
+              title={file.displayPath}
+            >
+              <span className="shrink-0">{verb.replace("正在", "").replace("已", "已")}</span>
+              <span className="min-w-0 truncate font-mono text-[#147DFF]">{file.displayPath}</span>
+              <AnimatedDiffStatLabel additions={file.additions} deletions={file.deletions} />
+            </div>
+          ))}
+          {!isExpanded && files.length > 2 ? (
+            <div className="px-0.5 text-[12px] leading-5 text-muted-foreground/55">
+              +{files.length - 2} 个文件
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {isExpanded ? <InlineChangedFilesDiff files={files} /> : null}
+    </div>
+  );
+});
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
 }) {
   const { workEntry, workspaceRoot } = props;
+  if (workEntry.userInputSummary) {
+    return <UserInputSummaryTimelineRow workEntry={workEntry} compact />;
+  }
+  if (isFileChangeWorkEntry(workEntry)) {
+    return <FileChangeWorkEntryRow workEntry={workEntry} workspaceRoot={workspaceRoot} />;
+  }
   const iconConfig = workToneIcon(workEntry.tone);
   const EntryIcon = workEntryIcon(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
@@ -1988,13 +2471,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           )}
         </div>
       )}
-      {/* 展开的 Shell 折叠卡片 */}
+      {/* 展开的工具详情 */}
       {hasDetail && isDetailExpanded && (
         <div className="mt-2 ml-6 rounded-xl border border-border/40 bg-muted/30 dark:bg-muted/15 p-3 flex flex-col gap-2 shadow-sm">
           {/* 首行：标题与复制按钮 */}
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold tracking-wider text-muted-foreground/60 uppercase">
-              {capitalizePhrase(workEntry.toolTitle || workEntry.label || "Shell")}
+              {capitalizePhrase(workEntry.toolTitle || workEntry.label || "Tool")}
             </span>
             <MessageCopyButton
               text={workEntry.detail || ""}
@@ -2003,14 +2486,19 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             />
           </div>
 
-          {/* 第二行：命令本身 */}
-          <div className="font-mono text-[13px] font-semibold text-foreground/90 bg-background/40 px-2 py-1.5 rounded border border-border/20 whitespace-pre-wrap break-all flex items-center">
-            <span className="text-emerald-500 mr-1.5 font-bold select-none">$</span>
-            {workEntry.command || workEntry.rawCommand || defaultDisplayText}
-          </div>
+          {isCommandWorkEntry(workEntry) && (workEntry.command || workEntry.rawCommand) ? (
+            <div className="font-mono text-[13px] font-semibold text-foreground/90 bg-background/40 px-2 py-1.5 rounded border border-border/20 whitespace-pre-wrap break-all flex items-center">
+              <span className="text-emerald-500 mr-1.5 font-bold select-none">$</span>
+              {workEntry.command || workEntry.rawCommand}
+            </div>
+          ) : null}
 
-          {/* 输出内容区域 */}
-          <pre className="font-mono text-[12px] leading-relaxed text-foreground/80 bg-background/25 dark:bg-background/40 rounded-lg p-2.5 border border-border/30 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto pr-1 select-text">
+          <pre
+            className={cn(
+              "text-[12px] leading-relaxed text-foreground/80 bg-background/25 dark:bg-background/40 rounded-lg p-2.5 border border-border/30 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto pr-1 select-text",
+              isCommandWorkEntry(workEntry) ? "font-mono" : "font-sans",
+            )}
+          >
             {workEntry.detail}
           </pre>
 
@@ -2030,6 +2518,57 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           </div>
         </div>
       )}
+    </div>
+  );
+});
+
+const UserInputSummaryTimelineRow = memo(function UserInputSummaryTimelineRow({
+  workEntry,
+  compact = false,
+}: {
+  workEntry: TimelineWorkEntry;
+  compact?: boolean;
+}) {
+  const summary = workEntry.userInputSummary;
+  if (!summary) {
+    return null;
+  }
+  const resolvedCount = summary.questions.length;
+  const title =
+    summary.status === "resolved"
+      ? `已询问 ${resolvedCount} 个问题`
+      : resolvedCount > 1
+        ? `正在询问 ${resolvedCount} 个问题`
+        : "正在询问 问题";
+
+  return (
+    <div
+      className={cn("pb-3 pl-1 pt-2", compact && "pb-1 pt-0")}
+      style={USER_MESSAGE_FONT_STYLE}
+      data-user-input-summary="true"
+    >
+      <div className="max-w-full rounded-md px-0.5 py-0.5">
+        <div className="flex items-center gap-1.5 text-[13px] leading-5 text-[#999999]">
+          <span className="min-w-0 truncate">{title}</span>
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/45" />
+        </div>
+        <div className="mt-2 space-y-3 text-[13px] leading-5">
+          {summary.questions.map((question) => {
+            const answer = summary.answers?.[question.id];
+            const answerText = Array.isArray(answer) ? answer.join("、") : answer;
+            return (
+              <div key={`${workEntry.id}:${question.id}`} className="min-w-0">
+                <p className="break-words text-foreground/72">{question.question}</p>
+                {answerText ? (
+                  <p className="mt-1 break-words text-muted-foreground/48">{answerText}</p>
+                ) : summary.status === "requested" ? (
+                  <p className="mt-1 text-muted-foreground/42">等待回答</p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 });
