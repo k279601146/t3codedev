@@ -10,12 +10,20 @@ export interface ComposerPluginMention {
   readonly iconSvg: string;
 }
 
+type BuiltinComposerPluginId = "browser_use" | "browser_use_external" | "computer_use";
+
+interface BuiltinComposerPluginCapability extends ComposerPluginMention {
+  readonly builtinPluginId: BuiltinComposerPluginId;
+  readonly requiresPairing?: boolean;
+}
+
 const BROWSER_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></svg>`;
 const COMPUTER_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="12" x="3" y="4" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>`;
 const CHROME_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M21.17 8H12"/><path d="M3.95 6.06 8.54 14"/><path d="m10.88 21.94 4.59-7.94"/></svg>`;
 
-export const COMPOSER_PLUGIN_MENTIONS: readonly ComposerPluginMention[] = [
+const BUILTIN_COMPOSER_PLUGIN_CAPABILITIES: readonly BuiltinComposerPluginCapability[] = [
   {
+    builtinPluginId: "browser_use",
     id: "Browser",
     token: "@Browser",
     label: "Browser",
@@ -25,6 +33,8 @@ export const COMPOSER_PLUGIN_MENTIONS: readonly ComposerPluginMention[] = [
     iconSvg: BROWSER_ICON_SVG,
   },
   {
+    builtinPluginId: "browser_use_external",
+    requiresPairing: true,
     id: "Chrome",
     token: "@Chrome",
     label: "Chrome",
@@ -34,6 +44,7 @@ export const COMPOSER_PLUGIN_MENTIONS: readonly ComposerPluginMention[] = [
     iconSvg: CHROME_ICON_SVG,
   },
   {
+    builtinPluginId: "computer_use",
     id: "Computer",
     token: "@Computer",
     label: "电脑",
@@ -43,6 +54,12 @@ export const COMPOSER_PLUGIN_MENTIONS: readonly ComposerPluginMention[] = [
     iconSvg: COMPUTER_ICON_SVG,
   },
 ];
+
+export const COMPOSER_PLUGIN_MENTIONS: readonly ComposerPluginMention[] =
+  BUILTIN_COMPOSER_PLUGIN_CAPABILITIES.map(
+    ({ builtinPluginId: _builtinPluginId, requiresPairing: _requiresPairing, ...mention }) =>
+      mention,
+  );
 
 const MENTIONS_BY_ID = new Map(COMPOSER_PLUGIN_MENTIONS.map((mention) => [mention.id, mention]));
 const MENTIONS_BY_LOWER_TOKEN = new Map(
@@ -64,9 +81,13 @@ export function getComposerPluginMentionCaseInsensitive(
 export function getVisibleComposerPluginMentions(options?: {
   readonly includeChrome?: boolean;
 }): readonly ComposerPluginMention[] {
-  return options?.includeChrome
-    ? COMPOSER_PLUGIN_MENTIONS
-    : COMPOSER_PLUGIN_MENTIONS.filter((mention) => mention.id !== "Chrome");
+  const capabilities = options?.includeChrome
+    ? BUILTIN_COMPOSER_PLUGIN_CAPABILITIES
+    : BUILTIN_COMPOSER_PLUGIN_CAPABILITIES.filter((capability) => capability.id !== "Chrome");
+  return capabilities.map(
+    ({ builtinPluginId: _builtinPluginId, requiresPairing: _requiresPairing, ...mention }) =>
+      mention,
+  );
 }
 
 export function searchComposerPluginMentions(

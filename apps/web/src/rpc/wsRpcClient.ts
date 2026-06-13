@@ -165,6 +165,16 @@ export interface WsRpcClient {
     readonly uninstall: RpcUnaryMethod<typeof WS_METHODS.skillsUninstall>;
     readonly content: RpcUnaryMethod<typeof WS_METHODS.skillsContent>;
   };
+  readonly plugins: {
+    readonly list: RpcUnaryNoArgMethod<typeof WS_METHODS.pluginsList>;
+    readonly read: RpcUnaryMethod<typeof WS_METHODS.pluginsRead>;
+    readonly install: RpcUnaryMethod<typeof WS_METHODS.pluginsInstall>;
+    readonly uninstall: RpcUnaryMethod<typeof WS_METHODS.pluginsUninstall>;
+  };
+  readonly marketplace: {
+    readonly add: RpcUnaryMethod<typeof WS_METHODS.marketplaceAdd>;
+    readonly upgrade: RpcUnaryMethod<typeof WS_METHODS.marketplaceUpgrade>;
+  };
   readonly automations: {
     readonly list: RpcUnaryMethod<typeof WS_METHODS.automationsList>;
     readonly get: RpcUnaryMethod<typeof WS_METHODS.automationsGet>;
@@ -357,6 +367,18 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       uninstall: (input) =>
         transport.request((client) => client[WS_METHODS.skillsUninstall](input)),
       content: (input) => transport.request((client) => client[WS_METHODS.skillsContent](input)),
+    },
+    plugins: {
+      list: () => transport.request((client) => client[WS_METHODS.pluginsList]({})),
+      read: (input) => transport.request((client) => client[WS_METHODS.pluginsRead](input)),
+      install: (input) => transport.request((client) => client[WS_METHODS.pluginsInstall](input)),
+      uninstall: (input) =>
+        transport.request((client) => client[WS_METHODS.pluginsUninstall](input)),
+    },
+    marketplace: {
+      add: (input) => transport.request((client) => client[WS_METHODS.marketplaceAdd](input)),
+      upgrade: (input) =>
+        transport.request((client) => client[WS_METHODS.marketplaceUpgrade](input)),
     },
     automations: {
       list: (input) => transport.request((client) => client[WS_METHODS.automationsList](input)),

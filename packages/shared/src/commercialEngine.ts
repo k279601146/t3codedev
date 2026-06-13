@@ -154,6 +154,8 @@ image_generation = true
 
 [features]
 image_generation = true
+plugins = true
+apps = true
 browser_use = true
 in_app_browser = true
 computer_use = true

@@ -88,6 +88,10 @@ import {
   type SkillsCatalogServiceShape,
 } from "./skills/SkillsCatalogService.ts";
 import { SkillsService, type SkillsServiceShape } from "./skills/SkillsService.ts";
+import {
+  CodexPluginService,
+  type CodexPluginServiceShape,
+} from "./plugins/CodexPluginService.ts";
 import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager.ts";
 import {
   BrowserTraceCollector,
@@ -348,6 +352,7 @@ const buildAppUnderTest = (options?: {
     repositoryIdentityResolver?: Partial<RepositoryIdentityResolverShape>;
     skillsCatalogService?: Partial<SkillsCatalogServiceShape>;
     skillsService?: Partial<SkillsServiceShape>;
+    codexPluginService?: Partial<CodexPluginServiceShape>;
     automationService?: Partial<AutomationServiceShape>;
   };
 }) =>
@@ -521,6 +526,7 @@ const buildAppUnderTest = (options?: {
             hasErrors: false,
           }),
         warmUp: Effect.void,
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off
         findCatalogItem: () => Effect.succeed(undefined),
         resolveVendorAssetPath: () => Effect.succeed(null),
         readCatalogContent: () => Effect.succeed(null),
@@ -539,6 +545,30 @@ const buildAppUnderTest = (options?: {
         resolveInstalledAssetPath: () => Effect.succeed(null),
         warmUp: Effect.void,
         ...options?.layers?.skillsService,
+      }),
+      Layer.mock(CodexPluginService)({
+        list: () =>
+          Effect.succeed({
+            marketplaces: [],
+            builtinPlugins: [],
+            featuredPluginIds: [],
+            marketplaceLoadErrors: [],
+          }),
+        read: () => Effect.die(new Error("测试未提供插件详情")),
+        install: () => Effect.die(new Error("测试未提供插件安装结果")),
+        uninstall: () => Effect.succeed({ uninstalled: true }),
+        addMarketplace: () =>
+          Effect.succeed({
+            alreadyAdded: false,
+            installedRoot: "",
+            marketplaceName: "",
+          }),
+        upgradeMarketplace: () =>
+          Effect.succeed({
+            selectedMarketplaces: [],
+            errors: [],
+          }),
+        ...options?.layers?.codexPluginService,
       }),
       Layer.mock(AutomationService)({
         start: () => Effect.void,
@@ -2217,6 +2247,150 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.deepEqual(response.issues, []);
       assert.deepEqual(response.keybindings, [resolved]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc plugin and marketplace methods", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ readonly method: string; readonly input: unknown }> = [];
+      const summary = {
+        id: "plugin:demo",
+        name: "demo",
+        displayName: "Demo Plugin",
+        description: "Demo plugin",
+        installed: false,
+        enabled: true,
+        authPolicy: "ON_USE" as const,
+        installPolicy: "AVAILABLE" as const,
+        availability: "AVAILABLE" as const,
+        source: { type: "codexRemote" as const },
+        keywords: ["demo"],
+        location: {
+          pluginName: "demo",
+          marketplacePath: null,
+          remoteMarketplaceName: "official",
+        },
+      };
+      const detail = {
+        summary,
+        description: "Demo plugin detail",
+        marketplaceName: "official",
+        marketplacePath: null,
+        skills: [{ name: "demo-skill" }],
+        apps: [],
+        appTemplates: [],
+        mcpServers: [],
+        hooks: [],
+      };
+
+      yield* buildAppUnderTest({
+        layers: {
+          codexPluginService: {
+            list: () =>
+              Effect.succeed({
+                marketplaces: [{ name: "official", path: null, plugins: [summary] }],
+                builtinPlugins: [],
+                featuredPluginIds: ["plugin:demo"],
+                marketplaceLoadErrors: [],
+              }),
+            read: (input) =>
+              Effect.sync(() => {
+                calls.push({ method: "read", input });
+                return { plugin: detail };
+              }),
+            install: (input) =>
+              Effect.sync(() => {
+                calls.push({ method: "install", input });
+                return { appsNeedingAuth: [], authPolicy: "ON_USE" as const };
+              }),
+            uninstall: (input) =>
+              Effect.sync(() => {
+                calls.push({ method: "uninstall", input });
+                return { uninstalled: true };
+              }),
+            addMarketplace: (input) =>
+              Effect.sync(() => {
+                calls.push({ method: "marketplace.add", input });
+                return {
+                  alreadyAdded: false,
+                  installedRoot: "/tmp/marketplace",
+                  marketplaceName: "official",
+                };
+              }),
+            upgradeMarketplace: (input) =>
+              Effect.sync(() => {
+                calls.push({ method: "marketplace.upgrade", input });
+                return { selectedMarketplaces: ["official"], errors: [] };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const list = yield* client[WS_METHODS.pluginsList]({});
+            const read = yield* client[WS_METHODS.pluginsRead]({
+              pluginName: "demo",
+              marketplacePath: null,
+              remoteMarketplaceName: "official",
+            });
+            const install = yield* client[WS_METHODS.pluginsInstall]({
+              pluginName: "demo",
+              marketplacePath: null,
+              remoteMarketplaceName: "official",
+            });
+            const uninstall = yield* client[WS_METHODS.pluginsUninstall]({
+              pluginId: "plugin:demo",
+            });
+            const add = yield* client[WS_METHODS.marketplaceAdd]({
+              source: "https://github.com/openai/codex-plugins",
+              refName: null,
+              sparsePaths: ["marketplaces/official"],
+            });
+            const upgrade = yield* client[WS_METHODS.marketplaceUpgrade]({
+              marketplaceName: null,
+            });
+            return { list, read, install, uninstall, add, upgrade };
+          }),
+        ),
+      );
+
+      assert.equal(result.list.marketplaces[0]?.plugins[0]?.name, "demo");
+      assert.equal(result.read.plugin.skills[0]?.name, "demo-skill");
+      assert.equal(result.install.authPolicy, "ON_USE");
+      assert.equal(result.uninstall.uninstalled, true);
+      assert.equal(result.add.marketplaceName, "official");
+      assert.deepEqual(result.upgrade.selectedMarketplaces, ["official"]);
+      assert.deepEqual(calls, [
+        {
+          method: "read",
+          input: {
+            pluginName: "demo",
+            marketplacePath: null,
+            remoteMarketplaceName: "official",
+          },
+        },
+        {
+          method: "install",
+          input: {
+            pluginName: "demo",
+            marketplacePath: null,
+            remoteMarketplaceName: "official",
+          },
+        },
+        { method: "uninstall", input: { pluginId: "plugin:demo" } },
+        {
+          method: "marketplace.add",
+          input: {
+            source: "https://github.com/openai/codex-plugins",
+            refName: null,
+            sparsePaths: ["marketplaces/official"],
+          },
+        },
+        { method: "marketplace.upgrade", input: { marketplaceName: null } },
+      ]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

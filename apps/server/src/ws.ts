@@ -75,6 +75,7 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as SourceControlDiscoveryLayer from "./sourceControl/SourceControlDiscovery.ts";
+import { CodexPluginService } from "./plugins/CodexPluginService.ts";
 import { SourceControlRepositoryService } from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
@@ -180,6 +181,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const config = yield* ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents;
       const serverSettings = yield* ServerSettingsService;
+      const plugins = yield* CodexPluginService;
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
@@ -1024,6 +1026,30 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               "rpc.aggregate": "skills",
             },
           ),
+        [WS_METHODS.pluginsList]: (_input) =>
+          observeRpcEffect(WS_METHODS.pluginsList, plugins.list(), {
+            "rpc.aggregate": "plugins",
+          }),
+        [WS_METHODS.pluginsRead]: (input) =>
+          observeRpcEffect(WS_METHODS.pluginsRead, plugins.read(input), {
+            "rpc.aggregate": "plugins",
+          }),
+        [WS_METHODS.pluginsInstall]: (input) =>
+          observeRpcEffect(WS_METHODS.pluginsInstall, plugins.install(input), {
+            "rpc.aggregate": "plugins",
+          }),
+        [WS_METHODS.pluginsUninstall]: (input) =>
+          observeRpcEffect(WS_METHODS.pluginsUninstall, plugins.uninstall(input), {
+            "rpc.aggregate": "plugins",
+          }),
+        [WS_METHODS.marketplaceAdd]: (input) =>
+          observeRpcEffect(WS_METHODS.marketplaceAdd, plugins.addMarketplace(input), {
+            "rpc.aggregate": "plugins",
+          }),
+        [WS_METHODS.marketplaceUpgrade]: (input) =>
+          observeRpcEffect(WS_METHODS.marketplaceUpgrade, plugins.upgradeMarketplace(input), {
+            "rpc.aggregate": "plugins",
+          }),
         [WS_METHODS.automationsList]: (input) =>
           observeRpcEffect(
             WS_METHODS.automationsList,

@@ -1136,9 +1136,9 @@ export const ChatComposer = memo(
     const visiblePluginMentions = useMemo(
       () =>
         getVisibleComposerPluginMentions({
-          includeChrome: browserExternalPlugin.installed,
+          includeChrome: true,
         }),
-      [browserExternalPlugin.installed],
+      [],
     );
 
     // ------------------------------------------------------------------
@@ -1468,7 +1468,7 @@ export const ChatComposer = memo(
       if (!composerTrigger) return [];
       if (composerTrigger.kind === "path") {
         const pluginItems = searchComposerPluginMentions(composerTrigger.query, {
-          includeChrome: browserExternalPlugin.installed,
+          includeChrome: true,
         }).map((plugin) => ({
           id: `plugin:${plugin.id}`,
           type: "plugin" as const,
@@ -2428,7 +2428,6 @@ export const ChatComposer = memo(
         activePendingProgress,
         applyPromptReplacement,
         browserExternalPlugin.connected,
-        browserExternalPlugin.installed,
         isComposerApprovalState,
         navigate,
         promptRef,

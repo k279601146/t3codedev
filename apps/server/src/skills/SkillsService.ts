@@ -6,13 +6,11 @@
  *  - 已安装（list）：从 ProviderRegistry 拉取 codex provider snapshot 中
  *    现成的 skills 数组（已经由 CodexProvider 调 skills/list 缓存）。
  *  - 推荐（catalog）：委托给 SkillsCatalogService。
- *  - 安装（install）：根据 catalogItemId 反查 source/repo/sparsePath，
- *    临时启动 codex app-server 调用 marketplace/add。
- *  - 卸载（uninstall）：根据 skillName 反查 marketplace name，调 marketplace/remove。
+ *  - 安装（install）：Skills 页不再定义安装语义，返回可展示错误，引导到插件页。
+ *  - 卸载（uninstall）：Skills 页不再直接删除 CODEX_HOME 文件，引导到插件页。
  *
- * 注意：install/uninstall 调用的是 codex 引擎的 marketplace endpoint，
- * 这意味着无论 git 是否可用、catalog 是否已缓存，安装路径始终走 codex 自己的
- * 拉取流程。catalog 仅用于"展示推荐 + 反查 source/sparsePath"。
+ * 注意：Codex plugin/marketplace 生命周期由插件页和 CodexPluginService 代理，
+ * catalog 在这里仅作为只读推荐和内容浏览入口保留。
  */
 
 import * as Context from "effect/Context";
@@ -20,24 +18,16 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import { cp, rm } from "node:fs/promises";
-import * as NodeOS from "node:os";
 
 import {
-  type CodexSettings,
   type InstalledSkill,
-  ProviderDriverKind,
   SkillsServiceError,
   type SkillsCatalogResponse,
   type SkillsListResponse,
   type SkillCatalogItem,
 } from "@t3tools/contracts";
 
-import { expandHomePath } from "../pathExpansion.ts";
-import { resolveBundledEngineConfig } from "../provider/BundledEngineConfig.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
-import { ServerSettingsService } from "../serverSettings.ts";
-import { ServerConfig } from "../config.ts";
 
 import { parseSkillDocument } from "./frontmatter.ts";
 import {
@@ -180,65 +170,15 @@ const catalogEntryToItem = (entry: CatalogSkillEntry): SkillCatalogItem => {
 };
 
 // ──────────────────────────────────────────────────────────────────────────
-// codex client 临时连接（用于 marketplace/add/remove）
-
-interface CodexProbeContext {
-  readonly binaryPath: string;
-  readonly homePath?: string | undefined;
-  readonly cwd: string;
-  readonly env: NodeJS.ProcessEnv;
-}
-
-const resolveCodexProbeContext = (
-  settings: typeof ServerSettingsService.Service,
-  config: typeof ServerConfig.Service,
-) =>
-  Effect.gen(function* () {
-    const serverSettings = yield* settings.getSettings;
-    const codexSettings = (serverSettings.providers.codex ?? {}) as CodexSettings;
-    const binaryPath = (codexSettings.binaryPath ?? "").trim();
-    if (binaryPath.length === 0 && !resolveBundledEngineConfig(process.env)) {
-      return yield* Effect.fail(
-        new SkillsServiceError({
-          detail: "Codex provider is not configured.",
-          kind: "providerUnavailable",
-        }),
-      );
-    }
-    return {
-      binaryPath: binaryPath.length > 0 ? binaryPath : "codex",
-      homePath: codexSettings.homePath?.trim() || undefined,
-      cwd: config.cwd,
-      env: process.env,
-    } satisfies CodexProbeContext;
-  });
-
-// ──────────────────────────────────────────────────────────────────────────
-
 const make = Effect.fn("makeSkillsService")(function* () {
   const catalog = yield* SkillsCatalogService;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const providerRegistry = yield* ProviderRegistry;
-  const config = yield* ServerConfig;
-  const settings = yield* ServerSettingsService;
-
-  const refreshCodexProvidersInBackground = (reason: "install" | "uninstall", skillName: string) =>
-    Effect.gen(function* () {
-      yield* Effect.logInfo("skills provider refresh scheduled", {
-        reason,
-        skillName,
-      });
-      yield* providerRegistry.refresh(ProviderDriverKind.make("codex"));
-      yield* Effect.logInfo("skills provider refresh finished", {
-        reason,
-        skillName,
-      });
-    }).pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
   /**
    * codex skills/list 返回的 path 既可能指向 SKILL.md 文件，也可能指向 skill 目录（旧版）。
-   * 我们统一规整为 skill 目录路径，便于后续读 SKILL.md / 资源 / 整目录卸载。
+   * 我们统一规整为 skill 目录路径，便于后续读 SKILL.md / 资源。
    */
   const resolveSkillDir = (rawPath: string) =>
     Effect.gen(function* () {
@@ -362,9 +302,9 @@ const make = Effect.fn("makeSkillsService")(function* () {
 
   const install: SkillsServiceShape["install"] = (input) =>
     Effect.gen(function* () {
-      const item = yield* catalog
-        .findCatalogItem(input.catalogItemId)
-        .pipe(Effect.mapError((cause) => errorFromUnknown("skills.install", cause)));
+      const item = yield* catalog.findCatalogItem(input.catalogItemId).pipe(
+        Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
+      );
       if (!item) {
         return yield* Effect.fail(
           new SkillsServiceError({
@@ -373,112 +313,22 @@ const make = Effect.fn("makeSkillsService")(function* () {
           }),
         );
       }
-      const source = findSkillSource(item.sourceId);
-      if (!source) {
-        return yield* Effect.fail(
-          new SkillsServiceError({
-            detail: `Unknown source: ${item.sourceId}`,
-            kind: "notFound",
-          }),
-        );
-      }
-      const ctx = yield* resolveCodexProbeContext(settings, config).pipe(
-        Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
+      return yield* Effect.fail(
+        new SkillsServiceError({
+          detail:
+            "技能目录已改为只读浏览。请在插件页安装对应 Codex 插件，安装后插件内的 skills 会自动出现在输入框中。",
+          kind: "internal",
+        }),
       );
-
-      const bundledConfig = resolveBundledEngineConfig(ctx.env);
-      const codexHome =
-        bundledConfig?.engineHome ||
-        (ctx.homePath ? expandHomePath(ctx.homePath) : path.join(NodeOS.homedir(), ".codex"));
-
-      const sourceDir = path.join(config.baseDir, "vendor_imports", source.id, item.repoPath);
-      const targetDir = path.join(codexHome, "skills", item.name);
-
-      const exists = yield* fs.exists(targetDir).pipe(Effect.orElseSucceed(() => false));
-      if (exists) {
-        yield* Effect.logInfo("skills.install detected existing skill", {
-          skillName: item.name,
-          catalogItemId: input.catalogItemId,
-          targetDir,
-        });
-        yield* refreshCodexProvidersInBackground("install", item.name);
-        return { marketplaceName: item.name, alreadyAdded: true };
-      }
-
-      yield* Effect.logInfo("skills.install copying skill files", {
-        skillName: item.name,
-        catalogItemId: input.catalogItemId,
-        sourceDir,
-        targetDir,
-      });
-
-      yield* Effect.promise(() => cp(sourceDir, targetDir, { recursive: true })).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SkillsServiceError({
-              detail: `Copying skill files failed: ${String(cause)}`,
-              kind: "internal",
-          }),
-        ),
-      );
-
-      yield* Effect.logInfo("skills.install copied skill files", {
-        skillName: item.name,
-        targetDir,
-      });
-      yield* refreshCodexProvidersInBackground("install", item.name);
-
-      return { marketplaceName: item.name, alreadyAdded: false };
     });
 
   const uninstall: SkillsServiceShape["uninstall"] = (input) =>
-    Effect.gen(function* () {
-      const skillDir = yield* findInstalledSkillDir(input.skillName);
-
-      if (!skillDir) {
-        return yield* Effect.fail(
-          new SkillsServiceError({
-            detail: "Cannot determine path for this skill. It may be a built-in (system) skill.",
-            kind: "notFound",
-          }),
-        );
-      }
-
-      // Safety check: Ensure the path is within CODEX_HOME/skills to prevent accidental deletion
-      const ctx = yield* resolveCodexProbeContext(settings, config).pipe(
-        Effect.mapError((cause) => errorFromUnknown("skills.uninstall", cause)),
-      );
-      const bundledConfig = resolveBundledEngineConfig(ctx.env);
-      const codexHome =
-        bundledConfig?.engineHome ||
-        (ctx.homePath ? expandHomePath(ctx.homePath) : path.join(NodeOS.homedir(), ".codex"));
-      const expectedPrefix = path.join(codexHome, "skills");
-
-      const normalizedSkillPath = path.resolve(skillDir);
-      const normalizedPrefix = path.resolve(expectedPrefix);
-      if (!normalizedSkillPath.startsWith(normalizedPrefix)) {
-        return yield* Effect.fail(
-          new SkillsServiceError({
-            detail: `Cannot uninstall skill because its path (${skillDir}) is outside the expected skills directory. It may be a built-in or repo skill.`,
-            kind: "internal",
-          }),
-        );
-      }
-
-      yield* Effect.promise(() => rm(skillDir, { recursive: true, force: true })).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SkillsServiceError({
-              detail: `Removing skill files failed: ${String(cause)}`,
-              kind: "internal",
-          }),
-        ),
-      );
-
-      yield* refreshCodexProvidersInBackground("uninstall", input.skillName);
-
-      return { removed: true };
-    });
+    Effect.fail(
+      new SkillsServiceError({
+        detail: `请在插件页卸载提供 ${input.skillName} 的 Codex 插件。Skills 页不再直接删除 CODEX_HOME 文件。`,
+        kind: "internal",
+      }),
+    );
 
   const content: SkillsServiceShape["content"] = (input) =>
     Effect.gen(function* () {

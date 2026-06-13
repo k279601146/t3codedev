@@ -3,7 +3,10 @@ import type {
   DesktopBrowserExternalAutomationState,
   DesktopComputerAutomationAppPermission,
   DesktopComputerAutomationState,
+  PluginDetail,
+  PluginSummary,
 } from "@t3tools/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BlocksIcon,
   CheckIcon,
@@ -31,6 +34,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { toastManager } from "~/components/ui/toast";
 import { cn } from "~/lib/utils";
 import { useBrowserExternalPluginState } from "~/browserExternalPluginState";
+import { getPrimaryEnvironmentConnection } from "~/environments/runtime";
 
 type BuiltinPluginId = "browser_use" | "browser_use_external" | "computer_use";
 
@@ -65,10 +69,37 @@ const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
     tags: ["browser_use_external", "chrome", "t3_browser_external"],
   },
 ];
-const DEFAULT_PLUGIN = BUILTIN_PLUGINS[0]!;
+const PLUGINS_LIST_QUERY = ["plugins", "list"] as const;
+const pluginDetailQueryKey = (plugin: PluginSummary) =>
+  [
+    "plugins",
+    "detail",
+    plugin.location.remoteMarketplaceName ?? "",
+    plugin.location.marketplacePath ?? "",
+    plugin.name,
+  ] as const;
 const CHROME_EXTENSION_DOWNLOAD_URL = "/downloads/t3-code-chrome-extension.zip";
 const CHROME_EXTENSION_DOWNLOAD_NAME = "t3-code-chrome-extension.zip";
 const CHROME_EXTENSIONS_URL = "chrome://extensions";
+
+function getPluginsClient() {
+  return getPrimaryEnvironmentConnection().client.plugins;
+}
+
+function getMarketplaceClient() {
+  return getPrimaryEnvironmentConnection().client.marketplace;
+}
+
+function builtinPluginId(plugin: PluginSummary): BuiltinPluginId | null {
+  if (plugin.source.type !== "builtin") return null;
+  const id = plugin.source.builtinId;
+  return id === "browser_use" || id === "browser_use_external" || id === "computer_use" ? id : null;
+}
+
+function builtinMeta(plugin: PluginSummary): BuiltinPlugin | null {
+  const id = builtinPluginId(plugin);
+  return id ? (BUILTIN_PLUGINS.find((candidate) => candidate.id === id) ?? null) : null;
+}
 
 function formatTimestamp(value: string | null): string {
   if (!value) return "从未";
@@ -657,14 +688,257 @@ function ComputerPluginDetails({
   );
 }
 
+function PluginSummaryCard({
+  active,
+  plugin,
+  status,
+  onSelect,
+}: {
+  readonly active: boolean;
+  readonly plugin: PluginSummary;
+  readonly status: "ready" | "paused" | "unavailable" | "not-installed" | "setup-required";
+  readonly onSelect: () => void;
+}) {
+  const builtin = builtinMeta(plugin);
+  return (
+    <button
+      type="button"
+      className={cn(
+        "group flex w-full items-center gap-3 rounded-md px-3 py-3 text-start transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        active ? "bg-accent text-accent-foreground" : "hover:bg-accent/40",
+      )}
+      onClick={onSelect}
+    >
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        {builtin?.icon ?? <BlocksIcon className="size-5" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium text-foreground">
+          {plugin.displayName}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {plugin.description ?? plugin.name}
+        </div>
+      </div>
+      <div className="shrink-0">{statusPill(status)}</div>
+    </button>
+  );
+}
+
+function DetailRows({ detail }: { readonly detail: PluginDetail }) {
+  return (
+    <div className="mt-3 rounded-md border border-border/70 px-3">
+      <SettingRow label="来源" value={detail.summary.source.type} />
+      <SettingRow label="Marketplace" value={detail.marketplaceName} />
+      <SettingRow
+        label="Skills"
+        value={
+          detail.skills.length > 0 ? detail.skills.map((skill) => skill.name).join(", ") : "无"
+        }
+      />
+      <SettingRow
+        label="Apps"
+        value={detail.apps.length > 0 ? detail.apps.map((app) => app.name).join(", ") : "无"}
+      />
+      <SettingRow
+        label="MCP Servers"
+        value={detail.mcpServers.length > 0 ? detail.mcpServers.join(", ") : "无"}
+      />
+      <SettingRow
+        label="Hooks"
+        value={detail.hooks.length > 0 ? detail.hooks.map((hook) => hook.name).join(", ") : "无"}
+      />
+    </div>
+  );
+}
+
+function CodexPluginDetails({
+  plugin,
+  detail,
+  loading,
+  installing,
+  uninstalling,
+  onInstall,
+  onUninstall,
+}: {
+  readonly plugin: PluginSummary;
+  readonly detail: PluginDetail | null;
+  readonly loading: boolean;
+  readonly installing: boolean;
+  readonly uninstalling: boolean;
+  readonly onInstall: () => void;
+  readonly onUninstall: () => void;
+}) {
+  const unavailable = plugin.availability === "DISABLED_BY_ADMIN";
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="truncate text-sm font-semibold text-foreground">{plugin.displayName}</h2>
+          {plugin.installed ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={uninstalling || unavailable}
+              onClick={onUninstall}
+            >
+              {uninstalling ? (
+                <Loader2Icon className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2Icon className="size-3.5" />
+              )}
+              卸载
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="xs"
+              disabled={installing || unavailable}
+              onClick={onInstall}
+            >
+              {installing ? (
+                <Loader2Icon className="size-3.5 animate-spin" />
+              ) : (
+                <DownloadIcon className="size-3.5" />
+              )}
+              安装
+            </Button>
+          )}
+        </div>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          {detail?.description ?? plugin.description ?? "此插件由 Codex marketplace 提供。"}
+        </p>
+        {loading ? (
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2Icon className="size-3.5 animate-spin" />
+            正在读取插件详情...
+          </div>
+        ) : detail ? (
+          <DetailRows detail={detail} />
+        ) : null}
+      </section>
+      <section className="rounded-md border border-border/70 bg-muted/20 p-3">
+        <div className="text-xs leading-5 text-muted-foreground">
+          Codex 插件的安装、卸载、skills、MCP、apps 和 hooks 生命周期由 Codex app-server
+          管理。T3 Code 只负责展示、授权边界和商业化运行环境。
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function PluginsPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [selectedPluginId, setSelectedPluginId] = useState<BuiltinPluginId>("browser_use");
+  const [marketplaceSource, setMarketplaceSource] = useState("");
+  const [selectedPluginId, setSelectedPluginId] = useState<string>("builtin:browser_use");
   const [browserState, setBrowserState] = useState<DesktopBrowserAutomationState | null>(null);
   const browserExternalPlugin = useBrowserExternalPluginState();
   const browserExternalState = browserExternalPlugin.state;
   const [computerState, setComputerState] = useState<DesktopComputerAutomationState | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const pluginsQuery = useQuery({
+    queryKey: PLUGINS_LIST_QUERY,
+    queryFn: () => getPluginsClient().list(),
+    staleTime: 30_000,
+  });
+
+  const allPlugins = useMemo(
+    () => pluginsQuery.data?.marketplaces.flatMap((marketplace) => marketplace.plugins) ?? [],
+    [pluginsQuery.data],
+  );
+
+  const selectedPlugin =
+    allPlugins.find((plugin) => plugin.id === selectedPluginId) ?? allPlugins[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedPlugin && allPlugins.length > 0) {
+      setSelectedPluginId(allPlugins[0]!.id);
+    }
+  }, [allPlugins, selectedPlugin]);
+
+  const detailQuery = useQuery({
+    queryKey: selectedPlugin ? pluginDetailQueryKey(selectedPlugin) : ["plugins", "detail", "none"],
+    queryFn: () =>
+      selectedPlugin
+        ? getPluginsClient().read({
+            pluginName: selectedPlugin.location.pluginName,
+            marketplacePath: selectedPlugin.location.marketplacePath ?? null,
+            remoteMarketplaceName: selectedPlugin.location.remoteMarketplaceName ?? null,
+          })
+        : Promise.resolve(null),
+    enabled: selectedPlugin !== null,
+    staleTime: 30_000,
+  });
+
+  const installMutation = useMutation({
+    mutationFn: (plugin: PluginSummary) =>
+      getPluginsClient().install({
+        pluginName: plugin.location.pluginName,
+        marketplacePath: plugin.location.marketplacePath ?? null,
+        remoteMarketplaceName: plugin.location.remoteMarketplaceName ?? null,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PLUGINS_LIST_QUERY });
+      toastManager.add({ type: "success", title: "插件已安装" });
+    },
+    onError: (error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "插件安装失败",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+
+  const uninstallMutation = useMutation({
+    mutationFn: (plugin: PluginSummary) => getPluginsClient().uninstall({ pluginId: plugin.id }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PLUGINS_LIST_QUERY });
+      toastManager.add({ type: "success", title: "插件已卸载" });
+    },
+    onError: (error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "插件卸载失败",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+
+  const upgradeMutation = useMutation({
+    mutationFn: () => getMarketplaceClient().upgrade({ marketplaceName: null }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PLUGINS_LIST_QUERY });
+      toastManager.add({ type: "success", title: "Marketplace 已刷新" });
+    },
+    onError: (error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "刷新失败",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
+
+  const addMarketplaceMutation = useMutation({
+    mutationFn: (source: string) =>
+      getMarketplaceClient().add({ source, refName: null, sparsePaths: null }),
+    onSuccess: () => {
+      setMarketplaceSource("");
+      void queryClient.invalidateQueries({ queryKey: PLUGINS_LIST_QUERY });
+      toastManager.add({ type: "success", title: "Marketplace 已添加" });
+    },
+    onError: (error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "添加 Marketplace 失败",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
 
   const refreshBrowser = useCallback(() => {
     const bridge = window.desktopBridge;
@@ -708,28 +982,6 @@ export function PluginsPage() {
       unsubscribeComputer?.();
     };
   }, [refreshBrowser, refreshBrowserExternal, refreshComputer]);
-
-  const filteredPlugins = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const matching = !query
-      ? BUILTIN_PLUGINS
-      : BUILTIN_PLUGINS.filter((plugin) =>
-          [plugin.id, plugin.title, plugin.subtitle, ...plugin.tags].some((value) =>
-            value.toLowerCase().includes(query),
-          ),
-        );
-    return {
-      installed: matching.filter(
-        (plugin) => plugin.id !== "browser_use_external" || browserExternalPlugin.installed,
-      ),
-      available: matching.filter(
-        (plugin) => plugin.id === "browser_use_external" && !browserExternalPlugin.installed,
-      ),
-    };
-  }, [browserExternalPlugin.installed, search]);
-
-  const selectedPlugin =
-    BUILTIN_PLUGINS.find((plugin) => plugin.id === selectedPluginId) ?? DEFAULT_PLUGIN;
 
   const runComputerAction = useCallback(
     async (actionKey: string, action: () => Promise<DesktopComputerAutomationState>) => {
@@ -782,35 +1034,89 @@ export function PluginsPage() {
   }, [runComputerAction]);
 
   const pluginStatus = useCallback(
-    (
-      pluginId: BuiltinPluginId,
-    ): "ready" | "paused" | "unavailable" | "not-installed" | "setup-required" => {
-      if (pluginId === "browser_use") return browserState ? "ready" : "unavailable";
-      if (pluginId === "browser_use_external")
+    (plugin: PluginSummary): "ready" | "paused" | "unavailable" | "not-installed" | "setup-required" => {
+      const id = builtinPluginId(plugin);
+      if (!id) {
+        if (plugin.availability === "DISABLED_BY_ADMIN") return "unavailable";
+        return plugin.installed ? "ready" : "not-installed";
+      }
+      if (id === "browser_use") return browserState ? "ready" : "unavailable";
+      if (id === "browser_use_external") {
         return !browserExternalPlugin.installed
-          ? "not-installed"
+          ? "setup-required"
           : browserExternalState?.connected
             ? "ready"
             : "setup-required";
+      }
       if (!computerState || !computerState.available) return "unavailable";
       return computerState.paused ? "paused" : "ready";
     },
-    [browserExternalPlugin.installed, browserState, browserExternalState, computerState],
+    [browserExternalPlugin.installed, browserExternalState?.connected, browserState, computerState],
   );
+
+  const filteredPlugins = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return allPlugins;
+    return allPlugins.filter((plugin) =>
+      [
+        plugin.id,
+        plugin.name,
+        plugin.displayName,
+        plugin.description,
+        plugin.source.type,
+        ...plugin.keywords,
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query)),
+    );
+  }, [allPlugins, search]);
+
+  const installedPlugins = filteredPlugins.filter((plugin) => plugin.installed);
+  const availablePlugins = filteredPlugins.filter((plugin) => !plugin.installed);
+  const selectedBuiltin = selectedPlugin ? builtinMeta(selectedPlugin) : null;
+  const selectedBuiltinId = selectedPlugin ? builtinPluginId(selectedPlugin) : null;
+  const selectedDetail = detailQuery.data?.plugin ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-      <header className="flex items-center justify-end gap-3 border-b border-border/60 px-8 py-3">
+      <header className="flex flex-wrap items-center justify-end gap-3 border-b border-border/60 px-8 py-3">
+        <form
+          className="flex min-w-[280px] items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const source = marketplaceSource.trim();
+            if (source.length > 0) addMarketplaceMutation.mutate(source);
+          }}
+        >
+          <Input
+            value={marketplaceSource}
+            onChange={(event) => setMarketplaceSource(event.target.value)}
+            placeholder="Git marketplace URL"
+            className="h-8 text-sm"
+          />
+          <Button type="submit" size="xs" disabled={addMarketplaceMutation.isPending}>
+            {addMarketplaceMutation.isPending ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : (
+              <PlugIcon className="size-3.5" />
+            )}
+            添加
+          </Button>
+        </form>
         <Button
           size="xs"
           variant="ghost"
+          disabled={upgradeMutation.isPending}
           onClick={() => {
             refreshBrowser();
             refreshBrowserExternal();
             refreshComputer();
+            upgradeMutation.mutate();
           }}
         >
-          <RefreshCcwIcon className="size-3.5" />
+          <RefreshCcwIcon
+            className={upgradeMutation.isPending ? "size-3.5 animate-spin" : "size-3.5"}
+          />
           刷新
         </Button>
         <div className="relative w-[260px]">
@@ -832,41 +1138,66 @@ export function PluginsPage() {
                 插件
               </h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                管理 T3 Code 的内置能力、自动化入口和授权边界。
+                管理 Codex 插件、T3 内置桥接能力、自动化入口和授权边界。
               </p>
             </div>
+
+            {pluginsQuery.isLoading ? (
+              <div className="mt-8 flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">
+                <Loader2Icon className="size-4 animate-spin" />
+                正在读取插件...
+              </div>
+            ) : null}
+            {pluginsQuery.isError ? (
+              <div className="mt-8 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                {pluginsQuery.error instanceof Error
+                  ? pluginsQuery.error.message
+                  : "插件列表读取失败。"}
+              </div>
+            ) : null}
+            {pluginsQuery.data?.marketplaceLoadErrors.length ? (
+              <div className="mt-8 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                {pluginsQuery.data.marketplaceLoadErrors.map((error, index) => (
+                  <div key={`${error.marketplacePath ?? "marketplace"}:${index}`}>
+                    {error.marketplacePath ? `${error.marketplacePath}: ` : null}
+                    {error.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <section className="mt-8">
               <h2 className="text-[13px] font-medium text-muted-foreground">已安装</h2>
               <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1">
-                {filteredPlugins.installed.length === 0 ? (
+                {installedPlugins.length === 0 ? (
                   <div className="flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">
                     <BlocksIcon className="size-4" />
                     没有匹配的插件。
                   </div>
                 ) : (
-                  filteredPlugins.installed.map((plugin) => (
-                    <PluginCard
+                  installedPlugins.map((plugin) => (
+                    <PluginSummaryCard
                       key={plugin.id}
                       plugin={plugin}
-                      active={selectedPlugin.id === plugin.id}
-                      status={pluginStatus(plugin.id)}
+                      active={selectedPlugin?.id === plugin.id}
+                      status={pluginStatus(plugin)}
                       onSelect={() => setSelectedPluginId(plugin.id)}
                     />
                   ))
                 )}
               </div>
             </section>
-            {filteredPlugins.available.length > 0 ? (
+
+            {availablePlugins.length > 0 ? (
               <section className="mt-8">
                 <h2 className="text-[13px] font-medium text-muted-foreground">可安装</h2>
                 <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1">
-                  {filteredPlugins.available.map((plugin) => (
-                    <PluginCard
+                  {availablePlugins.map((plugin) => (
+                    <PluginSummaryCard
                       key={plugin.id}
                       plugin={plugin}
-                      active={selectedPlugin.id === plugin.id}
-                      status="not-installed"
+                      active={selectedPlugin?.id === plugin.id}
+                      status={pluginStatus(plugin)}
                       onSelect={() => setSelectedPluginId(plugin.id)}
                     />
                   ))}
@@ -877,43 +1208,59 @@ export function PluginsPage() {
 
           <aside className="min-w-0">
             <div className="rounded-md border border-border/70 bg-background p-5">
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                  {selectedPlugin.icon}
-                </div>
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-semibold text-foreground">
-                    {selectedPlugin.title}
-                  </h2>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {selectedPlugin.subtitle}
-                  </p>
-                </div>
-              </div>
-              {selectedPlugin.id === "browser_use" ? (
-                <BrowserPluginDetails state={browserState} refresh={refreshBrowser} />
-              ) : selectedPlugin.id === "browser_use_external" ? (
-                browserExternalPlugin.installed ? (
-                  <BrowserExternalPluginDetails
-                    state={browserExternalState}
-                    refresh={refreshBrowserExternal}
-                    onRestartSetup={() => browserExternalPlugin.setInstalled(false)}
-                  />
-                ) : (
-                  <BrowserExternalInstallDetails
-                    onInstall={() => browserExternalPlugin.setInstalled(true)}
-                  />
-                )
+              {!selectedPlugin ? (
+                <div className="text-sm text-muted-foreground">请选择一个插件。</div>
               ) : (
-                <ComputerPluginDetails
-                  state={computerState}
-                  refresh={refreshComputer}
-                  onTogglePaused={toggleComputerPaused}
-                  onAllowForeground={allowForegroundApp}
-                  onRemovePermission={removePermission}
-                  onClearPermissions={clearPermissions}
-                  busyAction={busyAction}
-                />
+                <>
+                  <div className="mb-5 flex items-center gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      {selectedBuiltin?.icon ?? <BlocksIcon className="size-5" />}
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="truncate text-base font-semibold text-foreground">
+                        {selectedPlugin.displayName}
+                      </h2>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {selectedPlugin.description ?? selectedPlugin.name}
+                      </p>
+                    </div>
+                  </div>
+                  {selectedBuiltinId === "browser_use" ? (
+                    <BrowserPluginDetails state={browserState} refresh={refreshBrowser} />
+                  ) : selectedBuiltinId === "browser_use_external" ? (
+                    browserExternalPlugin.installed ? (
+                      <BrowserExternalPluginDetails
+                        state={browserExternalState}
+                        refresh={refreshBrowserExternal}
+                        onRestartSetup={() => browserExternalPlugin.setInstalled(false)}
+                      />
+                    ) : (
+                      <BrowserExternalInstallDetails
+                        onInstall={() => browserExternalPlugin.setInstalled(true)}
+                      />
+                    )
+                  ) : selectedBuiltinId === "computer_use" ? (
+                    <ComputerPluginDetails
+                      state={computerState}
+                      refresh={refreshComputer}
+                      onTogglePaused={toggleComputerPaused}
+                      onAllowForeground={allowForegroundApp}
+                      onRemovePermission={removePermission}
+                      onClearPermissions={clearPermissions}
+                      busyAction={busyAction}
+                    />
+                  ) : (
+                    <CodexPluginDetails
+                      plugin={selectedPlugin}
+                      detail={selectedDetail}
+                      loading={detailQuery.isFetching}
+                      installing={installMutation.isPending}
+                      uninstalling={uninstallMutation.isPending}
+                      onInstall={() => installMutation.mutate(selectedPlugin)}
+                      onUninstall={() => uninstallMutation.mutate(selectedPlugin)}
+                    />
+                  )}
+                </>
               )}
             </div>
           </aside>

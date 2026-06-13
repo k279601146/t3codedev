@@ -36,7 +36,7 @@ describe("composerPluginLaunch", () => {
     expect(stripTrailingComposerPluginLaunchContext(prompt)).toBe("@Computer 截屏看看");
   });
 
-  it("hides Chrome suggestions until Browser Use External is installed", () => {
+  it("exposes Chrome suggestions when builtin plugin capability is enabled", () => {
     expect(searchComposerPluginMentions("").map((mention) => mention.token)).toEqual([
       "@Browser",
       "@Computer",

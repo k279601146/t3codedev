@@ -45,6 +45,8 @@ describe("BundledEngineConfig", () => {
     assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
     assert.match(toml, /wire_api = "responses"/);
     assert.match(toml, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
+    assert.match(toml, /plugins = true/);
+    assert.match(toml, /apps = true/);
     assert.doesNotMatch(toml, /jwt-token/);
   });
 });

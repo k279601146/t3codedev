@@ -54,6 +54,7 @@ import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { SkillsServiceLive } from "./skills/SkillsService.ts";
 import { SkillsCatalogServiceLive } from "./skills/SkillsCatalogService.ts";
+import { CodexPluginServiceLive } from "./plugins/CodexPluginService.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
@@ -281,6 +282,11 @@ const SkillsServiceLayerLive = SkillsServiceLive.pipe(
 
 const SkillsLayerLive = Layer.mergeAll(SkillsCatalogServiceLive, SkillsServiceLayerLive);
 
+const PluginsLayerLive = CodexPluginServiceLive.pipe(
+  Layer.provideMerge(ProviderRegistryLayerLive),
+  Layer.provideMerge(ServerSettingsLive),
+);
+
 const AutomationLayerLive = AutomationServiceLive.pipe(
   Layer.provideMerge(AutomationRepositoryLive.pipe(Layer.provide(PersistenceLayerLive))),
   Layer.provideMerge(OrchestrationRuntimeLayerLive),
@@ -298,7 +304,7 @@ const DynamicToolServicesLayerLive = Layer.mergeAll(
   ComputerToolService.layer,
 );
 
-const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+const RuntimeCoreBaseDependenciesLive = ReactorLayerLive.pipe(
   // Core Services
   Layer.provideMerge(OrchestrationRuntimeLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),
@@ -317,6 +323,9 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // Provided once at the runtime level so every consumer sees the same
   // logger instances.
   Layer.provideMerge(ProviderEventLoggersLive),
+);
+
+const RuntimeCoreDependenciesLive = RuntimeCoreBaseDependenciesLive.pipe(
   // `OpenCodeDriver.create()` yields `OpenCodeRuntime`; previously the old
   // `ProviderRegistryLive` pulled `OpenCodeRuntimeLive` in for itself, but
   // the rewritten registry reads snapshots off the instance registry and
@@ -329,6 +338,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ServerEnvironmentLive),
   Layer.provideMerge(AuthLayerLive),
   Layer.provideMerge(SkillsLayerLive),
+  Layer.provideMerge(PluginsLayerLive),
   Layer.provideMerge(AutomationLayerLive),
 );
 

@@ -445,6 +445,8 @@ describe("DesktopBackendConfiguration", () => {
           assert.match(engineConfig, /base_url = "https:\/\/api\.example\.com\/v1"/);
           assert.match(engineConfig, /wire_api = "responses"/);
           assert.match(engineConfig, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
+          assert.match(engineConfig, /plugins = true/);
+          assert.match(engineConfig, /apps = true/);
           assert.equal(engineConfig.includes("legacy-real-key"), false);
           assert.equal(engineConfig.includes("jwt-token"), false);
         }),

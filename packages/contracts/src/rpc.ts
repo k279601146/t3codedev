@@ -111,6 +111,20 @@ import {
   SkillsServiceError,
 } from "./skills.ts";
 import {
+  MarketplaceAddInput,
+  MarketplaceAddResponse,
+  MarketplaceUpgradeInput,
+  MarketplaceUpgradeResponse,
+  PluginInstallInput,
+  PluginInstallResponse,
+  PluginListResponse,
+  PluginReadInput,
+  PluginReadResponse,
+  PluginServiceError,
+  PluginUninstallInput,
+  PluginUninstallResponse,
+} from "./plugins.ts";
+import {
   AutomationArchiveRunInput,
   AutomationDeleteInput,
   AutomationGetInput,
@@ -203,6 +217,14 @@ export const WS_METHODS = {
   skillsInstall: "skills.install",
   skillsUninstall: "skills.uninstall",
   skillsContent: "skills.content",
+
+  // Plugin and marketplace methods
+  pluginsList: "plugins.list",
+  pluginsRead: "plugins.read",
+  pluginsInstall: "plugins.install",
+  pluginsUninstall: "plugins.uninstall",
+  marketplaceAdd: "marketplace.add",
+  marketplaceUpgrade: "marketplace.upgrade",
 
   // Automations methods
   automationsList: "automations.list",
@@ -357,6 +379,42 @@ export const WsSkillsContentRpc = Rpc.make(WS_METHODS.skillsContent, {
   payload: SkillContentInput,
   success: SkillContentResult,
   error: SkillsServiceError,
+});
+
+export const WsPluginsListRpc = Rpc.make(WS_METHODS.pluginsList, {
+  payload: Schema.Struct({}),
+  success: PluginListResponse,
+  error: PluginServiceError,
+});
+
+export const WsPluginsReadRpc = Rpc.make(WS_METHODS.pluginsRead, {
+  payload: PluginReadInput,
+  success: PluginReadResponse,
+  error: PluginServiceError,
+});
+
+export const WsPluginsInstallRpc = Rpc.make(WS_METHODS.pluginsInstall, {
+  payload: PluginInstallInput,
+  success: PluginInstallResponse,
+  error: PluginServiceError,
+});
+
+export const WsPluginsUninstallRpc = Rpc.make(WS_METHODS.pluginsUninstall, {
+  payload: PluginUninstallInput,
+  success: PluginUninstallResponse,
+  error: PluginServiceError,
+});
+
+export const WsMarketplaceAddRpc = Rpc.make(WS_METHODS.marketplaceAdd, {
+  payload: MarketplaceAddInput,
+  success: MarketplaceAddResponse,
+  error: PluginServiceError,
+});
+
+export const WsMarketplaceUpgradeRpc = Rpc.make(WS_METHODS.marketplaceUpgrade, {
+  payload: MarketplaceUpgradeInput,
+  success: MarketplaceUpgradeResponse,
+  error: PluginServiceError,
 });
 
 export const WsAutomationsListRpc = Rpc.make(WS_METHODS.automationsList, {
@@ -661,6 +719,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsSkillsInstallRpc,
   WsSkillsUninstallRpc,
   WsSkillsContentRpc,
+  WsPluginsListRpc,
+  WsPluginsReadRpc,
+  WsPluginsInstallRpc,
+  WsPluginsUninstallRpc,
+  WsMarketplaceAddRpc,
+  WsMarketplaceUpgradeRpc,
   WsAutomationsListRpc,
   WsAutomationsGetRpc,
   WsAutomationsUpsertRpc,

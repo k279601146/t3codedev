@@ -566,6 +566,28 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   };
 }
 
+export function enableCodexPluginExperimentalFeatures(
+  client: CodexClient.CodexAppServerClientShape,
+  context: { readonly operation: string },
+): Effect.Effect<void, never> {
+  return client
+    .request("experimentalFeature/enablement/set", {
+      enablement: {
+        plugins: true,
+        apps: true,
+      },
+    })
+    .pipe(
+      Effect.asVoid,
+      Effect.catch((cause: unknown) =>
+        Effect.logWarning("codex plugin experimental features unavailable", {
+          operation: context.operation,
+          cause: String(cause),
+        }),
+      ),
+    );
+}
+
 const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(function* (input: {
   readonly binaryPath: string;
   readonly homePath?: string;
@@ -601,17 +623,9 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     Effect.provide(clientContext),
   );
 
-  const initialize = yield* client.request("initialize", {
-    clientInfo: {
-      name: "t3code_desktop",
-      title: "T3 Code Desktop",
-      version: "0.1.0",
-    },
-    capabilities: {
-      experimentalApi: true,
-    },
-  });
+  const initialize = yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
+  yield* enableCodexPluginExperimentalFeatures(client, { operation: "provider.probe" });
 
   // Extract the version string after the first '/' in userAgent, up to the next space or the end
   const versionMatch = initialize.userAgent.match(/\/([^\s]+)/);
