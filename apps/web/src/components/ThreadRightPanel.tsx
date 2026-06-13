@@ -799,16 +799,27 @@ export function ThreadRightPanel({
   };
 
   const closeTab = (tabId: string) => {
-    setTabs((current) => {
-      const next = current.filter((tab) => tab.id !== tabId);
-      const fallback = next.length > 0 ? next : [createTab("home")];
-      if (activeTabId === tabId) {
-        const nextActive = fallback.at(-1)!;
-        setActiveTabId(nextActive.id);
-        onSurfaceChange(nextActive.surface);
-      }
-      return fallback;
-    });
+    const closedTabIndex = tabs.findIndex((tab) => tab.id === tabId);
+    if (closedTabIndex === -1) {
+      return;
+    }
+
+    const nextTabs = tabs.filter((tab) => tab.id !== tabId);
+    if (nextTabs.length === 0) {
+      const homeTab = createTab("home");
+      setTabs([homeTab]);
+      setActiveTabId(homeTab.id);
+      onSurfaceChange(homeTab.surface);
+      onClose();
+      return;
+    }
+
+    setTabs(nextTabs);
+    if (activeTabId === tabId) {
+      const nextActiveTab = nextTabs[Math.min(closedTabIndex, nextTabs.length - 1)]!;
+      setActiveTabId(nextActiveTab.id);
+      onSurfaceChange(nextActiveTab.surface);
+    }
   };
 
   const openFile = (filePath: string) => {
@@ -973,19 +984,26 @@ export function ThreadRightPanel({
             >
               {tab.icon}
               <span className="min-w-0 truncate">{tab.title}</span>
-              {tabs.length > 1 ? (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="ml-1 rounded-sm p-0.5 opacity-60 hover:bg-background hover:opacity-100"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                >
-                  <XIcon className="size-3" />
-                </span>
-              ) : null}
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={`关闭 ${tab.title} 标签`}
+                className="ml-1 rounded-sm p-0.5 opacity-0 transition-opacity group-hover:opacity-60 group-focus-within:opacity-60 hover:bg-background hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeTab(tab.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeTab(tab.id);
+                }}
+              >
+                <XIcon className="size-3" />
+              </span>
             </button>
           ))}
           <Button
