@@ -1,5 +1,5 @@
 import * as Equal from "effect/Equal";
-import { type TimelineEntry, type WorkLogEntry } from "../../session-logic";
+import { formatElapsed, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type TurnId } from "@t3tools/contracts";
 
@@ -58,6 +58,13 @@ export interface ImageGenerationRowItem {
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
   result: MessagesTimelineRow[];
+}
+
+export interface TurnProcessCollapseState {
+  ownerAssistantMessageIdByRowId: Map<string, string>;
+  summaryAssistantMessageIds: Set<string>;
+  elapsedByAssistantMessageId: Map<string, string>;
+  summaryButtonHostByRowId: Map<string, string>;
 }
 
 export function isCommandWorkEntry(
@@ -295,6 +302,140 @@ export function resolveAssistantMessageCopyState({
   return {
     text: hasText ? text : null,
     visible: showCopyButton && hasText && !streaming,
+  };
+}
+
+function resolveResultCompletedAt(row: MessagesTimelineRow): string | null {
+  if (row.kind === "message" && row.message.role === "assistant") {
+    return !row.message.streaming && row.message.completedAt ? row.message.completedAt : null;
+  }
+  if (row.kind === "proposed-plan") {
+    return row.proposedPlan.updatedAt || row.proposedPlan.createdAt;
+  }
+  if (row.kind === "image-generation") {
+    const completedItems = row.items.filter((item) => item.status !== "running");
+    if (completedItems.length !== row.items.length || completedItems.length === 0) {
+      return null;
+    }
+    return completedItems.reduce(
+      (latest, item) => (item.createdAt > latest ? item.createdAt : latest),
+      completedItems[0]!.createdAt,
+    );
+  }
+  return null;
+}
+
+function isVisibleResultRow(row: MessagesTimelineRow): boolean {
+  return (
+    (row.kind === "message" && row.message.role === "assistant") ||
+    row.kind === "proposed-plan" ||
+    row.kind === "image-generation"
+  );
+}
+
+function resolveResultOwnerId(row: MessagesTimelineRow): string | null {
+  if (row.kind === "message" && row.message.role === "assistant") {
+    return row.message.id;
+  }
+  if (row.kind === "proposed-plan" || row.kind === "image-generation") {
+    return row.id;
+  }
+  return null;
+}
+
+export function deriveTurnProcessCollapseState(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+): TurnProcessCollapseState {
+  const owner = new Map<string, string>();
+  const summaries = new Set<string>();
+  const elapsedMap = new Map<string, string>();
+  const hostByRowId = new Map<string, string>();
+
+  type Span = {
+    userKey: string;
+    firstProcessAt: string | null;
+    memberRowIds: string[];
+    hasProcessRow: boolean;
+    lastResultRow: MessagesTimelineRow | null;
+  };
+  const spans = new Map<string, Span>();
+  const ensureSpan = (key: string): Span => {
+    let span = spans.get(key);
+    if (!span) {
+      span = {
+        userKey: key,
+        firstProcessAt: null,
+        memberRowIds: [],
+        hasProcessRow: false,
+        lastResultRow: null,
+      };
+      spans.set(key, span);
+    }
+    return span;
+  };
+
+  let currentSpanKey: string | null = null;
+  let spanCounter = 0;
+
+  for (const row of rows) {
+    if (row.kind === "message" && row.message.role === "user") {
+      spanCounter += 1;
+      currentSpanKey = `q:${row.message.id}:${spanCounter}`;
+      continue;
+    }
+    if (!currentSpanKey) {
+      currentSpanKey = "q:__preamble__";
+    }
+    const span = ensureSpan(currentSpanKey);
+
+    if (row.kind === "work") {
+      if (!span.firstProcessAt) span.firstProcessAt = row.createdAt;
+      span.memberRowIds.push(row.id);
+      span.hasProcessRow = true;
+      continue;
+    }
+
+    if (row.kind === "message" && row.message.role === "assistant") {
+      // 助手的中间说明也属于执行过程；最后一个可见结果消息会在收尾时排除。
+      span.memberRowIds.push(row.id);
+    }
+
+    if (isVisibleResultRow(row)) {
+      span.lastResultRow = row;
+    }
+  }
+
+  for (const span of spans.values()) {
+    if (!span.hasProcessRow || !span.lastResultRow) continue;
+    const ownerId = resolveResultOwnerId(span.lastResultRow);
+    if (!ownerId) continue;
+
+    // 计划卡和图片卡是成果，永远不放入 memberRowIds；如果最后结果是助手文本，
+    // 也把它从折叠成员中拿掉，保留给用户直接阅读。
+    const memberRowIds = span.memberRowIds.filter((id) => id !== span.lastResultRow?.id);
+    if (memberRowIds.length === 0) continue;
+
+    summaries.add(ownerId);
+    for (const rowId of memberRowIds) {
+      owner.set(rowId, ownerId);
+    }
+    const firstMemberRowId = memberRowIds[0];
+    if (firstMemberRowId) {
+      hostByRowId.set(firstMemberRowId, ownerId);
+    }
+
+    const completedAt = resolveResultCompletedAt(span.lastResultRow);
+    if (span.firstProcessAt && completedAt) {
+      const elapsed = formatElapsed(span.firstProcessAt, completedAt);
+      if (elapsed) elapsedMap.set(ownerId, elapsed);
+    }
+  }
+
+  return {
+    ownerAssistantMessageIdByRowId: owner,
+    summaryAssistantMessageIds: summaries,
+    elapsedByAssistantMessageId: elapsedMap,
+    summaryButtonHostByRowId: hostByRowId,
   };
 }
 

@@ -53,6 +53,7 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  deriveTurnProcessCollapseState,
   isCommandWorkEntry,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
@@ -101,19 +102,15 @@ interface TimelineRowSharedState {
   goalMessageIds: ReadonlySet<MessageId>;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  /** Turn-process collapse: per assistant-message id, is the upstream
-   *  process (work / image-gen / proposed-plan rows) collapsed? */
+  /** 历史字段名保留；这里的 id 是成果 owner，可能是助手消息，也可能是计划/图片行。 */
   collapsedAssistantMessageIds: ReadonlySet<string>;
-  /** Assistant messages that summarize a span (own a "已处理 X ›" toggle). */
+  /** 拥有“已处理 X ›”开关的成果 owner id。 */
   summaryAssistantMessageIds: ReadonlySet<string>;
-  /** Per-summary owner: human-readable elapsed label for the process span. */
+  /** 每个成果 owner 对应的人类可读耗时。 */
   elapsedByAssistantMessageId: ReadonlyMap<string, string>;
-  /** Member-row → owner: when a row appears in this map it is part of a
-   *  collapsible span and animates open/closed under the summary toggle. */
+  /** 过程成员行 → 成果 owner；出现在这里的行会跟随“已处理”开关收展。 */
   ownerAssistantMessageIdByRowId: ReadonlyMap<string, string>;
-  /** Row-id → assistant-message-id of the toggle to render *above* it.
-   *  The button sits on the FIRST member row so it visually wraps every
-   *  intermediate row + the final assistant summary that follows. */
+  /** 首个过程成员行 → 成果 owner；开关渲染在这个成员行上方。 */
   summaryButtonHostByRowId: ReadonlyMap<string, string>;
   toggleAssistantTurnCollapsed: (assistantMessageId: string) => void;
   /** Resolves the LegendList scroll container — used by the summary
@@ -222,123 +219,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const stableRows = useStableRows(rawRows);
 
-  // ---- Per-question collapse ---------------------------------------------
-  // We collapse by user-question, not by backend turn. A single question
-  // may produce multiple assistant messages and process bursts (e.g. image
-  // generation + retries). The whole span between two user messages
-  // collapses under one "已处理 X ›" header that anchors to the FIRST
-  // member row (so the button sits at the top of the section and visually
-  // wraps all process rows + intermediate assistant messages below it).
-  // The last assistant message in the span stays fully visible — that's
-  // the final summary text the user wants to keep reading.
-
   const {
     ownerAssistantMessageIdByRowId,
     summaryAssistantMessageIds,
     elapsedByAssistantMessageId,
     summaryButtonHostByRowId,
-  } = useMemo(() => {
-    const owner = new Map<string, string>();
-    const summaries = new Set<string>();
-    const elapsedMap = new Map<string, string>();
-    /** rowId of a member row that should render the "已处理 X ›" header
-     *  immediately ABOVE itself. Maps from host row id → assistant
-     *  message id used as the toggle's state key. */
-    const hostByRowId = new Map<string, string>();
-
-    type Span = {
-      userKey: string;
-      lastAssistantId: string | null;
-      lastAssistantCompletedAt: string | null;
-      firstProcessAt: string | null;
-      /** All process rows + all intermediate assistant messages within
-       *  this span. They collapse together under the summary toggle. */
-      memberRowIds: string[];
-      /** Track the row id of the most recently appended assistant message
-       *  so we can demote it from "final summary" to "intermediate" when
-       *  another assistant message arrives later in the span. */
-      lastAssistantRowId: string | null;
-      hasProcessRow: boolean;
-    };
-    const spans = new Map<string, Span>();
-    const ensureSpan = (key: string): Span => {
-      let span = spans.get(key);
-      if (!span) {
-        span = {
-          userKey: key,
-          lastAssistantId: null,
-          lastAssistantCompletedAt: null,
-          firstProcessAt: null,
-          memberRowIds: [],
-          lastAssistantRowId: null,
-          hasProcessRow: false,
-        };
-        spans.set(key, span);
-      }
-      return span;
-    };
-
-    let currentSpanKey: string | null = null;
-    let spanCounter = 0;
-
-    for (const row of stableRows) {
-      if (row.kind === "message" && row.message.role === "user") {
-        spanCounter += 1;
-        currentSpanKey = `q:${row.message.id}:${spanCounter}`;
-        continue;
-      }
-      if (!currentSpanKey) {
-        currentSpanKey = `q:__preamble__`;
-      }
-      const span = ensureSpan(currentSpanKey);
-
-      if (row.kind === "message" && row.message.role === "assistant") {
-        // Every assistant message in the span is provisionally a member —
-        // we'll exclude the *final* one (the summary text) at the end so
-        // it stays visible. This guarantees the very first assistant
-        // message also gets wrapped under the "已处理 X ›" toggle.
-        span.memberRowIds.push(row.id);
-        span.lastAssistantId = row.message.id;
-        span.lastAssistantRowId = row.id;
-        span.lastAssistantCompletedAt =
-          !row.message.streaming && row.message.completedAt ? row.message.completedAt : null;
-        continue;
-      }
-      if (row.kind === "work" || row.kind === "image-generation" || row.kind === "proposed-plan") {
-        if (!span.firstProcessAt) span.firstProcessAt = row.createdAt;
-        span.memberRowIds.push(row.id);
-        span.hasProcessRow = true;
-      }
-    }
-
-    for (const span of spans.values()) {
-      if (!span.lastAssistantId) continue;
-      if (!span.hasProcessRow) continue;
-      // Drop the final assistant message from the member set so it stays
-      // visible as the section's summary text.
-      const memberRowIds = span.memberRowIds.filter((id) => id !== span.lastAssistantRowId);
-      if (memberRowIds.length === 0) continue;
-      summaries.add(span.lastAssistantId);
-      for (const rowId of memberRowIds) {
-        owner.set(rowId, span.lastAssistantId);
-      }
-      const firstMemberRowId = memberRowIds[0];
-      if (firstMemberRowId) {
-        hostByRowId.set(firstMemberRowId, span.lastAssistantId);
-      }
-      if (span.firstProcessAt && span.lastAssistantCompletedAt) {
-        const elapsed = formatElapsed(span.firstProcessAt, span.lastAssistantCompletedAt);
-        if (elapsed) elapsedMap.set(span.lastAssistantId, elapsed);
-      }
-    }
-
-    return {
-      ownerAssistantMessageIdByRowId: owner,
-      summaryAssistantMessageIds: summaries,
-      elapsedByAssistantMessageId: elapsedMap,
-      summaryButtonHostByRowId: hostByRowId,
-    };
-  }, [stableRows]);
+  } = useMemo(() => deriveTurnProcessCollapseState(stableRows), [stableRows]);
 
   /** Default collapse policy: every turn-summary owner is collapsed by
    *  default (mirrors the screenshot — only the "已处理 X ›" button is

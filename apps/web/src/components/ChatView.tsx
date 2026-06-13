@@ -4397,6 +4397,13 @@ export default function ChatView(props: ChatViewProps) {
       onExpandImage={onExpandTimelineImage}
     />
   );
+  const windowsSandboxSetupBannerNode = (
+    <WindowsSandboxSetupBanner
+      provider={activeProviderStatus}
+      platformOs={serverConfig?.environment.platform.os}
+      onOpenSettings={() => void navigate({ to: "/settings/providers" })}
+    />
+  );
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -4450,11 +4457,6 @@ export default function ChatView(props: ChatViewProps) {
       {/* Error banner */}
       <div className="shrink-0">
         <ProviderStatusBanner status={activeProviderStatus} />
-        <WindowsSandboxSetupBanner
-          provider={activeProviderStatus}
-          platformOs={serverConfig?.environment.platform.os}
-          onOpenSettings={() => void navigate({ to: "/settings/providers" })}
-        />
         <ThreadErrorBanner
           error={activeThread.error}
           onDismiss={() => setThreadError(activeThread.id, null)}
@@ -4470,6 +4472,7 @@ export default function ChatView(props: ChatViewProps) {
               composer={
                 <>
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                  {windowsSandboxSetupBannerNode}
                   <div className="relative z-10">{composerNode}</div>
                 </>
               }
@@ -4542,6 +4545,7 @@ export default function ChatView(props: ChatViewProps) {
               >
                 <div className="relative isolate">
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                  {windowsSandboxSetupBannerNode}
                   <div className="relative z-10">{composerNode}</div>
                 </div>
                 {isGitRepo && (

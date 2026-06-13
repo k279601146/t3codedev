@@ -3,6 +3,7 @@ import {
   computeStableMessagesTimelineRows,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
+  deriveTurnProcessCollapseState,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
 } from "./MessagesTimeline.logic";
@@ -201,6 +202,160 @@ describe("resolveAssistantMessageCopyState", () => {
       text: "Interim thought",
       visible: false,
     });
+  });
+});
+
+describe("deriveTurnProcessCollapseState", () => {
+  it("does not hide a proposed plan behind the processed toggle", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "message",
+        id: "row-user",
+        createdAt: "2026-01-01T00:00:00Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        message: {
+          id: "user-1" as never,
+          role: "user",
+          text: "Plan this",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-work",
+        createdAt: "2026-01-01T00:00:05Z",
+        groupedEntries: [
+          {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            label: "Reasoning",
+            tone: "thinking",
+            status: "completed",
+          },
+        ],
+      },
+      {
+        kind: "proposed-plan",
+        id: "row-plan",
+        createdAt: "2026-01-01T00:00:10Z",
+        proposedPlan: {
+          id: "plan-1" as never,
+          turnId: "turn-1" as never,
+          planMarkdown: "# 方案",
+          implementedAt: null,
+          implementationThreadId: null,
+          createdAt: "2026-01-01T00:00:10Z",
+          updatedAt: "2026-01-01T00:00:11Z",
+        },
+      },
+      {
+        kind: "message",
+        id: "row-assistant",
+        createdAt: "2026-01-01T00:00:12Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: true,
+        assistantCopyStreaming: false,
+        message: {
+          id: "assistant-1" as never,
+          role: "assistant",
+          text: "计划已生成。",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:12Z",
+          completedAt: "2026-01-01T00:00:12Z",
+          streaming: false,
+        },
+      },
+    ]);
+
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("assistant-1");
+    expect(state.ownerAssistantMessageIdByRowId.has("row-plan")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.has("row-assistant")).toBe(false);
+    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("assistant-1");
+    expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("7.0s");
+  });
+
+  it("keeps generated images visible while collapsing the preceding process", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "message",
+        id: "row-user",
+        createdAt: "2026-01-01T00:00:00Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        message: {
+          id: "user-1" as never,
+          role: "user",
+          text: "Generate an image",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "message",
+        id: "row-intro",
+        createdAt: "2026-01-01T00:00:02Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        message: {
+          id: "assistant-intro" as never,
+          role: "assistant",
+          text: "我会生成图片。",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:02Z",
+          completedAt: "2026-01-01T00:00:02Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-work",
+        createdAt: "2026-01-01T00:00:04Z",
+        groupedEntries: [
+          {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:04Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+        ],
+      },
+      {
+        kind: "image-generation",
+        id: "row-image",
+        createdAt: "2026-01-01T00:00:13Z",
+        items: [
+          {
+            id: "image-1",
+            createdAt: "2026-01-01T00:00:13Z",
+            status: "completed",
+            label: "图片已生成",
+            imagePath: "data:image/png;base64,abc",
+          },
+        ],
+      },
+    ]);
+
+    expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-image");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-image");
+    expect(state.ownerAssistantMessageIdByRowId.has("row-image")).toBe(false);
+    expect(state.summaryButtonHostByRowId.get("row-intro")).toBe("row-image");
+    expect(state.elapsedByAssistantMessageId.get("row-image")).toBe("9.0s");
   });
 });
 

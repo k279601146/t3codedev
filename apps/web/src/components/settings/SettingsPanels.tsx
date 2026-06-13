@@ -557,7 +557,7 @@ function SandboxPermissionsSection({
                   ) : (
                     <ShieldCheckIcon className="size-3" />
                   )}
-                  <span>初始化 elevated 沙箱</span>
+                  <span>启动 elevated 沙箱</span>
                 </Button>
               ) : null}
               <Button type="button" size="xs" variant="outline" onClick={onRefreshProviders}>
@@ -610,11 +610,9 @@ function SandboxPermissionsSection({
                       <ShieldCheckIcon className="size-3" />
                     )}
                     <span>
-                      {sandbox.readiness === "updateRequired"
-                        ? "更新 elevated 沙箱"
-                        : sandbox.readiness === "error"
-                          ? "重新初始化 elevated 沙箱"
-                          : "初始化 elevated 沙箱"}
+                      {sandbox.readiness === "error"
+                        ? "重新启动 elevated 沙箱"
+                        : "启动 elevated 沙箱"}
                     </span>
                   </Button>
                 ) : (
