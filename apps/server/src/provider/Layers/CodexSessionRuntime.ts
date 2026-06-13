@@ -74,9 +74,7 @@ import * as BrowserExternalToolService from "../Services/BrowserExternalToolServ
 import * as ComputerToolService from "../Services/ComputerToolService.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 const decodeV2TurnSteerParams = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnSteerParams);
-const decodeV2TurnSteerResponse = Schema.decodeUnknownEffect(
-  EffectCodexSchema.V2TurnSteerResponse,
-);
+const decodeV2TurnSteerResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnSteerResponse);
 const decodeV2ThreadGoalSetResponse = Schema.decodeUnknownEffect(
   EffectCodexSchema.V2ThreadGoalSetResponse,
 );
@@ -226,7 +224,10 @@ export interface CodexSessionRuntimeShape {
   >;
   readonly windowsSandboxSetupStart?: (input: {
     readonly mode: EffectCodexSchema.V2WindowsSandboxSetupStartParams__WindowsSandboxSetupMode;
-  }) => Effect.Effect<EffectCodexSchema.V2WindowsSandboxSetupStartResponse, CodexSessionRuntimeError>;
+  }) => Effect.Effect<
+    EffectCodexSchema.V2WindowsSandboxSetupStartResponse,
+    CodexSessionRuntimeError
+  >;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -341,23 +342,27 @@ function readResumeCursorThreadId(
 
 function runtimeModeToThreadConfig(input: RuntimeMode): {
   readonly approvalPolicy: EffectCodexSchema.V2ThreadStartParams__AskForApproval;
+  readonly approvalsReviewer: EffectCodexSchema.V2ThreadStartParams__ApprovalsReviewer;
   readonly sandbox: EffectCodexSchema.V2ThreadStartParams__SandboxMode;
 } {
   switch (input) {
     case "approval-required":
       return {
         approvalPolicy: "untrusted",
+        approvalsReviewer: "user",
         sandbox: "read-only",
       };
     case "auto-accept-edits":
       return {
         approvalPolicy: "on-request",
+        approvalsReviewer: "user",
         sandbox: "workspace-write",
       };
     case "full-access":
     default:
       return {
         approvalPolicy: "never",
+        approvalsReviewer: "user",
         sandbox: "danger-full-access",
       };
   }
@@ -373,6 +378,7 @@ function buildThreadStartParams(input: {
   return {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
+    approvalsReviewer: config.approvalsReviewer,
     sandbox: config.sandbox,
     dynamicTools: [
       ...buildT3BrowserDynamicTools(),
@@ -402,6 +408,33 @@ function runtimeModeToTurnSandboxPolicy(
         type: "dangerFullAccess",
       };
   }
+}
+
+function runtimeModeToThreadSettingsSandboxPolicy(
+  input: RuntimeMode,
+): EffectCodexSchema.V2ThreadSettingsUpdateParams__SandboxPolicy {
+  return runtimeModeToTurnSandboxPolicy(
+    input,
+  ) as EffectCodexSchema.V2ThreadSettingsUpdateParams__SandboxPolicy;
+}
+
+export function buildThreadSettingsUpdateParams(input: {
+  readonly threadId: string;
+  readonly runtimeMode: RuntimeMode;
+  readonly cwd: string;
+  readonly model: string | undefined;
+  readonly serviceTier: CodexServiceTier | undefined;
+}): EffectCodexSchema.V2ThreadSettingsUpdateParams {
+  const config = runtimeModeToThreadConfig(input.runtimeMode);
+  return {
+    threadId: input.threadId,
+    cwd: input.cwd,
+    approvalPolicy: config.approvalPolicy,
+    approvalsReviewer: config.approvalsReviewer,
+    sandboxPolicy: runtimeModeToThreadSettingsSandboxPolicy(input.runtimeMode),
+    ...(input.model ? { model: input.model } : {}),
+    ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
+  };
 }
 
 function buildCodexCollaborationMode(input: {
@@ -455,6 +488,7 @@ export function buildTurnStartParams(input: {
     threadId: input.threadId,
     input: turnInput,
     approvalPolicy: config.approvalPolicy,
+    approvalsReviewer: config.approvalsReviewer,
     sandboxPolicy: runtimeModeToTurnSandboxPolicy(input.runtimeMode),
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
@@ -517,7 +551,7 @@ type CodexThreadOpenResponse =
   | CodexRpc.ClientRequestResponsesByMethod["thread/start"]
   | CodexRpc.ClientRequestResponsesByMethod["thread/resume"];
 
-type CodexThreadOpenMethod = "thread/start" | "thread/resume";
+type CodexThreadOpenMethod = "thread/start" | "thread/resume" | "thread/settings/update";
 
 interface CodexThreadOpenClient {
   readonly request: <M extends CodexThreadOpenMethod>(
@@ -586,9 +620,24 @@ export const openCodexThread = (input: {
     model: input.requestedModel,
     serviceTier: input.serviceTier,
   });
+  const syncThreadSettings = (opened: CodexThreadOpenResponse) =>
+    input.client
+      .request(
+        "thread/settings/update",
+        buildThreadSettingsUpdateParams({
+          threadId: opened.thread.id,
+          cwd: input.cwd,
+          runtimeMode: input.runtimeMode,
+          model: input.requestedModel,
+          serviceTier: input.serviceTier,
+        }),
+      )
+      .pipe(Effect.as(opened));
 
   if (resumeThreadId === undefined) {
-    return input.client.request("thread/start", startParams);
+    return input.client
+      .request("thread/start", startParams)
+      .pipe(Effect.flatMap(syncThreadSettings));
   }
 
   return input.client
@@ -606,6 +655,7 @@ export const openCodexThread = (input: {
           cause: error.message,
         }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
       ),
+      Effect.flatMap(syncThreadSettings),
     );
 };
 
@@ -621,6 +671,7 @@ function readNotificationThreadId(notification: CodexServerNotification): string
     case "thread/name/updated":
     case "thread/goal/updated":
     case "thread/goal/cleared":
+    case "thread/settings/updated":
     case "thread/tokenUsage/updated":
     case "turn/started":
     case "hook/started":
@@ -753,6 +804,7 @@ function shouldSuppressChildConversationNotification(
     method === "thread/name/updated" ||
     method === "thread/goal/updated" ||
     method === "thread/goal/cleared" ||
+    method === "thread/settings/updated" ||
     method === "thread/tokenUsage/updated" ||
     method === "turn/started" ||
     method === "turn/completed" ||
@@ -1570,7 +1622,9 @@ export const makeCodexSessionRuntime = (
             return dynamicTextResponse("Browser tool service is unavailable.", false);
           }
           return yield* Effect.promise(() =>
-            browserToolRunner(withBrowserUserConfirmation(payload, { alwaysAllowHost: alwaysAllow })),
+            browserToolRunner(
+              withBrowserUserConfirmation(payload, { alwaysAllowHost: alwaysAllow }),
+            ),
           );
         }
 

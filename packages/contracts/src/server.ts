@@ -240,12 +240,17 @@ export const ServerProviderWindowsSandbox = Schema.Struct({
 });
 export type ServerProviderWindowsSandbox = typeof ServerProviderWindowsSandbox.Type;
 
+export const ServerProviderPermissionProfile = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  description: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ServerProviderPermissionProfile = typeof ServerProviderPermissionProfile.Type;
+
 export const ProviderWindowsSandboxReadinessInput = Schema.Struct({
   providerInstanceId: ProviderInstanceId,
   mode: WindowsSandboxMode.pipe(Schema.withDecodingDefault(Effect.succeed("elevated" as const))),
 });
-export type ProviderWindowsSandboxReadinessInput =
-  typeof ProviderWindowsSandboxReadinessInput.Type;
+export type ProviderWindowsSandboxReadinessInput = typeof ProviderWindowsSandboxReadinessInput.Type;
 
 export const ProviderWindowsSandboxSetupStartInput = ProviderWindowsSandboxReadinessInput;
 export type ProviderWindowsSandboxSetupStartInput =
@@ -302,6 +307,11 @@ export const ServerProvider = Schema.Struct({
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
   windowsSandbox: Schema.optionalKey(ServerProviderWindowsSandbox),
+  permissionProfiles: Schema.optionalKey(
+    Schema.Array(ServerProviderPermissionProfile).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+    ),
+  ),
 });
 export type ServerProvider = typeof ServerProvider.Type;
 

@@ -93,7 +93,9 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
     (_input: {
       readonly expectedTurnId: TurnId;
       readonly input?: string | undefined;
-      readonly attachments?: ReadonlyArray<{ readonly type: "image"; readonly url: string }> | undefined;
+      readonly attachments?:
+        | ReadonlyArray<{ readonly type: "image"; readonly url: string }>
+        | undefined;
     }): Promise<ProviderTurnSteerResult> =>
       Promise.resolve({
         threadId: this.options.threadId,
@@ -152,7 +154,9 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   steerTurn(input: {
     readonly expectedTurnId: TurnId;
     readonly input?: string | undefined;
-    readonly attachments?: ReadonlyArray<{ readonly type: "image"; readonly url: string }> | undefined;
+    readonly attachments?:
+      | ReadonlyArray<{ readonly type: "image"; readonly url: string }>
+      | undefined;
   }) {
     return Effect.promise(() => this.steerTurnImpl(input));
   }
@@ -790,6 +794,59 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         firstEvent.value.payload.message,
         "The filename or extension is too long. (os error 206)",
       );
+    }),
+  );
+
+  it.effect("maps thread settings updates to canonical session.configured events", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-thread-settings-updated"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "thread/settings/updated",
+        payload: {
+          threadId: "provider-thread-1",
+          threadSettings: {
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            collaborationMode: {
+              mode: "default",
+              settings: {
+                model: "gpt-5.4",
+                reasoning_effort: "medium",
+              },
+            },
+            cwd: process.cwd(),
+            model: "gpt-5.4",
+            modelProvider: "openai",
+            sandboxPolicy: {
+              type: "workspaceWrite",
+              networkAccess: false,
+            },
+          },
+        },
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "session.configured");
+      if (firstEvent.value.type !== "session.configured") {
+        return;
+      }
+      assert.equal(firstEvent.value.payload.config.approvalPolicy, "on-request");
+      assert.deepStrictEqual(firstEvent.value.payload.config.sandboxPolicy, {
+        type: "workspaceWrite",
+        networkAccess: false,
+      });
     }),
   );
 

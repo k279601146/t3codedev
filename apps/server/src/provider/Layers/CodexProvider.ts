@@ -85,6 +85,7 @@ export interface CodexAppServerProviderSnapshot {
   readonly version: string | undefined;
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
+  readonly permissionProfiles?: NonNullable<ServerProvider["permissionProfiles"]>;
   readonly windowsSandboxReadiness?: CodexSchema.V2WindowsSandboxReadinessResponse["status"];
   readonly windowsSandboxError?: string | null;
 }
@@ -649,6 +650,10 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   const version = versionMatch ? versionMatch[1] : undefined;
 
   const accountResponse = yield* client.request("account/read", {});
+  const permissionProfilesResponse = yield* client
+    .request("permissionProfile/list", { cwd: input.cwd })
+    .pipe(Effect.option);
+  const permissionProfiles = parsePermissionProfiles(Option.getOrNull(permissionProfilesResponse));
   if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
     return {
       account: accountResponse,
@@ -656,6 +661,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       version,
       models: appendCustomCodexModels([], input.customModels ?? []),
       skills: [],
+      permissionProfiles,
       ...(windowsSandboxReadiness.status !== undefined
         ? { windowsSandboxReadiness: windowsSandboxReadiness.status }
         : {}),
@@ -690,6 +696,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     version,
     models,
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
+    permissionProfiles,
     ...(windowsSandboxReadiness.status !== undefined
       ? { windowsSandboxReadiness: windowsSandboxReadiness.status }
       : {}),
@@ -708,6 +715,16 @@ const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvi
       capabilities: null,
     }));
 
+const parsePermissionProfiles = (
+  response: CodexSchema.V2PermissionProfileListResponse | null,
+): NonNullable<ServerProvider["permissionProfiles"]> =>
+  (response?.data ?? [])
+    .map((profile) => ({
+      id: profile.id.trim(),
+      description: profile.description?.trim() || null,
+    }))
+    .filter((profile) => profile.id.length > 0);
+
 const makePendingCodexProvider = (
   codexSettings: CodexSettings,
   environment: NodeJS.ProcessEnv = process.env,
@@ -723,6 +740,7 @@ const makePendingCodexProvider = (
         checkedAt,
         models,
         skills: [],
+        permissionProfiles: [],
         windowsSandbox: buildWindowsSandboxSnapshot({
           binaryPath: codexSettings.binaryPath,
           environment,
@@ -744,6 +762,7 @@ const makePendingCodexProvider = (
       checkedAt,
       models,
       skills: [],
+      permissionProfiles: [],
       windowsSandbox: buildWindowsSandboxSnapshot({
         binaryPath: codexSettings.binaryPath,
         environment,
@@ -843,6 +862,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       checkedAt,
         models: emptyModels,
         skills: [],
+        permissionProfiles: [],
         windowsSandbox: buildWindowsSandboxSnapshot({
           binaryPath: codexSettings.binaryPath,
           environment,
@@ -880,6 +900,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       checkedAt,
       models: emptyModels,
       skills: [],
+      permissionProfiles: [],
       windowsSandbox: buildWindowsSandboxSnapshot({
         binaryPath: codexSettings.binaryPath,
         environment,
@@ -907,6 +928,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       checkedAt,
       models: emptyModels,
       skills: [],
+      permissionProfiles: [],
       windowsSandbox: buildWindowsSandboxSnapshot({
         binaryPath: codexSettings.binaryPath,
         environment,
@@ -936,6 +958,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     checkedAt,
     models: snapshot.models,
     skills: snapshot.skills,
+    ...(snapshot.permissionProfiles ? { permissionProfiles: snapshot.permissionProfiles } : {}),
     windowsSandbox: buildWindowsSandboxSnapshot({
       binaryPath: codexSettings.binaryPath,
       environment,

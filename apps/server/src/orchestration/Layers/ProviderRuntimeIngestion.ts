@@ -17,6 +17,7 @@ import {
   type OrchestrationThreadShell,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
+  DEFAULT_RUNTIME_MODE,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Clock from "effect/Clock";
@@ -1527,7 +1528,7 @@ const make = Effect.gen(function* () {
               ...(event.providerInstanceId !== undefined
                 ? { providerInstanceId: event.providerInstanceId }
                 : {}),
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
+              runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
               activeTurnId: nextActiveTurnId,
               lastError,
               updatedAt: now,
@@ -1800,7 +1801,7 @@ const make = Effect.gen(function* () {
               ...(event.providerInstanceId !== undefined
                 ? { providerInstanceId: event.providerInstanceId }
                 : {}),
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
+              runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
               activeTurnId: eventTurnId ?? null,
               lastError: runtimeErrorMessage,
               updatedAt: now,

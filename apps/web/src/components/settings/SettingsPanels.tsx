@@ -462,6 +462,12 @@ function SandboxPermissionsSection({
   const codexProviders = providers.filter((provider) => provider.driver === "codex");
   const sandboxProviders = codexProviders.filter((provider) => provider.windowsSandbox);
   const primarySandbox = sandboxProviders[0]?.windowsSandbox ?? null;
+  const permissionProfiles = codexProviders.flatMap((provider) =>
+    (provider.permissionProfiles ?? []).map((profile) => ({
+      ...profile,
+      providerInstanceId: provider.instanceId,
+    })),
+  );
 
   const handleSetup = useCallback(
     async (providerInstanceId: ProviderInstanceId) => {
@@ -514,6 +520,24 @@ function SandboxPermissionsSection({
           </span>
         }
       />
+      <SettingsRow
+        title="权限 Profile"
+        description="来自官方 permissionProfile/list。T3 当前三档权限仍使用显式 sandboxPolicy，不与 permission profile 混用。"
+        status={
+          permissionProfiles.length > 0 ? (
+            <span className="flex flex-wrap gap-x-3 gap-y-1">
+              {permissionProfiles.map((profile) => (
+                <span key={`${profile.providerInstanceId}:${profile.id}`}>
+                  {profile.id}
+                  {profile.description ? `: ${profile.description}` : ""}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span>未返回 profile</span>
+          )
+        }
+      />
       {sandboxProviders.length === 0 ? (
         <SettingsRow
           title="Windows helper"
@@ -545,7 +569,9 @@ function SandboxPermissionsSection({
                 <span className="flex flex-wrap gap-x-3 gap-y-1">
                   <span>mode: {sandbox.mode}</span>
                   <span>readiness: {sandboxReadinessLabel(sandbox.readiness)}</span>
-                  <span>command runner: {sandbox.commandRunnerAvailable ? "present" : "missing"}</span>
+                  <span>
+                    command runner: {sandbox.commandRunnerAvailable ? "present" : "missing"}
+                  </span>
                   <span>setup helper: {sandbox.setupHelperAvailable ? "present" : "missing"}</span>
                 </span>
               }
@@ -563,7 +589,11 @@ function SandboxPermissionsSection({
                     ) : (
                       <ShieldCheckIcon className="size-3" />
                     )}
-                    <span>{sandbox.readiness === "updateRequired" ? "更新 elevated 沙箱" : "初始化 elevated 沙箱"}</span>
+                    <span>
+                      {sandbox.readiness === "updateRequired"
+                        ? "更新 elevated 沙箱"
+                        : "初始化 elevated 沙箱"}
+                    </span>
                   </Button>
                 ) : (
                   <span className="text-xs font-medium text-muted-foreground">
@@ -1767,7 +1797,10 @@ export function ProviderSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      <SandboxPermissionsSection providers={serverProviders} onRefreshProviders={refreshProviders} />
+      <SandboxPermissionsSection
+        providers={serverProviders}
+        onRefreshProviders={refreshProviders}
+      />
 
       <SettingsSection
         title={t("settings.providers")}

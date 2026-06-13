@@ -802,6 +802,28 @@ function mapToRuntimeEvents(
     ];
   }
 
+  if (event.method === "thread/settings/updated") {
+    const payload = readPayload(
+      EffectCodexSchema.V2ThreadSettingsUpdatedNotification,
+      event.payload,
+    );
+    if (!payload) {
+      return [];
+    }
+    return [
+      {
+        type: "session.configured",
+        ...runtimeEventBase(event, canonicalThreadId),
+        payload: {
+          config: {
+            threadId: payload.threadId,
+            ...payload.threadSettings,
+          },
+        },
+      },
+    ];
+  }
+
   if (event.method === "thread/tokenUsage/updated") {
     const payload = readPayload(
       EffectCodexSchema.V2ThreadTokenUsageUpdatedNotification,
@@ -1902,7 +1924,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   });
 
   const prepareRuntimeInput = Effect.fn("prepareRuntimeInput")(function* (
-    input: Pick<ProviderSendTurnInput | ProviderSteerTurnInput, "threadId" | "input" | "attachments">,
+    input: Pick<
+      ProviderSendTurnInput | ProviderSteerTurnInput,
+      "threadId" | "input" | "attachments"
+    >,
   ) {
     const codexAttachments = yield* Effect.forEach(
       input.attachments ?? [],
@@ -2032,36 +2057,42 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
   };
 
-  const setGoal: NonNullable<CodexAdapterShape["setGoal"]> = Effect.fn("setGoal")(function* (
-    input,
-  ) {
-    const session = yield* requireSession(input.threadId);
-    const goal = yield* session.runtime
-      .setGoal({
-        objective: input.objective,
-        ...(input.status ? { status: input.status } : {}),
-      })
-      .pipe(
-        Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "thread/goal/set", cause)),
-      );
-    return {
-      threadId: input.threadId,
-      goal,
-    };
-  });
+  const setGoal: NonNullable<CodexAdapterShape["setGoal"]> = Effect.fn("setGoal")(
+    function* (input) {
+      const session = yield* requireSession(input.threadId);
+      const goal = yield* session.runtime
+        .setGoal({
+          objective: input.objective,
+          ...(input.status ? { status: input.status } : {}),
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            mapCodexRuntimeError(input.threadId, "thread/goal/set", cause),
+          ),
+        );
+      return {
+        threadId: input.threadId,
+        goal,
+      };
+    },
+  );
 
-  const setGoalStatus: NonNullable<CodexAdapterShape["setGoalStatus"]> = Effect.fn(
-    "setGoalStatus",
-  )(function* (input) {
-    const session = yield* requireSession(input.threadId);
-    const goal = yield* session.runtime.setGoalStatus(input.status).pipe(
-      Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "thread/goal/set", cause)),
-    );
-    return {
-      threadId: input.threadId,
-      goal,
-    };
-  });
+  const setGoalStatus: NonNullable<CodexAdapterShape["setGoalStatus"]> = Effect.fn("setGoalStatus")(
+    function* (input) {
+      const session = yield* requireSession(input.threadId);
+      const goal = yield* session.runtime
+        .setGoalStatus(input.status)
+        .pipe(
+          Effect.mapError((cause) =>
+            mapCodexRuntimeError(input.threadId, "thread/goal/set", cause),
+          ),
+        );
+      return {
+        threadId: input.threadId,
+        goal,
+      };
+    },
+  );
 
   const getGoal: NonNullable<CodexAdapterShape["getGoal"]> = (threadId) =>
     requireSession(threadId).pipe(

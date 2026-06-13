@@ -47,7 +47,7 @@ const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
 export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
-const COMPOSER_DRAFT_STORAGE_VERSION = 6;
+const COMPOSER_DRAFT_STORAGE_VERSION = 7;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 
@@ -1649,13 +1649,25 @@ function migratePersistedComposerDraftStoreState(
 
   const { draftThreadsByThreadKey, logicalProjectDraftThreadKeyByLogicalProjectKey } =
     normalizePersistedDraftThreads(rawDraftThreadsByThreadId, rawProjectDraftThreadIdByProjectKey);
+  const draftThreadsWithSafeDefaultRuntimeMode = Object.fromEntries(
+    Object.entries(draftThreadsByThreadKey).map(([threadKey, draftThread]) => [
+      threadKey,
+      {
+        ...draftThread,
+        runtimeMode:
+          draftThread.runtimeMode === "full-access"
+            ? DEFAULT_RUNTIME_MODE
+            : draftThread.runtimeMode,
+      },
+    ]),
+  ) as PersistedComposerDraftStoreState["draftThreadsByThreadKey"];
   const draftsByThreadKey = normalizePersistedDraftsByThreadId(
     rawDraftMap,
-    draftThreadsByThreadKey,
+    draftThreadsWithSafeDefaultRuntimeMode,
   );
   return {
     draftsByThreadKey,
-    draftThreadsByThreadKey,
+    draftThreadsByThreadKey: draftThreadsWithSafeDefaultRuntimeMode,
     logicalProjectDraftThreadKeyByLogicalProjectKey,
     stickyModelSelectionByProvider: compactModelSelectionByProvider(stickyModelSelectionByProvider),
     stickyActiveProvider,

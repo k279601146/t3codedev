@@ -36,6 +36,7 @@ import {
   type ProviderSession,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
+  DEFAULT_RUNTIME_MODE,
   type RuntimeContentStreamKind,
   RuntimeItemId,
   RuntimeRequestId,
@@ -2750,7 +2751,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           } satisfies PermissionResult;
         }
 
-        const runtimeMode = input.runtimeMode ?? "full-access";
+        const runtimeMode = input.runtimeMode ?? DEFAULT_RUNTIME_MODE;
         if (runtimeMode === "full-access") {
           return {
             behavior: "allow",

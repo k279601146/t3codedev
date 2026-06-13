@@ -19,11 +19,13 @@ import {
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
 import {
+  buildThreadSettingsUpdateParams,
   buildTurnStartParams,
   isRecoverableThreadResumeError,
   openCodexThread,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
+type TestThreadOpenMethod = "thread/start" | "thread/resume" | "thread/settings/update";
 
 function makeThreadOpenResponse(
   threadId: string,
@@ -64,6 +66,7 @@ describe("buildTurnStartParams", () => {
     assert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
       approvalPolicy: "never",
+      approvalsReviewer: "user",
       sandboxPolicy: {
         type: "dangerFullAccess",
       },
@@ -106,6 +109,7 @@ describe("buildTurnStartParams", () => {
     assert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
       approvalPolicy: "on-request",
+      approvalsReviewer: "user",
       sandboxPolicy: {
         type: "workspaceWrite",
       },
@@ -143,6 +147,7 @@ describe("buildTurnStartParams", () => {
     assert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
       approvalPolicy: "untrusted",
+      approvalsReviewer: "user",
       sandboxPolicy: {
         type: "readOnly",
       },
@@ -153,6 +158,30 @@ describe("buildTurnStartParams", () => {
         },
       ],
     });
+  });
+});
+
+describe("buildThreadSettingsUpdateParams", () => {
+  it("maps auto-accept-edits to official thread settings sandbox semantics", () => {
+    assert.deepStrictEqual(
+      buildThreadSettingsUpdateParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "auto-accept-edits",
+        cwd: "/tmp/project",
+        model: "gpt-5.3-codex",
+        serviceTier: undefined,
+      }),
+      {
+        threadId: "provider-thread-1",
+        cwd: "/tmp/project",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+        },
+        model: "gpt-5.3-codex",
+      },
+    );
   });
 });
 
@@ -206,13 +235,21 @@ describe("isRecoverableThreadResumeError", () => {
 describe("openCodexThread", () => {
   it("injects T3 browser, external browser, and computer dynamic tools when starting a thread", async () => {
     let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
+    let settingsPayload:
+      | CodexRpc.ClientRequestParamsByMethod["thread/settings/update"]
+      | undefined;
     const client = {
-      request: <M extends "thread/start" | "thread/resume">(
+      request: <M extends TestThreadOpenMethod>(
         method: M,
         payload: CodexRpc.ClientRequestParamsByMethod[M],
       ) => {
         if (method === "thread/start") {
           startPayload = payload as CodexRpc.ClientRequestParamsByMethod["thread/start"];
+        }
+        if (method === "thread/settings/update") {
+          settingsPayload =
+            payload as CodexRpc.ClientRequestParamsByMethod["thread/settings/update"];
+          return Effect.succeed({} as CodexRpc.ClientRequestResponsesByMethod[M]);
         }
         return Effect.succeed(
           makeThreadOpenResponse("fresh-thread") as CodexRpc.ClientRequestResponsesByMethod[M],
@@ -233,6 +270,7 @@ describe("openCodexThread", () => {
     );
 
     assert.ok(startPayload);
+    assert.equal(startPayload.approvalsReviewer, "user");
     assert.deepStrictEqual(startPayload.dynamicTools, [
       ...buildT3BrowserDynamicTools(),
       ...buildT3BrowserExternalDynamicTools(),
@@ -248,17 +286,30 @@ describe("openCodexThread", () => {
     assert.equal(externalToolNames.includes("browser_reset_viewport"), false);
     assert.equal(externalToolNames.includes("browser_set_visibility"), false);
     assert.equal(startPayload.dynamicTools?.at(-1)?.namespace, T3_COMPUTER_TOOL_NAMESPACE);
+    assert.deepStrictEqual(settingsPayload, {
+      threadId: "fresh-thread",
+      cwd: "/tmp/project",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: {
+        type: "dangerFullAccess",
+      },
+      model: "gpt-5.3-codex",
+    });
   });
 
   it("falls back to thread/start when resume fails recoverably", async () => {
-    const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+    const calls: Array<{ method: TestThreadOpenMethod; payload: unknown }> = [];
     const started = makeThreadOpenResponse("fresh-thread");
     const client = {
-      request: <M extends "thread/start" | "thread/resume">(
+      request: <M extends TestThreadOpenMethod>(
         method: M,
         payload: CodexRpc.ClientRequestParamsByMethod[M],
       ) => {
         calls.push({ method, payload });
+        if (method === "thread/settings/update") {
+          return Effect.succeed({} as CodexRpc.ClientRequestResponsesByMethod[M]);
+        }
         if (method === "thread/resume") {
           return Effect.fail(
             new CodexErrors.CodexAppServerRequestError({
@@ -286,16 +337,19 @@ describe("openCodexThread", () => {
     assert.equal(opened.thread.id, "fresh-thread");
     assert.deepStrictEqual(
       calls.map((call) => call.method),
-      ["thread/resume", "thread/start"],
+      ["thread/resume", "thread/start", "thread/settings/update"],
     );
   });
 
   it("propagates non-recoverable resume failures", async () => {
     const client = {
-      request: <M extends "thread/start" | "thread/resume">(
+      request: <M extends TestThreadOpenMethod>(
         method: M,
         _payload: CodexRpc.ClientRequestParamsByMethod[M],
       ) => {
+        if (method === "thread/settings/update") {
+          return Effect.succeed({} as CodexRpc.ClientRequestResponsesByMethod[M]);
+        }
         if (method === "thread/resume") {
           return Effect.fail(
             new CodexErrors.CodexAppServerRequestError({
