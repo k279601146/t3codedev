@@ -945,11 +945,7 @@ function retainThreadMessagesAfterRevert(
     const fallbackUserMessages = messages
       .filter(
         (message) =>
-          message.role === "user" &&
-          !retainedMessageIds.has(message.id) &&
-          (message.turnId === undefined ||
-            message.turnId === null ||
-            retainedTurnIds.has(message.turnId)),
+          message.role === "user" && !retainedMessageIds.has(message.id),
       )
       .toSorted(
         (left, right) =>
@@ -969,11 +965,7 @@ function retainThreadMessagesAfterRevert(
     const fallbackAssistantMessages = messages
       .filter(
         (message) =>
-          message.role === "assistant" &&
-          !retainedMessageIds.has(message.id) &&
-          (message.turnId === undefined ||
-            message.turnId === null ||
-            retainedTurnIds.has(message.turnId)),
+          message.role === "assistant" && !retainedMessageIds.has(message.id),
       )
       .toSorted(
         (left, right) =>

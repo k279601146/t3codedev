@@ -1085,6 +1085,60 @@ describe("deriveWorkLogEntries", () => {
     ]);
   });
 
+  it("treats PowerShell Out-File commands as file creation work", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-write-file",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          detail:
+            '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "Write-Output \'print(\\"你好\\")\' | Out-File -Encoding UTF8 hello.py"',
+          data: {
+            item: {
+              command:
+                '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "Write-Output \'print(\\"你好\\")\' | Out-File -Encoding UTF8 hello.py"',
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.requestKind).toBe("file-change");
+    expect(entry?.changedFiles).toEqual(["hello.py"]);
+    expect(entry?.detail).toContain("--- /dev/null");
+    expect(entry?.detail).toContain('+++ b/hello.py');
+    expect(entry?.detail).toContain('+print("你好")');
+  });
+
+  it("treats PowerShell Set-Content commands as file edit work", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-edit-file",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command:
+                '@"\nimport sys\nfrom datetime import datetime\nprint("你好")\n"@ | Set-Content -Path D:\\workspace\\testimg\\hello.py -Encoding UTF8',
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.requestKind).toBe("file-change");
+    expect(entry?.changedFiles).toEqual(["D:\\workspace\\testimg\\hello.py"]);
+    expect(entry?.detail).toContain("--- a/D:/workspace/testimg/hello.py");
+    expect(entry?.detail).toContain("+++ b/D:/workspace/testimg/hello.py");
+    expect(entry?.detail).toContain("+from datetime import datetime");
+  });
+
   it("drops duplicated tool detail when it only repeats the title", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

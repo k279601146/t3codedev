@@ -4046,7 +4046,9 @@ export default function Sidebar() {
 
   useEffect(() => {
     const releases = prewarmedSidebarThreadRefs.map((ref) =>
-      retainThreadDetailSubscription(ref.environmentId, ref.threadId),
+      retainThreadDetailSubscription(ref.environmentId, ref.threadId, {
+        initialDetailMode: "shell",
+      }),
     );
 
     return () => {

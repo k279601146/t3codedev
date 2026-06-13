@@ -1,4 +1,4 @@
-import { EnvironmentId, MessageId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -82,6 +82,7 @@ function buildProps() {
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: new Map(),
     routeThreadKey: "environment-local:thread-1",
+    threadId: "thread-1" as never,
     onOpenTurnDiff: () => {},
     revertTurnCountByUserMessageId: new Map(),
     onRevertUserMessage: () => {},
@@ -102,7 +103,7 @@ function buildLongUserMessageText(tail = "deep hidden detail only after expand")
   ).join("\n");
 }
 
-function buildUserTimelineEntry(text: string) {
+function buildUserTimelineEntry(text: string, turnId?: TurnId | null) {
   return {
     id: "entry-1",
     kind: "message" as const,
@@ -111,6 +112,7 @@ function buildUserTimelineEntry(text: string) {
       id: MessageId.make("message-1"),
       role: "user" as const,
       text,
+      ...(turnId !== undefined ? { turnId } : {}),
       createdAt: MESSAGE_CREATED_AT,
       streaming: false,
     },
@@ -144,6 +146,27 @@ describe("MessagesTimeline", () => {
 
     expect(markup).not.toContain("Show full message");
     expect(markup).toContain('data-user-message-collapsible="false"');
+  });
+
+  it("renders a steer marker for user messages attached to an active turn", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("继续补充这点。", TurnId.make("turn-1"))]}
+      />,
+    );
+
+    expect(markup).toContain("已引导对话");
+  });
+
+  it("does not render a steer marker for ordinary user messages", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[buildUserTimelineEntry("开始任务。")]} />,
+    );
+
+    expect(markup).not.toContain("已引导对话");
   });
 
   it("renders inline terminal labels with the composer chip UI", async () => {
@@ -284,6 +307,38 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("apps/web/src/App.tsx");
     expect(markup).toContain("+2");
     expect(markup).toContain("-1");
+  });
+
+  it("labels synthetic new-file diffs as creating file work", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              requestKind: "file-change",
+              changedFiles: ["hello.py"],
+              status: "running",
+              detail:
+                "diff --git a/hello.py b/hello.py\nnew file mode 100644\n--- /dev/null\n+++ b/hello.py\n@@ -0,0 +1,1 @@\n+print(\"你好\")",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("正在创建");
+    expect(markup).toContain("hello.py");
+    expect(markup).toContain("+1");
+    expect(markup).toContain("-0");
   });
 
   it("shows running command work with shimmer styling", async () => {

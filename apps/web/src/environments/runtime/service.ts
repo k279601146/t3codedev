@@ -84,6 +84,7 @@ type EnvironmentServiceState = {
 type ThreadDetailSubscriptionEntry = {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
+  detailMode: "full" | "shell";
   unsubscribe: () => void;
   unsubscribeConnectionListener: (() => void) | null;
   refCount: number;
@@ -372,7 +373,7 @@ function attachThreadDetailSubscription(entry: ThreadDetailSubscriptionEntry): b
   }
 
   entry.unsubscribe = connection.client.orchestration.subscribeThread(
-    { threadId: entry.threadId },
+    { threadId: entry.threadId, initialDetailMode: entry.detailMode },
     (item) => {
       if (item.kind === "snapshot") {
         useStore.getState().syncServerThreadDetail(item.snapshot.thread, entry.environmentId);
@@ -382,6 +383,22 @@ function attachThreadDetailSubscription(entry: ThreadDetailSubscriptionEntry): b
     },
   );
   return true;
+}
+
+function upgradeThreadDetailSubscription(
+  entry: ThreadDetailSubscriptionEntry,
+  detailMode: "full" | "shell",
+): void {
+  if (entry.detailMode === "full" || detailMode === "shell") {
+    return;
+  }
+
+  entry.detailMode = "full";
+  entry.unsubscribe();
+  entry.unsubscribe = NOOP;
+  if (!attachThreadDetailSubscription(entry)) {
+    watchThreadDetailSubscriptionConnection(entry);
+  }
 }
 
 function watchThreadDetailSubscriptionConnection(entry: ThreadDetailSubscriptionEntry): void {
@@ -531,13 +548,16 @@ function reconcileThreadDetailSubscriptionEvictionForEnvironment(
 export function retainThreadDetailSubscription(
   environmentId: EnvironmentId,
   threadId: ThreadId,
+  options: { readonly initialDetailMode?: "full" | "shell" } = {},
 ): () => void {
   const key = getThreadDetailSubscriptionKey(environmentId, threadId);
+  const detailMode = options.initialDetailMode ?? "full";
   const existing = threadDetailSubscriptions.get(key);
   if (existing) {
     clearThreadDetailSubscriptionEviction(existing);
     existing.refCount += 1;
     existing.lastAccessedAt = Date.now();
+    upgradeThreadDetailSubscription(existing, detailMode);
     if (!attachThreadDetailSubscription(existing)) {
       watchThreadDetailSubscriptionConnection(existing);
     }
@@ -559,6 +579,7 @@ export function retainThreadDetailSubscription(
   const entry: ThreadDetailSubscriptionEntry = {
     environmentId,
     threadId,
+    detailMode,
     unsubscribe: NOOP,
     unsubscribeConnectionListener: null,
     refCount: 1,

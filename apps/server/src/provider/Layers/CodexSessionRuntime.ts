@@ -3,6 +3,10 @@ import {
   ApprovalRequestId,
   DEFAULT_MODEL,
   EventId,
+  OrchestrationListThreadTurnItemsInput,
+  OrchestrationListThreadTurnItemsResult,
+  OrchestrationListThreadTurnsInput,
+  OrchestrationListThreadTurnsResult,
   ProviderDriverKind,
   ProviderItemId,
   type ProviderInstanceId,
@@ -177,6 +181,19 @@ export interface CodexSessionRuntimeSteerTurnInput {
   }>;
 }
 
+export interface CodexSessionRuntimeUpdateSettingsInput {
+  readonly cwd?: string | undefined;
+  readonly runtimeMode?: RuntimeMode | undefined;
+  readonly model?: string | null | undefined;
+  readonly serviceTier?: CodexServiceTier | null | undefined;
+  readonly effort?: EffectCodexSchema.V2ThreadSettingsUpdateParams__ReasoningEffort | null;
+  readonly approvalPolicy?: EffectCodexSchema.V2ThreadSettingsUpdateParams__AskForApproval | null;
+  readonly sandboxPolicy?: EffectCodexSchema.V2ThreadSettingsUpdateParams__SandboxPolicy | null;
+  readonly permissions?: string | null;
+  readonly personality?: EffectCodexSchema.V2ThreadSettingsUpdateParams__Personality | null;
+  readonly summary?: EffectCodexSchema.V2ThreadSettingsUpdateParams__ReasoningSummary | null;
+}
+
 export interface CodexThreadTurnSnapshot {
   readonly id: TurnId;
   readonly items: ReadonlyArray<CodexThreadItem>;
@@ -196,8 +213,17 @@ export interface CodexSessionRuntimeShape {
   readonly steerTurn: (
     input: CodexSessionRuntimeSteerTurnInput,
   ) => Effect.Effect<ProviderTurnSteerResult, CodexSessionRuntimeError>;
+  readonly updateThreadSettings: (
+    input: CodexSessionRuntimeUpdateSettingsInput,
+  ) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly interruptTurn: (turnId?: TurnId) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly readThread: Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
+  readonly listThreadTurns: (
+    input: Omit<OrchestrationListThreadTurnsInput, "threadId">,
+  ) => Effect.Effect<OrchestrationListThreadTurnsResult, CodexSessionRuntimeError>;
+  readonly listThreadTurnItems: (
+    input: Omit<OrchestrationListThreadTurnItemsInput, "threadId">,
+  ) => Effect.Effect<OrchestrationListThreadTurnItemsResult, CodexSessionRuntimeError>;
   readonly rollbackThread: (
     numTurns: number,
   ) => Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
@@ -420,20 +446,40 @@ function runtimeModeToThreadSettingsSandboxPolicy(
 
 export function buildThreadSettingsUpdateParams(input: {
   readonly threadId: string;
-  readonly runtimeMode: RuntimeMode;
-  readonly cwd: string;
-  readonly model: string | undefined;
-  readonly serviceTier: CodexServiceTier | undefined;
+  readonly runtimeMode?: RuntimeMode | undefined;
+  readonly cwd?: string | undefined;
+  readonly model?: string | null | undefined;
+  readonly serviceTier?: CodexServiceTier | null | undefined;
+  readonly effort?: EffectCodexSchema.V2ThreadSettingsUpdateParams__ReasoningEffort | null;
+  readonly approvalPolicy?: EffectCodexSchema.V2ThreadSettingsUpdateParams__AskForApproval | null;
+  readonly sandboxPolicy?: EffectCodexSchema.V2ThreadSettingsUpdateParams__SandboxPolicy | null;
+  readonly permissions?: string | null;
+  readonly personality?: EffectCodexSchema.V2ThreadSettingsUpdateParams__Personality | null;
+  readonly summary?: EffectCodexSchema.V2ThreadSettingsUpdateParams__ReasoningSummary | null;
 }): EffectCodexSchema.V2ThreadSettingsUpdateParams {
-  const config = runtimeModeToThreadConfig(input.runtimeMode);
+  const config = input.runtimeMode ? runtimeModeToThreadConfig(input.runtimeMode) : undefined;
+  const permissionsSpecified = input.permissions !== undefined;
   return {
     threadId: input.threadId,
-    cwd: input.cwd,
-    approvalPolicy: config.approvalPolicy,
-    approvalsReviewer: config.approvalsReviewer,
-    sandboxPolicy: runtimeModeToThreadSettingsSandboxPolicy(input.runtimeMode),
-    ...(input.model ? { model: input.model } : {}),
-    ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
+    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+    ...(input.approvalPolicy !== undefined
+      ? { approvalPolicy: input.approvalPolicy }
+      : config
+        ? { approvalPolicy: config.approvalPolicy }
+        : {}),
+    ...(config ? { approvalsReviewer: config.approvalsReviewer } : {}),
+    ...(permissionsSpecified
+      ? { permissions: input.permissions }
+      : input.sandboxPolicy !== undefined
+        ? { sandboxPolicy: input.sandboxPolicy }
+        : config && input.runtimeMode
+          ? { sandboxPolicy: runtimeModeToThreadSettingsSandboxPolicy(input.runtimeMode) }
+          : {}),
+    ...(input.model !== undefined ? { model: input.model } : {}),
+    ...(input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
+    ...(input.effort !== undefined ? { effort: input.effort } : {}),
+    ...(input.personality !== undefined ? { personality: input.personality } : {}),
+    ...(input.summary !== undefined ? { summary: input.summary } : {}),
   };
 }
 
@@ -1003,6 +1049,35 @@ function parseThreadSnapshot(
   };
 }
 
+function parseThreadTurnsPage(
+  response: EffectCodexSchema.V2ThreadTurnsListResponse,
+): OrchestrationListThreadTurnsResult {
+  return {
+    data: response.data.map((turn) => ({
+      id: TurnId.make(turn.id),
+      status: turn.status,
+      itemsView: turn.itemsView ?? "full",
+      items: turn.items,
+      ...(turn.startedAt !== undefined ? { startedAt: turn.startedAt } : {}),
+      ...(turn.completedAt !== undefined ? { completedAt: turn.completedAt } : {}),
+      ...(turn.durationMs !== undefined ? { durationMs: turn.durationMs } : {}),
+      ...(turn.error !== undefined ? { error: turn.error } : {}),
+    })),
+    ...(response.nextCursor !== undefined ? { nextCursor: response.nextCursor } : {}),
+    ...(response.backwardsCursor !== undefined ? { backwardsCursor: response.backwardsCursor } : {}),
+  };
+}
+
+function parseThreadTurnItemsPage(
+  response: EffectCodexSchema.V2ThreadTurnsItemsListResponse,
+): OrchestrationListThreadTurnItemsResult {
+  return {
+    data: response.data,
+    ...(response.nextCursor !== undefined ? { nextCursor: response.nextCursor } : {}),
+    ...(response.backwardsCursor !== undefined ? { backwardsCursor: response.backwardsCursor } : {}),
+  };
+}
+
 function toOrchestrationGoalStatus(
   status:
     | EffectCodexSchema.V2ThreadGoalGetResponse__ThreadGoalStatus
@@ -1508,9 +1583,10 @@ export const makeCodexSessionRuntime = (
           retryAfterConfirmation = () =>
             targetBrowserTools.call(withBrowserUserConfirmation(payload));
         } else if (payload.namespace === T3_COMPUTER_TOOL_NAMESPACE) {
-          const payloadWithRuntimeMode = withComputerRuntimeContext(payload, options.runtimeMode);
+          const currentRuntimeMode = (yield* Ref.get(sessionRef)).runtimeMode;
+          const payloadWithRuntimeMode = withComputerRuntimeContext(payload, currentRuntimeMode);
           if (
-            options.runtimeMode === "approval-required" &&
+            currentRuntimeMode === "approval-required" &&
             isT3ComputerInputToolName(payload.tool)
           ) {
             confirmationMessage = `computer_use wants to run ${payload.tool}.`;
@@ -1530,7 +1606,7 @@ export const makeCodexSessionRuntime = (
           confirmationHeader = "桌面确认";
           supportsAlwaysAllowApp = true;
           retryAfterConfirmation = () =>
-            computerTools.call(withComputerUserConfirmation(payload, options.runtimeMode));
+            computerTools.call(withComputerUserConfirmation(payload, currentRuntimeMode));
         } else {
           return dynamicTextResponse(
             `Unsupported dynamic tool namespace: ${payload.namespace ?? ""}`,
@@ -1629,9 +1705,10 @@ export const makeCodexSessionRuntime = (
         }
 
         if (supportsAlwaysAllowApp) {
+          const currentRuntimeMode = (yield* Ref.get(sessionRef)).runtimeMode;
           return yield* Effect.promise(() =>
             computerTools.call(
-              withComputerUserConfirmation(payload, options.runtimeMode, {
+              withComputerUserConfirmation(payload, currentRuntimeMode, {
                 alwaysAllowApp: alwaysAllow,
               }),
             ),
@@ -1811,12 +1888,13 @@ export const makeCodexSessionRuntime = (
       sendTurn: (input) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;
+          const currentSession = yield* Ref.get(sessionRef);
           const normalizedModel = normalizeCodexModelSlug(
-            input.model ?? (yield* Ref.get(sessionRef)).model,
+            input.model ?? currentSession.model,
           );
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
-            runtimeMode: options.runtimeMode,
+            runtimeMode: currentSession.runtimeMode,
             ...(input.input ? { prompt: input.input } : {}),
             ...(input.attachments ? { attachments: input.attachments } : {}),
             ...(normalizedModel ? { model: normalizedModel } : {}),
@@ -1844,6 +1922,38 @@ export const makeCodexSessionRuntime = (
               ? { resumeCursor: { threadId: resumedProviderThreadId } }
               : {}),
           } satisfies ProviderTurnStartResult;
+        }),
+      updateThreadSettings: (input) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const normalizedModel =
+            input.model === undefined || input.model === null
+              ? input.model
+              : normalizeCodexModelSlug(input.model);
+          const params = buildThreadSettingsUpdateParams({
+            threadId: providerThreadId,
+            ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+            ...(input.runtimeMode !== undefined ? { runtimeMode: input.runtimeMode } : {}),
+            ...(normalizedModel !== undefined ? { model: normalizedModel } : {}),
+            ...(input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
+            ...(input.effort !== undefined ? { effort: input.effort } : {}),
+            ...(input.approvalPolicy !== undefined ? { approvalPolicy: input.approvalPolicy } : {}),
+            ...(input.permissions !== undefined ? { permissions: input.permissions } : {}),
+            ...(input.permissions === undefined && input.sandboxPolicy !== undefined
+              ? { sandboxPolicy: input.sandboxPolicy }
+              : {}),
+            ...(input.personality !== undefined ? { personality: input.personality } : {}),
+            ...(input.summary !== undefined ? { summary: input.summary } : {}),
+          });
+          yield* client.request("thread/settings/update", params);
+          yield* updateSession(sessionRef, {
+            ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+            ...(input.runtimeMode !== undefined ? { runtimeMode: input.runtimeMode } : {}),
+            ...(normalizedModel !== undefined && normalizedModel !== null
+              ? { model: normalizedModel }
+              : {}),
+            updatedAt: yield* nowIso,
+          });
         }),
       steerTurn: (input) =>
         Effect.gen(function* () {
@@ -1897,6 +2007,30 @@ export const makeCodexSessionRuntime = (
         });
         return parseThreadSnapshot(response);
       }),
+      listThreadTurns: (input) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const response = yield* client.request("thread/turns/list", {
+            threadId: providerThreadId,
+            ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+            ...(input.limit !== undefined ? { limit: input.limit } : {}),
+            ...(input.itemsView !== undefined ? { itemsView: input.itemsView } : {}),
+            ...(input.sortDirection !== undefined ? { sortDirection: input.sortDirection } : {}),
+          });
+          return parseThreadTurnsPage(response);
+        }),
+      listThreadTurnItems: (input) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const response = yield* client.request("thread/turns/items/list", {
+            threadId: providerThreadId,
+            turnId: input.turnId,
+            ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+            ...(input.limit !== undefined ? { limit: input.limit } : {}),
+            ...(input.sortDirection !== undefined ? { sortDirection: input.sortDirection } : {}),
+          });
+          return parseThreadTurnItemsPage(response);
+        }),
       rollbackThread: (numTurns) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;

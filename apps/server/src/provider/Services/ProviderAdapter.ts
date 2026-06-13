@@ -16,12 +16,18 @@ import type {
   ProviderGoalSetInput,
   ProviderGoalSetResult,
   ProviderGoalStatusSetInput,
+  OrchestrationListThreadTurnItemsInput,
+  OrchestrationListThreadTurnItemsResult,
+  OrchestrationListThreadTurnsInput,
+  OrchestrationListThreadTurnsResult,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
   ProviderSteerTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ProviderThreadSettingsUpdateInput,
+  ProviderThreadSettingsUpdateResult,
   ThreadId,
   ProviderTurnStartResult,
   ProviderTurnSteerResult,
@@ -125,6 +131,13 @@ export interface ProviderAdapterShape<TError> {
   readonly clearGoal?: (threadId: ThreadId) => Effect.Effect<ProviderGoalClearResult, TError>;
 
   /**
+   * 更新 provider 侧线程默认运行设置。
+   */
+  readonly updateThreadSettings?: (
+    input: ProviderThreadSettingsUpdateInput,
+  ) => Effect.Effect<ProviderThreadSettingsUpdateResult, TError>;
+
+  /**
    * Stop one provider session.
    */
   readonly stopSession: (threadId: ThreadId) => Effect.Effect<void, TError>;
@@ -143,6 +156,20 @@ export interface ProviderAdapterShape<TError> {
    * Read a provider thread snapshot.
    */
   readonly readThread: (threadId: ThreadId) => Effect.Effect<ProviderThreadSnapshot, TError>;
+
+  /**
+   * 按 provider 原生 turn 分页读取历史记录。
+   */
+  readonly listThreadTurns?: (
+    input: OrchestrationListThreadTurnsInput,
+  ) => Effect.Effect<OrchestrationListThreadTurnsResult, TError>;
+
+  /**
+   * 按 provider 原生 item 分页读取某个 turn 的完整项目。
+   */
+  readonly listThreadTurnItems?: (
+    input: OrchestrationListThreadTurnItemsInput,
+  ) => Effect.Effect<OrchestrationListThreadTurnItemsResult, TError>;
 
   /**
    * Roll back a provider thread by N turns.

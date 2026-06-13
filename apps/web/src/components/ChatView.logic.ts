@@ -290,6 +290,22 @@ export function buildRevertTurnCountByUserMessageId(input: {
   return byUserMessageId;
 }
 
+export function inferRevertTurnCountBeforeUserMessage(
+  messages: ReadonlyArray<Pick<ChatMessage, "id" | "role">>,
+  messageId: MessageId,
+): number | null {
+  let userMessageCountBeforeTarget = 0;
+  for (const message of messages) {
+    if (message.id === messageId) {
+      return message.role === "user" ? userMessageCountBeforeTarget : null;
+    }
+    if (message.role === "user") {
+      userMessageCountBeforeTarget += 1;
+    }
+  }
+  return null;
+}
+
 export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[] {
   if (message.role !== "user" || !message.attachments) {
     return [];
@@ -464,6 +480,57 @@ export async function waitForStartedServerThread(
     });
 
     if (threadHasStarted(getThread())) {
+      finish(true);
+      return;
+    }
+
+    timeoutId = globalThis.setTimeout(() => {
+      finish(false);
+    }, timeoutMs);
+  });
+}
+
+export async function waitForThreadMessageRemoval(
+  threadRef: ScopedThreadRef,
+  messageId: MessageId,
+  timeoutMs = 10_000,
+): Promise<boolean> {
+  const messageExists = () =>
+    selectThreadByRef(useStore.getState(), threadRef)?.messages.some(
+      (message) => message.id === messageId,
+    ) === true;
+
+  if (!messageExists()) {
+    return true;
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+    const finish = (result: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== null) {
+        globalThis.clearTimeout(timeoutId);
+      }
+      unsubscribe();
+      resolve(result);
+    };
+
+    const unsubscribe = useStore.subscribe((state) => {
+      const stillExists =
+        selectThreadByRef(state, threadRef)?.messages.some(
+          (message) => message.id === messageId,
+        ) === true;
+      if (stillExists) {
+        return;
+      }
+      finish(true);
+    });
+
+    if (!messageExists()) {
       finish(true);
       return;
     }

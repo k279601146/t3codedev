@@ -11,8 +11,14 @@ import {
   type VcsCreateRefResult,
   type VcsCreateWorktreeInput,
   type VcsCreateWorktreeResult,
+  type VcsDiffCommitInput,
+  type VcsDiffCommitResult,
+  type VcsFileOperationInput,
+  type VcsFileOperationResult,
   type VcsDiffWorkingTreeInput,
   type VcsDiffWorkingTreeResult,
+  type VcsListCommitsInput,
+  type VcsListCommitsResult,
   type VcsListRefsInput,
   type VcsListRefsResult,
   type GitManagerServiceError,
@@ -47,6 +53,18 @@ export interface GitWorkflowServiceShape {
   readonly diffWorkingTree: (
     input: VcsDiffWorkingTreeInput,
   ) => Effect.Effect<VcsDiffWorkingTreeResult, GitCommandError>;
+  readonly diffCommit: (
+    input: VcsDiffCommitInput,
+  ) => Effect.Effect<VcsDiffCommitResult, GitCommandError>;
+  readonly stageFile: (
+    input: VcsFileOperationInput,
+  ) => Effect.Effect<VcsFileOperationResult, GitCommandError>;
+  readonly unstageFile: (
+    input: VcsFileOperationInput,
+  ) => Effect.Effect<VcsFileOperationResult, GitCommandError>;
+  readonly restoreFile: (
+    input: VcsFileOperationInput,
+  ) => Effect.Effect<VcsFileOperationResult, GitCommandError>;
   readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
   readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
   readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
@@ -62,6 +80,9 @@ export interface GitWorkflowServiceShape {
     input: GitPreparePullRequestThreadInput,
   ) => Effect.Effect<GitPreparePullRequestThreadResult, GitManagerServiceError>;
   readonly listRefs: (input: VcsListRefsInput) => Effect.Effect<VcsListRefsResult, GitCommandError>;
+  readonly listCommits: (
+    input: VcsListCommitsInput,
+  ) => Effect.Effect<VcsListCommitsResult, GitCommandError>;
   readonly createWorktree: (
     input: VcsCreateWorktreeInput,
   ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
@@ -132,6 +153,40 @@ function nonRepositoryListRefs(): VcsListRefsResult {
     nextCursor: null,
     totalCount: 0,
   };
+}
+
+function nonRepositoryListCommits(): VcsListCommitsResult {
+  return {
+    commits: [],
+    isRepo: false,
+    nextCursor: null,
+    totalCount: 0,
+  };
+}
+
+function parseCommitLogOutput(output: string): VcsListCommitsResult["commits"] {
+  return output
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .flatMap((line) => {
+      const [sha, shortSha, committedAt, authorName, subject] = line.split("\x1f");
+      if (!sha || !shortSha || !committedAt || !authorName || !subject) {
+        return [];
+      }
+      return [
+        {
+          sha,
+          shortSha,
+          committedAt,
+          authorName,
+          subject,
+        },
+      ];
+    });
+}
+
+function buildFileOperationPathspecs(input: VcsFileOperationInput): readonly string[] {
+  return [...new Set([input.oldPath, input.path].filter((path): path is string => Boolean(path)))];
 }
 
 export const make = Effect.fn("makeGitWorkflowService")(function* () {
@@ -302,6 +357,108 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
               ),
         ),
       ),
+    diffCommit: (input) =>
+      ensureGitCommand("GitWorkflowService.diffCommit", input.cwd).pipe(
+        Effect.andThen(
+          git.execute({
+            operation: "GitWorkflowService.diffCommit",
+            cwd: input.cwd,
+            args: [
+              "show",
+              "--format=",
+              "--patch",
+              "--no-color",
+              "--no-ext-diff",
+              "--no-textconv",
+              ...(input.ignoreWhitespace === true ? ["--ignore-all-space"] : []),
+              input.commitSha,
+            ],
+            allowNonZeroExit: true,
+            maxOutputBytes: 2 * 1024 * 1024,
+          }),
+        ),
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.succeed({ diff: result.stdout })
+            : Effect.fail(
+                new GitCommandError({
+                  operation: "GitWorkflowService.diffCommit",
+                  command: "git show",
+                  cwd: input.cwd,
+                  detail: result.stderr.trim() || "git show failed.",
+                }),
+              ),
+        ),
+      ),
+    stageFile: (input) =>
+      ensureGitCommand("GitWorkflowService.stageFile", input.cwd).pipe(
+        Effect.andThen(
+          git.execute({
+            operation: "GitWorkflowService.stageFile",
+            cwd: input.cwd,
+            args: ["add", "--all", "--", ...buildFileOperationPathspecs(input)],
+            allowNonZeroExit: true,
+          }),
+        ),
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.succeed({})
+            : Effect.fail(
+                new GitCommandError({
+                  operation: "GitWorkflowService.stageFile",
+                  command: "git add",
+                  cwd: input.cwd,
+                  detail: result.stderr.trim() || "git add failed.",
+                }),
+              ),
+        ),
+      ),
+    unstageFile: (input) =>
+      ensureGitCommand("GitWorkflowService.unstageFile", input.cwd).pipe(
+        Effect.andThen(
+          git.execute({
+            operation: "GitWorkflowService.unstageFile",
+            cwd: input.cwd,
+            args: ["restore", "--staged", "--", ...buildFileOperationPathspecs(input)],
+            allowNonZeroExit: true,
+          }),
+        ),
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.succeed({})
+            : Effect.fail(
+                new GitCommandError({
+                  operation: "GitWorkflowService.unstageFile",
+                  command: "git restore --staged",
+                  cwd: input.cwd,
+                  detail: result.stderr.trim() || "git restore --staged failed.",
+                }),
+              ),
+        ),
+      ),
+    restoreFile: (input) =>
+      ensureGitCommand("GitWorkflowService.restoreFile", input.cwd).pipe(
+        Effect.andThen(
+          git.execute({
+            operation: "GitWorkflowService.restoreFile",
+            cwd: input.cwd,
+            args: ["restore", "--", ...buildFileOperationPathspecs(input)],
+            allowNonZeroExit: true,
+          }),
+        ),
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.succeed({})
+            : Effect.fail(
+                new GitCommandError({
+                  operation: "GitWorkflowService.restoreFile",
+                  command: "git restore",
+                  cwd: input.cwd,
+                  detail: result.stderr.trim() || "git restore failed.",
+                }),
+              ),
+        ),
+      ),
     invalidateLocalStatus: gitManager.invalidateLocalStatus,
     invalidateRemoteStatus: gitManager.invalidateRemoteStatus,
     invalidateStatus: gitManager.invalidateStatus,
@@ -326,6 +483,56 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
         Effect.flatMap((isGitRepository) =>
           isGitRepository ? git.listRefs(input) : Effect.succeed(nonRepositoryListRefs()),
         ),
+      ),
+    listCommits: (input) =>
+      detectGitRepositoryForCommand("GitWorkflowService.listCommits", input.cwd).pipe(
+        Effect.flatMap((isGitRepository) => {
+          if (!isGitRepository) {
+            return Effect.succeed(nonRepositoryListCommits());
+          }
+          const limit = input.limit ?? 30;
+          const cursor = input.cursor ?? 0;
+          const fetchLimit = limit + 1;
+          const query = input.query?.trim();
+          return git
+            .execute({
+              operation: "GitWorkflowService.listCommits",
+              cwd: input.cwd,
+              args: [
+                "log",
+                `--skip=${cursor}`,
+                `--max-count=${fetchLimit}`,
+                "--date=iso-strict",
+                "--pretty=format:%H%x1f%h%x1f%cI%x1f%an%x1f%s",
+                ...(query ? ["--grep", query, "--regexp-ignore-case"] : []),
+              ],
+              allowNonZeroExit: true,
+              maxOutputBytes: 256 * 1024,
+            })
+            .pipe(
+              Effect.flatMap((result) => {
+                if (result.exitCode !== 0) {
+                  return Effect.fail(
+                    new GitCommandError({
+                      operation: "GitWorkflowService.listCommits",
+                      command: "git log",
+                      cwd: input.cwd,
+                      detail: result.stderr.trim() || "git log failed.",
+                    }),
+                  );
+                }
+                const fetchedCommits = parseCommitLogOutput(result.stdout);
+                const commits = fetchedCommits.slice(0, limit);
+                const hasMore = fetchedCommits.length > limit;
+                return Effect.succeed({
+                  commits,
+                  isRepo: true,
+                  nextCursor: hasMore ? cursor + commits.length : null,
+                  totalCount: cursor + commits.length + (hasMore ? 1 : 0),
+                });
+              }),
+            );
+        }),
       ),
     createWorktree: (input) =>
       ensureGitCommand("GitWorkflowService.createWorktree", input.cwd).pipe(

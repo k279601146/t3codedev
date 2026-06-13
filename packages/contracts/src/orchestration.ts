@@ -26,6 +26,8 @@ export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getTurnDiff: "orchestration.getTurnDiff",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
+  listThreadTurns: "orchestration.listThreadTurns",
+  listThreadTurnItems: "orchestration.listThreadTurnItems",
   replayEvents: "orchestration.replayEvents",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
@@ -521,6 +523,9 @@ export type OrchestrationShellStreamItem = typeof OrchestrationShellStreamItem.T
 
 export const OrchestrationSubscribeThreadInput = Schema.Struct({
   threadId: ThreadId,
+  initialDetailMode: Schema.optionalKey(Schema.Literals(["full", "shell"])).pipe(
+    Schema.withDecodingDefault(Effect.succeed("full" as const)),
+  ),
 });
 export type OrchestrationSubscribeThreadInput = typeof OrchestrationSubscribeThreadInput.Type;
 
@@ -529,6 +534,59 @@ export const OrchestrationThreadDetailSnapshot = Schema.Struct({
   thread: OrchestrationThread,
 });
 export type OrchestrationThreadDetailSnapshot = typeof OrchestrationThreadDetailSnapshot.Type;
+
+const OrchestrationThreadTurnItemsView = Schema.Literals(["notLoaded", "summary", "full"]);
+export type OrchestrationThreadTurnItemsView = typeof OrchestrationThreadTurnItemsView.Type;
+
+const OrchestrationThreadTurnSortDirection = Schema.Literals(["asc", "desc"]);
+export type OrchestrationThreadTurnSortDirection =
+  typeof OrchestrationThreadTurnSortDirection.Type;
+
+export const OrchestrationListThreadTurnsInput = Schema.Struct({
+  threadId: ThreadId,
+  cursor: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+  limit: Schema.optionalKey(NonNegativeInt),
+  itemsView: Schema.optionalKey(OrchestrationThreadTurnItemsView),
+  sortDirection: Schema.optionalKey(OrchestrationThreadTurnSortDirection),
+});
+export type OrchestrationListThreadTurnsInput = typeof OrchestrationListThreadTurnsInput.Type;
+
+export const OrchestrationThreadTurn = Schema.Struct({
+  id: TurnId,
+  status: TrimmedNonEmptyString,
+  itemsView: OrchestrationThreadTurnItemsView,
+  items: Schema.Array(Schema.Unknown),
+  startedAt: Schema.optionalKey(Schema.NullOr(NonNegativeInt)),
+  completedAt: Schema.optionalKey(Schema.NullOr(NonNegativeInt)),
+  durationMs: Schema.optionalKey(Schema.NullOr(NonNegativeInt)),
+  error: Schema.optionalKey(Schema.NullOr(Schema.Unknown)),
+});
+export type OrchestrationThreadTurn = typeof OrchestrationThreadTurn.Type;
+
+export const OrchestrationListThreadTurnsResult = Schema.Struct({
+  data: Schema.Array(OrchestrationThreadTurn),
+  nextCursor: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+  backwardsCursor: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type OrchestrationListThreadTurnsResult = typeof OrchestrationListThreadTurnsResult.Type;
+
+export const OrchestrationListThreadTurnItemsInput = Schema.Struct({
+  threadId: ThreadId,
+  turnId: TurnId,
+  cursor: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+  limit: Schema.optionalKey(NonNegativeInt),
+  sortDirection: Schema.optionalKey(OrchestrationThreadTurnSortDirection),
+});
+export type OrchestrationListThreadTurnItemsInput =
+  typeof OrchestrationListThreadTurnItemsInput.Type;
+
+export const OrchestrationListThreadTurnItemsResult = Schema.Struct({
+  data: Schema.Array(Schema.Unknown),
+  nextCursor: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+  backwardsCursor: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type OrchestrationListThreadTurnItemsResult =
+  typeof OrchestrationListThreadTurnItemsResult.Type;
 
 export const ProjectCreateCommand = Schema.Struct({
   type: Schema.Literal("project.create"),
@@ -762,6 +820,14 @@ const ThreadCheckpointRevertCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadConversationRollbackCommand = Schema.Struct({
+  type: Schema.Literal("thread.conversation.rollback"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  numTurns: NonNegativeInt,
+  createdAt: IsoDateTime,
+});
+
 const ThreadSessionStopCommand = Schema.Struct({
   type: Schema.Literal("thread.session.stop"),
   commandId: CommandId,
@@ -789,6 +855,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadCheckpointRevertCommand,
+  ThreadConversationRollbackCommand,
   ThreadSessionStopCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
@@ -814,6 +881,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadCheckpointRevertCommand,
+  ThreadConversationRollbackCommand,
   ThreadSessionStopCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
@@ -931,6 +999,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.approval-response-requested",
   "thread.user-input-response-requested",
   "thread.checkpoint-revert-requested",
+  "thread.conversation-rollback-requested",
   "thread.reverted",
   "thread.session-stop-requested",
   "thread.session-set",
@@ -1112,6 +1181,12 @@ export const ThreadCheckpointRevertRequestedPayload = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const ThreadConversationRollbackRequestedPayload = Schema.Struct({
+  threadId: ThreadId,
+  numTurns: NonNegativeInt,
+  createdAt: IsoDateTime,
+});
+
 export const ThreadRevertedPayload = Schema.Struct({
   threadId: ThreadId,
   turnCount: NonNegativeInt,
@@ -1277,6 +1352,11 @@ export const OrchestrationEvent = Schema.Union([
   }),
   Schema.Struct({
     ...EventBaseFields,
+    type: Schema.Literal("thread.conversation-rollback-requested"),
+    payload: ThreadConversationRollbackRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
     type: Schema.Literal("thread.reverted"),
     payload: ThreadRevertedPayload,
   }),
@@ -1426,6 +1506,14 @@ export const OrchestrationRpcSchemas = {
   getFullThreadDiff: {
     input: OrchestrationGetFullThreadDiffInput,
     output: OrchestrationGetFullThreadDiffResult,
+  },
+  listThreadTurns: {
+    input: OrchestrationListThreadTurnsInput,
+    output: OrchestrationListThreadTurnsResult,
+  },
+  listThreadTurnItems: {
+    input: OrchestrationListThreadTurnItemsInput,
+    output: OrchestrationListThreadTurnItemsResult,
   },
   replayEvents: {
     input: OrchestrationReplayEventsInput,

@@ -178,6 +178,7 @@ import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./Branch
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
 import { WindowsSandboxSetupBanner } from "./chat/WindowsSandboxSetupBanner";
+import { ThreadRunSettingsPopover } from "./chat/ThreadRunSettingsPopover";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
@@ -203,6 +204,7 @@ import {
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   threadHasStarted,
+  waitForThreadMessageRemoval,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { isImageGenerationWorkEntry, pickGeneratedImagePath } from "./chat/MessagesTimeline.logic";
@@ -761,6 +763,7 @@ export default function ChatView(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
+  const stickyRuntimeMode = useComposerDraftStore((store) => store.stickyRuntimeMode);
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const setComposerDraftTerminalContexts = useComposerDraftStore(
@@ -887,6 +890,10 @@ export default function ChatView(props: ChatViewProps) {
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
+  const [interruptPendingTurn, setInterruptPendingTurn] = useState<{
+    threadKey: string;
+    turnId: TurnId | null;
+  } | null>(null);
   const [respondingRequestIds, setRespondingRequestIds] = useState<ApprovalRequestId[]>([]);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
     ApprovalRequestId[]
@@ -1366,7 +1373,7 @@ export default function ChatView(props: ChatViewProps) {
       setLogicalProjectDraftThreadId(logicalProjectKey, activeProjectRef, nextDraftId, {
         threadId: nextThreadId,
         createdAt: new Date().toISOString(),
-        runtimeMode: DEFAULT_RUNTIME_MODE,
+        runtimeMode: stickyRuntimeMode,
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
@@ -1387,6 +1394,7 @@ export default function ChatView(props: ChatViewProps) {
       routeKind,
       setDraftThreadContext,
       setLogicalProjectDraftThreadId,
+      stickyRuntimeMode,
     ],
   );
 
@@ -1667,6 +1675,25 @@ export default function ChatView(props: ChatViewProps) {
     isServerThread &&
     activeThread?.session?.activeTurnId !== undefined &&
     activeThread.session.provider === ProviderDriverKind.make("codex");
+  const activeSessionTurnId = activeThread?.session?.activeTurnId ?? null;
+  const isInterruptPending =
+    phase === "running" &&
+    activeThreadKey !== null &&
+    interruptPendingTurn?.threadKey === activeThreadKey &&
+    interruptPendingTurn.turnId === activeSessionTurnId;
+  useEffect(() => {
+    if (!interruptPendingTurn) {
+      return;
+    }
+    if (
+      phase !== "running" ||
+      activeThreadKey !== interruptPendingTurn.threadKey ||
+      activeSessionTurnId !== interruptPendingTurn.turnId ||
+      activeThread?.error
+    ) {
+      setInterruptPendingTurn(null);
+    }
+  }, [activeSessionTurnId, activeThread?.error, activeThreadKey, interruptPendingTurn, phase]);
   const pendingSteerDraftView = useMemo<PendingSteerDraftView | null>(() => {
     if (!pendingSteerMessage) {
       return null;
@@ -2554,28 +2581,57 @@ export default function ChatView(props: ChatViewProps) {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
   const summaryPanelOpen = rightPanelOpen && rightPanelSurface === "summary";
+  const summaryPanelContentKey =
+    activePlan?.turnId ??
+    sidebarProposedPlan?.turnId ??
+    (hasSummaryPanelContent ? "__summary__" : null);
   const togglePlanSidebar = useCallback(() => {
     if (summaryPanelOpen) {
-      planSidebarDismissedForTurnRef.current =
-        activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
+      planSidebarDismissedForTurnRef.current = summaryPanelContentKey ?? "__dismissed__";
       closeRightPanel();
       return;
     }
     planSidebarDismissedForTurnRef.current = null;
-    openRightPanelSurface("home", activeThreadKey);
+    openRightPanelSurface("summary", activeThreadKey);
   }, [
-    activePlan?.turnId,
     activeThreadKey,
     closeRightPanel,
     openRightPanelSurface,
-    sidebarProposedPlan?.turnId,
+    summaryPanelContentKey,
     summaryPanelOpen,
   ]);
   const closeSummaryPanel = useCallback(() => {
     closeRightPanel();
-    planSidebarDismissedForTurnRef.current =
-      activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
-  }, [activePlan?.turnId, closeRightPanel, sidebarProposedPlan?.turnId]);
+    planSidebarDismissedForTurnRef.current = summaryPanelContentKey ?? "__dismissed__";
+  }, [closeRightPanel, summaryPanelContentKey]);
+
+  useEffect(() => {
+    if (!settings.autoOpenPlanSidebar || !activeThreadKey || !hasSummaryPanelContent) {
+      return;
+    }
+    if (summaryPanelOpen) {
+      return;
+    }
+    if (
+      summaryPanelContentKey !== null &&
+      planSidebarDismissedForTurnRef.current === summaryPanelContentKey
+    ) {
+      return;
+    }
+    if (rightPanelOpen && rightPanelSurface !== "home") {
+      return;
+    }
+    openRightPanelSurface("summary", activeThreadKey);
+  }, [
+    activeThreadKey,
+    hasSummaryPanelContent,
+    openRightPanelSurface,
+    rightPanelOpen,
+    rightPanelSurface,
+    settings.autoOpenPlanSidebar,
+    summaryPanelContentKey,
+    summaryPanelOpen,
+  ]);
 
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -3045,6 +3101,7 @@ export default function ChatView(props: ChatViewProps) {
         role: "user",
         text: pending.text,
         ...(pending.attachments.length > 0 ? { attachments: pending.attachments } : {}),
+        turnId: pending.expectedTurnId,
         createdAt: pending.createdAt,
         streaming: false,
       },
@@ -3121,6 +3178,157 @@ export default function ChatView(props: ChatViewProps) {
     setOptimisticUserMessages,
     setThreadError,
   ]);
+
+  const onSubmitEditedUserMessage = useCallback(
+    async (messageId: MessageId, text: string) => {
+      const api = readEnvironmentApi(environmentId);
+      if (
+        !api ||
+        !activeThread ||
+        !isServerThread ||
+        phase === "running" ||
+        isSendBusy ||
+        isConnecting ||
+        activeEnvironmentUnavailable ||
+        sendInFlightRef.current
+      ) {
+        return;
+      }
+
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return;
+      }
+      if (usageLimitBlock && showUsageLimitReachedToast()) {
+        return;
+      }
+
+      const sendCtx = composerRef.current?.getSendContext();
+      if (!sendCtx) {
+        return;
+      }
+      const {
+        selectedProvider: ctxSelectedProvider,
+        selectedModel: ctxSelectedModel,
+        selectedProviderModels: ctxSelectedProviderModels,
+        selectedPromptEffort: ctxSelectedPromptEffort,
+        selectedModelSelection: ctxSelectedModelSelection,
+      } = sendCtx;
+
+      const threadIdForSend = activeThread.id;
+      const messageIdForSend = newMessageId();
+      const messageCreatedAt = new Date().toISOString();
+      const outgoingMessageText = formatOutgoingPrompt({
+        provider: ctxSelectedProvider,
+        model: ctxSelectedModel,
+        models: ctxSelectedProviderModels,
+        effort: ctxSelectedPromptEffort,
+        text: trimmed,
+      });
+
+      sendInFlightRef.current = true;
+      beginLocalDispatch({ preparingWorktree: false });
+      setThreadError(threadIdForSend, null);
+      setIsRevertingCheckpoint(true);
+
+      let optimisticMessageAdded = false;
+      let turnStartSucceeded = false;
+      try {
+        await api.orchestration.dispatchCommand({
+          type: "thread.conversation.rollback",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          numTurns: 1,
+          createdAt: messageCreatedAt,
+        });
+        const reverted = await waitForThreadMessageRemoval(
+          scopeThreadRef(activeThread.environmentId, threadIdForSend),
+          messageId,
+        );
+        if (!reverted) {
+          throw new Error("等待消息回退超时，请稍后重试。");
+        }
+        setIsRevertingCheckpoint(false);
+        beginLocalDispatch({ preparingWorktree: false });
+
+        isAtEndRef.current = true;
+        showScrollDebouncer.current.cancel();
+        setShowScrollToBottom(false);
+        await legendListRef.current?.scrollToEnd?.({ animated: false });
+
+        setOptimisticUserMessages((existing) => [
+          ...existing,
+          {
+            id: messageIdForSend,
+            role: "user",
+            text: outgoingMessageText,
+            createdAt: messageCreatedAt,
+            streaming: false,
+          },
+        ]);
+        optimisticMessageAdded = true;
+
+        await persistThreadSettingsForNextTurn({
+          threadId: threadIdForSend,
+          createdAt: messageCreatedAt,
+          modelSelection: ctxSelectedModelSelection,
+          runtimeMode,
+          interactionMode,
+        });
+
+        await api.orchestration.dispatchCommand({
+          type: "thread.turn.start",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          message: {
+            messageId: messageIdForSend,
+            role: "user",
+            text: outgoingMessageText,
+            attachments: [],
+          },
+          modelSelection: ctxSelectedModelSelection,
+          titleSeed: activeThread.title,
+          runtimeMode,
+          interactionMode,
+          createdAt: messageCreatedAt,
+        });
+        turnStartSucceeded = true;
+      } catch (err) {
+        if (optimisticMessageAdded && !turnStartSucceeded) {
+          setOptimisticUserMessages((existing) =>
+            existing.filter((message) => message.id !== messageIdForSend),
+          );
+        }
+        setThreadError(
+          threadIdForSend,
+          err instanceof Error ? err.message : "发送编辑后的消息失败。",
+        );
+        resetLocalDispatch();
+        throw err;
+      } finally {
+        setIsRevertingCheckpoint(false);
+        sendInFlightRef.current = false;
+      }
+    },
+    [
+      activeEnvironmentUnavailable,
+      activeThread,
+      beginLocalDispatch,
+      environmentId,
+      interactionMode,
+      isConnecting,
+      isSendBusy,
+      isServerThread,
+      persistThreadSettingsForNextTurn,
+      phase,
+      resetLocalDispatch,
+      runtimeMode,
+      setOptimisticUserMessages,
+      setThreadError,
+      showUsageLimitReachedToast,
+      usageLimitBlock,
+    ],
+  );
 
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
@@ -3533,12 +3741,42 @@ export default function ChatView(props: ChatViewProps) {
   const onInterrupt = async () => {
     const api = readEnvironmentApi(environmentId);
     if (!api || !activeThread) return;
-    await api.orchestration.dispatchCommand({
-      type: "thread.turn.interrupt",
-      commandId: newCommandId(),
-      threadId: activeThread.id,
-      createdAt: new Date().toISOString(),
-    });
+    const pendingTurn = activeThreadKey
+      ? {
+          threadKey: activeThreadKey,
+          turnId: activeThread.session?.activeTurnId ?? null,
+        }
+      : null;
+    if (
+      pendingTurn &&
+      interruptPendingTurn?.threadKey === pendingTurn.threadKey &&
+      interruptPendingTurn.turnId === pendingTurn.turnId
+    ) {
+      return;
+    }
+    if (pendingTurn) {
+      setInterruptPendingTurn(pendingTurn);
+    }
+    try {
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.interrupt",
+        commandId: newCommandId(),
+        threadId: activeThread.id,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      if (pendingTurn) {
+        setInterruptPendingTurn((current) =>
+          current?.threadKey === pendingTurn.threadKey && current.turnId === pendingTurn.turnId
+            ? null
+            : current,
+        );
+      }
+      setThreadError(
+        activeThread.id,
+        err instanceof Error ? err.message : "停止当前任务失败。",
+      );
+    }
   };
 
   const onRespondToApproval = useCallback(
@@ -4063,6 +4301,66 @@ export default function ChatView(props: ChatViewProps) {
       settings,
     ],
   );
+  const saveThreadRunSettings = useCallback(
+    async (input: {
+      modelSelection: ModelSelection;
+      runtimeMode: RuntimeMode;
+      cwd?: string;
+      permissionProfileId?: string | null;
+      personality?: "none" | "friendly" | "pragmatic" | null;
+      reasoningSummary?: "auto" | "concise" | "detailed" | "none" | null;
+      serviceTier?: string | null;
+    }) => {
+      if (!activeThread || !isServerThread) {
+        return;
+      }
+      const api = readEnvironmentApi(environmentId);
+      if (!api) {
+        throw new Error("当前环境未连接，无法保存线程运行设置。");
+      }
+      await api.server.updateThreadSettings({
+        threadId: activeThread.id,
+        modelSelection: input.modelSelection,
+        runtimeMode: input.runtimeMode,
+        ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.permissionProfileId !== undefined
+          ? { permissionProfileId: input.permissionProfileId }
+          : {}),
+        ...(input.personality !== undefined ? { personality: input.personality } : {}),
+        ...(input.reasoningSummary !== undefined
+          ? { reasoningSummary: input.reasoningSummary }
+          : {}),
+        ...(input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
+      });
+      await persistThreadSettingsForNextTurn({
+        threadId: activeThread.id,
+        createdAt: new Date().toISOString(),
+        modelSelection: input.modelSelection,
+        runtimeMode: input.runtimeMode,
+        interactionMode,
+      });
+      setComposerDraftModelSelection(
+        scopeThreadRef(activeThread.environmentId, activeThread.id),
+        input.modelSelection,
+      );
+      setComposerDraftRuntimeMode(scopeThreadRef(activeThread.environmentId, activeThread.id), input.runtimeMode);
+      setStickyComposerModelSelection(input.modelSelection);
+      toastManager.add({
+        type: "success",
+        title: "线程运行设置已保存",
+      });
+    },
+    [
+      activeThread,
+      environmentId,
+      interactionMode,
+      isServerThread,
+      persistThreadSettingsForNextTurn,
+      setComposerDraftModelSelection,
+      setComposerDraftRuntimeMode,
+      setStickyComposerModelSelection,
+    ],
+  );
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (canOverrideServerThreadEnvMode) {
@@ -4240,6 +4538,19 @@ export default function ChatView(props: ChatViewProps) {
     return null;
   }
 
+  const threadRunSettingsControl = isServerThread ? (
+    <ThreadRunSettingsPopover
+      threadId={activeThread.id}
+      title={activeThread.title}
+      cwd={gitCwd}
+      modelSelection={activeThread.modelSelection}
+      runtimeMode={runtimeMode}
+      providerStatuses={providerStatuses as ServerProvider[]}
+      settings={settings}
+      onSave={saveThreadRunSettings}
+    />
+  ) : null;
+
   const isEmptyNewThread = shouldShowEmptyNewThread({
     routeKind,
     isConversationThread,
@@ -4327,6 +4638,7 @@ export default function ChatView(props: ChatViewProps) {
       canSteerRunningTurn={canSteerActiveTurn}
       isConnecting={isConnecting}
       isSendBusy={isSendBusy}
+      isInterruptPending={isInterruptPending}
       isUsageLimitReached={usageLimitBlock !== null}
       isPreparingWorktree={isPreparingWorktree}
       environmentUnavailable={activeEnvironmentUnavailableState}
@@ -4397,11 +4709,12 @@ export default function ChatView(props: ChatViewProps) {
       onExpandImage={onExpandTimelineImage}
     />
   );
-  const windowsSandboxSetupBannerNode = (
+  const renderWindowsSandboxSetupBanner = (className?: string) => (
     <WindowsSandboxSetupBanner
       provider={activeProviderStatus}
       platformOs={serverConfig?.environment.platform.os}
       onOpenSettings={() => void navigate({ to: "/settings/providers" })}
+      {...(className ? { className } : {})}
     />
   );
 
@@ -4444,6 +4757,7 @@ export default function ChatView(props: ChatViewProps) {
           rightPanelToggleShortcutLabel={rightPanelShortcutLabel}
           gitCwd={gitCwd}
           rightPanelOpen={rightPanelOpen}
+          runSettingsControl={threadRunSettingsControl}
           onRunProjectScript={runProjectScript}
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
@@ -4472,7 +4786,7 @@ export default function ChatView(props: ChatViewProps) {
               composer={
                 <>
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
-                  {windowsSandboxSetupBannerNode}
+                  {renderWindowsSandboxSetupBanner()}
                   <div className="relative z-10">{composerNode}</div>
                 </>
               }
@@ -4508,6 +4822,7 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenTurnDiff={onOpenTurnDiff}
                   revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                   onRevertUserMessage={onRevertUserMessage}
+                  onSubmitEditedUserMessage={onSubmitEditedUserMessage}
                   goalMessageIds={goalMessageIds}
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImage}
@@ -4545,7 +4860,7 @@ export default function ChatView(props: ChatViewProps) {
               >
                 <div className="relative isolate">
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
-                  {windowsSandboxSetupBannerNode}
+                  {renderWindowsSandboxSetupBanner("mx-auto max-w-[43.5rem]")}
                   <div className="relative z-10">{composerNode}</div>
                 </div>
                 {isGitRepo && (

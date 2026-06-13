@@ -7,6 +7,9 @@ const environmentApiOverridesForTests = new Map<EnvironmentId, EnvironmentApi>()
 
 export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
   return {
+    server: {
+      updateThreadSettings: rpcClient.server.updateThreadSettings,
+    },
     terminal: {
       open: (input) => rpcClient.terminal.open(input as never),
       write: (input) => rpcClient.terminal.write(input as never),
@@ -35,6 +38,11 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       pull: rpcClient.vcs.pull,
       refreshStatus: rpcClient.vcs.refreshStatus,
       diffWorkingTree: rpcClient.vcs.diffWorkingTree,
+      diffCommit: rpcClient.vcs.diffCommit,
+      stageFile: rpcClient.vcs.stageFile,
+      unstageFile: rpcClient.vcs.unstageFile,
+      restoreFile: rpcClient.vcs.restoreFile,
+      listCommits: rpcClient.vcs.listCommits,
       onStatus: (input, callback, options) => rpcClient.vcs.onStatus(input, callback, options),
       listRefs: rpcClient.vcs.listRefs,
       createWorktree: rpcClient.vcs.createWorktree,
@@ -51,6 +59,8 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       dispatchCommand: rpcClient.orchestration.dispatchCommand,
       getTurnDiff: rpcClient.orchestration.getTurnDiff,
       getFullThreadDiff: rpcClient.orchestration.getFullThreadDiff,
+      listThreadTurns: rpcClient.orchestration.listThreadTurns,
+      listThreadTurnItems: rpcClient.orchestration.listThreadTurnItems,
       getArchivedShellSnapshot: rpcClient.orchestration.getArchivedShellSnapshot,
       subscribeShell: (callback, options) =>
         rpcClient.orchestration.subscribeShell(callback, options),

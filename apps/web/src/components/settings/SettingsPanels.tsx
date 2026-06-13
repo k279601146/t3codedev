@@ -477,13 +477,22 @@ function SandboxPermissionsSection({
           providerInstanceId,
           mode: "elevated",
         });
+        const fellBackToUnelevated =
+          result.windowsSandbox.mode === "unelevated" &&
+          result.windowsSandbox.readiness === "ready";
         toastManager.add(
           stackedThreadToast({
-            type: result.started ? "success" : "warning",
-            title: result.started ? "Windows 沙箱初始化已启动" : "Windows 沙箱初始化未启动",
+            type: fellBackToUnelevated ? "warning" : result.started ? "success" : "warning",
+            title: fellBackToUnelevated
+              ? "已降级为 unelevated 沙箱"
+              : result.started
+                ? "Windows 沙箱初始化已启动"
+                : "Windows 沙箱初始化未启动",
             description:
               result.windowsSandbox.lastError ??
-              `当前 readiness: ${sandboxReadinessLabel(result.windowsSandbox.readiness)}`,
+              `当前模式: ${result.windowsSandbox.mode}，readiness: ${sandboxReadinessLabel(
+                result.windowsSandbox.readiness,
+              )}`,
           }),
         );
         onRefreshProviders();
@@ -574,6 +583,7 @@ function SandboxPermissionsSection({
             sandbox.readiness === "notConfigured" ||
             sandbox.readiness === "updateRequired" ||
             sandbox.readiness === "error";
+          const canRestoreElevated = sandbox.mode === "unelevated" && sandbox.readiness === "ready";
           const settingUp = settingUpInstanceId === provider.instanceId;
           return (
             <SettingsRow
@@ -581,9 +591,11 @@ function SandboxPermissionsSection({
               title={`${provider.displayName ?? provider.instanceId} Agent 沙箱`}
               description={
                 sandbox.lastError ??
-                (needsSetup
-                  ? "elevated 沙箱需要初始化或更新。失败时可临时切换到 unelevated 排查，但不会自动降级。"
-                  : "Windows sandbox readiness 来自 ai-engine.exe 的 app-server 协议。")
+                (canRestoreElevated
+                  ? "当前已降级为 unelevated，用户可以继续使用。修复系统环境后可恢复 elevated。"
+                  : needsSetup
+                    ? "elevated 沙箱需要初始化或更新。失败时会自动降级到 unelevated，避免阻塞使用。"
+                    : "Windows sandbox readiness 来自 ai-engine.exe 的 app-server 协议。")
               }
               status={
                 <span className="flex flex-wrap gap-x-3 gap-y-1">
@@ -596,7 +608,7 @@ function SandboxPermissionsSection({
                 </span>
               }
               control={
-                needsSetup ? (
+                needsSetup || canRestoreElevated ? (
                   <Button
                     type="button"
                     size="xs"
@@ -610,9 +622,11 @@ function SandboxPermissionsSection({
                       <ShieldCheckIcon className="size-3" />
                     )}
                     <span>
-                      {sandbox.readiness === "error"
-                        ? "重新启动 elevated 沙箱"
-                        : "启动 elevated 沙箱"}
+                      {canRestoreElevated
+                        ? "恢复 elevated 沙箱"
+                        : sandbox.readiness === "error"
+                          ? "重新启动 elevated 沙箱"
+                          : "启动 elevated 沙箱"}
                     </span>
                   </Button>
                 ) : (

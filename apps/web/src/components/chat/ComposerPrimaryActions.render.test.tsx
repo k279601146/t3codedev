@@ -10,6 +10,8 @@ vi.mock("~/lib/utils", () => ({
 const renderRunningPrimaryActions = (input: {
   canSteerRunningTurn: boolean;
   hasSendableContent: boolean;
+  isInterruptPending?: boolean;
+  isSendBusy?: boolean;
 }) =>
   renderToStaticMarkup(
     <ComposerPrimaryActions
@@ -19,7 +21,8 @@ const renderRunningPrimaryActions = (input: {
       canSteerRunningTurn={input.canSteerRunningTurn}
       showPlanFollowUpPrompt={false}
       promptHasText={input.hasSendableContent}
-      isSendBusy={false}
+      isSendBusy={input.isSendBusy ?? false}
+      isInterruptPending={input.isInterruptPending ?? false}
       isConnecting={false}
       isEnvironmentUnavailable={false}
       isPreparingWorktree={false}
@@ -53,5 +56,21 @@ describe("ComposerPrimaryActions running render", () => {
     expect(markup).toContain('type="button"');
     expect(markup).toContain('aria-label="Stop generation"');
     expect(markup).not.toContain('aria-label="Steer current turn"');
+  });
+
+  it("keeps the stop button while an interrupt is pending even if the draft has content", () => {
+    const markup = renderRunningPrimaryActions({
+      canSteerRunningTurn: true,
+      hasSendableContent: true,
+      isInterruptPending: true,
+      isSendBusy: true,
+    });
+
+    expect(markup.match(/<button/g)?.length).toBe(1);
+    expect(markup).toContain('type="button"');
+    expect(markup).toContain('aria-label="Stopping generation"');
+    expect(markup).not.toContain('type="submit"');
+    expect(markup).not.toContain('aria-label="Steer current turn"');
+    expect(markup).not.toContain("animate-spin");
   });
 });

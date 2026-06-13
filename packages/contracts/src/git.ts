@@ -111,6 +111,23 @@ export const VcsDiffWorkingTreeInput = Schema.Struct({
 });
 export type VcsDiffWorkingTreeInput = typeof VcsDiffWorkingTreeInput.Type;
 
+export const VcsDiffCommitInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  commitSha: TrimmedNonEmptyStringSchema,
+  ignoreWhitespace: Schema.optional(Schema.Boolean),
+});
+export type VcsDiffCommitInput = typeof VcsDiffCommitInput.Type;
+
+export const VcsFileOperationInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+  oldPath: Schema.optional(TrimmedNonEmptyStringSchema),
+});
+export type VcsFileOperationInput = typeof VcsFileOperationInput.Type;
+
+export const VcsFileOperationResult = Schema.Struct({});
+export type VcsFileOperationResult = typeof VcsFileOperationResult.Type;
+
 export const VcsPullInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
 });
@@ -137,6 +154,14 @@ export const VcsListRefsInput = Schema.Struct({
   ),
 });
 export type VcsListRefsInput = typeof VcsListRefsInput.Type;
+
+export const VcsListCommitsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  query: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(256))),
+  cursor: Schema.optional(NonNegativeInt),
+  limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(100))),
+});
+export type VcsListCommitsInput = typeof VcsListCommitsInput.Type;
 
 export const VcsCreateWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -247,6 +272,11 @@ export const VcsDiffWorkingTreeResult = Schema.Struct({
 });
 export type VcsDiffWorkingTreeResult = typeof VcsDiffWorkingTreeResult.Type;
 
+export const VcsDiffCommitResult = Schema.Struct({
+  diff: Schema.String,
+});
+export type VcsDiffCommitResult = typeof VcsDiffCommitResult.Type;
+
 export const VcsStatusStreamEvent = Schema.Union([
   Schema.TaggedStruct("snapshot", {
     local: VcsStatusLocalResult,
@@ -269,6 +299,23 @@ export const VcsListRefsResult = Schema.Struct({
   totalCount: NonNegativeInt,
 });
 export type VcsListRefsResult = typeof VcsListRefsResult.Type;
+
+export const VcsCommitSummary = Schema.Struct({
+  sha: TrimmedNonEmptyStringSchema,
+  shortSha: TrimmedNonEmptyStringSchema,
+  subject: TrimmedNonEmptyStringSchema,
+  authorName: TrimmedNonEmptyStringSchema,
+  committedAt: TrimmedNonEmptyStringSchema,
+});
+export type VcsCommitSummary = typeof VcsCommitSummary.Type;
+
+export const VcsListCommitsResult = Schema.Struct({
+  commits: Schema.Array(VcsCommitSummary),
+  isRepo: Schema.Boolean,
+  nextCursor: NonNegativeInt.pipe(Schema.NullOr),
+  totalCount: NonNegativeInt,
+});
+export type VcsListCommitsResult = typeof VcsListCommitsResult.Type;
 
 export const VcsCreateWorktreeResult = Schema.Struct({
   worktree: VcsWorktree,

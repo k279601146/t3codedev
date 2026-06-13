@@ -180,6 +180,10 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         rpcClient
           ? rpcClient.server.windowsSandboxSetupStart(input)
           : Promise.reject(unavailableLocalBackendError()),
+      updateThreadSettings: (input) =>
+        rpcClient
+          ? rpcClient.server.updateThreadSettings(input)
+          : Promise.reject(unavailableLocalBackendError()),
     },
   };
 }

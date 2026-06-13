@@ -36,6 +36,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   ProviderWindowsSandboxError,
+  ProviderThreadSettingsUpdateError,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
@@ -134,8 +135,23 @@ const toWindowsSandboxRpcError = (input: {
     providerInstanceId: input.providerInstanceId,
     reason:
       input.cause && typeof input.cause === "object" && "message" in input.cause
-        ? String((input.cause as { message?: unknown }).message ?? "Windows sandbox request failed.")
+        ? String(
+            (input.cause as { message?: unknown }).message ?? "Windows sandbox request failed.",
+          )
         : "Windows sandbox request failed.",
+    cause: input.cause,
+  });
+
+const toThreadSettingsRpcError = (input: {
+  readonly threadId: ThreadId;
+  readonly cause: { readonly message?: string } | unknown;
+}) =>
+  new ProviderThreadSettingsUpdateError({
+    threadId: input.threadId,
+    reason:
+      input.cause && typeof input.cause === "object" && "message" in input.cause
+        ? String((input.cause as { message?: unknown }).message ?? "Thread settings update failed.")
+        : "Thread settings update failed.",
     cause: input.cause,
   });
 
@@ -219,9 +235,9 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const sessions = yield* SessionCredentialService;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
-      const providerWindowsSandboxReadiness = (input: Parameters<
-        NonNullable<typeof providerService.windowsSandboxReadiness>
-      >[0]) => {
+      const providerWindowsSandboxReadiness = (
+        input: Parameters<NonNullable<typeof providerService.windowsSandboxReadiness>>[0],
+      ) => {
         const request = providerService.windowsSandboxReadiness;
         if (!request) {
           return Effect.fail(
@@ -237,9 +253,9 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           ),
         );
       };
-      const providerWindowsSandboxSetupStart = (input: Parameters<
-        NonNullable<typeof providerService.windowsSandboxSetupStart>
-      >[0]) => {
+      const providerWindowsSandboxSetupStart = (
+        input: Parameters<NonNullable<typeof providerService.windowsSandboxSetupStart>>[0],
+      ) => {
         const request = providerService.windowsSandboxSetupStart;
         if (!request) {
           return Effect.fail(
@@ -253,6 +269,22 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           Effect.mapError((cause) =>
             toWindowsSandboxRpcError({ providerInstanceId: input.providerInstanceId, cause }),
           ),
+        );
+      };
+      const providerThreadSettingsUpdate = (
+        input: Parameters<NonNullable<typeof providerService.updateThreadSettings>>[0],
+      ) => {
+        const request = providerService.updateThreadSettings;
+        if (!request) {
+          return Effect.fail(
+            toThreadSettingsRpcError({
+              threadId: input.threadId,
+              cause: new Error("Thread settings update is not available."),
+            }),
+          );
+        }
+        return request(input).pipe(
+          Effect.mapError((cause) => toThreadSettingsRpcError({ threadId: input.threadId, cause })),
         );
       };
       const serverCommandId = (tag: string) =>
@@ -760,6 +792,46 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             ),
             { "rpc.aggregate": "orchestration" },
           ),
+        [ORCHESTRATION_WS_METHODS.listThreadTurns]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.listThreadTurns,
+            providerService.listThreadTurns
+              ? providerService.listThreadTurns(input).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationGetSnapshotError({
+                        message: `Failed to list thread turns for ${input.threadId}`,
+                        cause,
+                      }),
+                  ),
+                )
+              : Effect.fail(
+                  new OrchestrationGetSnapshotError({
+                    message: "Provider service does not support paged thread turn history",
+                  }),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.listThreadTurnItems]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.listThreadTurnItems,
+            providerService.listThreadTurnItems
+              ? providerService.listThreadTurnItems(input).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationGetSnapshotError({
+                        message: `Failed to list thread turn items for ${input.threadId}`,
+                        cause,
+                      }),
+                  ),
+                )
+              : Effect.fail(
+                  new OrchestrationGetSnapshotError({
+                    message: "Provider service does not support paged thread item history",
+                  }),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [ORCHESTRATION_WS_METHODS.replayEvents]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.replayEvents,
@@ -838,6 +910,71 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeThread,
             Effect.gen(function* () {
+              if (input.initialDetailMode === "shell") {
+                const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationGetSnapshotError({
+                        message: "Failed to load orchestration shell snapshot",
+                        cause,
+                      }),
+                  ),
+                );
+                const threadShell = shellSnapshot.threads.find(
+                  (thread) => thread.id === input.threadId,
+                );
+                if (!threadShell) {
+                  return yield* new OrchestrationGetSnapshotError({
+                    message: `Thread ${input.threadId} was not found`,
+                    cause: input.threadId,
+                  });
+                }
+
+                const liveStream = orchestrationEngine.streamDomainEvents.pipe(
+                  Stream.filter(
+                    (event) =>
+                      event.aggregateKind === "thread" &&
+                      event.aggregateId === input.threadId &&
+                      isThreadDetailEvent(event),
+                  ),
+                  Stream.map((event) => ({
+                    kind: "event" as const,
+                    event,
+                  })),
+                );
+
+                return Stream.concat(
+                  Stream.make({
+                    kind: "snapshot" as const,
+                    snapshot: {
+                      snapshotSequence: shellSnapshot.snapshotSequence,
+                      thread: {
+                        id: threadShell.id,
+                        projectId: threadShell.projectId,
+                        title: threadShell.title,
+                        modelSelection: threadShell.modelSelection,
+                        runtimeMode: threadShell.runtimeMode,
+                        interactionMode: threadShell.interactionMode,
+                        branch: threadShell.branch,
+                        worktreePath: threadShell.worktreePath,
+                        latestTurn: threadShell.latestTurn,
+                        goal: threadShell.goal ?? null,
+                        createdAt: threadShell.createdAt,
+                        updatedAt: threadShell.updatedAt,
+                        archivedAt: threadShell.archivedAt,
+                        deletedAt: null,
+                        messages: [],
+                        proposedPlans: [],
+                        activities: [],
+                        checkpoints: [],
+                        session: threadShell.session,
+                      },
+                    },
+                  }),
+                  liveStream,
+                );
+              }
+
               const [threadDetail, snapshotSequence] = yield* Effect.all([
                 projectionSnapshotQuery.getThreadDetailById(input.threadId).pipe(
                   Effect.mapError(
@@ -993,6 +1130,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.providerWindowsSandboxSetupStart,
             providerWindowsSandboxSetupStart(input),
+            { "rpc.aggregate": "provider" },
+          ),
+        [WS_METHODS.providerThreadSettingsUpdate]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerThreadSettingsUpdate,
+            providerThreadSettingsUpdate(input),
             { "rpc.aggregate": "provider" },
           ),
         [WS_METHODS.sourceControlLookupRepository]: (input) =>
@@ -1302,6 +1445,46 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.vcsDiffWorkingTree, gitWorkflow.diffWorkingTree(input), {
             "rpc.aggregate": "vcs",
           }),
+        [WS_METHODS.vcsDiffCommit]: (input) =>
+          observeRpcEffect(WS_METHODS.vcsDiffCommit, gitWorkflow.diffCommit(input), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.vcsStageFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsStageFile,
+            gitWorkflow.stageFile(input).pipe(
+              Effect.matchCauseEffect({
+                onFailure: (cause) => Effect.failCause(cause),
+                onSuccess: (result) =>
+                  refreshGitStatus(input.cwd).pipe(Effect.ignore({ log: true }), Effect.as(result)),
+              }),
+            ),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsUnstageFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsUnstageFile,
+            gitWorkflow.unstageFile(input).pipe(
+              Effect.matchCauseEffect({
+                onFailure: (cause) => Effect.failCause(cause),
+                onSuccess: (result) =>
+                  refreshGitStatus(input.cwd).pipe(Effect.ignore({ log: true }), Effect.as(result)),
+              }),
+            ),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsRestoreFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsRestoreFile,
+            gitWorkflow.restoreFile(input).pipe(
+              Effect.matchCauseEffect({
+                onFailure: (cause) => Effect.failCause(cause),
+                onSuccess: (result) =>
+                  refreshGitStatus(input.cwd).pipe(Effect.ignore({ log: true }), Effect.as(result)),
+              }),
+            ),
+            { "rpc.aggregate": "vcs" },
+          ),
         [WS_METHODS.vcsPull]: (input) =>
           observeRpcEffect(
             WS_METHODS.vcsPull,
@@ -1355,6 +1538,10 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           ),
         [WS_METHODS.vcsListRefs]: (input) =>
           observeRpcEffect(WS_METHODS.vcsListRefs, gitWorkflow.listRefs(input), {
+            "rpc.aggregate": "vcs",
+          }),
+        [WS_METHODS.vcsListCommits]: (input) =>
+          observeRpcEffect(WS_METHODS.vcsListCommits, gitWorkflow.listCommits(input), {
             "rpc.aggregate": "vcs",
           }),
         [WS_METHODS.vcsCreateWorktree]: (input) =>

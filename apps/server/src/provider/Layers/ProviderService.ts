@@ -13,6 +13,8 @@ import {
   DEFAULT_RUNTIME_MODE,
   ModelSelection,
   NonNegativeInt,
+  OrchestrationListThreadTurnItemsInput,
+  OrchestrationListThreadTurnsInput,
   ThreadId,
   ProviderGoalClearInput,
   ProviderGoalGetInput,
@@ -25,6 +27,7 @@ import {
   ProviderSessionStartInput,
   ProviderSteerTurnInput,
   ProviderStopSessionInput,
+  ProviderThreadSettingsUpdateInput,
   ProviderWindowsSandboxReadinessInput,
   ProviderWindowsSandboxSetupStartInput,
   type ProviderInstanceId,
@@ -1033,6 +1036,33 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     return yield* routed.adapter.clearGoal(input.threadId);
   });
 
+  const updateThreadSettings: ProviderServiceShape["updateThreadSettings"] = Effect.fn(
+    "updateThreadSettings",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.updateThreadSettings",
+      schema: ProviderThreadSettingsUpdateInput,
+      payload: rawInput,
+    });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.updateThreadSettings",
+      allowRecovery: true,
+    });
+    if (!routed.adapter.updateThreadSettings) {
+      return yield* toValidationError(
+        "ProviderService.updateThreadSettings",
+        `Provider '${routed.adapter.provider}' does not support thread settings updates.`,
+      );
+    }
+    yield* Effect.annotateCurrentSpan({
+      "provider.operation": "update-thread-settings",
+      "provider.kind": routed.adapter.provider,
+      "provider.thread_id": input.threadId,
+    });
+    return yield* routed.adapter.updateThreadSettings(input);
+  });
+
   const listSessions: ProviderServiceShape["listSessions"] = Effect.fn("listSessions")(
     function* () {
       const currentAdapters = yield* getAdapterEntries;
@@ -1116,6 +1146,50 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const getInstanceInfo: ProviderServiceShape["getInstanceInfo"] = (instanceId) =>
     registry.getInstanceInfo(instanceId);
+
+  const listThreadTurns: ProviderServiceShape["listThreadTurns"] = Effect.fn(
+    "listThreadTurns",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.listThreadTurns",
+      schema: OrchestrationListThreadTurnsInput,
+      payload: rawInput,
+    });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.listThreadTurns",
+      allowRecovery: true,
+    });
+    if (!routed.adapter.listThreadTurns) {
+      return yield* toValidationError(
+        "ProviderService.listThreadTurns",
+        `Provider '${routed.adapter.provider}' does not support paged thread turn history.`,
+      );
+    }
+    return yield* routed.adapter.listThreadTurns(input);
+  });
+
+  const listThreadTurnItems: ProviderServiceShape["listThreadTurnItems"] = Effect.fn(
+    "listThreadTurnItems",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.listThreadTurnItems",
+      schema: OrchestrationListThreadTurnItemsInput,
+      payload: rawInput,
+    });
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.listThreadTurnItems",
+      allowRecovery: true,
+    });
+    if (!routed.adapter.listThreadTurnItems) {
+      return yield* toValidationError(
+        "ProviderService.listThreadTurnItems",
+        `Provider '${routed.adapter.provider}' does not support paged thread item history.`,
+      );
+    }
+    return yield* routed.adapter.listThreadTurnItems(input);
+  });
 
   const windowsSandboxReadiness: ProviderServiceShape["windowsSandboxReadiness"] = Effect.fn(
     "windowsSandboxReadiness",
@@ -1269,10 +1343,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     setGoalStatus,
     getGoal,
     clearGoal,
+    updateThreadSettings,
     stopSession,
     listSessions,
     getCapabilities,
     getInstanceInfo,
+    listThreadTurns,
+    listThreadTurnItems,
     windowsSandboxReadiness,
     windowsSandboxSetupStart,
     rollbackConversation,

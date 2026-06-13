@@ -899,6 +899,61 @@ label:has(> select#reasoning-effort) select {
   margin-top: 0.25rem;
 }
 
+.proposed-plan-card .chat-markdown {
+  color: #18181b;
+  font-size: 14px;
+  line-height: 1.68;
+}
+
+.proposed-plan-card .chat-markdown h1 {
+  margin: 0 0 18px 0;
+  color: #18181b;
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.32;
+}
+
+.proposed-plan-card .chat-markdown h2 {
+  margin: 22px 0 8px 0;
+  color: #18181b;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.proposed-plan-card .chat-markdown h3 {
+  margin: 18px 0 8px 0;
+  color: #27272a;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.proposed-plan-card .chat-markdown p,
+.proposed-plan-card .chat-markdown ul,
+.proposed-plan-card .chat-markdown ol,
+.proposed-plan-card .chat-markdown blockquote,
+.proposed-plan-card .chat-markdown pre,
+.proposed-plan-card .chat-markdown table {
+  margin-bottom: 10px;
+}
+
+.proposed-plan-card .chat-markdown ul,
+.proposed-plan-card .chat-markdown ol {
+  padding-left: 1.15rem;
+}
+
+.proposed-plan-card .chat-markdown li + li {
+  margin-top: 0.4rem;
+}
+
+.dark .proposed-plan-card .chat-markdown,
+.dark .proposed-plan-card .chat-markdown h1,
+.dark .proposed-plan-card .chat-markdown h2,
+.dark .proposed-plan-card .chat-markdown h3 {
+  color: var(--foreground);
+}
+
 .chat-markdown a {
   color: var(--info-foreground);
   text-decoration: underline;

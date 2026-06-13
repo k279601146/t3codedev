@@ -91,12 +91,17 @@ export interface WsRpcClient {
     readonly pull: RpcUnaryMethod<typeof WS_METHODS.vcsPull>;
     readonly refreshStatus: RpcUnaryMethod<typeof WS_METHODS.vcsRefreshStatus>;
     readonly diffWorkingTree: RpcUnaryMethod<typeof WS_METHODS.vcsDiffWorkingTree>;
+    readonly diffCommit: RpcUnaryMethod<typeof WS_METHODS.vcsDiffCommit>;
+    readonly stageFile: RpcUnaryMethod<typeof WS_METHODS.vcsStageFile>;
+    readonly unstageFile: RpcUnaryMethod<typeof WS_METHODS.vcsUnstageFile>;
+    readonly restoreFile: RpcUnaryMethod<typeof WS_METHODS.vcsRestoreFile>;
     readonly onStatus: (
       input: RpcInput<typeof WS_METHODS.subscribeVcsStatus>,
       listener: (status: VcsStatusResult) => void,
       options?: StreamSubscriptionOptions,
     ) => () => void;
     readonly listRefs: RpcUnaryMethod<typeof WS_METHODS.vcsListRefs>;
+    readonly listCommits: RpcUnaryMethod<typeof WS_METHODS.vcsListCommits>;
     readonly createWorktree: RpcUnaryMethod<typeof WS_METHODS.vcsCreateWorktree>;
     readonly removeWorktree: RpcUnaryMethod<typeof WS_METHODS.vcsRemoveWorktree>;
     readonly createRef: RpcUnaryMethod<typeof WS_METHODS.vcsCreateRef>;
@@ -149,6 +154,7 @@ export interface WsRpcClient {
     readonly windowsSandboxSetupStart: RpcUnaryMethod<
       typeof WS_METHODS.providerWindowsSandboxSetupStart
     >;
+    readonly updateThreadSettings: RpcUnaryMethod<typeof WS_METHODS.providerThreadSettingsUpdate>;
     readonly subscribeConfig: RpcStreamMethod<typeof WS_METHODS.subscribeServerConfig>;
     readonly subscribeLifecycle: RpcStreamMethod<typeof WS_METHODS.subscribeServerLifecycle>;
     readonly subscribeAuthAccess: RpcStreamMethod<typeof WS_METHODS.subscribeAuthAccess>;
@@ -157,6 +163,10 @@ export interface WsRpcClient {
     readonly dispatchCommand: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.dispatchCommand>;
     readonly getTurnDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getTurnDiff>;
     readonly getFullThreadDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getFullThreadDiff>;
+    readonly listThreadTurns: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.listThreadTurns>;
+    readonly listThreadTurnItems: RpcUnaryMethod<
+      typeof ORCHESTRATION_WS_METHODS.listThreadTurnItems
+    >;
     readonly getArchivedShellSnapshot: RpcUnaryNoArgMethod<
       typeof ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot
     >;
@@ -247,6 +257,12 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.vcsRefreshStatus](input)),
       diffWorkingTree: (input) =>
         transport.request((client) => client[WS_METHODS.vcsDiffWorkingTree](input)),
+      diffCommit: (input) => transport.request((client) => client[WS_METHODS.vcsDiffCommit](input)),
+      stageFile: (input) => transport.request((client) => client[WS_METHODS.vcsStageFile](input)),
+      unstageFile: (input) =>
+        transport.request((client) => client[WS_METHODS.vcsUnstageFile](input)),
+      restoreFile: (input) =>
+        transport.request((client) => client[WS_METHODS.vcsRestoreFile](input)),
       onStatus: (input, listener, options) => {
         let current: VcsStatusResult | null = null;
         return transport.subscribe(
@@ -259,6 +275,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         );
       },
       listRefs: (input) => transport.request((client) => client[WS_METHODS.vcsListRefs](input)),
+      listCommits: (input) =>
+        transport.request((client) => client[WS_METHODS.vcsListCommits](input)),
       createWorktree: (input) =>
         transport.request((client) => client[WS_METHODS.vcsCreateWorktree](input)),
       removeWorktree: (input) =>
@@ -329,6 +347,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.providerWindowsSandboxReadiness](input)),
       windowsSandboxSetupStart: (input) =>
         transport.request((client) => client[WS_METHODS.providerWindowsSandboxSetupStart](input)),
+      updateThreadSettings: (input) =>
+        transport.request((client) => client[WS_METHODS.providerThreadSettingsUpdate](input)),
       subscribeConfig: (listener, options) =>
         transport.subscribe((client) => client[WS_METHODS.subscribeServerConfig]({}), listener, {
           ...options,
@@ -352,6 +372,10 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.getTurnDiff](input)),
       getFullThreadDiff: (input) =>
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.getFullThreadDiff](input)),
+      listThreadTurns: (input) =>
+        transport.request((client) => client[ORCHESTRATION_WS_METHODS.listThreadTurns](input)),
+      listThreadTurnItems: (input) =>
+        transport.request((client) => client[ORCHESTRATION_WS_METHODS.listThreadTurnItems](input)),
       getArchivedShellSnapshot: () =>
         transport.request((client) =>
           client[ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]({}),
@@ -393,22 +417,18 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     automations: {
       list: (input) => transport.request((client) => client[WS_METHODS.automationsList](input)),
       get: (input) => transport.request((client) => client[WS_METHODS.automationsGet](input)),
-      upsert: (input) =>
-        transport.request((client) => client[WS_METHODS.automationsUpsert](input)),
-      delete: (input) =>
-        transport.request((client) => client[WS_METHODS.automationsDelete](input)),
-      runNow: (input) =>
-        transport.request((client) => client[WS_METHODS.automationsRunNow](input)),
+      upsert: (input) => transport.request((client) => client[WS_METHODS.automationsUpsert](input)),
+      delete: (input) => transport.request((client) => client[WS_METHODS.automationsDelete](input)),
+      runNow: (input) => transport.request((client) => client[WS_METHODS.automationsRunNow](input)),
       archiveRun: (input) =>
         transport.request((client) => client[WS_METHODS.automationsArchiveRun](input)),
       markRunRead: (input) =>
         transport.request((client) => client[WS_METHODS.automationsMarkRunRead](input)),
       subscribe: (listener, options) =>
-        transport.subscribe(
-          (client) => client[WS_METHODS.automationsSubscribe]({}),
-          listener,
-          { ...options, tag: WS_METHODS.automationsSubscribe },
-        ),
+        transport.subscribe((client) => client[WS_METHODS.automationsSubscribe]({}), listener, {
+          ...options,
+          tag: WS_METHODS.automationsSubscribe,
+        }),
     },
   };
 }

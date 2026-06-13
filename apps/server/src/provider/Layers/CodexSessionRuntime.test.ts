@@ -183,6 +183,46 @@ describe("buildThreadSettingsUpdateParams", () => {
       },
     );
   });
+
+  it("keeps omitted fields unchanged and uses null to clear explicit overrides", () => {
+    assert.deepStrictEqual(
+      buildThreadSettingsUpdateParams({
+        threadId: "provider-thread-1",
+        model: null,
+        serviceTier: null,
+        effort: null,
+        personality: null,
+        summary: null,
+      }),
+      {
+        threadId: "provider-thread-1",
+        model: null,
+        serviceTier: null,
+        effort: null,
+        personality: null,
+        summary: null,
+      },
+    );
+  });
+
+  it("does not combine a permissions profile with sandboxPolicy", () => {
+    assert.deepStrictEqual(
+      buildThreadSettingsUpdateParams({
+        threadId: "provider-thread-1",
+        permissions: "trusted-write",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+        },
+        runtimeMode: "auto-accept-edits",
+      }),
+      {
+        threadId: "provider-thread-1",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        permissions: "trusted-write",
+      },
+    );
+  });
 });
 
 describe("isRecoverableThreadResumeError", () => {
@@ -235,9 +275,7 @@ describe("isRecoverableThreadResumeError", () => {
 describe("openCodexThread", () => {
   it("injects T3 browser, external browser, and computer dynamic tools when starting a thread", async () => {
     let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
-    let settingsPayload:
-      | CodexRpc.ClientRequestParamsByMethod["thread/settings/update"]
-      | undefined;
+    let settingsPayload: CodexRpc.ClientRequestParamsByMethod["thread/settings/update"] | undefined;
     const client = {
       request: <M extends TestThreadOpenMethod>(
         method: M,

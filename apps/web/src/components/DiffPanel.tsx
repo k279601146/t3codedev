@@ -1,20 +1,39 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import type { TurnId } from "@t3tools/contracts";
+import type {
+  GitStackedAction,
+  TurnId,
+  VcsCommitSummary,
+  VcsFileOperationInput,
+} from "@t3tools/contracts";
 import {
+  AlignLeftIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   Columns2Icon,
+  CopyIcon,
+  EyeIcon,
+  FileCode2Icon,
   FileSearchIcon,
   FolderOpenIcon,
+  GitBranchIcon,
+  GitCommitHorizontalIcon,
+  GitPullRequestIcon,
+  ListTreeIcon,
   MoreHorizontalIcon,
-  PilcrowIcon,
+  MinusIcon,
+  PlusIcon,
   RefreshCwIcon,
+  SlidersHorizontalIcon,
+  SparklesIcon,
   TextWrapIcon,
+  Undo2Icon,
 } from "lucide-react";
 import {
+  type ReactNode,
   type WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
@@ -23,7 +42,8 @@ import {
   useState,
 } from "react";
 import { openInPreferredEditor } from "../editorPreferences";
-import { useGitStatus } from "~/lib/gitStatusState";
+import { refreshGitStatus, useGitStatus } from "~/lib/gitStatusState";
+import { gitRunStackedActionMutationOptions } from "~/lib/gitReactQuery";
 import { checkpointDiffQueryOptions } from "~/lib/providerReactQuery";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "../localApi";
@@ -44,9 +64,91 @@ import {
   type UnifiedDiffLine,
 } from "../lib/unifiedDiff";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
-import { ToggleGroup, Toggle } from "./ui/toggle-group";
+import { Button } from "./ui/button";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "./ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { resolveQuickAction } from "./GitActionsControl.logic";
 
-type DiffScope = "unstaged" | "staged" | "thread";
+type DiffScope = "unstaged" | "staged" | "commit" | "turn";
+
+const DIFF_SCOPE_LABELS = {
+  unstaged: "未暂存",
+  staged: "已暂存",
+  commit: "提交",
+  turn: "上轮对话",
+} satisfies Record<DiffScope, string>;
+
+function countPatchLines(files: ReadonlyArray<UnifiedDiffFilePatch>, type: "add" | "remove") {
+  return files.reduce((total, file) => total + countFilePatchLines(file, type), 0);
+}
+
+function IconButton(props: {
+  label: string;
+  children: ReactNode;
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-45",
+              props.active ? "bg-muted text-foreground" : "",
+            )}
+            disabled={props.disabled}
+            aria-label={props.label}
+            onClick={props.onClick}
+          >
+            {props.children}
+          </button>
+        }
+      />
+      <TooltipPopup side="bottom">{props.label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function FileRowActionButton(props: {
+  label: string;
+  disabled?: boolean | undefined;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 opacity-70 transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35 group-hover:opacity-100"
+            aria-label={props.label}
+            disabled={props.disabled}
+            onClick={props.onClick}
+          >
+            {props.children}
+          </button>
+        }
+      />
+      <TooltipPopup side="bottom">{props.label}</TooltipPopup>
+    </Tooltip>
+  );
+}
 
 type RenderablePatch =
   | {
@@ -82,6 +184,22 @@ function resolveFileDiffPath(fileDiff: UnifiedDiffFilePatch): string {
 
 function buildFileDiffRenderKey(fileDiff: UnifiedDiffFilePatch): string {
   return `${fileDiff.oldPath ?? "none"}:${fileDiff.newPath ?? "none"}`;
+}
+
+function buildFileOperationInput(
+  cwd: string,
+  fileDiff: UnifiedDiffFilePatch,
+): VcsFileOperationInput {
+  const path = getPatchDisplayPath(fileDiff) ?? fileDiff.oldPath ?? fileDiff.newPath ?? "";
+  return {
+    cwd,
+    path,
+    ...(fileDiff.oldPath && fileDiff.oldPath !== path ? { oldPath: fileDiff.oldPath } : {}),
+  };
+}
+
+function formatCommitMenuLabel(commit: VcsCommitSummary): string {
+  return `${commit.shortSha} ${commit.subject}`;
 }
 
 function countFilePatchLines(file: UnifiedDiffFilePatch, type: "add" | "remove"): number {
@@ -154,7 +272,7 @@ function DiffHunkView(props: { hunk: UnifiedDiffHunk; index: number; wrap: boole
         <span className="select-none border-r border-border/50 px-2 text-center leading-8">
           <ChevronDownIcon className="mx-auto size-3.5" />
         </span>
-        <span className="px-3 leading-8">{hiddenLineCount} unchanged lines</span>
+        <span className="px-3 leading-8">{hiddenLineCount} 行未变更</span>
       </div>
       {props.hunk.lines.map((line, index) => {
         const oldDisplay = line.type === "add" ? null : oldLineNumber;
@@ -185,37 +303,80 @@ function DiffFileRow(props: {
   file: UnifiedDiffFilePatch;
   expanded: boolean;
   wrap: boolean;
+  diffScope: DiffScope;
+  operationPending?: boolean | undefined;
   onToggle: () => void;
   onOpenFile: () => void;
+  onStageFile?: (() => void) | undefined;
+  onUnstageFile?: (() => void) | undefined;
+  onRestoreFile?: (() => void) | undefined;
 }) {
   const filePath = resolveFileDiffPath(props.file);
   const additions = countFilePatchLines(props.file, "add");
   const deletions = countFilePatchLines(props.file, "remove");
 
   return (
-    <div className="border-b border-border/45 last:border-b-0" data-diff-file-path={filePath}>
-      <div className="flex h-9 min-w-0 items-center gap-2 px-4 text-xs">
+    <div className="border-b border-border/35 last:border-b-0" data-diff-file-path={filePath}>
+      <div className="group flex h-9 min-w-0 items-center gap-1.5 px-3 text-xs">
         <button
           type="button"
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label={props.expanded ? `折叠 ${filePath}` : `展开 ${filePath}`}
           aria-expanded={props.expanded}
           onClick={props.onToggle}
         >
           <ChevronDownIcon
-            className={cn("size-4 transition-transform", props.expanded ? "" : "-rotate-90")}
+            className={cn("size-3.5 transition-transform", props.expanded ? "" : "-rotate-90")}
           />
         </button>
         <button
           type="button"
-          className="min-w-0 flex-1 truncate text-left text-foreground hover:underline"
+          className="min-w-0 flex-1 truncate text-left text-foreground"
           title={filePath}
+          onClick={props.onToggle}
+        >
+          <span className="truncate">{filePath}</span>
+          {/\.(test|spec)\.[cm]?[jt]sx?$/u.test(filePath) ? (
+            <span className="ml-1 inline-block size-1.5 rounded-full bg-sky-500 align-middle" />
+          ) : null}
+        </button>
+        <span className="min-w-10 shrink-0 text-right text-emerald-600">+{additions}</span>
+        <span className="min-w-7 shrink-0 text-right text-red-500">-{deletions}</span>
+        {props.diffScope === "unstaged" && props.onStageFile ? (
+          <FileRowActionButton
+            label={`暂存 ${filePath}`}
+            disabled={props.operationPending}
+            onClick={props.onStageFile}
+          >
+            <PlusIcon className="size-3.5" />
+          </FileRowActionButton>
+        ) : null}
+        {props.diffScope === "staged" && props.onUnstageFile ? (
+          <FileRowActionButton
+            label={`取消暂存 ${filePath}`}
+            disabled={props.operationPending}
+            onClick={props.onUnstageFile}
+          >
+            <MinusIcon className="size-3.5" />
+          </FileRowActionButton>
+        ) : null}
+        {props.diffScope === "unstaged" && props.onRestoreFile ? (
+          <FileRowActionButton
+            label={`还原 ${filePath}`}
+            disabled={props.operationPending}
+            onClick={props.onRestoreFile}
+          >
+            <Undo2Icon className="size-3.5" />
+          </FileRowActionButton>
+        ) : null}
+        <button
+          type="button"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 opacity-70 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+          aria-label={`在编辑器中打开 ${filePath}`}
           onClick={props.onOpenFile}
         >
-          {filePath}
+          <FileSearchIcon className="size-3.5" />
         </button>
-        <span className="shrink-0 text-emerald-600">+{additions}</span>
-        <span className="shrink-0 text-red-500">-{deletions}</span>
       </div>
       {props.expanded ? (
         <div className="overflow-x-auto px-2 pb-2">
@@ -243,10 +404,18 @@ export { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 
 export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const settings = useSettings();
   const [diffScope, setDiffScope] = useState<DiffScope>("unstaged");
   const [diffWordWrap, setDiffWordWrap] = useState(settings.diffWordWrap);
   const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(settings.diffIgnoreWhitespace);
+  const [loadFullFile, setLoadFullFile] = useState(false);
+  const [richTextPreview, setRichTextPreview] = useState(false);
+  const [wordDiffEnabled, setWordDiffEnabled] = useState(false);
+  const [hideWhitespaceChars, setHideWhitespaceChars] = useState(true);
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+  const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
+  const previousVisibleFileKeysRef = useRef<ReadonlySet<string>>(new Set());
   const [collapsedDiffFileKeys, setCollapsedDiffFileKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -275,6 +444,13 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
       : undefined,
   );
   const activeCwd = activeThread?.worktreePath ?? activeProject?.cwd;
+  const gitActionMutation = useMutation(
+    gitRunStackedActionMutationOptions({
+      environmentId: activeThread?.environmentId ?? null,
+      cwd: activeCwd ?? null,
+      queryClient,
+    }),
+  );
   const gitStatusQuery = useGitStatus({
     environmentId: activeThread?.environmentId ?? null,
     cwd: activeCwd ?? null,
@@ -304,9 +480,11 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
       ? undefined
       : (orderedTurnDiffSummaries.find((summary) => summary.turnId === selectedTurnId) ??
         orderedTurnDiffSummaries[0]);
+  const activeTurnDiffSummary = selectedTurn ?? orderedTurnDiffSummaries[0];
   const selectedCheckpointTurnCount =
-    selectedTurn &&
-    (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
+    activeTurnDiffSummary &&
+    (activeTurnDiffSummary.checkpointTurnCount ??
+      inferredCheckpointTurnCountByTurnId[activeTurnDiffSummary.turnId]);
   const selectedCheckpointRange = useMemo(
     () =>
       typeof selectedCheckpointTurnCount === "number"
@@ -317,38 +495,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         : null,
     [selectedCheckpointTurnCount],
   );
-  const conversationCheckpointTurnCount = useMemo(() => {
-    const turnCounts = orderedTurnDiffSummaries
-      .map(
-        (summary) =>
-          summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId],
-      )
-      .filter((value): value is number => typeof value === "number");
-    if (turnCounts.length === 0) {
-      return undefined;
-    }
-    const latest = Math.max(...turnCounts);
-    return latest > 0 ? latest : undefined;
-  }, [inferredCheckpointTurnCountByTurnId, orderedTurnDiffSummaries]);
-  const conversationCheckpointRange = useMemo(
-    () =>
-      !selectedTurn && typeof conversationCheckpointTurnCount === "number"
-        ? {
-            fromTurnCount: 0,
-            toTurnCount: conversationCheckpointTurnCount,
-          }
-        : null,
-    [conversationCheckpointTurnCount, selectedTurn],
-  );
-  const activeCheckpointRange = selectedTurn
-    ? selectedCheckpointRange
-    : conversationCheckpointRange;
-  const conversationCacheScope = useMemo(() => {
-    if (selectedTurn || orderedTurnDiffSummaries.length === 0) {
-      return null;
-    }
-    return `conversation:${orderedTurnDiffSummaries.map((summary) => summary.turnId).join(",")}`;
-  }, [orderedTurnDiffSummaries, selectedTurn]);
+  const activeCheckpointRange = selectedCheckpointRange;
   const activeCheckpointDiffQuery = useQuery(
     checkpointDiffQueryOptions({
       environmentId: activeThread?.environmentId ?? null,
@@ -356,10 +503,69 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
       fromTurnCount: activeCheckpointRange?.fromTurnCount ?? null,
       toTurnCount: activeCheckpointRange?.toTurnCount ?? null,
       ignoreWhitespace: diffIgnoreWhitespace,
-      cacheScope: selectedTurn ? `turn:${selectedTurn.turnId}` : conversationCacheScope,
-      enabled: isGitRepo,
+      cacheScope: activeTurnDiffSummary ? `turn:${activeTurnDiffSummary.turnId}` : null,
+      enabled: isGitRepo && diffScope === "turn",
     }),
   );
+  const commitListQuery = useQuery({
+    queryKey: ["vcs.listCommits", activeThread?.environmentId ?? null, activeCwd ?? null],
+    enabled: Boolean(activeThread?.environmentId && activeCwd && isGitRepo),
+    queryFn: async () => {
+      if (!activeThread?.environmentId || !activeCwd) {
+        return { commits: [], isRepo: false, nextCursor: null, totalCount: 0 };
+      }
+      const api = readEnvironmentApi(activeThread.environmentId);
+      if (!api) {
+        throw new Error("环境连接不可用，无法读取提交列表。");
+      }
+      return await api.vcs.listCommits({ cwd: activeCwd, limit: 30 });
+    },
+  });
+  const commits = commitListQuery.data?.commits ?? [];
+  const selectedCommit =
+    selectedCommitSha === null
+      ? null
+      : (commits.find((commit) => commit.sha === selectedCommitSha) ?? null);
+  const commitDiffQuery = useQuery({
+    queryKey: [
+      "vcs.diffCommit",
+      activeThread?.environmentId ?? null,
+      activeCwd ?? null,
+      selectedCommitSha,
+      diffIgnoreWhitespace,
+    ],
+    enabled: Boolean(
+      activeThread?.environmentId &&
+      activeCwd &&
+      isGitRepo &&
+      diffScope === "commit" &&
+      selectedCommitSha,
+    ),
+    queryFn: async () => {
+      if (!activeThread?.environmentId || !activeCwd || !selectedCommitSha) {
+        return { diff: "" };
+      }
+      const api = readEnvironmentApi(activeThread.environmentId);
+      if (!api) {
+        throw new Error("环境连接不可用，无法读取提交差异。");
+      }
+      return await api.vcs.diffCommit({
+        cwd: activeCwd,
+        commitSha: selectedCommitSha,
+        ignoreWhitespace: diffIgnoreWhitespace,
+      });
+    },
+  });
+  useEffect(() => {
+    if (diffScope !== "commit") return;
+    if (commits.length === 0) {
+      setSelectedCommitSha((current) => (current === null ? current : null));
+      return;
+    }
+    setSelectedCommitSha((current) =>
+      current && commits.some((commit) => commit.sha === current) ? current : commits[0]!.sha,
+    );
+  }, [commits, diffScope]);
   const workingTreeDiffQuery = useQuery({
     queryKey: [
       "vcs.diffWorkingTree",
@@ -369,7 +575,10 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
       diffIgnoreWhitespace,
     ],
     enabled: Boolean(
-      activeThread?.environmentId && activeCwd && isGitRepo && diffScope !== "thread",
+      activeThread?.environmentId &&
+      activeCwd &&
+      isGitRepo &&
+      (diffScope === "unstaged" || diffScope === "staged"),
     ),
     queryFn: async () => {
       if (!activeThread?.environmentId || !activeCwd) {
@@ -389,9 +598,9 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const selectedTurnCheckpointDiff = selectedTurn
     ? activeCheckpointDiffQuery.data?.diff
     : undefined;
-  const conversationCheckpointDiff = selectedTurn
-    ? undefined
-    : activeCheckpointDiffQuery.data?.diff;
+  const activeTurnCheckpointDiff = activeTurnDiffSummary
+    ? activeCheckpointDiffQuery.data?.diff
+    : undefined;
   const isLoadingCheckpointDiff = activeCheckpointDiffQuery.isLoading;
   const checkpointDiffError =
     activeCheckpointDiffQuery.error instanceof Error
@@ -400,13 +609,16 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         ? "加载检查点差异失败。"
         : null;
 
-  const workingTreePatch = diffScope === "thread" ? undefined : workingTreeDiffQuery.data?.diff;
+  const workingTreePatch =
+    diffScope === "unstaged" || diffScope === "staged"
+      ? workingTreeDiffQuery.data?.diff
+      : undefined;
   const selectedPatch =
-    diffScope === "thread"
-      ? selectedTurn
-        ? selectedTurnCheckpointDiff
-        : conversationCheckpointDiff
-      : workingTreePatch;
+    diffScope === "turn"
+      ? (selectedTurnCheckpointDiff ?? activeTurnCheckpointDiff)
+      : diffScope === "commit"
+        ? commitDiffQuery.data?.diff
+        : workingTreePatch;
   const hasResolvedPatch = typeof selectedPatch === "string";
   const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
   const renderablePatch = useMemo(() => getRenderablePatch(selectedPatch), [selectedPatch]);
@@ -425,14 +637,22 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   useEffect(() => {
     if (renderableFiles.length === 0) {
       setCollapsedDiffFileKeys((current) => (current.size === 0 ? current : new Set()));
+      previousVisibleFileKeysRef.current = new Set();
       return;
     }
 
     const visibleFileKeys = new Set(renderableFiles.map(buildFileDiffRenderKey));
     setCollapsedDiffFileKeys((current) => {
+      const previousVisibleFileKeys = previousVisibleFileKeysRef.current;
       const next = new Set([...current].filter((fileKey) => visibleFileKeys.has(fileKey)));
+      for (const fileKey of visibleFileKeys) {
+        if (!previousVisibleFileKeys.has(fileKey)) {
+          next.add(fileKey);
+        }
+      }
       return next.size === current.size ? current : next;
     });
+    previousVisibleFileKeysRef.current = visibleFileKeys;
   }, [renderableFiles]);
 
   useEffect(() => {
@@ -559,28 +779,164 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     selectedChip?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }, [selectedTurn?.turnId, selectedTurnId]);
 
-  const totalAdditions =
-    diffScope === "thread"
-      ? renderableFiles.reduce((total, file) => total + countFilePatchLines(file, "add"), 0)
-      : (gitStatusQuery.data?.workingTree.insertions ?? 0);
+  const totalAdditions = renderableFiles.length > 0 ? countPatchLines(renderableFiles, "add") : 0;
   const totalDeletions =
-    diffScope === "thread"
-      ? renderableFiles.reduce((total, file) => total + countFilePatchLines(file, "remove"), 0)
-      : (gitStatusQuery.data?.workingTree.deletions ?? 0);
-  const fileCount =
-    diffScope === "thread"
-      ? renderableFiles.length
-      : (gitStatusQuery.data?.workingTree.files.length ?? renderableFiles.length);
+    renderableFiles.length > 0 ? countPatchLines(renderableFiles, "remove") : 0;
+  const fileCount = renderableFiles.length > 0 ? renderableFiles.length : 0;
   const patchError =
-    diffScope === "thread"
+    diffScope === "turn"
       ? checkpointDiffError
-      : workingTreeDiffQuery.error instanceof Error
-        ? workingTreeDiffQuery.error.message
-        : workingTreeDiffQuery.error
-          ? "加载 Git 差异失败。"
-          : null;
+      : diffScope === "commit"
+        ? commitDiffQuery.error instanceof Error
+          ? commitDiffQuery.error.message
+          : commitDiffQuery.error
+            ? "加载提交差异失败。"
+            : commitListQuery.error instanceof Error
+              ? commitListQuery.error.message
+              : commitListQuery.error
+                ? "加载提交列表失败。"
+                : null
+        : workingTreeDiffQuery.error instanceof Error
+          ? workingTreeDiffQuery.error.message
+          : workingTreeDiffQuery.error
+            ? "加载 Git 差异失败。"
+            : null;
   const isLoadingPatch =
-    diffScope === "thread" ? isLoadingCheckpointDiff : workingTreeDiffQuery.isLoading;
+    diffScope === "turn"
+      ? isLoadingCheckpointDiff
+      : diffScope === "commit"
+        ? commitListQuery.isLoading || commitDiffQuery.isLoading
+        : workingTreeDiffQuery.isLoading;
+  const quickGitAction = resolveQuickAction(
+    gitStatusQuery.data,
+    gitActionMutation.isPending,
+    gitStatusQuery.data?.isDefaultRef ?? false,
+    gitStatusQuery.data?.hasPrimaryRemote ?? true,
+  );
+  const canRunPrimaryGitAction =
+    quickGitAction.kind === "run_action" &&
+    !quickGitAction.disabled &&
+    Boolean(quickGitAction.action);
+
+  const refreshReview = useCallback(
+    (options?: { clearNotice?: boolean }) => {
+      if (options?.clearNotice !== false) {
+        setReviewNotice(null);
+      }
+      void workingTreeDiffQuery.refetch();
+      void activeCheckpointDiffQuery.refetch();
+      void commitListQuery.refetch();
+      void commitDiffQuery.refetch();
+      void refreshGitStatus({
+        environmentId: activeThread?.environmentId ?? null,
+        cwd: activeCwd ?? null,
+      });
+    },
+    [
+      activeCheckpointDiffQuery,
+      activeCwd,
+      activeThread?.environmentId,
+      commitDiffQuery,
+      commitListQuery,
+      workingTreeDiffQuery,
+    ],
+  );
+  const fileOperationMutation = useMutation({
+    mutationFn: async (input: {
+      operation: "stage" | "unstage" | "restore";
+      file: UnifiedDiffFilePatch;
+    }) => {
+      if (!activeThread?.environmentId || !activeCwd) {
+        throw new Error("环境连接不可用，无法执行 Git 操作。");
+      }
+      const api = readEnvironmentApi(activeThread.environmentId);
+      if (!api) {
+        throw new Error("环境连接不可用，无法执行 Git 操作。");
+      }
+      const payload = buildFileOperationInput(activeCwd, input.file);
+      if (input.operation === "stage") {
+        return await api.vcs.stageFile(payload);
+      }
+      if (input.operation === "unstage") {
+        return await api.vcs.unstageFile(payload);
+      }
+      return await api.vcs.restoreFile(payload);
+    },
+    onSuccess: (_result, variables) => {
+      const filePath = resolveFileDiffPath(variables.file);
+      const message =
+        variables.operation === "stage"
+          ? `已暂存 ${filePath}。`
+          : variables.operation === "unstage"
+            ? `已取消暂存 ${filePath}。`
+            : `已还原 ${filePath} 的未暂存变更。`;
+      setReviewNotice(message);
+      refreshReview({ clearNotice: false });
+    },
+    onError: (error) => {
+      setReviewNotice(error instanceof Error ? error.message : String(error));
+    },
+  });
+
+  const runFileOperation = useCallback(
+    (operation: "stage" | "unstage" | "restore", file: UnifiedDiffFilePatch) => {
+      setReviewNotice(null);
+      fileOperationMutation.mutate({ operation, file });
+    },
+    [fileOperationMutation],
+  );
+
+  const setAllFilesExpanded = useCallback(
+    (expanded: boolean) => {
+      const visibleFileKeys = renderableFiles.map(buildFileDiffRenderKey);
+      setCollapsedDiffFileKeys(expanded ? new Set() : new Set(visibleFileKeys));
+    },
+    [renderableFiles],
+  );
+
+  const copyGitApplyCommand = useCallback(() => {
+    if (!selectedPatch?.trim()) {
+      setReviewNotice("当前没有可复制的补丁。");
+      return;
+    }
+    const command = `git apply --3way <<'PATCH'\n${selectedPatch.trimEnd()}\nPATCH`;
+    void navigator.clipboard
+      ?.writeText(command)
+      .then(() => setReviewNotice("已复制 git apply 命令。"))
+      .catch(() => setReviewNotice("复制失败，请检查浏览器剪贴板权限。"));
+  }, [selectedPatch]);
+
+  const runStackedAction = useCallback(
+    (action: GitStackedAction) => {
+      setReviewNotice(null);
+      gitActionMutation.mutate(
+        {
+          action,
+          actionId: `review-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        },
+        {
+          onSuccess: (result) => {
+            setReviewNotice(result.toast.description ?? result.toast.title);
+            refreshReview({ clearNotice: false });
+          },
+          onError: (error) => {
+            setReviewNotice(error instanceof Error ? error.message : String(error));
+          },
+        },
+      );
+    },
+    [gitActionMutation, refreshReview],
+  );
+
+  const runPrimaryGitAction = useCallback(() => {
+    if (quickGitAction.kind === "run_action" && quickGitAction.action) {
+      runStackedAction(quickGitAction.action);
+      return;
+    }
+    if (quickGitAction.hint) {
+      setReviewNotice(quickGitAction.hint);
+    }
+  }, [quickGitAction, runStackedAction]);
 
   const threadTurnStrip = (
     <div className="relative min-w-0 flex-1 [-webkit-app-region:no-drag]">
@@ -594,7 +950,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         )}
         onClick={() => scrollTurnStripBy(-180)}
         disabled={!canScrollTurnStripLeft}
-        aria-label="Scroll turn list left"
+        aria-label="向左滚动对话列表"
       >
         <ChevronLeftIcon className="size-3.5" />
       </button>
@@ -608,7 +964,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         )}
         onClick={() => scrollTurnStripBy(180)}
         disabled={!canScrollTurnStripRight}
-        aria-label="Scroll turn list right"
+        aria-label="向右滚动对话列表"
       >
         <ChevronRightIcon className="size-3.5" />
       </button>
@@ -638,7 +994,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                 : "border-border/70 bg-background/70 text-muted-foreground/80 hover:border-border hover:text-foreground/80",
             )}
           >
-            <div className="text-[10px] leading-tight font-medium">All turns</div>
+            <div className="text-[10px] leading-tight font-medium">最近</div>
           </div>
         </button>
         {orderedTurnDiffSummaries.map((summary) => (
@@ -660,10 +1016,11 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             >
               <div className="flex items-center gap-1">
                 <span className="text-[10px] leading-tight font-medium">
-                  Turn{" "}
+                  第{" "}
                   {summary.checkpointTurnCount ??
                     inferredCheckpointTurnCountByTurnId[summary.turnId] ??
                     "?"}
+                  轮
                 </span>
                 <span className="text-[9px] leading-tight opacity-70">
                   {formatShortTimestamp(summary.completedAt, settings.timestampFormat)}
@@ -677,75 +1034,191 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   );
 
   const headerRow = (
-    <div className="flex min-w-0 flex-1 items-center gap-2 [-webkit-app-region:no-drag]">
-      <ToggleGroup
-        className="shrink-0"
-        variant="default"
-        size="xs"
-        value={[diffScope]}
-        onValueChange={(value) => {
-          const next = value[0];
-          if (next === "unstaged" || next === "staged" || next === "thread") {
-            setDiffScope(next);
-          }
-        }}
-      >
-        <Toggle aria-label="查看未暂存差异" value="unstaged">
-          未暂存
-        </Toggle>
-        <Toggle aria-label="查看已暂存差异" value="staged">
-          已暂存
-        </Toggle>
-        <Toggle aria-label="查看线程差异" value="thread">
-          线程
-        </Toggle>
-      </ToggleGroup>
-      <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-muted px-2 text-[11px] text-muted-foreground">
-        {fileCount}
-      </span>
-      <span className="shrink-0 text-xs text-emerald-600">+{totalAdditions}</span>
-      <span className="shrink-0 text-xs text-red-500">-{totalDeletions}</span>
+    <div className="flex min-w-0 flex-1 items-center gap-1.5 [-webkit-app-region:no-drag]">
+      <Menu>
+        <MenuTrigger
+          render={<Button variant="ghost" size="xs" />}
+          className="h-8 shrink-0 rounded-lg px-2 text-sm font-semibold text-foreground hover:bg-muted"
+        >
+          <span>{DIFF_SCOPE_LABELS[diffScope]}</span>
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+            {fileCount}
+          </span>
+          <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+        </MenuTrigger>
+        <MenuPopup align="start" sideOffset={6} className="w-[210px]">
+          <MenuRadioGroup
+            value={diffScope}
+            onValueChange={(value) => {
+              if (value === "unstaged" || value === "staged" || value === "turn") {
+                setDiffScope(value);
+              }
+            }}
+          >
+            <MenuRadioItem value="unstaged">
+              <span className="flex min-w-0 items-center gap-2">
+                <FileCode2Icon className="size-3.5 text-muted-foreground" />
+                未暂存
+              </span>
+            </MenuRadioItem>
+            <MenuRadioItem value="staged">
+              <span className="flex min-w-0 items-center gap-2">
+                <CheckIcon className="size-3.5 text-muted-foreground" />
+                已暂存
+              </span>
+            </MenuRadioItem>
+          </MenuRadioGroup>
+          <MenuSub>
+            <MenuSubTrigger disabled>
+              <GitCommitHorizontalIcon className="size-3.5 text-muted-foreground" />
+              提交
+            </MenuSubTrigger>
+            <MenuSubPopup className="w-40">
+              <MenuItem disabled>暂无可选提交</MenuItem>
+            </MenuSubPopup>
+          </MenuSub>
+          <MenuItem disabled>
+            <GitBranchIcon className="size-3.5 text-muted-foreground" />
+            分支
+          </MenuItem>
+          <MenuRadioGroup
+            value={diffScope}
+            onValueChange={(value) => {
+              if (value === "turn") {
+                setDiffScope("turn");
+              }
+            }}
+          >
+            <MenuRadioItem value="turn">
+              <span className="flex min-w-0 items-center gap-2">
+                <ListTreeIcon className="size-3.5 text-muted-foreground" />
+                上轮对话
+              </span>
+            </MenuRadioItem>
+          </MenuRadioGroup>
+        </MenuPopup>
+      </Menu>
+      <span className="shrink-0 text-xs text-emerald-600">+{totalAdditions.toLocaleString()}</span>
+      <span className="shrink-0 text-xs text-red-500">-{totalDeletions.toLocaleString()}</span>
       <div className="min-w-0 flex-1" />
-      <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
-        <span className="inline-flex size-7 items-center justify-center rounded-md">
-          <MoreHorizontalIcon className="size-4" />
-        </span>
-        <span className="inline-flex size-7 items-center justify-center rounded-md">
+      <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
+        <Menu>
+          <MenuTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground"
+                aria-label="更多审查操作"
+              />
+            }
+          >
+            <MoreHorizontalIcon className="size-4" />
+          </MenuTrigger>
+          <MenuPopup align="end" sideOffset={6} className="w-[208px]">
+            <MenuItem onClick={() => refreshReview()}>
+              <RefreshCwIcon className="size-3.5" />
+              刷新
+            </MenuItem>
+            <MenuCheckboxItem
+              checked={diffWordWrap}
+              onCheckedChange={(checked) => setDiffWordWrap(Boolean(checked))}
+            >
+              <span className="flex items-center gap-2">
+                <TextWrapIcon className="size-3.5" />
+                启用自动换行
+              </span>
+            </MenuCheckboxItem>
+            <MenuItem onClick={() => setAllFilesExpanded(true)}>
+              <ListTreeIcon className="size-3.5" />
+              展开全部差异
+            </MenuItem>
+            <MenuSeparator />
+            <MenuCheckboxItem
+              checked={!loadFullFile}
+              onCheckedChange={(checked) => setLoadFullFile(!Boolean(checked))}
+            >
+              <span className="flex items-center gap-2">
+                <FileCode2Icon className="size-3.5" />
+                不加载完整文件
+              </span>
+            </MenuCheckboxItem>
+            <MenuCheckboxItem
+              checked={richTextPreview}
+              onCheckedChange={(checked) => setRichTextPreview(Boolean(checked))}
+            >
+              <span className="flex items-center gap-2">
+                <SparklesIcon className="size-3.5" />
+                启用富文本预览
+              </span>
+            </MenuCheckboxItem>
+            <MenuCheckboxItem
+              checked={wordDiffEnabled}
+              onCheckedChange={(checked) => setWordDiffEnabled(Boolean(checked))}
+            >
+              <span className="flex items-center gap-2">
+                <AlignLeftIcon className="size-3.5" />
+                启用文字差异
+              </span>
+            </MenuCheckboxItem>
+            <MenuCheckboxItem
+              checked={hideWhitespaceChars}
+              onCheckedChange={(checked) => setHideWhitespaceChars(Boolean(checked))}
+            >
+              <span className="flex items-center gap-2">
+                <EyeIcon className="size-3.5" />
+                隐藏空白字符
+              </span>
+            </MenuCheckboxItem>
+            <MenuItem onClick={copyGitApplyCommand}>
+              <CopyIcon className="size-3.5" />
+              复制 git apply 命令
+            </MenuItem>
+          </MenuPopup>
+        </Menu>
+        <IconButton label="搜索变更文件">
           <FileSearchIcon className="size-4" />
-        </span>
-        <span className="inline-flex size-7 items-center justify-center rounded-md">
+        </IconButton>
+        <IconButton
+          label="切换并排差异"
+          active={wordDiffEnabled}
+          onClick={() => setWordDiffEnabled((value) => !value)}
+        >
           <Columns2Icon className="size-4" />
-        </span>
-        <span className="inline-flex size-7 items-center justify-center rounded-md">
+        </IconButton>
+        <IconButton
+          label="打开工作区文件夹"
+          disabled={!activeCwd}
+          onClick={() => {
+            const api = readLocalApi();
+            if (!api || !activeCwd) return;
+            void api.shell.openPath(activeCwd).catch((error) => {
+              setReviewNotice(error instanceof Error ? error.message : String(error));
+            });
+          }}
+        >
           <FolderOpenIcon className="size-4" />
-        </span>
-        <span className="inline-flex size-7 items-center justify-center rounded-md">
-          <RefreshCwIcon className="size-4" />
-        </span>
-        <Toggle
-          aria-label={diffWordWrap ? "关闭自动换行" : "开启自动换行"}
-          title={diffWordWrap ? "关闭自动换行" : "开启自动换行"}
-          variant="default"
-          size="xs"
-          pressed={diffWordWrap}
-          onPressedChange={(pressed) => {
-            setDiffWordWrap(Boolean(pressed));
-          }}
+        </IconButton>
+        <IconButton label="刷新" onClick={refreshReview}>
+          <RefreshCwIcon className={cn("size-4", isLoadingPatch ? "animate-spin" : "")} />
+        </IconButton>
+        <IconButton
+          label="提交或推送"
+          active={canRunPrimaryGitAction}
+          disabled={gitActionMutation.isPending}
+          onClick={runPrimaryGitAction}
         >
-          <TextWrapIcon className="size-3" />
-        </Toggle>
-        <Toggle
-          aria-label={diffIgnoreWhitespace ? "显示空白变更" : "忽略空白变更"}
-          title={diffIgnoreWhitespace ? "显示空白变更" : "忽略空白变更"}
-          variant="default"
-          size="xs"
-          pressed={diffIgnoreWhitespace}
-          onPressedChange={(pressed) => {
-            setDiffIgnoreWhitespace(Boolean(pressed));
-          }}
-        >
-          <PilcrowIcon className="size-3" />
-        </Toggle>
+          {quickGitAction.action === "commit" ? (
+            <GitCommitHorizontalIcon className="size-4" />
+          ) : quickGitAction.action === "create_pr" ||
+            quickGitAction.action === "commit_push_pr" ? (
+            <GitPullRequestIcon className="size-4" />
+          ) : (
+            <SlidersHorizontalIcon className="size-4" />
+          )}
+        </IconButton>
+        <IconButton label="分支审查暂不可用" disabled>
+          <GitBranchIcon className="size-4" />
+        </IconButton>
       </div>
     </div>
   );
@@ -754,20 +1227,25 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     <DiffPanelShell mode={mode} header={headerRow}>
       {!activeThread ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          Select a thread to inspect turn diffs.
+          选择一个线程以查看对话差异。
         </div>
       ) : !isGitRepo ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          Turn diffs are unavailable because this project is not a git repository.
+          当前项目不是 Git 仓库，无法查看差异。
         </div>
-      ) : diffScope === "thread" && orderedTurnDiffSummaries.length === 0 ? (
+      ) : diffScope === "turn" && orderedTurnDiffSummaries.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          No completed turns yet.
+          暂无已完成的上轮对话。
         </div>
       ) : (
         <>
-          {diffScope === "thread" ? (
-            <div className="border-b border-border/60 px-3 py-2">{threadTurnStrip}</div>
+          {reviewNotice ? (
+            <div className="border-b border-border/50 px-3 py-2 text-[11px] text-muted-foreground">
+              {reviewNotice}
+            </div>
+          ) : null}
+          {diffScope === "turn" ? (
+            <div className="border-b border-border/50 px-3 py-2">{threadTurnStrip}</div>
           ) : null}
           <div
             ref={patchViewportRef}
@@ -786,8 +1264,8 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                   <p>
                     {hasNoNetChanges
                       ? "当前范围没有净差异。"
-                      : diffScope === "thread"
-                        ? "当前线程没有可显示的差异。"
+                      : diffScope === "turn"
+                        ? "上轮对话没有可显示的差异。"
                         : "当前 Git 工作区没有可显示的差异。"}
                   </p>
                 </div>
@@ -798,14 +1276,43 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                   const filePath = resolveFileDiffPath(fileDiff);
                   const fileKey = buildFileDiffRenderKey(fileDiff);
                   const expanded = !collapsedDiffFileKeys.has(fileKey);
+                  const operationPending =
+                    fileOperationMutation.isPending && fileOperationMutation.variables
+                      ? buildFileDiffRenderKey(fileOperationMutation.variables.file) === fileKey
+                      : false;
                   return (
                     <DiffFileRow
                       key={fileKey}
                       file={fileDiff}
                       expanded={expanded}
                       wrap={diffWordWrap}
+                      diffScope={diffScope}
+                      operationPending={operationPending}
                       onToggle={() => toggleDiffFileCollapsed(fileKey)}
                       onOpenFile={() => openDiffFileInEditor(filePath)}
+                      onStageFile={
+                        diffScope === "unstaged"
+                          ? () => runFileOperation("stage", fileDiff)
+                          : undefined
+                      }
+                      onUnstageFile={
+                        diffScope === "staged"
+                          ? () => runFileOperation("unstage", fileDiff)
+                          : undefined
+                      }
+                      onRestoreFile={
+                        diffScope === "unstaged"
+                          ? () => {
+                              if (
+                                window.confirm(
+                                  `还原 ${filePath} 的未暂存变更？这会丢弃该文件当前工作区改动。`,
+                                )
+                              ) {
+                                runFileOperation("restore", fileDiff);
+                              }
+                            }
+                          : undefined
+                      }
                     />
                   );
                 })}

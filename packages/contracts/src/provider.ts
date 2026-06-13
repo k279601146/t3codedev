@@ -79,6 +79,67 @@ export const ProviderSendTurnInput = Schema.Struct({
 });
 export type ProviderSendTurnInput = typeof ProviderSendTurnInput.Type;
 
+export const ProviderReasoningSummary = Schema.Literals(["auto", "concise", "detailed", "none"]);
+export type ProviderReasoningSummary = typeof ProviderReasoningSummary.Type;
+
+export const ProviderPersonality = Schema.Literals(["none", "friendly", "pragmatic"]);
+export type ProviderPersonality = typeof ProviderPersonality.Type;
+
+export const ProviderSandboxPolicy = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("dangerFullAccess"),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("readOnly"),
+    networkAccess: Schema.optionalKey(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("workspaceWrite"),
+    networkAccess: Schema.optionalKey(Schema.Boolean),
+    writableRoots: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+    excludeSlashTmp: Schema.optionalKey(Schema.Boolean),
+    excludeTmpdirEnvVar: Schema.optionalKey(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("externalSandbox"),
+    networkAccess: Schema.optionalKey(Schema.Literals(["restricted", "enabled"])),
+  }),
+]);
+export type ProviderSandboxPolicy = typeof ProviderSandboxPolicy.Type;
+
+export const ProviderThreadSettingsUpdateInput = Schema.Struct({
+  threadId: ThreadId,
+  cwd: Schema.optional(TrimmedNonEmptyString),
+  modelSelection: Schema.optional(ModelSelection),
+  runtimeMode: Schema.optional(RuntimeMode),
+  approvalPolicy: Schema.optional(Schema.NullOr(ProviderApprovalPolicy)),
+  sandboxPolicy: Schema.optional(Schema.NullOr(ProviderSandboxPolicy)),
+  permissionProfileId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
+  reasoningSummary: Schema.optional(Schema.NullOr(ProviderReasoningSummary)),
+  serviceTier: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type ProviderThreadSettingsUpdateInput = typeof ProviderThreadSettingsUpdateInput.Type;
+
+export const ProviderThreadSettingsUpdateResult = Schema.Struct({
+  threadId: ThreadId,
+  updated: Schema.Boolean,
+});
+export type ProviderThreadSettingsUpdateResult = typeof ProviderThreadSettingsUpdateResult.Type;
+
+export class ProviderThreadSettingsUpdateError extends Schema.TaggedErrorClass<ProviderThreadSettingsUpdateError>()(
+  "ProviderThreadSettingsUpdateError",
+  {
+    threadId: ThreadId,
+    reason: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Provider thread settings update failed for ${this.threadId}: ${this.reason}`;
+  }
+}
+
 export const ProviderSteerTurnInput = Schema.Struct({
   threadId: ThreadId,
   expectedTurnId: TurnId,

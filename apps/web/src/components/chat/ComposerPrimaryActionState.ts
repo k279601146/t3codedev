@@ -15,6 +15,7 @@ export interface StandardSendButtonDisabledInput {
 export interface RunningPrimaryActionModeInput {
   canSteerRunningTurn: boolean;
   hasSendableContent: boolean;
+  isInterruptPending?: boolean;
 }
 
 export type RunningPrimaryActionMode = "steer" | "interrupt";
@@ -41,4 +42,6 @@ export const isStandardSendButtonDisabled = (input: StandardSendButtonDisabledIn
 export const getRunningPrimaryActionMode = (
   input: RunningPrimaryActionModeInput,
 ): RunningPrimaryActionMode =>
-  input.canSteerRunningTurn && input.hasSendableContent ? "steer" : "interrupt";
+  input.canSteerRunningTurn && input.hasSendableContent && !input.isInterruptPending
+    ? "steer"
+    : "interrupt";

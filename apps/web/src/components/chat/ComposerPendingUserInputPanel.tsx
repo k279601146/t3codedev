@@ -6,12 +6,10 @@ import {
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
 import {
-  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CornerDownLeftIcon,
-  InfoIcon,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 
@@ -149,10 +147,10 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   }
 
   return (
-    <div className="px-3 py-3 sm:px-4">
-      <div className="rounded-[20px] border border-border/55 bg-background/96 p-2.5 shadow-[0_18px_50px_rgba(15,23,42,0.10)] dark:bg-background/94 dark:shadow-[0_18px_50px_rgba(0,0,0,0.32)]">
-        <div className="flex min-w-0 items-center justify-between gap-3 px-1.5 pb-2">
-          <p className="min-w-0 truncate text-[14px] font-semibold leading-5 text-foreground/92">
+    <div className="px-2.5 py-2.5 sm:px-3.5">
+      <div className="rounded-[20px] border border-border/55 bg-background/98 p-2 shadow-[0_12px_34px_rgba(15,23,42,0.10)] dark:bg-background/96 dark:shadow-[0_16px_42px_rgba(0,0,0,0.34)]">
+        <div className="flex min-w-0 items-center justify-between gap-3 px-2 pb-2 pt-0.5">
+          <p className="min-w-0 truncate text-[13px] font-semibold leading-5 text-foreground/94">
             {activeQuestion.question}
           </p>
           {prompt.questions.length > 1 ? (
@@ -185,10 +183,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         </div>
 
         {prompt.questions.length > 1 ? (
-          <div className="mb-1.5 flex items-center gap-1 px-1.5">
+          <div className="mb-1.5 flex items-center gap-1 px-2">
             {prompt.questions.map((question, index) => {
               const isActive = index === progress.questionIndex;
-              const isAnswered = Boolean(answers[question.id]?.customAnswer?.trim()) ||
+              const isAnswered =
+                Boolean(answers[question.id]?.customAnswer?.trim()) ||
                 Boolean(answers[question.id]?.selectedOptionLabels?.length);
               return (
                 <button
@@ -213,56 +212,54 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         ) : null}
 
         <div className="space-y-1">
-        {activeQuestion.options.map((option, index) => {
-          const isSelected = progress.selectedOptionLabels.includes(option.label);
-          const shortcutKey = index < 9 ? index + 1 : null;
-          return (
-            <button
-              key={`${activeQuestion.id}:${option.label}`}
-              type="button"
-              disabled={isResponding}
-              onClick={() => handleOptionSelection(activeQuestion.id, option.label)}
-              className={cn(
-                "group flex h-9 w-full items-center gap-3 rounded-xl px-2.5 text-left transition-all duration-150",
-                isSelected
-                  ? "bg-muted text-foreground"
-                  : "text-foreground/74 hover:bg-muted/55 hover:text-foreground",
-                isResponding && "opacity-50 cursor-not-allowed",
-              )}
-            >
-              {shortcutKey !== null ? (
-                <kbd
-                  className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded-md text-[12px] font-medium tabular-nums transition-colors duration-150",
-                    isSelected
-                      ? "text-muted-foreground/60"
-                      : "text-muted-foreground/45 group-hover:text-muted-foreground/70",
-                  )}
-                >
-                  {shortcutKey}.
-                </kbd>
-              ) : null}
-              <div className="min-w-0 flex-1">
-                <span className="truncate text-[13px] font-semibold">{option.label}</span>
-                {option.description && option.description !== option.label ? (
-                  <span className="ml-2 truncate text-[12px] text-muted-foreground/62">
-                    {option.description}
-                  </span>
+          {activeQuestion.options.map((option, index) => {
+            const isSelected = progress.selectedOptionLabels.includes(option.label);
+            const shortcutKey = index < 9 ? index + 1 : null;
+            return (
+              <button
+                key={`${activeQuestion.id}:${option.label}`}
+                type="button"
+                disabled={isResponding}
+                onClick={() => handleOptionSelection(activeQuestion.id, option.label)}
+                className={cn(
+                  "group flex min-h-9 w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition-colors duration-150",
+                  isSelected
+                    ? "bg-[#f4f4f5] text-foreground dark:bg-muted/70"
+                    : "text-foreground/72 hover:bg-muted/55 hover:text-foreground",
+                  isResponding && "cursor-not-allowed opacity-50",
+                )}
+              >
+                {shortcutKey !== null ? (
+                  <kbd
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center rounded-md text-[12px] font-medium tabular-nums transition-colors duration-150",
+                      isSelected
+                        ? "text-muted-foreground/58"
+                        : "text-muted-foreground/42 group-hover:text-muted-foreground/68",
+                    )}
+                  >
+                    {shortcutKey}.
+                  </kbd>
                 ) : null}
-              </div>
-              {option.description && option.description !== option.label ? (
-                <InfoIcon className="size-3.5 shrink-0 text-muted-foreground/40" />
-              ) : null}
-              {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-blue-500" /> : null}
-            </button>
-          );
-        })}
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold leading-5">
+                    {option.label}
+                  </span>
+                  {option.description && option.description !== option.label ? (
+                    <span className="block truncate text-[12px] leading-4 text-muted-foreground/60 sm:inline sm:pl-2">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="mt-2 flex min-w-0 items-center justify-between gap-3 px-1.5">
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-3 px-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground/72 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground/72 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
             disabled={isResponding}
             onClick={onIgnore}
           >
@@ -289,7 +286,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               disabled={isResponding || !progress.canAdvance}
               onClick={onAdvance}
             >
-              {progress.isLastQuestion ? "继续" : "下一题"}
+              {progress.isLastQuestion ? "提交" : "下一题"}
               <CornerDownLeftIcon className="size-3.5" />
             </button>
           </div>

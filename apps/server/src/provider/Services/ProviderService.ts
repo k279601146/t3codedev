@@ -20,6 +20,10 @@ import type {
   ProviderGoalSetInput,
   ProviderGoalSetResult,
   ProviderGoalStatusSetInput,
+  OrchestrationListThreadTurnItemsInput,
+  OrchestrationListThreadTurnItemsResult,
+  OrchestrationListThreadTurnsInput,
+  OrchestrationListThreadTurnsResult,
   ProviderInstanceId,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
@@ -29,6 +33,8 @@ import type {
   ProviderSession,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
+  ProviderThreadSettingsUpdateInput,
+  ProviderThreadSettingsUpdateResult,
   ThreadId,
   ProviderTurnStartResult,
   ProviderTurnSteerResult,
@@ -108,6 +114,10 @@ export interface ProviderServiceShape {
     input: ProviderGoalClearInput,
   ) => Effect.Effect<ProviderGoalClearResult, ProviderServiceError>;
 
+  readonly updateThreadSettings?: (
+    input: ProviderThreadSettingsUpdateInput,
+  ) => Effect.Effect<ProviderThreadSettingsUpdateResult, ProviderServiceError>;
+
   /**
    * Stop a provider session.
    */
@@ -132,6 +142,14 @@ export interface ProviderServiceShape {
   readonly getInstanceInfo: (
     instanceId: ProviderInstanceId,
   ) => Effect.Effect<ProviderInstanceRoutingInfo, ProviderServiceError>;
+
+  readonly listThreadTurns?: (
+    input: OrchestrationListThreadTurnsInput,
+  ) => Effect.Effect<OrchestrationListThreadTurnsResult, ProviderServiceError>;
+
+  readonly listThreadTurnItems?: (
+    input: OrchestrationListThreadTurnItemsInput,
+  ) => Effect.Effect<OrchestrationListThreadTurnItemsResult, ProviderServiceError>;
 
   readonly windowsSandboxReadiness?: (
     input: ProviderWindowsSandboxReadinessInput,

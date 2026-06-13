@@ -39,6 +39,7 @@ import {
   ChromeIcon,
   MonitorIcon,
   MousePointerClickIcon,
+  PencilIcon,
   TerminalSquareIcon,
   Undo2Icon,
   WrenchIcon,
@@ -102,6 +103,7 @@ interface TimelineRowSharedState {
   goalMessageIds: ReadonlySet<MessageId>;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onSubmitEditedUserMessage: ((messageId: MessageId, text: string) => Promise<void>) | null;
   /** 历史字段名保留；这里的 id 是成果 owner，可能是助手消息，也可能是计划/图片行。 */
   collapsedAssistantMessageIds: ReadonlySet<string>;
   /** 拥有“已处理 X ›”开关的成果 owner id。 */
@@ -157,6 +159,7 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
+  onSubmitEditedUserMessage?: (messageId: MessageId, text: string) => Promise<void>;
   goalMessageIds?: ReadonlySet<MessageId>;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -187,6 +190,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
+  onSubmitEditedUserMessage,
   goalMessageIds = EMPTY_GOAL_MESSAGE_IDS,
   isRevertingCheckpoint,
   onImageExpand,
@@ -359,6 +363,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      onSubmitEditedUserMessage: onSubmitEditedUserMessage ?? null,
       goalMessageIds,
       onImageExpand,
       onOpenTurnDiff,
@@ -379,6 +384,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      onSubmitEditedUserMessage,
       goalMessageIds,
       onImageExpand,
       onOpenTurnDiff,
@@ -633,76 +639,188 @@ function CollapsibleMember({
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const activity = use(TimelineRowActivityCtx);
   const userAttachments = row.message.attachments ?? [];
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
   const terminalContexts = displayedUserMessage.contexts;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
+  const isSteerMessage = row.message.turnId !== undefined && row.message.turnId !== null;
+  const editableText = displayedUserMessage.copyText || row.message.text;
+  const canEditUserMessage =
+    ctx.onSubmitEditedUserMessage !== null &&
+    row.canEditUserMessage === true &&
+    !activity.isWorking &&
+    !activity.isRevertingCheckpoint;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftText, setDraftText] = useState(editableText);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const editTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftText(editableText);
+    }
+  }, [editableText, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const textArea = editTextAreaRef.current;
+      if (!textArea) return;
+      textArea.focus();
+      textArea.selectionStart = textArea.value.length;
+      textArea.selectionEnd = textArea.value.length;
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isEditing]);
+
+  const cancelEdit = useCallback(() => {
+    if (isSubmittingEdit) return;
+    setDraftText(editableText);
+    setIsEditing(false);
+  }, [editableText, isSubmittingEdit]);
+
+  const submitEdit = useCallback(async () => {
+    const trimmed = draftText.trim();
+    if (!trimmed || !ctx.onSubmitEditedUserMessage || isSubmittingEdit) {
+      return;
+    }
+
+    setIsSubmittingEdit(true);
+    try {
+      await ctx.onSubmitEditedUserMessage(row.message.id, trimmed);
+      setIsEditing(false);
+    } catch {
+      // 错误已由发送层写入线程错误横幅；这里保留编辑态方便用户重试。
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  }, [ctx, draftText, isSubmittingEdit, row.message.id]);
 
   return (
     <div className="flex justify-end">
       <div className="group flex max-w-[82%] flex-col items-end">
-        <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
-          {userAttachments.length > 0 && (
-            <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
-              {userAttachments.map(
-                (attachment: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                  <div
-                    key={attachment.id}
-                    className="overflow-hidden rounded-lg border border-border bg-background"
-                  >
-                    {attachment.type === "image" && attachment.previewUrl ? (
-                      <button
-                        type="button"
-                        className="h-full w-full cursor-zoom-in"
-                        aria-label={`Preview ${attachment.name}`}
-                        onClick={() => {
-                          const preview = buildExpandedImagePreview(userAttachments, attachment.id);
-                          if (!preview) return;
-                          ctx.onImageExpand(preview);
-                        }}
-                      >
-                        <img
-                          src={attachment.previewUrl}
-                          alt={attachment.name}
-                          className="block h-auto max-h-[396px] w-full object-cover"
-                        />
-                      </button>
-                    ) : attachment.type === "file" ? (
-                      <a
-                        href={attachment.previewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex min-h-[96px] w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center"
-                        aria-label={`Open ${attachment.name}`}
-                      >
-                        <FileIcon className="size-5 text-muted-foreground/70" />
-                        <span className="line-clamp-2 break-all text-xs text-foreground">
-                          {attachment.name}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground/60">
-                          {attachment.mimeType || "file"}
-                        </span>
-                      </a>
-                    ) : (
-                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                        {attachment.name}
-                      </div>
-                    )}
-                  </div>
-                ),
-              )}
+        {isEditing ? (
+          <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-[18px] border border-border/55 bg-secondary px-3 py-3 shadow-sm">
+            <textarea
+              ref={editTextAreaRef}
+              value={draftText}
+              disabled={isSubmittingEdit}
+              rows={Math.max(2, Math.min(8, draftText.split("\n").length))}
+              onChange={(event) => setDraftText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelEdit();
+                }
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  void submitEdit();
+                }
+              }}
+              className="block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[15px] leading-[1.78] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
+              style={USER_MESSAGE_FONT_STYLE}
+              aria-label="编辑用户消息"
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={isSubmittingEdit}
+                onClick={cancelEdit}
+                className="rounded-full border-border/60 bg-background/80 px-3 text-foreground/80 shadow-none hover:bg-background"
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                disabled={draftText.trim().length === 0 || isSubmittingEdit}
+                onClick={() => void submitEdit()}
+                className="rounded-full px-3"
+              >
+                发送
+              </Button>
             </div>
-          )}
-          <CollapsibleUserMessageBody
-            text={displayedUserMessage.visibleText}
-            terminalContexts={terminalContexts}
-            skills={ctx.skills}
-          />
-        </div>
+          </div>
+        ) : (
+          <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
+            {userAttachments.length > 0 && (
+              <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
+                {userAttachments.map(
+                  (attachment: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                    <div
+                      key={attachment.id}
+                      className="overflow-hidden rounded-lg border border-border bg-background"
+                    >
+                      {attachment.type === "image" && attachment.previewUrl ? (
+                        <button
+                          type="button"
+                          className="h-full w-full cursor-zoom-in"
+                          aria-label={`Preview ${attachment.name}`}
+                          onClick={() => {
+                            const preview = buildExpandedImagePreview(
+                              userAttachments,
+                              attachment.id,
+                            );
+                            if (!preview) return;
+                            ctx.onImageExpand(preview);
+                          }}
+                        >
+                          <img
+                            src={attachment.previewUrl}
+                            alt={attachment.name}
+                            className="block h-auto max-h-[396px] w-full object-cover"
+                          />
+                        </button>
+                      ) : attachment.type === "file" ? (
+                        <a
+                          href={attachment.previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex min-h-[96px] w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center"
+                          aria-label={`Open ${attachment.name}`}
+                        >
+                          <FileIcon className="size-5 text-muted-foreground/70" />
+                          <span className="line-clamp-2 break-all text-xs text-foreground">
+                            {attachment.name}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/60">
+                            {attachment.mimeType || "file"}
+                          </span>
+                        </a>
+                      ) : (
+                        <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                          {attachment.name}
+                        </div>
+                      )}
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+            <CollapsibleUserMessageBody
+              text={displayedUserMessage.visibleText}
+              terminalContexts={terminalContexts}
+              skills={ctx.skills}
+            />
+          </div>
+        )}
+        {isSteerMessage ? (
+          <div className="mt-2 self-start text-[13px] leading-5 text-muted-foreground/55">
+            已引导对话
+          </div>
+        ) : null}
         <div
           className="mt-1 flex min-h-6 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
           data-user-message-actions="true"
         >
+          <span className="px-0.5 text-[11px] text-muted-foreground/50">
+            {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
+          </span>
           {displayedUserMessage.copyText && (
             <MessageCopyButton
               text={displayedUserMessage.copyText}
@@ -712,12 +830,41 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           )}
           {ctx.goalMessageIds.has(row.message.id) ? <GoalMessageMarker /> : null}
           {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
-          <span className="px-0.5 text-[11px] text-muted-foreground/50">
-            {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
-          </span>
+          {canEditUserMessage ? (
+            <EditUserMessageButton
+              disabled={isEditing || isSubmittingEdit}
+              onClick={() => setIsEditing(true)}
+            />
+          ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+function EditUserMessageButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            disabled={disabled}
+            onClick={onClick}
+            title="编辑并作为新需求发送"
+            aria-label="编辑并作为新需求发送"
+            className="border-border/55 bg-background/80 text-muted-foreground/70 shadow-none hover:border-border/75 hover:bg-background hover:text-foreground"
+          />
+        }
+      >
+        <PencilIcon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup>
+        <p>编辑并作为新需求发送</p>
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -2105,7 +2252,7 @@ function fileChangeVerb(workEntry: TimelineWorkEntry, files: ReadonlyArray<Inlin
   const allFilesAreNew =
     files.length > 0 && files.every((file) => file.patch?.oldPath === null && file.patch.newPath);
   if (allFilesAreNew) {
-    return isRunning ? "正在新增" : "已新增";
+    return isRunning ? "正在创建" : "已创建";
   }
   return isRunning ? "正在编辑" : "已编辑";
 }

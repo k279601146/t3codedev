@@ -973,6 +973,94 @@ describe("CheckpointReactor", () => {
     ).toBe(false);
   });
 
+  it("rolls back the latest conversation turn by numTurns without checkpoint rows", async () => {
+    const harness = await createHarness({ seedFilesystemCheckpoints: false });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-conversation-turn-1"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("msg-user-1"),
+          role: "user",
+          text: "第一轮",
+          attachments: [],
+        },
+        runtimeMode: "approval-required",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.make("cmd-conversation-assistant-1"),
+        threadId: ThreadId.make("thread-1"),
+        messageId: MessageId.make("msg-assistant-1"),
+        turnId: asTurnId("turn-1"),
+        createdAt: "2026-01-01T00:00:00.500Z",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-conversation-turn-2"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("msg-user-2"),
+          role: "user",
+          text: "第二轮",
+          attachments: [],
+        },
+        runtimeMode: "approval-required",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        createdAt: "2026-01-01T00:00:01.000Z",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.make("cmd-conversation-assistant-2"),
+        threadId: ThreadId.make("thread-1"),
+        messageId: MessageId.make("msg-assistant-2"),
+        turnId: asTurnId("turn-2"),
+        createdAt: "2026-01-01T00:00:02.000Z",
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.conversation.rollback",
+        commandId: CommandId.make("cmd-conversation-rollback"),
+        threadId: ThreadId.make("thread-1"),
+        numTurns: 1,
+        createdAt: "2026-01-01T00:00:03.000Z",
+      }),
+    );
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    await harness.drain();
+
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
+      threadId: ThreadId.make("thread-1"),
+      numTurns: 1,
+    });
+    const snapshot = await harness.readModel();
+    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(
+      thread?.messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        text: message.text,
+      })),
+    ).toEqual([
+      { id: MessageId.make("msg-user-1"), role: "user", text: "第一轮" },
+      { id: MessageId.make("msg-assistant-1"), role: "assistant", text: "" },
+    ]);
+  });
+
   it("executes provider revert and emits thread.reverted for claude sessions", async () => {
     const harness = await createHarness({ providerName: ProviderDriverKind.make("claudeAgent") });
     const createdAt = "2026-01-01T00:00:00.000Z";

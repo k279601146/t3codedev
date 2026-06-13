@@ -7,9 +7,15 @@ import type {
   GitPullRequestRefInput,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
+  VcsDiffCommitInput,
+  VcsDiffCommitResult,
   VcsDiffWorkingTreeInput,
   VcsDiffWorkingTreeResult,
+  VcsFileOperationInput,
+  VcsFileOperationResult,
   VcsInitInput,
+  VcsListCommitsInput,
+  VcsListCommitsResult,
   VcsListRefsInput,
   VcsListRefsResult,
   VcsPullInput,
@@ -35,6 +41,10 @@ import type {
   ProjectCreateBlankResult,
 } from "./project.ts";
 import type { ProviderInstanceId } from "./providerInstance.ts";
+import type {
+  ProviderThreadSettingsUpdateInput,
+  ProviderThreadSettingsUpdateResult,
+} from "./provider.ts";
 import type {
   ServerConfig,
   ServerProcessDiagnosticsResult,
@@ -70,6 +80,10 @@ import type {
   OrchestrationGetFullThreadDiffResult,
   OrchestrationGetTurnDiffInput,
   OrchestrationGetTurnDiffResult,
+  OrchestrationListThreadTurnItemsInput,
+  OrchestrationListThreadTurnItemsResult,
+  OrchestrationListThreadTurnsInput,
+  OrchestrationListThreadTurnsResult,
   OrchestrationShellSnapshot,
   OrchestrationShellStreamItem,
   OrchestrationSubscribeThreadInput,
@@ -733,6 +747,9 @@ export interface LocalApi {
     windowsSandboxSetupStart: (
       input: ProviderWindowsSandboxSetupStartInput,
     ) => Promise<ProviderWindowsSandboxSetupStartResult>;
+    updateThreadSettings: (
+      input: ProviderThreadSettingsUpdateInput,
+    ) => Promise<ProviderThreadSettingsUpdateResult>;
   };
 }
 
@@ -746,6 +763,11 @@ export interface LocalApi {
  * `environmentId` rather than reaching through the local desktop bridge.
  */
 export interface EnvironmentApi {
+  server: {
+    updateThreadSettings: (
+      input: ProviderThreadSettingsUpdateInput,
+    ) => Promise<ProviderThreadSettingsUpdateResult>;
+  };
   terminal: {
     open: (input: typeof TerminalOpenInput.Encoded) => Promise<TerminalSessionSnapshot>;
     write: (input: typeof TerminalWriteInput.Encoded) => Promise<void>;
@@ -786,6 +808,11 @@ export interface EnvironmentApi {
     pull: (input: VcsPullInput) => Promise<VcsPullResult>;
     refreshStatus: (input: VcsStatusInput) => Promise<VcsStatusResult>;
     diffWorkingTree: (input: VcsDiffWorkingTreeInput) => Promise<VcsDiffWorkingTreeResult>;
+    diffCommit: (input: VcsDiffCommitInput) => Promise<VcsDiffCommitResult>;
+    stageFile: (input: VcsFileOperationInput) => Promise<VcsFileOperationResult>;
+    unstageFile: (input: VcsFileOperationInput) => Promise<VcsFileOperationResult>;
+    restoreFile: (input: VcsFileOperationInput) => Promise<VcsFileOperationResult>;
+    listCommits: (input: VcsListCommitsInput) => Promise<VcsListCommitsResult>;
     onStatus: (
       input: VcsStatusInput,
       callback: (status: VcsStatusResult) => void,
@@ -806,6 +833,12 @@ export interface EnvironmentApi {
     getFullThreadDiff: (
       input: OrchestrationGetFullThreadDiffInput,
     ) => Promise<OrchestrationGetFullThreadDiffResult>;
+    listThreadTurns: (
+      input: OrchestrationListThreadTurnsInput,
+    ) => Promise<OrchestrationListThreadTurnsResult>;
+    listThreadTurnItems: (
+      input: OrchestrationListThreadTurnItemsInput,
+    ) => Promise<OrchestrationListThreadTurnItemsResult>;
     getArchivedShellSnapshot: () => Promise<OrchestrationShellSnapshot>;
     subscribeShell: (
       callback: (event: OrchestrationShellStreamItem) => void,

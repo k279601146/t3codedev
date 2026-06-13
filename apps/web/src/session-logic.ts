@@ -582,7 +582,11 @@ function toDerivedWorkLogEntry(
       ? (activity.payload as Record<string, unknown>)
       : null;
   const commandPreview = extractToolCommand(payload);
-  const changedFiles = extractChangedFiles(payload);
+  const commandFileChange = extractCommandFileChange(payload, commandPreview.command);
+  const changedFiles = mergeChangedFiles(
+    extractChangedFiles(payload),
+    commandFileChange ? [commandFileChange.path] : undefined,
+  );
   const toolPresentation = deriveWorkLogToolActivityPresentation(payload);
   const title = toolPresentation?.title ?? extractToolTitle(payload);
   const isTaskActivity = activity.kind === "task.progress" || activity.kind === "task.completed";
@@ -598,7 +602,7 @@ function toDerivedWorkLogEntry(
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
-  const detail = isTaskActivity
+  const detail = commandFileChange?.diff ?? (isTaskActivity
     ? !taskDetailAsLabel &&
       payload &&
       typeof payload.detail === "string" &&
@@ -607,7 +611,7 @@ function toDerivedWorkLogEntry(
       : null
     : (extractRuntimeIssueDetail(activity.kind, payload) ??
       (toolPresentation?.family === "command" ? null : toolPresentation?.detail) ??
-      extractToolDetail(payload, title ?? activity.summary));
+      extractToolDetail(payload, title ?? activity.summary)));
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
@@ -630,7 +634,7 @@ function toDerivedWorkLogEntry(
           : "completed",
   };
   const itemType = extractWorkLogItemType(payload);
-  const requestKind = extractWorkLogRequestKind(payload);
+  const requestKind = commandFileChange?.requestKind ?? extractWorkLogRequestKind(payload);
   const generatedImage = extractGeneratedImageArtifact(payload);
   if (detail) {
     entry.detail = detail;
@@ -1044,6 +1048,120 @@ function normalizeCommandValue(value: unknown): string | null {
   return formatted ? unwrapKnownShellCommandWrapper(formatted) : null;
 }
 
+function escapeDiffPath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
+function buildSyntheticCommandFileDiff(input: {
+  path: string;
+  content: string;
+  isNewFile: boolean;
+}): string {
+  const path = escapeDiffPath(input.path);
+  const lines = input.content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  const hunkHeader = input.isNewFile
+    ? `@@ -0,0 +1,${lines.length} @@`
+    : `@@ -1,0 +1,${lines.length} @@`;
+  return [
+    `diff --git a/${path} b/${path}`,
+    ...(input.isNewFile ? ["new file mode 100644", "--- /dev/null"] : [`--- a/${path}`]),
+    `+++ b/${path}`,
+    hunkHeader,
+    ...lines.map((line) => `+${line}`),
+  ].join("\n");
+}
+
+function unquoteCommandToken(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function extractPowerShellWriteTarget(command: string): string | null {
+  const explicitPathMatch = /-(?:Path|FilePath)\s+(".*?"|'.*?'|[^\s|]+)/iu.exec(command);
+  if (explicitPathMatch?.[1]) {
+    const target = unquoteCommandToken(explicitPathMatch[1]);
+    return /^-/.test(target) ? null : target;
+  }
+  const writeSegmentMatch = /\|\s*(?:Set-Content|Out-File|Add-Content)\b(?<args>[\s\S]*)$/iu.exec(
+    command,
+  );
+  const args = writeSegmentMatch?.groups?.args;
+  if (!args) {
+    return null;
+  }
+  const tokens = Array.from(args.matchAll(/"[^"]*"|'[^']*'|[^\s|]+/gu)).map((match) =>
+    unquoteCommandToken(match[0]),
+  );
+  const valueTokens = tokens.filter((token, index) => {
+    if (token.startsWith("-")) {
+      return false;
+    }
+    const previous = tokens[index - 1]?.toLowerCase();
+    return previous !== "-encoding";
+  });
+  return valueTokens.at(-1) ?? null;
+}
+
+function extractPowerShellWriteContent(command: string): string | null {
+  const hereStringMatch = /@\\?"\r?\n([\s\S]*?)\r?\n\\?"@\s*\|/u.exec(command);
+  if (hereStringMatch?.[1] !== undefined) {
+    return hereStringMatch[1];
+  }
+  const singleQuotedHereStringMatch = /@\\?'\r?\n([\s\S]*?)\r?\n\\?'@\s*\|/u.exec(command);
+  if (singleQuotedHereStringMatch?.[1] !== undefined) {
+    return singleQuotedHereStringMatch[1];
+  }
+  const writeOutputMatch =
+    /(?:Write-Output|echo)\s+("(?:(?:\\"|[^"])*)"|'(?:(?:\\'|[^'])*)'|[^\r\n|]+)\s*\|/iu.exec(
+      command,
+    );
+  if (!writeOutputMatch?.[1]) {
+    return null;
+  }
+  return unquoteCommandToken(writeOutputMatch[1])
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'");
+}
+
+function extractCommandFileChange(
+  payload: Record<string, unknown> | null,
+  command: string | null,
+): { path: string; diff: string; requestKind: "file-change" } | null {
+  if (!command) {
+    return null;
+  }
+  const itemType = extractWorkLogItemType(payload);
+  const requestKind = extractWorkLogRequestKind(payload);
+  if (itemType !== "command_execution" && requestKind !== "command") {
+    return null;
+  }
+  if (!/\|\s*(?:Set-Content|Out-File|Add-Content)\b|>\s*["']?[^"'\s]+/iu.test(command)) {
+    return null;
+  }
+  const path =
+    extractPowerShellWriteTarget(command) ??
+    unquoteCommandToken(/>\s*(".*?"|'.*?'|[^\s|]+)/u.exec(command)?.[1] ?? "");
+  if (!path) {
+    return null;
+  }
+  const content = extractPowerShellWriteContent(command) ?? "";
+  const isNewFile = /\|\s*Out-File\b|>\s*["']?[^"'\s]+/iu.test(command);
+  return {
+    path,
+    diff: buildSyntheticCommandFileDiff({ path, content, isNewFile }),
+    requestKind: "file-change",
+  };
+}
+
 function toRawToolCommand(value: unknown, normalizedCommand: string | null): string | null {
   const formatted = formatCommandValue(value);
   if (!formatted || normalizedCommand === null) {
@@ -1060,14 +1178,19 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   const item = asRecord(data?.item);
   const itemResult = asRecord(item?.result);
   const itemInput = asRecord(item?.input);
+  const args = asRecord(payload?.args);
   const itemType = asTrimmedString(payload?.itemType);
+  const requestType = asTrimmedString(payload?.requestType);
   const detail = asTrimmedString(payload?.detail);
   const candidates: unknown[] = [
     item?.command,
     itemInput?.command,
     itemResult?.command,
     data?.command,
-    itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
+    args?.command,
+    (itemType === "command_execution" || requestType === "command_execution_approval") && detail
+      ? stripTrailingExitCode(detail).output
+      : null,
   ];
 
   for (const candidate of candidates) {

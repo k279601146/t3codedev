@@ -31,6 +31,7 @@ export type MessagesTimelineRow =
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
       revertTurnCount?: number | undefined;
+      canEditUserMessage?: boolean | undefined;
     }
   | {
       kind: "proposed-plan";
@@ -285,7 +286,9 @@ function toImageGenerationRowItem(
     status,
     label,
     imagePath,
-    ...(status === "failed" ? { errorMessage: runtimeIssue ?? entry.detail ?? "图片生成失败" } : {}),
+    ...(status === "failed"
+      ? { errorMessage: runtimeIssue ?? entry.detail ?? "图片生成失败" }
+      : {}),
   };
 }
 
@@ -481,6 +484,15 @@ export function deriveMessagesTimelineRows(input: {
     input.timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
   );
   const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(input.timelineEntries);
+  let editableUserMessageId: MessageId | null = null;
+  for (let index = input.timelineEntries.length - 1; index >= 0; index -= 1) {
+    const entry = input.timelineEntries[index];
+    if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
+      continue;
+    }
+    editableUserMessageId = entry.message.id;
+    break;
+  }
 
   for (let index = 0; index < input.timelineEntries.length; index += 1) {
     const timelineEntry = input.timelineEntries[index];
@@ -589,6 +601,10 @@ export function deriveMessagesTimelineRows(input: {
         timelineEntry.message.role === "user"
           ? input.revertTurnCountByUserMessageId.get(timelineEntry.message.id)
           : undefined,
+      canEditUserMessage:
+        timelineEntry.message.role === "user" && timelineEntry.message.id === editableUserMessageId
+          ? true
+          : undefined,
     });
   }
 
@@ -677,7 +693,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
-        a.revertTurnCount === bm.revertTurnCount
+        a.revertTurnCount === bm.revertTurnCount &&
+        a.canEditUserMessage === bm.canEditUserMessage
       );
     }
   }

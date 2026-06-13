@@ -6,7 +6,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
 import { PanelRightIcon, EllipsisIcon, TerminalSquareIcon } from "lucide-react";
@@ -38,6 +38,7 @@ interface ChatHeaderProps {
   rightPanelToggleShortcutLabel: string | null;
   gitCwd: string | null;
   rightPanelOpen: boolean;
+  runSettingsControl?: ReactNode;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
@@ -77,6 +78,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelToggleShortcutLabel,
   gitCwd,
   rightPanelOpen,
+  runSettingsControl,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -236,6 +238,12 @@ export const ChatHeader = memo(function ChatHeader({
                       {gitActions}
                     </div>
                   ) : null}
+                  {runSettingsControl ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">运行设置</span>
+                      {runSettingsControl}
+                    </div>
+                  ) : null}
                 </div>
               </MenuPopup>
             </Menu>
@@ -245,6 +253,7 @@ export const ChatHeader = memo(function ChatHeader({
             {projectScriptsControl}
             {openInPicker}
             {gitActions}
+            {runSettingsControl}
             {terminalToggle}
             {rightPanelToggle}
           </>

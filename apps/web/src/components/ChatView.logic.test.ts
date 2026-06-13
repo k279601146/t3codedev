@@ -20,6 +20,7 @@ import {
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
+  inferRevertTurnCountBeforeUserMessage,
   reconcileMountedTerminalThreadIds,
   resolveSendEnvMode,
   shouldShowEmptyNewThread,
@@ -174,6 +175,47 @@ describe("buildRevertTurnCountByUserMessageId", () => {
     });
 
     expect(byUserMessageId.get(userMessageId)).toBe(0);
+  });
+});
+
+describe("inferRevertTurnCountBeforeUserMessage", () => {
+  it("按目标用户消息之前的用户消息数量推导回退 turnCount", () => {
+    const target = MessageId.make("user-2");
+
+    expect(
+      inferRevertTurnCountBeforeUserMessage(
+        [
+          { id: MessageId.make("user-1"), role: "user" },
+          { id: MessageId.make("assistant-1"), role: "assistant" },
+          { id: target, role: "user" },
+          { id: MessageId.make("assistant-2"), role: "assistant" },
+        ],
+        target,
+      ),
+    ).toBe(1);
+  });
+
+  it("第一条用户消息回退到 0", () => {
+    const target = MessageId.make("user-1");
+
+    expect(
+      inferRevertTurnCountBeforeUserMessage(
+        [
+          { id: target, role: "user" },
+          { id: MessageId.make("assistant-1"), role: "assistant" },
+        ],
+        target,
+      ),
+    ).toBe(0);
+  });
+
+  it("目标不是用户消息时不推导", () => {
+    expect(
+      inferRevertTurnCountBeforeUserMessage(
+        [{ id: MessageId.make("assistant-1"), role: "assistant" }],
+        MessageId.make("assistant-1"),
+      ),
+    ).toBeNull();
   });
 });
 

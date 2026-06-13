@@ -220,9 +220,7 @@ function retainProjectionMessagesAfterRevert(
     const fallbackUserMessages = messages
       .filter(
         (message) =>
-          message.role === "user" &&
-          !retainedMessageIds.has(message.messageId) &&
-          (message.turnId === null || retainedTurnIds.has(message.turnId)),
+          message.role === "user" && !retainedMessageIds.has(message.messageId),
       )
       .toSorted(
         (left, right) =>
@@ -243,9 +241,7 @@ function retainProjectionMessagesAfterRevert(
     const fallbackAssistantMessages = messages
       .filter(
         (message) =>
-          message.role === "assistant" &&
-          !retainedMessageIds.has(message.messageId) &&
-          (message.turnId === null || retainedTurnIds.has(message.turnId)),
+          message.role === "assistant" && !retainedMessageIds.has(message.messageId),
       )
       .toSorted(
         (left, right) =>

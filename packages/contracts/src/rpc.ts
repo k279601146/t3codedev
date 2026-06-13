@@ -19,8 +19,14 @@ import {
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
   VcsInitInput,
+  VcsListCommitsInput,
+  VcsListCommitsResult,
   VcsListRefsInput,
   VcsListRefsResult,
+  VcsDiffCommitInput,
+  VcsDiffCommitResult,
+  VcsFileOperationInput,
+  VcsFileOperationResult,
   GitManagerServiceError,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
@@ -51,6 +57,11 @@ import {
   OrchestrationRpcSchemas,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import {
+  ProviderThreadSettingsUpdateError,
+  ProviderThreadSettingsUpdateInput,
+  ProviderThreadSettingsUpdateResult,
+} from "./provider.ts";
 import {
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
@@ -176,6 +187,11 @@ export const WS_METHODS = {
   vcsPull: "vcs.pull",
   vcsRefreshStatus: "vcs.refreshStatus",
   vcsDiffWorkingTree: "vcs.diffWorkingTree",
+  vcsDiffCommit: "vcs.diffCommit",
+  vcsStageFile: "vcs.stageFile",
+  vcsUnstageFile: "vcs.unstageFile",
+  vcsRestoreFile: "vcs.restoreFile",
+  vcsListCommits: "vcs.listCommits",
   vcsListRefs: "vcs.listRefs",
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
@@ -211,6 +227,7 @@ export const WS_METHODS = {
   serverSignalProcess: "server.signalProcess",
   providerWindowsSandboxReadiness: "provider.windowsSandbox.readiness",
   providerWindowsSandboxSetupStart: "provider.windowsSandbox.setupStart",
+  providerThreadSettingsUpdate: "provider.threadSettings.update",
 
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
@@ -345,6 +362,12 @@ export const WsProviderWindowsSandboxSetupStartRpc = Rpc.make(
     error: ProviderWindowsSandboxError,
   },
 );
+
+export const WsProviderThreadSettingsUpdateRpc = Rpc.make(WS_METHODS.providerThreadSettingsUpdate, {
+  payload: ProviderThreadSettingsUpdateInput,
+  success: ProviderThreadSettingsUpdateResult,
+  error: ProviderThreadSettingsUpdateError,
+});
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
   WS_METHODS.sourceControlLookupRepository,
@@ -556,6 +579,30 @@ export const WsVcsDiffWorkingTreeRpc = Rpc.make(WS_METHODS.vcsDiffWorkingTree, {
   error: GitCommandError,
 });
 
+export const WsVcsDiffCommitRpc = Rpc.make(WS_METHODS.vcsDiffCommit, {
+  payload: VcsDiffCommitInput,
+  success: VcsDiffCommitResult,
+  error: GitCommandError,
+});
+
+export const WsVcsStageFileRpc = Rpc.make(WS_METHODS.vcsStageFile, {
+  payload: VcsFileOperationInput,
+  success: VcsFileOperationResult,
+  error: GitCommandError,
+});
+
+export const WsVcsUnstageFileRpc = Rpc.make(WS_METHODS.vcsUnstageFile, {
+  payload: VcsFileOperationInput,
+  success: VcsFileOperationResult,
+  error: GitCommandError,
+});
+
+export const WsVcsRestoreFileRpc = Rpc.make(WS_METHODS.vcsRestoreFile, {
+  payload: VcsFileOperationInput,
+  success: VcsFileOperationResult,
+  error: GitCommandError,
+});
+
 export const WsGitRunStackedActionRpc = Rpc.make(WS_METHODS.gitRunStackedAction, {
   payload: GitRunStackedActionInput,
   success: GitActionProgressEvent,
@@ -578,6 +625,12 @@ export const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePu
 export const WsVcsListRefsRpc = Rpc.make(WS_METHODS.vcsListRefs, {
   payload: VcsListRefsInput,
   success: VcsListRefsResult,
+  error: GitCommandError,
+});
+
+export const WsVcsListCommitsRpc = Rpc.make(WS_METHODS.vcsListCommits, {
+  payload: VcsListCommitsInput,
+  success: VcsListCommitsResult,
   error: GitCommandError,
 });
 
@@ -665,6 +718,24 @@ export const WsOrchestrationGetFullThreadDiffRpc = Rpc.make(
   },
 );
 
+export const WsOrchestrationListThreadTurnsRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.listThreadTurns,
+  {
+    payload: OrchestrationRpcSchemas.listThreadTurns.input,
+    success: OrchestrationRpcSchemas.listThreadTurns.output,
+    error: OrchestrationGetSnapshotError,
+  },
+);
+
+export const WsOrchestrationListThreadTurnItemsRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.listThreadTurnItems,
+  {
+    payload: OrchestrationRpcSchemas.listThreadTurnItems.input,
+    success: OrchestrationRpcSchemas.listThreadTurnItems.output,
+    error: OrchestrationGetSnapshotError,
+  },
+);
+
 export const WsOrchestrationReplayEventsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.replayEvents, {
   payload: OrchestrationReplayEventsInput,
   success: OrchestrationRpcSchemas.replayEvents.output,
@@ -737,6 +808,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerSignalProcessRpc,
   WsProviderWindowsSandboxReadinessRpc,
   WsProviderWindowsSandboxSetupStartRpc,
+  WsProviderThreadSettingsUpdateRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
@@ -771,10 +843,15 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
   WsVcsDiffWorkingTreeRpc,
+  WsVcsDiffCommitRpc,
+  WsVcsStageFileRpc,
+  WsVcsUnstageFileRpc,
+  WsVcsRestoreFileRpc,
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,
   WsVcsListRefsRpc,
+  WsVcsListCommitsRpc,
   WsVcsCreateWorktreeRpc,
   WsVcsRemoveWorktreeRpc,
   WsVcsCreateRefRpc,
@@ -793,6 +870,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
+  WsOrchestrationListThreadTurnsRpc,
+  WsOrchestrationListThreadTurnItemsRpc,
   WsOrchestrationReplayEventsRpc,
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,

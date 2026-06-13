@@ -1,32 +1,42 @@
-import { memo, useState, useId } from "react";
+import { memo, useState } from "react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
-  buildCollapsedProposedPlanPreviewMarkdown,
   buildProposedPlanMarkdownFilename,
   downloadPlanAsTextFile,
   normalizePlanMarkdownForExport,
-  proposedPlanTitle,
-  stripDisplayedPlanMarkdown,
 } from "../../proposedPlan";
 import ChatMarkdown from "../ChatMarkdown";
-import { EllipsisIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, DownloadIcon } from "lucide-react";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { cn } from "~/lib/utils";
-import { Badge } from "../ui/badge";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { readEnvironmentApi } from "~/environmentApi";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+
+function buildVisiblePlanPreviewMarkdown(planMarkdown: string, maxVisibleLines: number): string {
+  const lines = planMarkdown
+    .trimEnd()
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  const previewLines: string[] = [];
+  let visibleLineCount = 0;
+
+  for (const line of lines) {
+    const isVisibleLine = line.trim().length > 0;
+    if (isVisibleLine && visibleLineCount >= maxVisibleLines) {
+      break;
+    }
+    previewLines.push(line);
+    if (isVisibleLine) {
+      visibleLineCount += 1;
+    }
+  }
+
+  while (previewLines.at(-1)?.trim().length === 0) {
+    previewLines.pop();
+  }
+
+  return previewLines.join("\n");
+}
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
   planMarkdown,
@@ -40,9 +50,6 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   workspaceRoot: string | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
-  const [savePath, setSavePath] = useState("");
-  const [isSavingToWorkspace, setIsSavingToWorkspace] = useState(false);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     onError: (error) => {
       toastManager.add(
@@ -54,14 +61,10 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       );
     },
   });
-  const savePathInputId = useId();
-  const title = proposedPlanTitle(planMarkdown) ?? "Proposed plan";
   const lineCount = planMarkdown.split("\n").length;
   const canCollapse = planMarkdown.length > 900 || lineCount > 20;
-  const displayedPlanMarkdown = stripDisplayedPlanMarkdown(planMarkdown);
-  const collapsedPreview = canCollapse
-    ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 10 })
-    : null;
+  const displayedPlanMarkdown = planMarkdown.trim();
+  const collapsedPreview = canCollapse ? buildVisiblePlanPreviewMarkdown(planMarkdown, 11) : null;
   const downloadFilename = buildProposedPlanMarkdownFilename(planMarkdown);
   const saveContents = normalizePlanMarkdownForExport(planMarkdown);
 
@@ -73,165 +76,86 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     copyToClipboard(saveContents);
   };
 
-  const openSaveDialog = () => {
-    if (!workspaceRoot) {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Workspace path is unavailable",
-          description: "This thread does not have a workspace path to save into.",
-        }),
-      );
-      return;
-    }
-    setSavePath((existing) => (existing.length > 0 ? existing : downloadFilename));
-    setIsSaveDialogOpen(true);
-  };
-
-  const handleSaveToWorkspace = () => {
-    const api = readEnvironmentApi(environmentId);
-    const relativePath = savePath.trim();
-    if (!api || !workspaceRoot) {
-      return;
-    }
-    if (!relativePath) {
-      toastManager.add({
-        type: "warning",
-        title: "Enter a workspace path",
-      });
-      return;
-    }
-
-    setIsSavingToWorkspace(true);
-    void api.projects
-      .writeFile({
-        cwd: workspaceRoot,
-        relativePath,
-        contents: saveContents,
-      })
-      .then((result) => {
-        setIsSaveDialogOpen(false);
-        toastManager.add({
-          type: "success",
-          title: "Plan saved to workspace",
-          description: result.relativePath,
-        });
-      })
-      .catch((error) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not save plan",
-            description: error instanceof Error ? error.message : "An error occurred while saving.",
-          }),
-        );
-      })
-      .then(
-        () => {
-          setIsSavingToWorkspace(false);
-        },
-        () => {
-          setIsSavingToWorkspace(false);
-        },
-      );
-  };
-
   return (
-    <div className="rounded-[24px] border border-border/80 bg-card/70 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Badge variant="secondary">Plan</Badge>
-          <p className="truncate text-sm font-medium text-foreground">{title}</p>
+    <div
+      className="proposed-plan-card overflow-hidden rounded-[10px] border border-transparent bg-[#f4f4f5] px-4 pb-4 pt-3 text-[#18181b] shadow-none dark:border-border/45 dark:bg-muted/25 dark:text-foreground sm:px-5"
+      data-environment-id={environmentId}
+      data-workspace-root={workspaceRoot ?? undefined}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 text-[14px] font-semibold leading-5 text-[#09090b] dark:text-foreground/92">
+          计划
         </div>
-        <Menu>
-          <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+        <div className="flex shrink-0 items-center gap-1 text-[#71717a] dark:text-muted-foreground">
+          <Button
+            aria-label="下载计划"
+            title="下载计划"
+            size="icon-xs"
+            variant="ghost"
+            className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 hover:text-[#3f3f46] dark:hover:bg-white/8 dark:hover:text-foreground"
+            onClick={handleDownload}
           >
-            <EllipsisIcon aria-hidden="true" className="size-4" />
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuItem onClick={handleCopyPlan}>
-              {isCopied ? "Copied!" : "Copy to clipboard"}
-            </MenuItem>
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
-            <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
-              Save to workspace
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
+            <DownloadIcon aria-hidden="true" className="size-3.5" />
+          </Button>
+          <Button
+            aria-label={isCopied ? "已复制计划" : "复制计划"}
+            title={isCopied ? "已复制" : "复制计划"}
+            size="icon-xs"
+            variant="ghost"
+            className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 hover:text-[#3f3f46] dark:hover:bg-white/8 dark:hover:text-foreground"
+            onClick={handleCopyPlan}
+          >
+            {isCopied ? (
+              <CheckIcon aria-hidden="true" className="size-3.5" />
+            ) : (
+              <CopyIcon aria-hidden="true" className="size-3.5" />
+            )}
+          </Button>
+          {canCollapse ? (
+            <Button
+              aria-label={expanded ? "收起计划" : "展开计划"}
+              title={expanded ? "收起计划" : "展开计划"}
+              size="icon-xs"
+              variant="ghost"
+              className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 hover:text-[#3f3f46] dark:hover:bg-white/8 dark:hover:text-foreground"
+              data-scroll-anchor-ignore
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? (
+                <ChevronUpIcon aria-hidden="true" className="size-3.5" />
+              ) : (
+                <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+              )}
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div className="mt-4">
-        <div className={cn("relative", canCollapse && !expanded && "max-h-104 overflow-hidden")}>
+      <div className="mt-5">
+        <div
+          className={cn("relative", canCollapse && !expanded && "max-h-[340px] overflow-hidden")}
+        >
           {canCollapse && !expanded ? (
             <ChatMarkdown text={collapsedPreview ?? ""} cwd={cwd} isStreaming={false} />
           ) : (
             <ChatMarkdown text={displayedPlanMarkdown} cwd={cwd} isStreaming={false} />
           )}
           {canCollapse && !expanded ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-linear-to-t from-card/95 via-card/80 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-linear-to-t from-[#f4f4f5] via-[#f4f4f5]/88 to-transparent dark:from-[color-mix(in_srgb,var(--muted)_25%,var(--background))] dark:via-background/65" />
           ) : null}
         </div>
         {canCollapse ? (
-          <div className="mt-4 flex justify-center">
-            <Button
-              size="sm"
-              variant="outline"
+          <div className={cn("flex justify-center", expanded ? "mt-4" : "-mt-10 relative z-10")}>
+            <button
+              type="button"
+              className="inline-flex h-8 items-center rounded-full bg-[#18181b] px-3 text-[13px] font-medium text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition-colors hover:bg-[#27272a] dark:bg-foreground dark:text-background"
               data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
             >
-              {expanded ? "Collapse plan" : "Expand plan"}
-            </Button>
+              {expanded ? "收起计划" : "展开计划"}
+            </button>
           </div>
         ) : null}
       </div>
-
-      <Dialog
-        open={isSaveDialogOpen}
-        onOpenChange={(open) => {
-          if (!isSavingToWorkspace) {
-            setIsSaveDialogOpen(open);
-          }
-        }}
-      >
-        <DialogPopup className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Save plan to workspace</DialogTitle>
-            <DialogDescription>
-              Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogPanel className="space-y-3">
-            <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Workspace path</span>
-              <Input
-                id={savePathInputId}
-                value={savePath}
-                onChange={(event) => setSavePath(event.target.value)}
-                placeholder={downloadFilename}
-                spellCheck={false}
-                disabled={isSavingToWorkspace}
-              />
-            </label>
-          </DialogPanel>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSaveDialogOpen(false)}
-              disabled={isSavingToWorkspace}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void handleSaveToWorkspace()}
-              disabled={isSavingToWorkspace}
-            >
-              {isSavingToWorkspace ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogPopup>
-      </Dialog>
     </div>
   );
 });

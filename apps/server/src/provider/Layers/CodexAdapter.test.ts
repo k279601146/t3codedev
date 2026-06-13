@@ -14,10 +14,15 @@ import {
   type ProviderEvent,
   type OrchestrationGoal,
   type OrchestrationGoalStatus,
+  type OrchestrationListThreadTurnItemsInput,
+  type OrchestrationListThreadTurnItemsResult,
+  type OrchestrationListThreadTurnsInput,
+  type OrchestrationListThreadTurnsResult,
   type ProviderSession,
   type ProviderTurnStartResult,
   type ProviderTurnSteerResult,
   type ProviderUserInputAnswers,
+  type WindowsSandboxMode,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -46,6 +51,7 @@ import {
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeSendTurnInput,
   type CodexSessionRuntimeShape,
+  type CodexSessionRuntimeUpdateSettingsInput,
   type CodexThreadSnapshot,
 } from "./CodexSessionRuntime.ts";
 import { makeCodexAdapter } from "./CodexAdapter.ts";
@@ -62,6 +68,7 @@ const asEventId = (value: string): EventId => EventId.make(value);
 const asItemId = (value: string): ProviderItemId => ProviderItemId.make(value);
 const testConversationWorkspace = () =>
   path.join(process.cwd(), "userdata", "conversation-workspace");
+type WindowsSandboxReadinessStatus = "ready" | "notConfigured" | "updateRequired";
 
 class FakeCodexRuntime implements CodexSessionRuntimeShape {
   private readonly eventQueue = Effect.runSync(Queue.unbounded<ProviderEvent>());
@@ -123,6 +130,28 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
       }),
   );
 
+  public readonly updateThreadSettingsImpl = vi.fn(
+    (_input: CodexSessionRuntimeUpdateSettingsInput): Promise<void> => Promise.resolve(undefined),
+  );
+
+  public readonly listThreadTurnsImpl = vi.fn(
+    (
+      _input: Omit<OrchestrationListThreadTurnsInput, "threadId">,
+    ): Promise<OrchestrationListThreadTurnsResult> =>
+      Promise.resolve({
+        data: [],
+      }),
+  );
+
+  public readonly listThreadTurnItemsImpl = vi.fn(
+    (
+      _input: Omit<OrchestrationListThreadTurnItemsInput, "threadId">,
+    ): Promise<OrchestrationListThreadTurnItemsResult> =>
+      Promise.resolve({
+        data: [],
+      }),
+  );
+
   public readonly respondToRequestImpl = vi.fn(
     (_requestId: ApprovalRequestId, _decision: ProviderApprovalDecision): Promise<void> =>
       Promise.resolve(undefined),
@@ -134,6 +163,19 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   );
 
   public readonly closeImpl = vi.fn(() => Promise.resolve(undefined));
+  private windowsSandboxReadinessStatus: WindowsSandboxReadinessStatus = "ready";
+
+  public readonly windowsSandboxReadinessImpl = vi.fn(() =>
+    Promise.resolve({
+      status: this.windowsSandboxReadinessStatus,
+    }),
+  );
+
+  public readonly windowsSandboxSetupStartImpl = vi.fn(
+    (_input: { readonly mode: WindowsSandboxMode }): Promise<{ readonly started: boolean }> =>
+      Promise.resolve({ started: true }),
+  );
+  private windowsSandboxSetupStartFailure: CodexErrors.CodexAppServerError | null = null;
 
   readonly options: CodexSessionRuntimeOptions;
 
@@ -169,6 +211,18 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
 
   rollbackThread(numTurns: number) {
     return Effect.promise(() => this.rollbackThreadImpl(numTurns));
+  }
+
+  updateThreadSettings(input: CodexSessionRuntimeUpdateSettingsInput) {
+    return Effect.promise(() => this.updateThreadSettingsImpl(input));
+  }
+
+  listThreadTurns(input: Omit<OrchestrationListThreadTurnsInput, "threadId">) {
+    return Effect.promise(() => this.listThreadTurnsImpl(input));
+  }
+
+  listThreadTurnItems(input: Omit<OrchestrationListThreadTurnItemsInput, "threadId">) {
+    return Effect.promise(() => this.listThreadTurnItemsImpl(input));
   }
 
   respondToRequest(requestId: ApprovalRequestId, decision: ProviderApprovalDecision) {
@@ -213,6 +267,25 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   }
 
   close = Effect.promise(() => this.closeImpl());
+
+  get windowsSandboxReadiness() {
+    return Effect.promise(() => this.windowsSandboxReadinessImpl());
+  }
+
+  windowsSandboxSetupStart(input: { readonly mode: WindowsSandboxMode }) {
+    const failure = this.windowsSandboxSetupStartFailure;
+    return Effect.promise(() => this.windowsSandboxSetupStartImpl(input)).pipe(
+      Effect.flatMap((response) => (failure ? Effect.fail(failure) : Effect.succeed(response))),
+    );
+  }
+
+  setWindowsSandboxReadinessStatus(status: WindowsSandboxReadinessStatus) {
+    this.windowsSandboxReadinessStatus = status;
+  }
+
+  setWindowsSandboxSetupStartFailure(error: CodexErrors.CodexAppServerError | null) {
+    this.windowsSandboxSetupStartFailure = error;
+  }
 
   emit(event: ProviderEvent) {
     return Queue.offer(this.eventQueue, event).pipe(Effect.asVoid);
@@ -419,6 +492,46 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
     }),
   );
 
+  it.effect("maps thread settings updates before sending them to the runtime", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("settings-thread"),
+        runtimeMode: "full-access",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      assert.ok(runtime);
+      runtime.updateThreadSettingsImpl.mockClear();
+      const updateThreadSettings = adapter.updateThreadSettings;
+      assert.ok(updateThreadSettings);
+
+      yield* updateThreadSettings({
+        threadId: asThreadId("settings-thread"),
+        cwd: testConversationWorkspace(),
+        runtimeMode: "auto-accept-edits",
+        modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [
+          { id: "reasoningEffort", value: "high" },
+          { id: "fastMode", value: true },
+        ]),
+        permissionProfileId: "trusted-write",
+        personality: "friendly",
+        reasoningSummary: "detailed",
+      });
+
+      assert.deepStrictEqual(runtime.updateThreadSettingsImpl.mock.calls[0]?.[0], {
+        cwd: testConversationWorkspace(),
+        runtimeMode: "auto-accept-edits",
+        model: "gpt-5.3-codex",
+        effort: "high",
+        serviceTier: "fast",
+        permissions: "trusted-write",
+        personality: "friendly",
+        summary: "detailed",
+      });
+    }),
+  );
+
   it.effect("maps codex model options for the adapter's bound custom instance id", () => {
     const customInstanceId = ProviderInstanceId.make("codex_personal");
     const customRuntimeFactory = makeRuntimeFactory();
@@ -476,6 +589,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
 });
 
 const lifecycleRuntimeFactory = makeRuntimeFactory();
+const lifecyclePersistedWindowsSandboxModes: Array<WindowsSandboxMode> = [];
 const lifecycleLayer = it.layer(
   Layer.effect(
     CodexAdapter,
@@ -483,6 +597,10 @@ const lifecycleLayer = it.layer(
       const codexConfig = decodeCodexSettings({});
       return yield* makeCodexAdapter(codexConfig, {
         makeRuntime: lifecycleRuntimeFactory.factory,
+        persistWindowsSandboxMode: (mode) =>
+          Effect.sync(() => {
+            lifecyclePersistedWindowsSandboxModes.push(mode);
+          }),
       });
     }),
   ).pipe(
@@ -915,6 +1033,48 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("does not surface windowsSandbox/readiness as a chat runtime warning", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-windows-sandbox-readiness"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "windowsSandbox/readiness",
+        message: "Windows sandbox readiness: updateRequired",
+        payload: {
+          status: "updateRequired",
+        },
+      } satisfies ProviderEvent);
+      yield* runtime.emit({
+        id: asEventId("evt-after-readiness-stderr"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "process/stderr",
+        message: "visible warning",
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.eventId, "evt-after-readiness-stderr");
+      assert.equal(firstEvent.value.type, "runtime.warning");
+      if (firstEvent.value.type !== "runtime.warning") {
+        return;
+      }
+      assert.equal(firstEvent.value.payload.message, "visible warning");
+    }),
+  );
+
   it.effect("maps thread settings updates to canonical session.configured events", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
@@ -1148,6 +1308,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
 
   it.effect("maps windowsSandbox/setupCompleted to session state and warning on failure", () =>
     Effect.gen(function* () {
+      lifecyclePersistedWindowsSandboxModes.length = 0;
       const { adapter, runtime } = yield* startLifecycleRuntime();
       const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
         Effect.forkChild,
@@ -1186,6 +1347,76 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       if (secondEvent?.type === "runtime.warning") {
         assert.equal(secondEvent.payload.message, "Sandbox setup failed");
       }
+      assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["unelevated"]);
+    }),
+  );
+
+  it.effect(
+    "falls back to unelevated and persists the fallback when elevated setup stays stale",
+    () =>
+      Effect.gen(function* () {
+        lifecyclePersistedWindowsSandboxModes.length = 0;
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        runtime.setWindowsSandboxReadinessStatus("updateRequired");
+
+        const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+
+        assert.equal(runtime.windowsSandboxSetupStartImpl.mock.calls.at(-1)?.[0].mode, "elevated");
+        assert.equal(result.started, true);
+        assert.equal(result.windowsSandbox.mode, "unelevated");
+        assert.equal(result.windowsSandbox.readiness, "ready");
+        assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["elevated", "unelevated"]);
+
+        const readinessAfterFallback = yield* adapter.windowsSandboxReadiness!({
+          mode: "elevated",
+        });
+        assert.equal(readinessAfterFallback.mode, "unelevated");
+        assert.equal(readinessAfterFallback.readiness, "ready");
+      }),
+  );
+
+  it.effect(
+    "falls back to unelevated and persists the fallback when elevated setupStart fails",
+    () =>
+      Effect.gen(function* () {
+        lifecyclePersistedWindowsSandboxModes.length = 0;
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        runtime.setWindowsSandboxSetupStartFailure(
+          new CodexErrors.CodexAppServerRequestError({
+            code: -32000,
+            errorMessage: "helper setup failed",
+          }),
+        );
+
+        const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+
+        assert.equal(result.started, false);
+        assert.equal(result.windowsSandbox.mode, "unelevated");
+        assert.equal(result.windowsSandbox.readiness, "ready");
+        assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["elevated", "unelevated"]);
+      }),
+  );
+
+  it.effect("can restore elevated mode after a persisted unelevated fallback", () =>
+    Effect.gen(function* () {
+      lifecyclePersistedWindowsSandboxModes.length = 0;
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      runtime.setWindowsSandboxReadinessStatus("updateRequired");
+
+      const fallbackResult = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+      assert.equal(fallbackResult.windowsSandbox.mode, "unelevated");
+
+      runtime.setWindowsSandboxReadinessStatus("ready");
+      const restoreResult = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+
+      assert.equal(restoreResult.started, true);
+      assert.equal(restoreResult.windowsSandbox.mode, "elevated");
+      assert.equal(restoreResult.windowsSandbox.readiness, "ready");
+      assert.deepEqual(lifecyclePersistedWindowsSandboxModes, [
+        "elevated",
+        "unelevated",
+        "elevated",
+      ]);
     }),
   );
 

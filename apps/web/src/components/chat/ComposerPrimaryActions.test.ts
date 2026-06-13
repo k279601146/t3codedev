@@ -147,4 +147,14 @@ describe("getRunningPrimaryActionMode", () => {
       }),
     ).toBe("interrupt");
   });
+
+  it("keeps the stop action while an interrupt is pending", () => {
+    expect(
+      getRunningPrimaryActionMode({
+        canSteerRunningTurn: true,
+        hasSendableContent: true,
+        isInterruptPending: true,
+      }),
+    ).toBe("interrupt");
+  });
 });
