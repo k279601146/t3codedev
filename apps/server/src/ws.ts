@@ -35,6 +35,7 @@ import {
   type TerminalEvent,
   WS_METHODS,
   WsRpcGroup,
+  ProviderWindowsSandboxError,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
@@ -53,6 +54,7 @@ import {
   observeRpcStreamEffect,
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
+import { ProviderService } from "./provider/Services/ProviderService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
@@ -124,6 +126,19 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
+const toWindowsSandboxRpcError = (input: {
+  readonly providerInstanceId: import("@t3tools/contracts").ProviderInstanceId;
+  readonly cause: { readonly message?: string } | unknown;
+}) =>
+  new ProviderWindowsSandboxError({
+    providerInstanceId: input.providerInstanceId,
+    reason:
+      input.cause && typeof input.cause === "object" && "message" in input.cause
+        ? String((input.cause as { message?: unknown }).message ?? "Windows sandbox request failed.")
+        : "Windows sandbox request failed.",
+    cause: input.cause,
+  });
+
 function toAuthAccessStreamEvent(
   change: BootstrapCredentialChange | SessionCredentialChange,
   revision: number,
@@ -177,6 +192,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager;
       const providerRegistry = yield* ProviderRegistry;
+      const providerService = yield* ProviderService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const config = yield* ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents;
@@ -203,6 +219,42 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const sessions = yield* SessionCredentialService;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
+      const providerWindowsSandboxReadiness = (input: Parameters<
+        NonNullable<typeof providerService.windowsSandboxReadiness>
+      >[0]) => {
+        const request = providerService.windowsSandboxReadiness;
+        if (!request) {
+          return Effect.fail(
+            toWindowsSandboxRpcError({
+              providerInstanceId: input.providerInstanceId,
+              cause: new Error("Windows sandbox readiness is not available."),
+            }),
+          );
+        }
+        return request(input).pipe(
+          Effect.mapError((cause) =>
+            toWindowsSandboxRpcError({ providerInstanceId: input.providerInstanceId, cause }),
+          ),
+        );
+      };
+      const providerWindowsSandboxSetupStart = (input: Parameters<
+        NonNullable<typeof providerService.windowsSandboxSetupStart>
+      >[0]) => {
+        const request = providerService.windowsSandboxSetupStart;
+        if (!request) {
+          return Effect.fail(
+            toWindowsSandboxRpcError({
+              providerInstanceId: input.providerInstanceId,
+              cause: new Error("Windows sandbox setup is not available."),
+            }),
+          );
+        }
+        return request(input).pipe(
+          Effect.mapError((cause) =>
+            toWindowsSandboxRpcError({ providerInstanceId: input.providerInstanceId, cause }),
+          ),
+        );
+      };
       const serverCommandId = (tag: string) =>
         CommandId.make(`server:${tag}:${crypto.randomUUID()}`);
 
@@ -931,6 +983,18 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.providerWindowsSandboxReadiness]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerWindowsSandboxReadiness,
+            providerWindowsSandboxReadiness(input),
+            { "rpc.aggregate": "provider" },
+          ),
+        [WS_METHODS.providerWindowsSandboxSetupStart]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerWindowsSandboxSetupStart,
+            providerWindowsSandboxSetupStart(input),
+            { "rpc.aggregate": "provider" },
+          ),
         [WS_METHODS.sourceControlLookupRepository]: (input) =>
           observeRpcEffect(
             WS_METHODS.sourceControlLookupRepository,

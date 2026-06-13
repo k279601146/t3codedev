@@ -27,9 +27,12 @@ import {
   ThreadId,
   ProviderSendTurnInput,
   ProviderSteerTurnInput,
+  type ServerProviderWindowsSandbox,
+  type WindowsSandboxMode,
 } from "@t3tools/contracts";
 import path from "node:path";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Clock from "effect/Clock";
 import * as Exit from "effect/Exit";
@@ -45,6 +48,7 @@ import * as Layer from "effect/Layer";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
+import * as CodexClient from "effect-codex-app-server/client";
 
 import {
   getModelSelectionBooleanOptionValue,
@@ -66,6 +70,18 @@ import * as BrowserExternalToolServiceLayer from "./BrowserExternalToolService.t
 import * as ComputerToolServiceLayer from "./ComputerToolService.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { expandHomePath } from "../../pathExpansion.ts";
+import {
+  buildCodexProcessEnv,
+  buildBundledSpawnArgs,
+  buildSystemSpawnArgs,
+  resolveBundledEngineConfig,
+} from "../BundledEngineConfig.ts";
+import { buildWindowsSandboxSnapshot } from "../windowsSandbox.ts";
+import {
+  buildCodexInitializeParams,
+  enableCodexPluginExperimentalFeatures,
+} from "./CodexProvider.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -84,6 +100,7 @@ const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
 const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
 const PROVIDER = ProviderDriverKind.make("codex");
+const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 export interface CodexAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
@@ -1390,6 +1407,28 @@ function mapToRuntimeEvents(
     ];
   }
 
+  if (event.method === "windowsSandbox/readiness") {
+    const payload = readPayload(EffectCodexSchema.V2WindowsSandboxReadinessResponse, event.payload);
+    const status =
+      payload?.status ??
+      (typeof event.payload === "object" && event.payload !== null && "status" in event.payload
+        ? String((event.payload as { status?: unknown }).status)
+        : "error");
+    if (status === "ready") {
+      return [];
+    }
+    return [
+      {
+        type: "runtime.warning",
+        ...runtimeEventBase(event, canonicalThreadId),
+        payload: {
+          message: event.message ?? `Windows sandbox readiness: ${status}`,
+          ...(event.payload !== undefined ? { detail: event.payload } : {}),
+        },
+      },
+    ];
+  }
+
   if (event.method === "windowsSandbox/setupCompleted") {
     const payload = readPayload(
       EffectCodexSchema.V2WindowsSandboxSetupCompletedNotification,
@@ -1564,6 +1603,126 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     const reusable = yield* isWarmProcessReusable(warmProcess.value, cwd);
     return reusable ? warmProcess.value.child : undefined;
   });
+
+  const buildWindowsSandboxState = (input: {
+    readonly mode: WindowsSandboxMode;
+    readonly readiness?: EffectCodexSchema.V2WindowsSandboxReadinessResponse["status"];
+    readonly lastError?: string | null;
+  }): Effect.Effect<ServerProviderWindowsSandbox> =>
+    nowIso.pipe(
+      Effect.map((updatedAt) =>
+        buildWindowsSandboxSnapshot({
+          binaryPath: codexConfig.binaryPath,
+          ...(options?.environment !== undefined ? { environment: options.environment } : {}),
+          mode: input.mode,
+          ...(input.readiness !== undefined ? { readiness: input.readiness } : {}),
+          lastError: input.lastError ?? null,
+          updatedAt,
+        }),
+      ),
+    );
+
+  const firstActiveRuntime = Effect.sync(() => {
+    for (const session of sessions.values()) {
+      if (!session.stopped) {
+        return session.runtime;
+      }
+    }
+    return undefined;
+  });
+
+  const withTemporaryClient = <A>(
+    operation: (
+      client: CodexClient.CodexAppServerClientShape,
+    ) => Effect.Effect<A, CodexErrors.CodexAppServerError>,
+  ): Effect.Effect<A, CodexErrors.CodexAppServerError> =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const baseEnv = options?.environment ?? process.env;
+        const bundledConfig = resolveBundledEngineConfig(baseEnv);
+        const effectiveBinaryPath = bundledConfig?.binaryPath ?? codexConfig.binaryPath;
+        const spawnArgs = bundledConfig
+          ? buildBundledSpawnArgs(bundledConfig)
+          : buildSystemSpawnArgs();
+        const resolvedHomePath = codexConfig.homePath
+          ? expandHomePath(codexConfig.homePath)
+          : undefined;
+        const clientContext = yield* Layer.build(
+          CodexClient.layerCommand({
+            command: effectiveBinaryPath,
+            args: [...spawnArgs],
+            cwd: defaultCwd,
+            env: buildCodexProcessEnv({
+              baseEnv,
+              resolvedHomePath,
+              bundledConfig,
+            }),
+          }),
+        );
+        const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
+          Effect.provide(clientContext),
+        );
+        yield* client.request("initialize", buildCodexInitializeParams());
+        yield* client.notify("initialized", undefined);
+        yield* enableCodexPluginExperimentalFeatures(client, {
+          operation: "windowsSandbox.request",
+        });
+        return yield* operation(client);
+      }),
+    ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner));
+
+  const requestWindowsSandboxReadiness = (input: {
+    readonly mode: WindowsSandboxMode;
+  }): Effect.Effect<ServerProviderWindowsSandbox, ProviderAdapterError> =>
+    Effect.gen(function* () {
+      const runtime = yield* firstActiveRuntime;
+      const readiness = runtime?.windowsSandboxReadiness
+        ? yield* runtime.windowsSandboxReadiness
+        : yield* withTemporaryClient((client) =>
+            client.request("windowsSandbox/readiness", undefined),
+          );
+      return yield* buildWindowsSandboxState({
+        mode: input.mode,
+        readiness: readiness.status,
+      });
+    }).pipe(
+      Effect.catch((cause) =>
+        buildWindowsSandboxState({
+          mode: input.mode,
+          lastError: cause instanceof Error ? cause.message : String(cause),
+        }),
+      ),
+    );
+
+  const requestWindowsSandboxSetupStart = (input: {
+    readonly mode: WindowsSandboxMode;
+  }): Effect.Effect<
+    { readonly started: boolean; readonly windowsSandbox: ServerProviderWindowsSandbox },
+    ProviderAdapterError
+  > =>
+    Effect.gen(function* () {
+      const runtime = yield* firstActiveRuntime;
+      const response = runtime?.windowsSandboxSetupStart
+        ? yield* runtime.windowsSandboxSetupStart({ mode: input.mode })
+        : yield* withTemporaryClient((client) =>
+            client.request("windowsSandbox/setupStart", {
+              mode: input.mode,
+              cwd: defaultCwd,
+            }),
+          );
+      const windowsSandbox = yield* requestWindowsSandboxReadiness(input);
+      return {
+        started: response.started,
+        windowsSandbox,
+      };
+    }).pipe(
+      Effect.catch((cause) =>
+        buildWindowsSandboxState({
+          mode: input.mode,
+          lastError: cause instanceof Error ? cause.message : String(cause),
+        }).pipe(Effect.map((windowsSandbox) => ({ started: false, windowsSandbox }))),
+      ),
+    );
 
   yield* warmStandby(defaultCwd).pipe(Effect.forkScoped, Effect.asVoid);
 
@@ -2039,6 +2198,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     interruptTurn,
     readThread,
     rollbackThread,
+    windowsSandboxReadiness: requestWindowsSandboxReadiness,
+    windowsSandboxSetupStart: requestWindowsSandboxSetupStart,
     setGoal,
     setGoalStatus,
     getGoal,

@@ -104,6 +104,46 @@ const { logWarning: logBackendConfigurationWarning } = DesktopObservability.make
   "desktop-backend-configuration",
 );
 
+const ENGINE_HELPER_ALIASES = [
+  {
+    source: "codex-command-runner-x86_64-pc-windows-msvc.exe",
+    aliases: ["codex-command-runner.exe", "command-runner.exe"],
+  },
+  {
+    source: "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
+    aliases: ["codex-windows-sandbox-setup.exe"],
+  },
+] as const;
+
+const ensureEngineHelperAliases = Effect.fn("desktop.backendConfiguration.ensureHelperAliases")(
+  function* (engineBinaryPath: string) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    if (environment.platform !== "win32") {
+      return;
+    }
+
+    const engineDir = environment.path.dirname(engineBinaryPath);
+    for (const helper of ENGINE_HELPER_ALIASES) {
+      const sourcePath = environment.path.join(engineDir, helper.source);
+      if (!(yield* fileSystem.exists(sourcePath).pipe(Effect.orElseSucceed(() => false)))) {
+        continue;
+      }
+      for (const alias of helper.aliases) {
+        yield* fileSystem
+          .copyFile(sourcePath, environment.path.join(engineDir, alias))
+          .pipe(
+            Effect.catch((error) =>
+              logBackendConfigurationWarning(
+                `Failed to stage engine helper alias ${alias}: ${error.message ?? error}`,
+              ),
+            ),
+          );
+      }
+    }
+  },
+);
+
 const readPersistedBackendObservabilitySettings: Effect.Effect<
   BackendObservabilitySettings,
   never,
@@ -324,6 +364,10 @@ export const layer = Layer.effect(
           engineBinaryPath = yield* engineUpdater.getActiveEnginePath;
           yield* verifyEngine(engineBinaryPath).pipe(Effect.catch((error) => Effect.die(error)));
         }
+        yield* ensureEngineHelperAliases(engineBinaryPath).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
+        );
         const engineBuild = yield* engineUpdater.getCurrentVersion;
         const engineUpstreamVersion =
           engineBuild === "bundled" ? Option.none<string>() : Option.some(engineBuild);

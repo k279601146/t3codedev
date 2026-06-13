@@ -108,9 +108,7 @@ export function resolveBundledEngineConfig(
     CODEX_MODEL_PROVIDERS_OPENAI_BASE_URL: gatewayBaseUrl,
     CODEX_MODEL_PROVIDERS_OPENAI_REQUIRES_OPENAI_AUTH: "false",
     CODEX_MODEL_PROVIDERS_OPENAI_ENV_KEY: ENV_IDE_JWT,
-    // 同时也设置标准的 OpenAI 环境变量，以防某些组件直接读取它们
     OPENAI_BASE_URL: gatewayBaseUrl,
-    OPENAI_API_KEY: ideJwt || "",
   };
 
   // Windows sandbox can be upgraded by the desktop runtime after installer initialization.
@@ -176,8 +174,25 @@ export function buildCodexProcessEnv(input: {
   readonly resolvedHomePath: string | undefined;
   readonly bundledConfig: BundledEngineResolvedConfig | undefined;
 }): Record<string, string> {
+  const dirname = (value: string): string | undefined => {
+    const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
+    return index > 0 ? value.slice(0, index) : undefined;
+  };
+  const engineBinDir =
+    input.bundledConfig?.binaryPath &&
+    (input.bundledConfig.binaryPath.includes("/") || input.bundledConfig.binaryPath.includes("\\"))
+      ? dirname(input.bundledConfig.binaryPath)
+      : undefined;
+  const basePathValue =
+    getCommercialEngineEnvVar(input.baseEnv, "PATH") ??
+    getCommercialEngineEnvVar(input.baseEnv, "Path");
+  const patchedPath =
+    engineBinDir && basePathValue
+      ? `${engineBinDir}${process.platform === "win32" ? ";" : ":"}${basePathValue}`
+      : undefined;
   const patch = {
     ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),
+    ...(patchedPath ? { PATH: patchedPath, Path: patchedPath } : {}),
     ...(input.bundledConfig?.spawnEnvPatch ?? {}),
   };
 

@@ -19,6 +19,7 @@ import {
   ProviderDriverKind,
   type ProviderInstanceConfig,
   type ProviderInstanceId,
+  type ServerProvider,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
@@ -432,6 +433,149 @@ function AboutVersionSection() {
         />
       ) : null}
     </>
+  );
+}
+
+function sandboxReadinessLabel(readiness: string): string {
+  switch (readiness) {
+    case "ready":
+      return "ready";
+    case "notConfigured":
+      return "not configured";
+    case "updateRequired":
+      return "update required";
+    case "error":
+      return "error";
+    default:
+      return readiness;
+  }
+}
+
+function SandboxPermissionsSection({
+  providers,
+  onRefreshProviders,
+}: {
+  providers: ReadonlyArray<ServerProvider>;
+  onRefreshProviders: () => void;
+}) {
+  const [settingUpInstanceId, setSettingUpInstanceId] = useState<ProviderInstanceId | null>(null);
+  const codexProviders = providers.filter((provider) => provider.driver === "codex");
+  const sandboxProviders = codexProviders.filter((provider) => provider.windowsSandbox);
+  const primarySandbox = sandboxProviders[0]?.windowsSandbox ?? null;
+
+  const handleSetup = useCallback(
+    async (providerInstanceId: ProviderInstanceId) => {
+      setSettingUpInstanceId(providerInstanceId);
+      try {
+        const result = await ensureLocalApi().server.windowsSandboxSetupStart({
+          providerInstanceId,
+          mode: "elevated",
+        });
+        toastManager.add(
+          stackedThreadToast({
+            type: result.started ? "success" : "warning",
+            title: result.started ? "Windows 沙箱初始化已启动" : "Windows 沙箱初始化未启动",
+            description:
+              result.windowsSandbox.lastError ??
+              `当前 readiness: ${sandboxReadinessLabel(result.windowsSandbox.readiness)}`,
+          }),
+        );
+        onRefreshProviders();
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "无法初始化 Windows 沙箱",
+            description:
+              error instanceof Error
+                ? error.message
+                : "setupStart 调用失败，可临时切换 unelevated 排查。",
+          }),
+        );
+      } finally {
+        setSettingUpInstanceId(null);
+      }
+    },
+    [onRefreshProviders],
+  );
+
+  return (
+    <SettingsSection title="沙箱与权限">
+      <SettingsRow
+        title="当前有效配置"
+        description="T3 显式传给 ai-engine.exe 的官方 Codex 沙箱默认值。"
+        status={
+          <span className="flex flex-wrap gap-x-3 gap-y-1">
+            <code>sandbox_mode=workspace-write</code>
+            <code>approval_policy=on-request</code>
+            <code>approvals_reviewer=user</code>
+            <code>network_access=false</code>
+            <code>windows.sandbox={primarySandbox?.mode ?? "elevated"}</code>
+          </span>
+        }
+      />
+      {sandboxProviders.length === 0 ? (
+        <SettingsRow
+          title="Windows helper"
+          description="尚未收到 Codex provider 的 Windows sandbox snapshot。刷新 provider 状态后会显示 readiness。"
+          control={
+            <Button type="button" size="xs" variant="outline" onClick={onRefreshProviders}>
+              <RefreshCwIcon className="size-3" />
+              <span>刷新</span>
+            </Button>
+          }
+        />
+      ) : (
+        sandboxProviders.map((provider) => {
+          const sandbox = provider.windowsSandbox!;
+          const needsSetup =
+            sandbox.readiness === "notConfigured" || sandbox.readiness === "updateRequired";
+          const settingUp = settingUpInstanceId === provider.instanceId;
+          return (
+            <SettingsRow
+              key={provider.instanceId}
+              title={provider.displayName ?? provider.instanceId}
+              description={
+                sandbox.lastError ??
+                (needsSetup
+                  ? "elevated 沙箱需要初始化或更新。失败时可临时切换到 unelevated 排查，但不会自动降级。"
+                  : "Windows sandbox readiness 来自 ai-engine.exe 的 app-server 协议。")
+              }
+              status={
+                <span className="flex flex-wrap gap-x-3 gap-y-1">
+                  <span>mode: {sandbox.mode}</span>
+                  <span>readiness: {sandboxReadinessLabel(sandbox.readiness)}</span>
+                  <span>command runner: {sandbox.commandRunnerAvailable ? "present" : "missing"}</span>
+                  <span>setup helper: {sandbox.setupHelperAvailable ? "present" : "missing"}</span>
+                </span>
+              }
+              control={
+                needsSetup ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="default"
+                    disabled={settingUp}
+                    onClick={() => void handleSetup(provider.instanceId)}
+                  >
+                    {settingUp ? (
+                      <LoaderIcon className="size-3 animate-spin" />
+                    ) : (
+                      <ShieldCheckIcon className="size-3" />
+                    )}
+                    <span>{sandbox.readiness === "updateRequired" ? "更新 elevated 沙箱" : "初始化 elevated 沙箱"}</span>
+                  </Button>
+                ) : (
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {sandbox.readiness === "ready" ? "ready" : "检查失败"}
+                  </span>
+                )
+              }
+            />
+          );
+        })
+      )}
+    </SettingsSection>
   );
 }
 
@@ -1623,6 +1767,8 @@ export function ProviderSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <SandboxPermissionsSection providers={serverProviders} onRefreshProviders={refreshProviders} />
+
       <SettingsSection
         title={t("settings.providers")}
         headerAction={

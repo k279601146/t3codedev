@@ -64,19 +64,19 @@ describe("commercialEngine", () => {
     assert.equal(resolveCommercialEngineIdeJwt({ MYIDE_API_KEY: "legacy-real-key" }), undefined);
   });
 
-  it("resolves the Windows sandbox mode with a conservative fallback", () => {
-    assert.equal(resolveCommercialEngineWindowsSandboxMode({}), "unelevated");
+  it("resolves the Windows sandbox mode with an elevated fallback", () => {
+    assert.equal(resolveCommercialEngineWindowsSandboxMode({}), "elevated");
     assert.equal(
       resolveCommercialEngineWindowsSandboxMode({
-        [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: " elevated ",
+        [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: " unelevated ",
       }),
-      "elevated",
+      "unelevated",
     );
     assert.equal(
       resolveCommercialEngineWindowsSandboxMode({
         [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: "unexpected",
       }),
-      "unelevated",
+      "elevated",
     );
   });
 
@@ -88,6 +88,10 @@ describe("commercialEngine", () => {
     });
 
     assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
+    assert.match(toml, /sandbox_mode = "workspace-write"/);
+    assert.match(toml, /approval_policy = "on-request"/);
+    assert.match(toml, /approvals_reviewer = "user"/);
+    assert.match(toml, /\[sandbox_workspace_write\]\s+network_access = false/);
     assert.match(toml, new RegExp(`wire_api = "${COMMERCIAL_ENGINE_WIRE_API}"`));
     assert.match(toml, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
     assert.match(toml, /plugins = true/);
@@ -97,6 +101,8 @@ describe("commercialEngine", () => {
     assert.match(toml, /computer_use = true/);
     assert.doesNotMatch(toml, /must-not-appear/);
     assert.doesNotMatch(toml, /jwt-token/);
+    assert.doesNotMatch(toml, /"OPENAI_API_KEY"/);
+    assert.doesNotMatch(toml, new RegExp(`"${COMMERCIAL_ENGINE_IDE_JWT_ENV}"[^\\n]*\\]`));
   });
 
   it("builds a minimum process environment for the bundled engine", () => {

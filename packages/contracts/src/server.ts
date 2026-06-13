@@ -219,6 +219,53 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+export const WindowsSandboxMode = Schema.Literals(["elevated", "unelevated"]);
+export type WindowsSandboxMode = typeof WindowsSandboxMode.Type;
+
+export const WindowsSandboxReadinessStatus = Schema.Literals([
+  "ready",
+  "notConfigured",
+  "updateRequired",
+  "error",
+]);
+export type WindowsSandboxReadinessStatus = typeof WindowsSandboxReadinessStatus.Type;
+
+export const ServerProviderWindowsSandbox = Schema.Struct({
+  mode: WindowsSandboxMode,
+  readiness: WindowsSandboxReadinessStatus,
+  commandRunnerAvailable: Schema.Boolean,
+  setupHelperAvailable: Schema.Boolean,
+  lastError: Schema.NullOr(TrimmedNonEmptyString),
+  updatedAt: IsoDateTime,
+});
+export type ServerProviderWindowsSandbox = typeof ServerProviderWindowsSandbox.Type;
+
+export const ProviderWindowsSandboxReadinessInput = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  mode: WindowsSandboxMode.pipe(Schema.withDecodingDefault(Effect.succeed("elevated" as const))),
+});
+export type ProviderWindowsSandboxReadinessInput =
+  typeof ProviderWindowsSandboxReadinessInput.Type;
+
+export const ProviderWindowsSandboxSetupStartInput = ProviderWindowsSandboxReadinessInput;
+export type ProviderWindowsSandboxSetupStartInput =
+  typeof ProviderWindowsSandboxSetupStartInput.Type;
+
+export const ProviderWindowsSandboxReadinessResult = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  windowsSandbox: ServerProviderWindowsSandbox,
+});
+export type ProviderWindowsSandboxReadinessResult =
+  typeof ProviderWindowsSandboxReadinessResult.Type;
+
+export const ProviderWindowsSandboxSetupStartResult = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  started: Schema.Boolean,
+  windowsSandbox: ServerProviderWindowsSandbox,
+});
+export type ProviderWindowsSandboxSetupStartResult =
+  typeof ProviderWindowsSandboxSetupStartResult.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -254,6 +301,7 @@ export const ServerProvider = Schema.Struct({
   skills: Schema.Array(ServerProviderSkill).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
+  windowsSandbox: Schema.optionalKey(ServerProviderWindowsSandbox),
 });
 export type ServerProvider = typeof ServerProvider.Type;
 
@@ -621,5 +669,18 @@ export class ServerProviderUpdateError extends Schema.TaggedErrorClass<ServerPro
 ) {
   override get message(): string {
     return `Provider update failed for ${this.provider}: ${this.reason}`;
+  }
+}
+
+export class ProviderWindowsSandboxError extends Schema.TaggedErrorClass<ProviderWindowsSandboxError>()(
+  "ProviderWindowsSandboxError",
+  {
+    providerInstanceId: ProviderInstanceId,
+    reason: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Windows sandbox operation failed for provider instance ${this.providerInstanceId}: ${this.reason}`;
   }
 }

@@ -24,6 +24,8 @@ import {
   ProviderSessionStartInput,
   ProviderSteerTurnInput,
   ProviderStopSessionInput,
+  ProviderWindowsSandboxReadinessInput,
+  ProviderWindowsSandboxSetupStartInput,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ProviderRuntimeEvent,
@@ -1114,6 +1116,50 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const getInstanceInfo: ProviderServiceShape["getInstanceInfo"] = (instanceId) =>
     registry.getInstanceInfo(instanceId);
 
+  const windowsSandboxReadiness: ProviderServiceShape["windowsSandboxReadiness"] = Effect.fn(
+    "windowsSandboxReadiness",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.windowsSandboxReadiness",
+      schema: ProviderWindowsSandboxReadinessInput,
+      payload: rawInput,
+    });
+    const adapter = yield* registry.getByInstance(input.providerInstanceId);
+    if (!adapter.windowsSandboxReadiness) {
+      return yield* toValidationError(
+        "ProviderService.windowsSandboxReadiness",
+        `Provider '${adapter.provider}' does not support Windows sandbox readiness.`,
+      );
+    }
+    const windowsSandbox = yield* adapter.windowsSandboxReadiness({ mode: input.mode });
+    return {
+      providerInstanceId: input.providerInstanceId,
+      windowsSandbox,
+    };
+  });
+
+  const windowsSandboxSetupStart: ProviderServiceShape["windowsSandboxSetupStart"] = Effect.fn(
+    "windowsSandboxSetupStart",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.windowsSandboxSetupStart",
+      schema: ProviderWindowsSandboxSetupStartInput,
+      payload: rawInput,
+    });
+    const adapter = yield* registry.getByInstance(input.providerInstanceId);
+    if (!adapter.windowsSandboxSetupStart) {
+      return yield* toValidationError(
+        "ProviderService.windowsSandboxSetupStart",
+        `Provider '${adapter.provider}' does not support Windows sandbox setup.`,
+      );
+    }
+    const result = yield* adapter.windowsSandboxSetupStart({ mode: input.mode });
+    return {
+      providerInstanceId: input.providerInstanceId,
+      ...result,
+    };
+  });
+
   const rollbackConversation: ProviderServiceShape["rollbackConversation"] = Effect.fn(
     "rollbackConversation",
   )(function* (rawInput) {
@@ -1226,6 +1272,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     listSessions,
     getCapabilities,
     getInstanceInfo,
+    windowsSandboxReadiness,
+    windowsSandboxSetupStart,
     rollbackConversation,
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each

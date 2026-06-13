@@ -40,6 +40,10 @@ import type {
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
   ServerProcessResourceHistoryResult,
+  ProviderWindowsSandboxReadinessInput,
+  ProviderWindowsSandboxReadinessResult,
+  ProviderWindowsSandboxSetupStartInput,
+  ProviderWindowsSandboxSetupStartResult,
   ServerProviderUpdateInput,
   ServerProviderUpdatedPayload,
   ServerRemoveKeybindingResult,
@@ -723,6 +727,12 @@ export interface LocalApi {
       input: ServerProcessResourceHistoryInput,
     ) => Promise<ServerProcessResourceHistoryResult>;
     signalProcess: (input: ServerSignalProcessInput) => Promise<ServerSignalProcessResult>;
+    windowsSandboxReadiness: (
+      input: ProviderWindowsSandboxReadinessInput,
+    ) => Promise<ProviderWindowsSandboxReadinessResult>;
+    windowsSandboxSetupStart: (
+      input: ProviderWindowsSandboxSetupStartInput,
+    ) => Promise<ProviderWindowsSandboxSetupStartResult>;
   };
 }
 

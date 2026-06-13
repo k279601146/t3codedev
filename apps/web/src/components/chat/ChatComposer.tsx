@@ -72,6 +72,7 @@ import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommand
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { getRunningPrimaryActionMode } from "./ComposerPrimaryActionState";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
@@ -161,6 +162,7 @@ const runtimeModeConfig: Record<
     shortLabelKey: TranslationKey;
     labelKey: TranslationKey;
     descriptionKey: TranslationKey;
+    statusKey: TranslationKey;
     icon: LucideIcon;
     tone: "muted" | "blue" | "orange";
   }
@@ -169,6 +171,7 @@ const runtimeModeConfig: Record<
     shortLabelKey: "composer.permission.approvalRequired",
     labelKey: "composer.permission.approvalRequired",
     descriptionKey: "composer.permission.approvalRequiredDescription",
+    statusKey: "composer.permission.approvalRequiredStatus",
     icon: HandIcon,
     tone: "muted",
   },
@@ -176,6 +179,7 @@ const runtimeModeConfig: Record<
     shortLabelKey: "composer.permission.autoAcceptEdits",
     labelKey: "composer.permission.autoAcceptEdits",
     descriptionKey: "composer.permission.autoAcceptEditsDescription",
+    statusKey: "composer.permission.autoAcceptEditsStatus",
     icon: ShieldCheckIcon,
     tone: "blue",
   },
@@ -183,6 +187,7 @@ const runtimeModeConfig: Record<
     shortLabelKey: "composer.permission.fullAccessShort",
     labelKey: "composer.permission.fullAccess",
     descriptionKey: "composer.permission.fullAccessDescription",
+    statusKey: "composer.permission.fullAccessStatus",
     icon: ShieldAlertIcon,
     tone: "orange",
   },
@@ -247,6 +252,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   const RuntimeModeIcon = runtimeModeOption.icon;
   const runtimeModeLabel = t(runtimeModeOption.labelKey);
   const runtimeModeDescription = t(runtimeModeOption.descriptionKey);
+  const runtimeModeStatus = t(runtimeModeOption.statusKey);
 
   return (
     <>
@@ -289,6 +295,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
         >
           <RuntimeModeIcon className="size-4" />
           <SelectValue>{runtimeModeLabel}</SelectValue>
+          <span className="hidden max-w-72 truncate text-[11px] font-normal text-muted-foreground/65 lg:inline">
+            {runtimeModeStatus}
+          </span>
         </SelectTrigger>
         <SelectPopup alignItemWithTrigger={false}>
           {runtimeModeOptions.map((mode) => {
@@ -665,6 +674,7 @@ const NewThreadRuntimeModeControl = memo(function NewThreadRuntimeModeControl(pr
   const activeOption = runtimeModeConfig[props.runtimeMode];
   const ActiveIcon = activeOption.icon;
   const activeTone = runtimeModeToneClassName[activeOption.tone];
+  const activeStatus = t(activeOption.statusKey);
 
   return (
     <Menu>
@@ -684,6 +694,9 @@ const NewThreadRuntimeModeControl = memo(function NewThreadRuntimeModeControl(pr
       >
         <ActiveIcon className={cn("size-3.5", activeTone.icon)} />
         <span>{t(activeOption.shortLabelKey)}</span>
+        <span className="hidden max-w-72 truncate text-[11px] font-normal text-muted-foreground/70 md:inline">
+          {activeStatus}
+        </span>
         <ChevronDownIcon className="size-3 opacity-70" />
       </MenuTrigger>
       <MenuPopup align="start" side="bottom" sideOffset={8} className="min-w-[320px]">
@@ -1586,12 +1599,19 @@ export const ChatComposer = memo(
 
     const composerFooterHasWideActions = showPlanFollowUpPrompt || activePendingProgress !== null;
     const showPlanSidebarToggle = Boolean(activePlan || sidebarProposedPlan || planSidebarOpen);
+    const runningPrimaryActionMode =
+      phase === "running"
+        ? getRunningPrimaryActionMode({
+            canSteerRunningTurn,
+            hasSendableContent: composerSendState.hasSendableContent,
+          })
+        : null;
     const composerFooterActionLayoutKey = useMemo(() => {
       if (activePendingProgress) {
         return `pending:${activePendingProgress.questionIndex}:${activePendingProgress.isLastQuestion}:${activePendingIsResponding}`;
       }
       if (phase === "running") {
-        return "running";
+        return `running:${runningPrimaryActionMode}`;
       }
       if (showPlanFollowUpPrompt) {
         return prompt.trim().length > 0 ? "plan:refine" : "plan:implement";
@@ -1606,6 +1626,7 @@ export const ChatComposer = memo(
       isSendBusy,
       phase,
       prompt,
+      runningPrimaryActionMode,
       showPlanFollowUpPrompt,
     ]);
 
@@ -1676,12 +1697,18 @@ export const ChatComposer = memo(
       [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
     );
     const collapsedComposerPrimaryActionDisabled =
-      isSendBusy ||
-      isConnecting ||
-      !composerSendState.hasSendableContent ||
-      (phase === "running" && !canSteerRunningTurn);
+      runningPrimaryActionMode === "interrupt"
+        ? false
+        : isSendBusy ||
+          isConnecting ||
+          environmentUnavailable !== null ||
+          !composerSendState.hasSendableContent;
     const collapsedComposerPrimaryActionLabel =
-      phase === "running" && canSteerRunningTurn ? "Steer current turn" : "Send message";
+      runningPrimaryActionMode === "interrupt"
+        ? "Stop generation"
+        : runningPrimaryActionMode === "steer"
+          ? "Steer current turn"
+          : "Send message";
     const showMobilePendingAnswerActions =
       isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -2984,18 +3011,47 @@ export const ChatComposer = memo(
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (runningPrimaryActionMode === "interrupt") {
+                      handleInterruptPrimaryAction();
+                      return;
+                    }
                     submitComposer();
                   }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path
-                      d="M8 3L8 13M8 3L4 7M8 3L12 7"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  {runningPrimaryActionMode === "interrupt" ? (
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" aria-hidden="true">
+                      <rect x="2" y="2" width="7" height="7" rx="1.4" />
+                    </svg>
+                  ) : isConnecting || isSendBusy ? (
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 14 14"
+                      fill="none"
+                      className="animate-spin"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        cx="7"
+                        cy="7"
+                        r="5.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeDasharray="20 12"
+                      />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="M8 3L8 13M8 3L4 7M8 3L12 7"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
                 </button>
               </div>
             ) : null}

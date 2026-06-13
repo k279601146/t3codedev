@@ -7,6 +7,7 @@ import type {
   ServerProviderSlashCommand,
   ServerProviderModel,
   ServerProviderState,
+  ServerProviderWindowsSandbox,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
@@ -199,6 +200,7 @@ export function buildServerProvider(input: {
   models: ReadonlyArray<ServerProviderModel>;
   slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   skills?: ReadonlyArray<ServerProviderSkill>;
+  windowsSandbox?: ServerProviderWindowsSandbox;
   probe: ProviderProbeResult;
 }): ServerProviderDraft {
   const versionAdvisory = input.driver
@@ -224,6 +226,7 @@ export function buildServerProvider(input: {
     models: input.models,
     slashCommands: [...(input.slashCommands ?? [])],
     skills: [...(input.skills ?? [])],
+    ...(input.windowsSandbox ? { windowsSandbox: input.windowsSandbox } : {}),
     ...(versionAdvisory ? { versionAdvisory } : {}),
   };
 }

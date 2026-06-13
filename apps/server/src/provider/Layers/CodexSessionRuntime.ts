@@ -220,6 +220,13 @@ export interface CodexSessionRuntimeShape {
   ) => Effect.Effect<OrchestrationGoal, CodexSessionRuntimeError>;
   readonly getGoal: Effect.Effect<OrchestrationGoal | null, CodexSessionRuntimeError>;
   readonly clearGoal: Effect.Effect<boolean, CodexSessionRuntimeError>;
+  readonly windowsSandboxReadiness?: Effect.Effect<
+    EffectCodexSchema.V2WindowsSandboxReadinessResponse,
+    CodexSessionRuntimeError
+  >;
+  readonly windowsSandboxSetupStart?: (input: {
+    readonly mode: EffectCodexSchema.V2WindowsSandboxSetupStartParams__WindowsSandboxSetupMode;
+  }) => Effect.Effect<EffectCodexSchema.V2WindowsSandboxSetupStartResponse, CodexSessionRuntimeError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -1670,6 +1677,26 @@ export const makeCodexSessionRuntime = (
       yield* client.request("initialize", buildCodexInitializeParams());
       yield* client.notify("initialized", undefined);
       yield* enableCodexPluginExperimentalFeatures(client, { operation: "session.start" });
+      const readiness = yield* client.request("windowsSandbox/readiness", undefined).pipe(
+        Effect.tap((payload) =>
+          emitEvent({
+            kind: "notification",
+            threadId: options.threadId,
+            method: "windowsSandbox/readiness",
+            payload,
+          }),
+        ),
+        Effect.catch((cause) =>
+          emitEvent({
+            kind: "notification",
+            threadId: options.threadId,
+            method: "windowsSandbox/readiness",
+            message: cause.message,
+            payload: { status: "error", message: cause.message },
+          }).pipe(Effect.as(undefined)),
+        ),
+      );
+      void readiness;
 
       const requestedModel = normalizeCodexModelSlug(options.model);
 
@@ -1891,6 +1918,12 @@ export const makeCodexSessionRuntime = (
         );
         return response.cleared;
       }),
+      windowsSandboxReadiness: client.request("windowsSandbox/readiness", undefined),
+      windowsSandboxSetupStart: (input) =>
+        client.request("windowsSandbox/setupStart", {
+          mode: input.mode,
+          cwd: options.cwd,
+        }),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);

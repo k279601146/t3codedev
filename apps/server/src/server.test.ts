@@ -79,6 +79,10 @@ import {
   ProviderRegistry,
   type ProviderRegistryShape,
 } from "./provider/Services/ProviderRegistry.ts";
+import {
+  ProviderService,
+  type ProviderServiceShape,
+} from "./provider/Services/ProviderService.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
@@ -332,6 +336,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<KeybindingsShape>;
     providerRegistry?: Partial<ProviderRegistryShape>;
+    providerService?: Partial<ProviderServiceShape>;
     serverSettings?: Partial<ServerSettingsShape>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncherShape>;
     vcsDriver?: Partial<VcsDriver.VcsDriverShape>;
@@ -632,6 +637,27 @@ const buildAppUnderTest = (options?: {
           setProviderMaintenanceActionState: () => Effect.succeed([]),
           streamChanges: Stream.empty,
           ...options?.layers?.providerRegistry,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProviderService)({
+          startSession: () => Effect.die(new Error("测试未提供 ProviderService.startSession")),
+          sendTurn: () => Effect.die(new Error("测试未提供 ProviderService.sendTurn")),
+          steerTurn: () => Effect.die(new Error("测试未提供 ProviderService.steerTurn")),
+          interruptTurn: () => Effect.void,
+          respondToRequest: () => Effect.void,
+          respondToUserInput: () => Effect.void,
+          setGoal: () => Effect.die(new Error("测试未提供 ProviderService.setGoal")),
+          setGoalStatus: () => Effect.die(new Error("测试未提供 ProviderService.setGoalStatus")),
+          getGoal: () => Effect.die(new Error("测试未提供 ProviderService.getGoal")),
+          clearGoal: () => Effect.die(new Error("测试未提供 ProviderService.clearGoal")),
+          stopSession: () => Effect.void,
+          listSessions: () => Effect.succeed([]),
+          getCapabilities: () => Effect.die(new Error("测试未提供 ProviderService.getCapabilities")),
+          getInstanceInfo: () => Effect.die(new Error("测试未提供 ProviderService.getInstanceInfo")),
+          rollbackConversation: () => Effect.void,
+          streamEvents: Stream.empty,
+          ...options?.layers?.providerService,
         }),
       ),
       Layer.provide(automationsAndSkillsLayer),

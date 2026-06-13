@@ -82,7 +82,7 @@ export const layer = Layer.effect(
             ),
           ),
         );
-      return registryMode ?? "unelevated";
+      return registryMode ?? "elevated";
     });
 
     return DesktopWindowsSandbox.of({
@@ -91,7 +91,7 @@ export const layer = Layer.effect(
   }),
 );
 
-export const layerTest = (mode: CommercialEngineWindowsSandboxMode = "unelevated") =>
+export const layerTest = (mode: CommercialEngineWindowsSandboxMode = "elevated") =>
   Layer.succeed(
     DesktopWindowsSandbox,
     DesktopWindowsSandbox.of({

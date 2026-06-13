@@ -660,6 +660,59 @@ const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(f
   }
 });
 
+const ENGINE_RUNTIME_FILES = new Set([
+  "ai-engine.exe",
+  "engine-manifest.json",
+  "codex-command-runner-x86_64-pc-windows-msvc.exe",
+  "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
+  "codex-command-runner.exe",
+  "command-runner.exe",
+  "codex-windows-sandbox-setup.exe",
+]);
+
+const ENGINE_HELPER_ALIASES = [
+  {
+    source: "codex-command-runner-x86_64-pc-windows-msvc.exe",
+    aliases: ["codex-command-runner.exe", "command-runner.exe"],
+  },
+  {
+    source: "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
+    aliases: ["codex-windows-sandbox-setup.exe"],
+  },
+] as const;
+
+const stageEngineRuntimeFiles = Effect.fn("stageEngineRuntimeFiles")(function* (
+  desktopBinDir: string,
+  stageEngineBinDir: string,
+) {
+  const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
+
+  if (!(yield* fs.exists(desktopBinDir))) {
+    return;
+  }
+
+  const binEntries = yield* fs.readDirectory(desktopBinDir);
+  for (const entry of binEntries) {
+    if (!ENGINE_RUNTIME_FILES.has(entry)) {
+      continue;
+    }
+    const sourcePath = path.join(desktopBinDir, entry);
+    const targetPath = path.join(stageEngineBinDir, entry);
+    yield* fs.copyFile(sourcePath, targetPath);
+  }
+
+  for (const helper of ENGINE_HELPER_ALIASES) {
+    const sourcePath = path.join(desktopBinDir, helper.source);
+    if (!(yield* fs.exists(sourcePath))) {
+      continue;
+    }
+    for (const alias of helper.aliases) {
+      yield* fs.copyFile(sourcePath, path.join(stageEngineBinDir, alias));
+    }
+  }
+});
+
 const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   options: ResolvedBuildOptions,
 ) {
@@ -779,12 +832,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const stageEngineBinDir = path.join(stageAppDir, "engine-bin");
   yield* fs.makeDirectory(stageEngineBinDir, { recursive: true });
   const desktopBinDir = path.join(repoRoot, "apps/desktop/bin");
-  if (yield* fs.exists(desktopBinDir)) {
-    const binEntries = yield* fs.readDirectory(desktopBinDir);
-    for (const entry of binEntries) {
-      yield* fs.copyFile(path.join(desktopBinDir, entry), path.join(stageEngineBinDir, entry));
-    }
-  }
+  yield* stageEngineRuntimeFiles(desktopBinDir, stageEngineBinDir);
 
   yield* assertPlatformBuildResources(
     options.platform,

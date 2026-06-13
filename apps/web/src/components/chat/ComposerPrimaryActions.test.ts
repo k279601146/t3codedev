@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatPendingPrimaryActionLabel,
+  getRunningPrimaryActionMode,
   isStandardSendButtonDisabled,
-} from "./ComposerPrimaryActions";
+} from "./ComposerPrimaryActionState";
 
 describe("formatPendingPrimaryActionLabel", () => {
   it("returns 'Submitting...' while responding", () => {
@@ -116,5 +117,34 @@ describe("isStandardSendButtonDisabled", () => {
         hasSendableContent: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe("getRunningPrimaryActionMode", () => {
+  it("shows the steer action only when the running turn can be steered and the draft has sendable content", () => {
+    expect(
+      getRunningPrimaryActionMode({
+        canSteerRunningTurn: true,
+        hasSendableContent: true,
+      }),
+    ).toBe("steer");
+  });
+
+  it("keeps the stop action while running with an empty draft", () => {
+    expect(
+      getRunningPrimaryActionMode({
+        canSteerRunningTurn: true,
+        hasSendableContent: false,
+      }),
+    ).toBe("interrupt");
+  });
+
+  it("keeps the stop action when the provider cannot steer the running turn", () => {
+    expect(
+      getRunningPrimaryActionMode({
+        canSteerRunningTurn: false,
+        hasSendableContent: true,
+      }),
+    ).toBe("interrupt");
   });
 });

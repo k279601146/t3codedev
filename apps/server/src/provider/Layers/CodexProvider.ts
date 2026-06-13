@@ -43,6 +43,7 @@ import {
   buildCodexProcessEnv,
   PROVIDER_DISPLAY_NAME,
 } from "../BundledEngineConfig.ts";
+import { buildWindowsSandboxSnapshot } from "../windowsSandbox.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
@@ -84,6 +85,8 @@ export interface CodexAppServerProviderSnapshot {
   readonly version: string | undefined;
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
+  readonly windowsSandboxReadiness?: CodexSchema.V2WindowsSandboxReadinessResponse["status"];
+  readonly windowsSandboxError?: string | null;
 }
 
 function codexAccountAuthLabel(account: CodexSchema.V2GetAccountResponse["account"]) {
@@ -626,6 +629,20 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   const initialize = yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
   yield* enableCodexPluginExperimentalFeatures(client, { operation: "provider.probe" });
+  const windowsSandboxReadiness = yield* client
+    .request("windowsSandbox/readiness", undefined)
+    .pipe(
+      Effect.map((response) => ({
+        status: response.status,
+        error: null as string | null,
+      })),
+      Effect.catch((cause) =>
+        Effect.succeed({
+          status: undefined,
+          error: cause.message ?? String(cause),
+        }),
+      ),
+    );
 
   // Extract the version string after the first '/' in userAgent, up to the next space or the end
   const versionMatch = initialize.userAgent.match(/\/([^\s]+)/);
@@ -639,6 +656,10 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       version,
       models: appendCustomCodexModels([], input.customModels ?? []),
       skills: [],
+      ...(windowsSandboxReadiness.status !== undefined
+        ? { windowsSandboxReadiness: windowsSandboxReadiness.status }
+        : {}),
+      windowsSandboxError: windowsSandboxReadiness.error,
     } satisfies CodexAppServerProviderSnapshot;
   }
 
@@ -669,6 +690,10 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     version,
     models,
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
+    ...(windowsSandboxReadiness.status !== undefined
+      ? { windowsSandboxReadiness: windowsSandboxReadiness.status }
+      : {}),
+    windowsSandboxError: windowsSandboxReadiness.error,
   } satisfies CodexAppServerProviderSnapshot;
 });
 
@@ -698,6 +723,11 @@ const makePendingCodexProvider = (
         checkedAt,
         models,
         skills: [],
+        windowsSandbox: buildWindowsSandboxSnapshot({
+          binaryPath: codexSettings.binaryPath,
+          environment,
+          updatedAt: checkedAt,
+        }),
         probe: {
           installed: false,
           version: null,
@@ -714,6 +744,11 @@ const makePendingCodexProvider = (
       checkedAt,
       models,
       skills: [],
+      windowsSandbox: buildWindowsSandboxSnapshot({
+        binaryPath: codexSettings.binaryPath,
+        environment,
+        updatedAt: checkedAt,
+      }),
       probe: {
         installed: false,
         version: null,
@@ -806,9 +841,14 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       presentation: getPresentation(environment),
       enabled: false,
       checkedAt,
-      models: emptyModels,
-      skills: [],
-      probe: {
+        models: emptyModels,
+        skills: [],
+        windowsSandbox: buildWindowsSandboxSnapshot({
+          binaryPath: codexSettings.binaryPath,
+          environment,
+          updatedAt: checkedAt,
+        }),
+        probe: {
         installed: false,
         version: null,
         status: "warning",
@@ -840,6 +880,12 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       checkedAt,
       models: emptyModels,
       skills: [],
+      windowsSandbox: buildWindowsSandboxSnapshot({
+        binaryPath: codexSettings.binaryPath,
+        environment,
+        updatedAt: checkedAt,
+        lastError: error.message,
+      }),
       probe: {
         installed,
         version: null,
@@ -861,6 +907,12 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       checkedAt,
       models: emptyModels,
       skills: [],
+      windowsSandbox: buildWindowsSandboxSnapshot({
+        binaryPath: codexSettings.binaryPath,
+        environment,
+        updatedAt: checkedAt,
+        lastError: "Timed out while checking Codex app-server provider status.",
+      }),
       probe: {
         installed: true,
         version: null,
@@ -884,6 +936,17 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     checkedAt,
     models: snapshot.models,
     skills: snapshot.skills,
+    windowsSandbox: buildWindowsSandboxSnapshot({
+      binaryPath: codexSettings.binaryPath,
+      environment,
+      updatedAt: checkedAt,
+      ...(snapshot.windowsSandboxReadiness !== undefined
+        ? { readiness: snapshot.windowsSandboxReadiness }
+        : {}),
+      ...(snapshot.windowsSandboxError !== undefined
+        ? { lastError: snapshot.windowsSandboxError }
+        : {}),
+    }),
     probe: {
       installed: true,
       version: snapshot.version ?? null,

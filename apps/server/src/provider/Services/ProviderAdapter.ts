@@ -26,6 +26,8 @@ import type {
   ProviderTurnStartResult,
   ProviderTurnSteerResult,
   TurnId,
+  ServerProviderWindowsSandbox,
+  WindowsSandboxMode,
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
@@ -149,6 +151,17 @@ export interface ProviderAdapterShape<TError> {
     threadId: ThreadId,
     numTurns: number,
   ) => Effect.Effect<ProviderThreadSnapshot, TError>;
+
+  readonly windowsSandboxReadiness?: (input: {
+    readonly mode: WindowsSandboxMode;
+  }) => Effect.Effect<ServerProviderWindowsSandbox, TError>;
+
+  readonly windowsSandboxSetupStart?: (input: {
+    readonly mode: WindowsSandboxMode;
+  }) => Effect.Effect<
+    { readonly started: boolean; readonly windowsSandbox: ServerProviderWindowsSandbox },
+    TError
+  >;
 
   /**
    * Stop all sessions owned by this adapter.

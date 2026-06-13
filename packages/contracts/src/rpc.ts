@@ -96,6 +96,11 @@ import {
   ServerSignalProcessResult,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
+  ProviderWindowsSandboxReadinessInput,
+  ProviderWindowsSandboxReadinessResult,
+  ProviderWindowsSandboxSetupStartInput,
+  ProviderWindowsSandboxSetupStartResult,
+  ProviderWindowsSandboxError,
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -204,6 +209,8 @@ export const WS_METHODS = {
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverSignalProcess: "server.signalProcess",
+  providerWindowsSandboxReadiness: "provider.windowsSandbox.readiness",
+  providerWindowsSandboxSetupStart: "provider.windowsSandbox.setupStart",
 
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
@@ -320,6 +327,24 @@ export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess,
   payload: ServerSignalProcessInput,
   success: ServerSignalProcessResult,
 });
+
+export const WsProviderWindowsSandboxReadinessRpc = Rpc.make(
+  WS_METHODS.providerWindowsSandboxReadiness,
+  {
+    payload: ProviderWindowsSandboxReadinessInput,
+    success: ProviderWindowsSandboxReadinessResult,
+    error: ProviderWindowsSandboxError,
+  },
+);
+
+export const WsProviderWindowsSandboxSetupStartRpc = Rpc.make(
+  WS_METHODS.providerWindowsSandboxSetupStart,
+  {
+    payload: ProviderWindowsSandboxSetupStartInput,
+    success: ProviderWindowsSandboxSetupStartResult,
+    error: ProviderWindowsSandboxError,
+  },
+);
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
   WS_METHODS.sourceControlLookupRepository,
@@ -710,6 +735,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerSignalProcessRpc,
+  WsProviderWindowsSandboxReadinessRpc,
+  WsProviderWindowsSandboxSetupStartRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

@@ -4,7 +4,7 @@ export const COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV = "MYIDE_WEB_AUTH_BASE_URL"
 export const COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV = "MYIDE_GATEWAY_BASE_URL";
 export const COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV = "MYIDE_API_URL";
 export const COMMERCIAL_ENGINE_IDE_JWT_ENV = "MYIDE_IDE_JWT";
-export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV = "MYIDE_WINDOWS_SANDBOX";
+export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV = "MYIDE_WINDOWS_SANDBOX_MODE";
 
 export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "http://localhost:3000/v1";
 export const DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL = "http://localhost:3001";
@@ -26,8 +26,6 @@ export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
   "SystemRoot",
   "HOMEDRIVE",
   "HOMEPATH",
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
 ] as const;
 
 const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
@@ -120,7 +118,7 @@ export function resolveCommercialEngineWindowsSandboxMode(
   const raw = getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV)
     ?.trim()
     .toLowerCase();
-  return raw === "elevated" ? "elevated" : "unelevated";
+  return raw === "unelevated" ? "unelevated" : "elevated";
 }
 
 function tomlString(value: string): string {
@@ -140,7 +138,13 @@ export function generateCommercialEngineTomlConfig(env: NodeJS.ProcessEnv = proc
 
   return `
 model_provider = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_ID)}
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+approvals_reviewer = "user"
 disable_telemetry = true
+
+[sandbox_workspace_write]
+network_access = false
 
 [model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}]
 name = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME)}

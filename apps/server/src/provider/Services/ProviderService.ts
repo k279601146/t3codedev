@@ -32,6 +32,10 @@ import type {
   ThreadId,
   ProviderTurnStartResult,
   ProviderTurnSteerResult,
+  ProviderWindowsSandboxReadinessInput,
+  ProviderWindowsSandboxReadinessResult,
+  ProviderWindowsSandboxSetupStartInput,
+  ProviderWindowsSandboxSetupStartResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
@@ -128,6 +132,14 @@ export interface ProviderServiceShape {
   readonly getInstanceInfo: (
     instanceId: ProviderInstanceId,
   ) => Effect.Effect<ProviderInstanceRoutingInfo, ProviderServiceError>;
+
+  readonly windowsSandboxReadiness?: (
+    input: ProviderWindowsSandboxReadinessInput,
+  ) => Effect.Effect<ProviderWindowsSandboxReadinessResult, ProviderServiceError>;
+
+  readonly windowsSandboxSetupStart?: (
+    input: ProviderWindowsSandboxSetupStartInput,
+  ) => Effect.Effect<ProviderWindowsSandboxSetupStartResult, ProviderServiceError>;
 
   /**
    * Roll back provider conversation state by a number of turns.
