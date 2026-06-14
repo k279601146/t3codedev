@@ -52,6 +52,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
+import type { MarkdownFileLinkMeta } from "../markdown-links";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
   collapseExpandedComposerCursor,
@@ -238,6 +239,21 @@ import {
 
 const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more files without additional text. Respond using the conversation context and the attached files.]";
+
+function normalizeComparableFilePath(value: string): string {
+  return value.replaceAll("\\", "/").replace(/^\/([A-Za-z]:\/)/, "$1");
+}
+
+function resolveWorkspacePreviewPath(filePath: string, workspaceRoot: string): string {
+  const normalizedFilePath = normalizeComparableFilePath(filePath);
+  const normalizedWorkspaceRoot = normalizeComparableFilePath(workspaceRoot).replace(/\/+$/, "");
+  const filePathForCompare = normalizedFilePath.toLowerCase();
+  const workspaceRootForCompare = normalizedWorkspaceRoot.toLowerCase();
+  if (filePathForCompare.startsWith(`${workspaceRootForCompare}/`)) {
+    return normalizedFilePath.slice(normalizedWorkspaceRoot.length + 1);
+  }
+  return filePath.replace(/^\.?[\\/]+/, "");
+}
 const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
@@ -905,8 +921,10 @@ export default function ChatView(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const rightPanelOpen = useRightPanelStore((state) => state.open);
   const rightPanelSurface = useRightPanelStore((state) => state.activeSurface);
+  const rightPanelFilePath = useRightPanelStore((state) => state.filePath);
   const rightPanelWidthPx = useRightPanelStore((state) => state.widthPx);
   const openRightPanelSurface = useRightPanelStore((state) => state.openSurface);
+  const openRightPanelFile = useRightPanelStore((state) => state.openFile);
   const setRightPanelSurface = useRightPanelStore((state) => state.setActiveSurface);
   const setRightPanelWidthPx = useRightPanelStore((state) => state.setWidthPx);
   const closeRightPanel = useRightPanelStore((state) => state.close);
@@ -4421,6 +4439,23 @@ export default function ChatView(props: ChatViewProps) {
       threadId,
     ],
   );
+  const onOpenMarkdownFile = useCallback(
+    (file: MarkdownFileLinkMeta) => {
+      if (!activeWorkspaceRoot) {
+        toastManager.add({
+          type: "error",
+          title: "无法预览文件",
+          description: "当前线程没有可用的工作区。",
+        });
+        return;
+      }
+      openRightPanelFile(
+        resolveWorkspacePreviewPath(file.filePath, activeWorkspaceRoot),
+        activeThreadKey,
+      );
+    },
+    [activeThreadKey, activeWorkspaceRoot, openRightPanelFile],
+  );
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
   const revertTurnCountRef = useRef(revertTurnCountByUserMessageId);
@@ -4590,6 +4625,7 @@ export default function ChatView(props: ChatViewProps) {
           markdownCwd={gitCwd ?? undefined}
           mode="sidebar"
           planLabel={planSidebarLabel}
+          selectedFilePath={rightPanelFilePath}
           artifacts={rightPanelArtifacts}
           timestampFormat={timestampFormat}
           workspaceRoot={activeWorkspaceRoot}
@@ -4819,6 +4855,7 @@ export default function ChatView(props: ChatViewProps) {
                   activeThreadEnvironmentId={activeThread.environmentId}
                   routeThreadKey={routeThreadKey}
                   onOpenTurnDiff={onOpenTurnDiff}
+                  onOpenMarkdownFile={onOpenMarkdownFile}
                   revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                   onRevertUserMessage={onRevertUserMessage}
                   onSubmitEditedUserMessage={onSubmitEditedUserMessage}
@@ -4940,6 +4977,7 @@ export default function ChatView(props: ChatViewProps) {
             markdownCwd={gitCwd ?? undefined}
             mode="sheet"
             planLabel={planSidebarLabel}
+            selectedFilePath={rightPanelFilePath}
             artifacts={rightPanelArtifacts}
             timestampFormat={timestampFormat}
             workspaceRoot={activeWorkspaceRoot}

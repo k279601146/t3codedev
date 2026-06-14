@@ -51,6 +51,7 @@ type StarterCard = {
   desc?: string;
   image?: string;
   icon?: LucideIcon;
+  prompt?: string;
 };
 
 const LAUNCHER_MODES: Array<{ id: LauncherModeId; label: string; icon: LucideIcon }> = [
@@ -171,43 +172,72 @@ const SCHEDULE_PROMPTS: StarterCard[] = [
   { title: "生成每周就业市场报告", icon: LineChartIcon },
 ];
 
-const SLIDE_PROMPTS = [
-  "设计带预测数据的投资者推介材料",
-  "创建战略商业回顾演示文稿",
-  "研究产品发布的市场机会",
-  "自动化每周团队状态报告",
-];
+const PPT_MASTER_WORKFLOW_PREFIX =
+  "使用 T3 Code 内置 PPT Master 工作流，优先通过 T3CODE_SERVER_RESOURCES_PATH 定位内置 PPTX 生成器：";
 
 const SLIDE_TEMPLATES: StarterCard[] = [
   {
-    title: "刻印",
-    image:
-      "https://xla-persist.xingliu.art/artifacts/agent/Rj5QxJUkkxDAWQQo.png?x-oss-process=image/resize,w_272,m_lfit/format,webp",
+    title: "投资人路演",
+    desc: "问题、方案、市场规模、商业模式、路线图和融资计划。",
+    icon: LineChartIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}为一个新产品设计一份 10 页投资人路演 PPT，包含问题、解决方案、市场机会、商业模式、竞争优势、路线图和融资计划。请生成可编辑 .pptx。`,
   },
   {
-    title: "刊物",
-    image:
-      "https://xla-persist.xingliu.art/artifacts/agent/AS2Aiol4oZeDVekX.png?x-oss-process=image/resize,w_272,m_lfit/format,webp",
+    title: "经营复盘",
+    desc: "关键指标、进展、风险、决策点和下一步行动。",
+    icon: FileBarChartIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}创建一份 8 页季度经营复盘演示文稿，结构包含目标回顾、核心指标、关键进展、风险阻塞、决策点和下一步行动。请生成可编辑 .pptx。`,
   },
   {
-    title: "像素",
-    image:
-      "https://xla-persist.xingliu.art/artifacts/agent/1YShOwNjzNMwVxEl.png?x-oss-process=image/resize,w_272,m_lfit/format,webp",
+    title: "产品发布",
+    desc: "用户痛点、核心能力、发布节奏、传播计划和 FAQ。",
+    icon: SparklesIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}制作一份产品发布会 PPT，面向销售和市场团队，包含用户痛点、核心能力、演示流程、发布节奏、传播计划和 FAQ。请生成可编辑 .pptx。`,
   },
   {
-    title: "皮纸",
-    image:
-      "https://xla-persist.xingliu.art/artifacts/agent/C6EDJVYTLZ9SUpda.jpg?x-oss-process=image/resize,w_272,m_lfit/format,webp",
+    title: "培训课件",
+    desc: "学习目标、概念拆解、案例练习、测验和课后任务。",
+    icon: ClipboardListIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}设计一套 12 页培训课件，包含学习目标、概念拆解、案例练习、课堂测验和课后任务。请生成可编辑 .pptx。`,
   },
   {
-    title: "卷宗",
-    image:
-      "https://xla-persist.xingliu.art/artifacts/agent/3bKSHJi2otnPHzV4.jpg?x-oss-process=image/resize,w_272,m_lfit/format,webp",
+    title: "研究报告",
+    desc: "研究问题、方法、发现、洞察、建议和附录。",
+    icon: SearchIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}把一个研究主题整理成 10 页报告型 PPT，包含研究问题、方法、主要发现、洞察、建议和附录说明。请生成可编辑 .pptx。`,
   },
   {
-    title: "白板",
-    image:
-      "https://xla-persist.xingliu.art/artifacts/agent/1Kb0Wpp7MJWqvDsw.jpg?x-oss-process=image/resize,w_272,m_lfit/format,webp",
+    title: "项目提案",
+    desc: "背景、目标、范围、里程碑、资源、风险和验收标准。",
+    icon: LayoutTemplateIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}生成一份项目提案 PPT，包含背景、目标、范围、里程碑、资源投入、风险应对和验收标准。请生成可编辑 .pptx。`,
+  },
+];
+
+const SLIDE_PROMPTS: StarterCard[] = [
+  {
+    title: "从主题生成完整 PPTX",
+    desc: "输入主题后自动补齐结构、页面内容和讲稿备注。",
+    icon: PresentationIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}根据我的主题制作一份 8-10 页可编辑 PowerPoint。请先给出结构化大纲，再生成 presentation.spec.json，并调用 T3 Code 内置 PPTX 生成器导出 .pptx。主题：`,
+  },
+  {
+    title: "把文档改成汇报材料",
+    desc: "适合把 PRD、调研、会议纪要整理成管理层汇报。",
+    icon: FileTextIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}请把我提供的文档或要点整理成一份面向管理层的可编辑 PPTX，压缩文字、补充页标题结论，并生成讲稿备注。`,
+  },
+  {
+    title: "复用现有品牌模板",
+    desc: "上传 PPTX、Logo 或品牌规范后，按原风格重做内容。",
+    icon: ImportIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}我会提供现有 PPTX 或品牌素材，请分析版式、颜色和内容结构，并生成一份同风格的可编辑演示文稿。`,
+  },
+  {
+    title: "生成数据型汇报",
+    desc: "适合周报、经营指标、实验结果和趋势分析。",
+    icon: FileBarChartIcon,
+    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}制作一份数据型汇报 PPTX，请包含指标定义、趋势解读、关键发现、风险和下一步行动。数据或背景：`,
   },
 ];
 
@@ -603,26 +633,43 @@ function ModeRecommendations({
   if (mode === "slides") {
     return (
       <section className="mx-auto w-full max-w-[744px]">
-        <SectionTitle>示例提示词</SectionTitle>
+        <SectionTitle>工作流入口</SectionTitle>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {SLIDE_PROMPTS.map((prompt, index) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => onSubmitPreset(prompt, "slides")}
-              className="flex min-h-[82px] animate-in flex-col justify-between rounded-[10px] border border-border bg-background p-3 text-left text-[13px] leading-5 text-foreground fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
-              style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
-            >
-              <span>{prompt}</span>
-              <ArrowUpRightIcon className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          ))}
+          {SLIDE_PROMPTS.map((prompt, index) => {
+            const Icon = prompt.icon ?? PresentationIcon;
+            return (
+              <button
+                key={prompt.title}
+                type="button"
+                onClick={() => onSubmitPreset(prompt.prompt ?? prompt.title, "slides")}
+                className="flex min-h-[118px] animate-in flex-col justify-between rounded-[10px] border border-border bg-background p-3 text-left text-[13px] leading-5 text-foreground fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
+                style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Icon className="h-4 w-4 text-[#147DFF]" />
+                  {prompt.title}
+                </span>
+                {prompt.desc ? (
+                  <span className="mt-2 text-[12px] leading-5 text-muted-foreground">
+                    {prompt.desc}
+                  </span>
+                ) : null}
+                <ArrowUpRightIcon className="ml-auto mt-2 h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            );
+          })}
         </div>
 
         <div className="mt-8 flex items-center justify-between">
-          <SectionTitle className="mb-0">选择模板</SectionTitle>
+          <SectionTitle className="mb-0">演示模板</SectionTitle>
           <button
             type="button"
+            onClick={() =>
+              onSubmitPreset(
+                `${PPT_MASTER_WORKFLOW_PREFIX}请生成一份 8-12 页的可编辑 PPTX。先询问我主题、受众和素材；如果我已经提供内容，则直接整理大纲并导出。`,
+                "slides",
+              )
+            }
             className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-border px-3 text-[13px] text-muted-foreground"
           >
             <LayoutTemplateIcon className="h-4 w-4" />8 - 12
@@ -632,6 +679,12 @@ function ModeRecommendations({
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
           <button
             type="button"
+            onClick={() =>
+              onSubmitPreset(
+                `${PPT_MASTER_WORKFLOW_PREFIX}我想导入现有 PPTX、品牌规范或素材作为模板。请先告诉我需要上传哪些文件，然后按模板风格生成新的可编辑演示文稿。`,
+                "slides",
+              )
+            }
             className="flex aspect-[16/9] items-center justify-center rounded-[10px] border border-border bg-background text-[13px] text-muted-foreground transition-colors hover:bg-accent"
           >
             <ImportIcon className="mr-2 h-4 w-4" />
@@ -641,21 +694,40 @@ function ModeRecommendations({
             <button
               key={template.title}
               type="button"
-              onClick={() => onSubmitPreset(`使用${template.title}模板制作演示文稿`, "slides")}
+              onClick={() =>
+                onSubmitPreset(
+                  template.prompt ??
+                    `${PPT_MASTER_WORKFLOW_PREFIX}使用“${template.title}”结构制作一份可编辑演示文稿。`,
+                  "slides",
+                )
+              }
               className="group animate-in text-left fade-in slide-in-from-bottom-2 duration-300"
               style={{ animationDelay: `${(index + 1) * 55}ms`, animationFillMode: "both" }}
             >
-              <span className="block aspect-[16/9] overflow-hidden rounded-[10px] border border-border bg-muted">
+              <span className="flex aspect-[16/9] flex-col justify-between overflow-hidden rounded-[10px] border border-border bg-background p-3 transition-colors group-hover:bg-accent">
                 {template.image ? (
                   <img
                     src={template.image}
                     alt={template.title}
                     className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
                   />
-                ) : null}
+                ) : (
+                  <>
+                    {template.icon ? (
+                      <template.icon className="h-5 w-5 text-[#147DFF]" />
+                    ) : (
+                      <PresentationIcon className="h-5 w-5 text-[#147DFF]" />
+                    )}
+                    {template.desc ? (
+                      <span className="line-clamp-3 text-[11px] leading-4 text-muted-foreground">
+                        {template.desc}
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </span>
               <span className="mt-2 block text-center text-[13px] text-foreground">
-                {template.title} <span className="text-muted-foreground">•</span>
+                {template.title} <span className="text-muted-foreground">· PPTX</span>
               </span>
             </button>
           ))}

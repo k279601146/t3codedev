@@ -459,6 +459,9 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
             }
 
             yield* Ref.set(desktopState.backendReady, true);
+            yield* apm.track("backend_ready", {
+              pid: Option.getOrUndefined(activePid((yield* Ref.get(state)).active)),
+            });
             yield* desktopWindow.handleBackendReady.pipe(
               Effect.catch((error) =>
                 logBackendManagerError("failed to open main window after backend readiness", {
@@ -470,14 +473,27 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
           onReadinessFailure: (error) =>
             logBackendManagerWarning("backend readiness check failed during bootstrap", {
               error: error.message,
-            }),
+            }).pipe(
+              Effect.andThen(
+                apm.track("backend_start_failed", {
+                  reason: "readiness_timeout",
+                  message: error.message,
+                }),
+              ),
+            ),
           onOutput: (streamName, chunk) => backendOutputLog.writeOutputChunk(streamName, chunk),
         }).pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
           Effect.provideService(HttpClient.HttpClient, httpClient),
           Scope.provide(runScope),
           Effect.matchEffect({
-            onFailure: (error) => finalizeRun(error.message),
+            onFailure: (error) =>
+              apm
+                .track("backend_start_failed", {
+                  reason: "spawn_or_bootstrap_failure",
+                  message: error.message,
+                })
+                .pipe(Effect.andThen(finalizeRun(error.message))),
             onSuccess: (exit) => finalizeRun(exit.reason),
           }),
           Effect.ensuring(Scope.close(runScope, Exit.void).pipe(Effect.ignore)),

@@ -213,6 +213,7 @@ describe("deriveTurnProcessCollapseState", () => {
         id: "row-user",
         createdAt: "2026-01-01T00:00:00Z",
         durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
         showCompletionDivider: false,
         completionSummary: null,
         showAssistantCopyButton: false,
@@ -259,6 +260,7 @@ describe("deriveTurnProcessCollapseState", () => {
         id: "row-assistant",
         createdAt: "2026-01-01T00:00:12Z",
         durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
         showCompletionDivider: false,
         completionSummary: null,
         showAssistantCopyButton: true,
@@ -289,6 +291,7 @@ describe("deriveTurnProcessCollapseState", () => {
         id: "row-user",
         createdAt: "2026-01-01T00:00:00Z",
         durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
         showCompletionDivider: false,
         completionSummary: null,
         showAssistantCopyButton: false,
@@ -307,6 +310,7 @@ describe("deriveTurnProcessCollapseState", () => {
         id: "row-intro",
         createdAt: "2026-01-01T00:00:02Z",
         durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: false,
         showCompletionDivider: false,
         completionSummary: null,
         showAssistantCopyButton: false,
@@ -696,7 +700,9 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(assistantRows).toHaveLength(2);
     expect(assistantRows[0]?.showAssistantCopyButton).toBe(false);
+    expect(assistantRows[0]?.showAssistantMeta).toBe(false);
     expect(assistantRows[1]?.showAssistantCopyButton).toBe(true);
+    expect(assistantRows[1]?.showAssistantMeta).toBe(true);
     expect(assistantRows[1]?.showCompletionDivider).toBe(true);
   });
 

@@ -3359,6 +3359,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleOpenPlugins = useCallback(() => {
     void navigate({ to: "/plugins" });
   }, [navigate]);
+  const handleOpenSkills = useCallback(() => {
+    void navigate({ to: "/skills" });
+  }, [navigate]);
   const handleOpenAutomation = useCallback(() => {
     void navigate({ to: "/automations" });
   }, [navigate]);
@@ -3419,6 +3422,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             </CommandDialogTrigger>
           </SidebarMenuItem>
           <SidebarNavButton icon={BlocksIcon} label={"\u63d2\u4ef6"} onClick={handleOpenPlugins} />
+          <SidebarNavButton icon={SparklesIcon} label={"\u6280\u80fd"} onClick={handleOpenSkills} />
           <SidebarNavButton icon={GitPullRequestIcon} label={"\u62c9\u53d6\u8bf7\u6c42"} />
           <SidebarNavButton
             icon={Clock3Icon}

@@ -82,7 +82,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
-import { rewriteMarkdownFileUriHref } from "../../markdown-links";
+import { type MarkdownFileLinkMeta, rewriteMarkdownFileUriHref } from "../../markdown-links";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via useContext.
@@ -103,6 +103,7 @@ interface TimelineRowSharedState {
   goalMessageIds: ReadonlySet<MessageId>;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenMarkdownFile: ((file: MarkdownFileLinkMeta) => void) | undefined;
   onSubmitEditedUserMessage: ((messageId: MessageId, text: string) => Promise<void>) | null;
   /** 历史字段名保留；这里的 id 是成果 owner，可能是助手消息，也可能是计划/图片行。 */
   collapsedAssistantMessageIds: ReadonlySet<string>;
@@ -157,6 +158,7 @@ interface MessagesTimelineProps {
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenMarkdownFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   onSubmitEditedUserMessage?: (messageId: MessageId, text: string) => Promise<void>;
@@ -188,6 +190,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   turnDiffSummaryByAssistantMessageId,
   routeThreadKey,
   onOpenTurnDiff,
+  onOpenMarkdownFile,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   onSubmitEditedUserMessage,
@@ -367,6 +370,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       goalMessageIds,
       onImageExpand,
       onOpenTurnDiff,
+      onOpenMarkdownFile,
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
@@ -388,6 +392,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       goalMessageIds,
       onImageExpand,
       onOpenTurnDiff,
+      onOpenMarkdownFile,
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
@@ -931,6 +936,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           cwd={ctx.markdownCwd}
           isStreaming={Boolean(row.message.streaming)}
           skills={ctx.skills}
+          onOpenFile={ctx.onOpenMarkdownFile}
         />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
@@ -938,24 +944,26 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           resolvedTheme={ctx.resolvedTheme}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
-        <div className="mt-1.5 flex items-center gap-2">
-          <p className="text-[11px] text-muted-foreground/40">
-            {row.message.streaming ? (
-              <LiveMessageMeta
-                createdAt={row.message.createdAt}
-                durationStart={row.durationStart}
-                timestampFormat={ctx.timestampFormat}
-              />
-            ) : (
-              formatMessageMeta(
-                row.message.createdAt,
-                formatElapsed(row.durationStart, row.message.completedAt),
-                ctx.timestampFormat,
-              )
-            )}
-          </p>
-          <AssistantCopyButton row={row} />
-        </div>
+        {row.showAssistantMeta ? (
+          <div className="mt-1.5 flex items-center gap-2">
+            <p className="text-[11px] text-muted-foreground/40" data-assistant-message-meta="true">
+              {row.message.streaming ? (
+                <LiveMessageMeta
+                  createdAt={row.message.createdAt}
+                  durationStart={row.durationStart}
+                  timestampFormat={ctx.timestampFormat}
+                />
+              ) : (
+                formatMessageMeta(
+                  row.message.createdAt,
+                  formatElapsed(row.durationStart, row.message.completedAt),
+                  ctx.timestampFormat,
+                )
+              )}
+            </p>
+            <AssistantCopyButton row={row} />
+          </div>
+        ) : null}
       </div>
     </>
   );
@@ -1017,6 +1025,7 @@ function ProposedPlanTimelineRow({
         environmentId={ctx.activeThreadEnvironmentId}
         cwd={ctx.markdownCwd}
         workspaceRoot={ctx.workspaceRoot}
+        onOpenFile={ctx.onOpenMarkdownFile}
       />
     </div>
   );

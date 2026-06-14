@@ -374,6 +374,7 @@ describe("DesktopBackendConfiguration", () => {
         clientSettings: Option.some({
           ...DEFAULT_CLIENT_SETTINGS,
           telemetryConsent: {
+            operationalTelemetry: true,
             crashReporting: false,
             usageAnalytics: true,
             improveProduct: false,

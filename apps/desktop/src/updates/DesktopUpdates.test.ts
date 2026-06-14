@@ -16,6 +16,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as DesktopApm from "../telemetry/DesktopApm.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdates from "./DesktopUpdates.ts";
 
@@ -144,6 +145,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     Layer.provideMerge(backendLayer),
     Layer.provideMerge(DesktopState.layer),
     Layer.provideMerge(DesktopAppSettings.layer),
+    Layer.provideMerge(DesktopApm.layerNoop),
     Layer.provideMerge(
       DesktopConfig.layerTest({
         BAHEW_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,

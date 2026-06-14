@@ -119,6 +119,30 @@ function buildUserTimelineEntry(text: string, turnId?: TurnId | null) {
   };
 }
 
+function buildAssistantTimelineEntry(input: {
+  id: string;
+  entryId: string;
+  text: string;
+  turnId: TurnId | null;
+  createdAt: string;
+  completedAt?: string;
+}) {
+  return {
+    id: input.entryId,
+    kind: "message" as const,
+    createdAt: input.createdAt,
+    message: {
+      id: MessageId.make(input.id),
+      role: "assistant" as const,
+      text: input.text,
+      turnId: input.turnId,
+      createdAt: input.createdAt,
+      ...(input.completedAt ? { completedAt: input.completedAt } : {}),
+      streaming: false,
+    },
+  };
+}
+
 describe("MessagesTimeline", () => {
   it("renders collapse controls for long user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
@@ -167,6 +191,39 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).not.toContain("已引导对话");
+  });
+
+  it("only renders assistant time metadata for the terminal assistant message in a turn", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const turnId = TurnId.make("turn-1");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildUserTimelineEntry("实现一个小功能"),
+          buildAssistantTimelineEntry({
+            id: "assistant-interim",
+            entryId: "entry-assistant-interim",
+            text: "我先检查相关文件。",
+            turnId,
+            createdAt: "2026-03-17T19:12:35.000Z",
+            completedAt: "2026-03-17T19:12:36.000Z",
+          }),
+          buildAssistantTimelineEntry({
+            id: "assistant-final",
+            entryId: "entry-assistant-final",
+            text: "已经完成。",
+            turnId,
+            createdAt: "2026-03-17T19:12:50.000Z",
+            completedAt: "2026-03-17T19:12:55.000Z",
+          }),
+        ]}
+      />,
+    );
+
+    expect(markup.match(/data-assistant-message-meta="true"/g)).toHaveLength(1);
+    expect(markup).toContain("我先检查相关文件。");
+    expect(markup).toContain("已经完成。");
   });
 
   it("renders inline terminal labels with the composer chip UI", async () => {

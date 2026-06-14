@@ -47,12 +47,14 @@ export const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "codex";
 
 export const TelemetryConsent = Schema.Struct({
+  operationalTelemetry: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   crashReporting: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   usageAnalytics: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   improveProduct: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
 export type TelemetryConsent = typeof TelemetryConsent.Type;
 export const DEFAULT_TELEMETRY_CONSENT: TelemetryConsent = {
+  operationalTelemetry: true,
   crashReporting: false,
   usageAnalytics: false,
   improveProduct: false,
@@ -537,6 +539,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   telemetryConsent: Schema.optionalKey(
     Schema.Struct({
+      operationalTelemetry: Schema.optionalKey(Schema.Boolean),
       crashReporting: Schema.optionalKey(Schema.Boolean),
       usageAnalytics: Schema.optionalKey(Schema.Boolean),
       improveProduct: Schema.optionalKey(Schema.Boolean),

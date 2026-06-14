@@ -11,6 +11,7 @@ import { Button } from "../ui/button";
 import { cn } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import type { MarkdownFileLinkMeta } from "../../markdown-links";
 
 function buildVisiblePlanPreviewMarkdown(planMarkdown: string, maxVisibleLines: number): string {
   const lines = planMarkdown
@@ -43,11 +44,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   environmentId,
   cwd,
   workspaceRoot,
+  onOpenFile,
 }: {
   planMarkdown: string;
   environmentId: EnvironmentId;
   cwd: string | undefined;
   workspaceRoot: string | undefined;
+  onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
@@ -135,9 +138,19 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           className={cn("relative", canCollapse && !expanded && "max-h-[340px] overflow-hidden")}
         >
           {canCollapse && !expanded ? (
-            <ChatMarkdown text={collapsedPreview ?? ""} cwd={cwd} isStreaming={false} />
+            <ChatMarkdown
+              text={collapsedPreview ?? ""}
+              cwd={cwd}
+              isStreaming={false}
+              onOpenFile={onOpenFile}
+            />
           ) : (
-            <ChatMarkdown text={displayedPlanMarkdown} cwd={cwd} isStreaming={false} />
+            <ChatMarkdown
+              text={displayedPlanMarkdown}
+              cwd={cwd}
+              isStreaming={false}
+              onOpenFile={onOpenFile}
+            />
           )}
           {canCollapse && !expanded ? (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-linear-to-t from-[#f4f4f5] via-[#f4f4f5]/88 to-transparent dark:from-[color-mix(in_srgb,var(--muted)_25%,var(--background))] dark:via-background/65" />

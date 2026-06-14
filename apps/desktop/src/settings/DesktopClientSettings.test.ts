@@ -28,6 +28,7 @@ const clientSettings: ClientSettings = {
   sidebarThreadSortOrder: "created_at",
   sidebarThreadPreviewCount: 6,
   telemetryConsent: {
+    operationalTelemetry: true,
     crashReporting: false,
     usageAnalytics: true,
     improveProduct: false,
@@ -133,6 +134,7 @@ describe("DesktopClientSettings", () => {
         if (Option.isSome(persisted)) {
           assert.equal(persisted.value.timestampFormat, "24-hour");
           assert.deepEqual(persisted.value.telemetryConsent, {
+            operationalTelemetry: true,
             crashReporting: false,
             usageAnalytics: false,
             improveProduct: false,

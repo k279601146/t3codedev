@@ -29,6 +29,7 @@ import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
 import { useTheme } from "../hooks/useTheme";
 import {
+  type MarkdownFileLinkMeta,
   normalizeMarkdownLinkDestination,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
@@ -62,6 +63,7 @@ interface ChatMarkdownProps {
   cwd: string | undefined;
   isStreaming?: boolean;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
@@ -283,10 +285,17 @@ interface MarkdownFileLinkProps {
   filePath: string;
   label: string;
   theme: "light" | "dark";
+  line?: number | undefined;
+  column?: number | undefined;
   className?: string | undefined;
+  onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }
 
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+const PLAIN_FILE_PATH_PATTERN =
+  /(?:~\/|\.{1,2}\/|\/|[A-Za-z]:[\\/]|\\\\)[^\s"'`<>)\]]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}|[A-Za-z0-9._-]+\.(?:c|cc|cjs|cpp|cs|css|cts|cxx|env|gif|go|gql|graphql|h|hpp|htm|html|ini|java|jpeg|jpg|js|json|jsx|kt|kts|log|md|mdx|mjs|mts|pdf|php|png|ps1|py|rb|rs|sass|scss|sh|sql|svg|swift|toml|ts|tsx|txt|webp|xml|yaml|yml|zsh)(?::\d+){0,2}/gi;
+const PLAIN_LINE_SUFFIX_PATTERN = /^\s*\(line\s+(\d+)\)/i;
+const MARKDOWN_PROTECTED_INLINE_PATTERN = /`[^`\n]*`|!?\[[^\]\n]*]\([^)\n]*\)/g;
 const MARKDOWN_FILE_LINK_CLASS_NAME =
   "chat-markdown-file-link relative top-[2px] max-w-full no-underline";
 const MARKDOWN_FILE_LINK_ICON_CLASS_NAME = "chat-markdown-file-link-icon size-3.5 shrink-0";
@@ -367,6 +376,138 @@ function normalizeMarkdownLinkHrefKey(href: string): string {
   return rewriteMarkdownFileUriHref(normalizedHref) ?? normalizedHref;
 }
 
+function escapeMarkdownLinkLabel(value: string): string {
+  return value.replace(/([\\[\]])/g, "\\$1");
+}
+
+function escapeMarkdownLinkDestination(value: string): string {
+  return value.replace(/>/g, "%3E").replace(/\)/g, "%29");
+}
+
+function trimPlainFilePathCandidate(value: string): string {
+  let output = value.replace(/[.,;!?]+$/g, "");
+  while (output.endsWith(")") || output.endsWith("]") || output.endsWith("}")) {
+    const close = output.charAt(output.length - 1);
+    const open = close === ")" ? "(" : close === "]" ? "[" : "{";
+    const opens = output.split(open).length - 1;
+    const closes = output.split(close).length - 1;
+    if (opens >= closes) break;
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
+function protectedMarkdownRanges(segment: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  MARKDOWN_PROTECTED_INLINE_PATTERN.lastIndex = 0;
+  for (const match of segment.matchAll(MARKDOWN_PROTECTED_INLINE_PATTERN)) {
+    const start = match.index ?? -1;
+    if (start < 0) continue;
+    ranges.push({ start, end: start + match[0].length });
+  }
+  return ranges;
+}
+
+function rangeContains(
+  ranges: ReadonlyArray<{ start: number; end: number }>,
+  start: number,
+  end: number,
+): boolean {
+  return ranges.some((range) => start < range.end && range.start < end);
+}
+
+function addLineSuffixToTarget(target: string, textAfterMatch: string): {
+  target: string;
+  consumedSuffix: string;
+} {
+  if (/:\d+(?::\d+)?$/.test(target)) {
+    return { target, consumedSuffix: "" };
+  }
+  const lineMatch = textAfterMatch.match(PLAIN_LINE_SUFFIX_PATTERN);
+  const line = lineMatch?.[1];
+  if (!line) {
+    return { target, consumedSuffix: "" };
+  }
+  return { target: `${target}:${line}`, consumedSuffix: lineMatch[0] };
+}
+
+function linkifyPlainFilePathsInSegment(segment: string, cwd: string | undefined): string {
+  const protectedRanges = protectedMarkdownRanges(segment);
+  const replacements: Array<{ start: number; end: number; value: string }> = [];
+  PLAIN_FILE_PATH_PATTERN.lastIndex = 0;
+
+  for (const match of segment.matchAll(PLAIN_FILE_PATH_PATTERN)) {
+    const start = match.index ?? -1;
+    if (start < 0) continue;
+    const rawCandidate = match[0];
+    const trimmedCandidate = trimPlainFilePathCandidate(rawCandidate);
+    if (trimmedCandidate.length === 0) continue;
+
+    const candidateEnd = start + trimmedCandidate.length;
+    if (rangeContains(protectedRanges, start, candidateEnd)) continue;
+
+    const { target, consumedSuffix } = addLineSuffixToTarget(
+      trimmedCandidate,
+      segment.slice(candidateEnd),
+    );
+    if (!resolveMarkdownFileLinkMeta(target, cwd)) continue;
+
+    replacements.push({
+      start,
+      end: candidateEnd + consumedSuffix.length,
+      value: `[${escapeMarkdownLinkLabel(trimmedCandidate)}](<${escapeMarkdownLinkDestination(
+        target,
+      )}>)`,
+    });
+  }
+
+  if (replacements.length === 0) {
+    return segment;
+  }
+
+  let output = "";
+  let cursor = 0;
+  for (const replacement of replacements) {
+    if (replacement.start < cursor) continue;
+    output += segment.slice(cursor, replacement.start);
+    output += replacement.value;
+    cursor = replacement.end;
+  }
+  output += segment.slice(cursor);
+  return output;
+}
+
+function linkifyPlainFilePaths(text: string, cwd: string | undefined): string {
+  const lines = text.split(/(\r?\n)/);
+  let inFence = false;
+  let fenceMarker: "```" | "~~~" | null = null;
+  return lines
+    .map((part) => {
+      if (part === "\n" || part === "\r\n") return part;
+      const trimmed = part.trimStart();
+      const startsBacktickFence = trimmed.startsWith("```");
+      const startsTildeFence = trimmed.startsWith("~~~");
+      const isFenceBoundary =
+        (fenceMarker === "```" && startsBacktickFence) ||
+        (fenceMarker === "~~~" && startsTildeFence) ||
+        (!inFence && (startsBacktickFence || startsTildeFence));
+
+      if (isFenceBoundary) {
+        if (inFence) {
+          inFence = false;
+          fenceMarker = null;
+        } else {
+          inFence = true;
+          fenceMarker = startsBacktickFence ? "```" : "~~~";
+        }
+        return part;
+      }
+
+      return inFence ? part : linkifyPlainFilePathsInSegment(part, cwd);
+    })
+    .join("");
+}
+
 const MarkdownFileLink = memo(function MarkdownFileLink({
   href,
   targetPath,
@@ -374,9 +515,24 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   filePath,
   label,
   theme,
+  line,
+  column,
   className,
+  onOpenFile,
 }: MarkdownFileLinkProps) {
   const handleOpen = useCallback(() => {
+    if (onOpenFile) {
+      onOpenFile({
+        filePath,
+        targetPath,
+        displayPath,
+        basename: filePath.split(/[\\/]/).at(-1) ?? filePath,
+        ...(line !== undefined ? { line } : {}),
+        ...(column !== undefined ? { column } : {}),
+      });
+      return;
+    }
+
     const api = readLocalApi();
     if (!api) {
       toastManager.add({
@@ -395,7 +551,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         }),
       );
     });
-  }, [targetPath]);
+  }, [column, displayPath, filePath, line, onOpenFile, targetPath]);
 
   const handleCopy = useCallback((value: string, title: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
@@ -508,7 +664,10 @@ function areMarkdownFileLinkPropsEqual(
     previous.filePath === next.filePath &&
     previous.label === next.label &&
     previous.theme === next.theme &&
-    previous.className === next.className
+    previous.line === next.line &&
+    previous.column === next.column &&
+    previous.className === next.className &&
+    previous.onOpenFile === next.onOpenFile
   );
 }
 
@@ -517,15 +676,17 @@ function ChatMarkdown({
   cwd,
   isStreaming = false,
   skills = EMPTY_MARKDOWN_SKILLS,
+  onOpenFile,
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
+  const renderedText = useMemo(() => linkifyPlainFilePaths(text, cwd), [cwd, text]);
   const markdownFileLinkMetaByHref = useMemo(() => {
     const metaByHref = new Map<
       string,
       NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
     >();
-    for (const href of extractMarkdownLinkHrefs(text)) {
+    for (const href of extractMarkdownLinkHrefs(renderedText)) {
       const normalizedHref = normalizeMarkdownLinkHrefKey(href);
       if (metaByHref.has(normalizedHref)) continue;
       const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd);
@@ -534,7 +695,7 @@ function ChatMarkdown({
       }
     }
     return metaByHref;
-  }, [cwd, text]);
+  }, [cwd, renderedText]);
   const fileLinkParentSuffixByPath = useMemo(() => {
     const filePaths = [...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath);
     return buildFileLinkParentSuffixByPath(filePaths);
@@ -576,7 +737,10 @@ function ChatMarkdown({
             filePath={fileLinkMeta.filePath}
             label={labelParts.join(" · ")}
             theme={resolvedTheme}
+            line={fileLinkMeta.line}
+            column={fileLinkMeta.column}
             className={props.className}
+            onOpenFile={onOpenFile}
           />
         );
       },
@@ -615,6 +779,7 @@ function ChatMarkdown({
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
+      onOpenFile,
       resolvedTheme,
       skills,
     ],
@@ -627,7 +792,7 @@ function ChatMarkdown({
         components={markdownComponents}
         urlTransform={markdownUrlTransform}
       >
-        {text}
+        {renderedText}
       </ReactMarkdown>
     </div>
   );

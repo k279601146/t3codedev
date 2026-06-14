@@ -349,7 +349,7 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
         <MenuSub>
           <MenuSubTrigger>
             <GlobeIcon className="size-4 shrink-0 opacity-80" />
-            插件
+            启动插件
           </MenuSubTrigger>
           <MenuSubPopup className="min-w-52">
             {props.pluginMentions.map((plugin) => {
@@ -371,7 +371,7 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
         <MenuSub>
           <MenuSubTrigger>
             <BookOpenIcon className="size-4 shrink-0 opacity-80" />
-            使用技能
+            技能
           </MenuSubTrigger>
           <MenuSubPopup className="w-[332px] rounded-[14px] p-0">
             <div className="p-2">
@@ -382,7 +382,7 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
                   onChange={(event) => setSkillQuery(event.target.value)}
                   onClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => event.stopPropagation()}
-                  placeholder="搜索技能"
+                  placeholder="搜索技能，或输入 $ 调用"
                   className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </label>
@@ -419,7 +419,10 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
               <MenuSeparator className="mx-0 mt-1" />
               <MenuItem
                 onClick={() =>
-                  toastManager.add({ type: "info", title: "请在技能目录中添加技能。" })
+                  toastManager.add({
+                    type: "info",
+                    title: "请在技能页安装技能，或在插件页安装带技能的插件。",
+                  })
                 }
               >
                 <PlusIcon className="size-4 shrink-0 opacity-80" />

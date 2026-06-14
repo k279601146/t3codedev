@@ -27,6 +27,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as DesktopApm from "../telemetry/DesktopApm.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
   createInitialDesktopUpdateState,
@@ -194,6 +195,7 @@ const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
+  const apm = yield* DesktopApm.DesktopApm;
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const updateCheckInFlightRef = yield* Ref.make(false);
@@ -314,6 +316,7 @@ const make = Effect.gen(function* () {
             reduceDesktopUpdateStateOnCheckFailure(current, error.message, failedAt),
           );
           yield* logUpdaterError("failed to check for updates", { message: error.message });
+          yield* apm.track("update_check_failed", { message: error.message, reason });
           return true;
         }),
       ),
@@ -347,6 +350,7 @@ const make = Effect.gen(function* () {
             reduceDesktopUpdateStateOnDownloadFailure(current, error.message),
           );
           yield* logUpdaterError("failed to download update", { message: error.message });
+          yield* apm.track("update_download_failed", { message: error.message });
           return { accepted: true, completed: false };
         }),
       ),
@@ -384,6 +388,7 @@ const make = Effect.gen(function* () {
           );
           yield* Ref.set(desktopState.quitting, false);
           yield* logUpdaterError("failed to install update", { message: error.message });
+          yield* apm.track("update_install_failed", { message: error.message });
           return { accepted: true, completed: false };
         }),
       ),
@@ -462,8 +467,8 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    const errorContext = yield* resolveUpdaterErrorContext;
     if (!(yield* Ref.get(updateCheckInFlightRef)) && !(yield* Ref.get(updateDownloadInFlightRef))) {
-      const errorContext = yield* resolveUpdaterErrorContext;
       const checkedAt = yield* currentIsoTimestamp;
       yield* updateState((current) => ({
         ...current,
@@ -477,6 +482,7 @@ const make = Effect.gen(function* () {
     }
 
     yield* logUpdaterError("updater error", { message });
+    yield* apm.track("update_check_failed", { message, context: errorContext });
   });
 
   const handleDownloadProgress = Effect.fn("desktop.updates.handleDownloadProgress")(function* (

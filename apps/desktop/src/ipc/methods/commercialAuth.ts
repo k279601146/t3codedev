@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopCommercialAuth from "../../settings/DesktopCommercialAuth.ts";
+import * as DesktopApm from "../../telemetry/DesktopApm.ts";
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";
 
@@ -39,7 +40,9 @@ export const signInCommercialAuth = makeIpcMethod({
   result: DesktopCommercialAuthStateSchema,
   handler: Effect.fn("desktop.ipc.commercialAuth.signIn")(function* (input) {
     const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+    const apm = yield* DesktopApm.DesktopApm;
     const state = yield* commercialAuth.signIn(input);
+    yield* apm.heartbeat("sign_in");
     yield* restartBackendAfterAuthChange();
     return state;
   }),
@@ -51,7 +54,9 @@ export const signInCommercialAuthWithBrowser = makeIpcMethod({
   result: DesktopCommercialAuthStateSchema,
   handler: Effect.fn("desktop.ipc.commercialAuth.signInWithBrowser")(function* (input) {
     const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+    const apm = yield* DesktopApm.DesktopApm;
     const state = yield* commercialAuth.signInWithBrowser(input);
+    yield* apm.heartbeat("sign_in");
     yield* restartBackendAfterAuthChange();
     return state;
   }),

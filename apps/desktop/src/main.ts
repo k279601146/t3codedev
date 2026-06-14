@@ -51,6 +51,7 @@ import * as DesktopSshPasswordPrompts from "./ssh/DesktopSshPasswordPrompts.ts";
 import * as DesktopSshRemoteApi from "./ssh/DesktopSshRemoteApi.ts";
 import * as DesktopState from "./app/DesktopState.ts";
 import * as DesktopApm from "./telemetry/DesktopApm.ts";
+import * as DesktopInstallationIdentity from "./telemetry/DesktopInstallationIdentity.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
 
@@ -129,7 +130,10 @@ const desktopFoundationLayer = Layer.mergeAll(
   DesktopObservability.layer,
 ).pipe(Layer.provideMerge(desktopEnvironmentLayer));
 
-const desktopApmLayer = DesktopApm.layer.pipe(Layer.provideMerge(desktopFoundationLayer));
+const desktopApmLayer = DesktopApm.layer.pipe(
+  Layer.provideMerge(DesktopInstallationIdentity.layer),
+  Layer.provideMerge(desktopFoundationLayer),
+);
 
 const desktopSshLayer = Layer.mergeAll(desktopSshEnvironmentLayer, DesktopSshRemoteApi.layer).pipe(
   Layer.provideMerge(DesktopSshPasswordPrompts.layer()),
@@ -250,7 +254,11 @@ const desktopApplicationLayer = Layer.mergeAll(
   desktopBrowserExternalAutomationIpcLayer,
   desktopComputerAutomationIpcLayer,
   desktopSshLayer,
-).pipe(Layer.provideMerge(DesktopUpdates.layer), Layer.provideMerge(desktopBackendLayer));
+).pipe(
+  Layer.provideMerge(desktopApmLayer),
+  Layer.provideMerge(DesktopUpdates.layer),
+  Layer.provideMerge(desktopBackendLayer),
+);
 
 const desktopRuntimeLayer = ElectronProtocol.layerSchemePrivileges.pipe(
   Layer.flatMap(() =>

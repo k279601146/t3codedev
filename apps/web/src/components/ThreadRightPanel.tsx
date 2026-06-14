@@ -77,6 +77,7 @@ interface ThreadRightPanelProps {
   markdownCwd: string | undefined;
   mode: "sidebar" | "sheet";
   planLabel: string;
+  selectedFilePath?: string | null | undefined;
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   onClose: () => void;
@@ -760,6 +761,7 @@ export function ThreadRightPanel({
   markdownCwd,
   mode,
   planLabel,
+  selectedFilePath,
   timestampFormat,
   workspaceRoot,
   onClose,
@@ -774,6 +776,39 @@ export function ThreadRightPanel({
   useEffect(() => {
     let nextActiveTabId: string | null = null;
     setTabs((current) => {
+      if (activeSurface === "file" && selectedFilePath) {
+        const existingFileTab = current.find(
+          (tab) => tab.surface === "file" && tab.filePath === selectedFilePath,
+        );
+        if (existingFileTab) {
+          nextActiveTabId = existingFileTab.id;
+          return current;
+        }
+
+        const emptyFileTab = current.find((tab) => tab.surface === "file" && !tab.filePath);
+        if (emptyFileTab) {
+          nextActiveTabId = emptyFileTab.id;
+          return current.map((tab) =>
+            tab.id === emptyFileTab.id
+              ? {
+                  ...tab,
+                  title: selectedFilePath.split(/[\\/]/).at(-1) ?? selectedFilePath,
+                  filePath: selectedFilePath,
+                  icon: <FileIcon className="size-3.5" />,
+                }
+              : tab,
+          );
+        }
+
+        const tab = createTab("file", {
+          title: selectedFilePath.split(/[\\/]/).at(-1) ?? selectedFilePath,
+          filePath: selectedFilePath,
+          icon: <FileIcon className="size-3.5" />,
+        });
+        nextActiveTabId = tab.id;
+        return [...current, tab];
+      }
+
       const existingTab = current.find((tab) => tab.surface === activeSurface);
       if (existingTab) {
         nextActiveTabId = existingTab.id;
@@ -787,7 +822,7 @@ export function ThreadRightPanel({
     if (nextActiveTabId !== null) {
       setActiveTabId(nextActiveTabId);
     }
-  }, [activeSurface]);
+  }, [activeSurface, selectedFilePath]);
 
   const openTab = (surface: RightPanelSurface, input?: Partial<RightPanelTab>) => {
     const tab = createTab(surface, input);

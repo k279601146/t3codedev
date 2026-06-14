@@ -25,6 +25,7 @@ export type MessagesTimelineRow =
       createdAt: string;
       message: ChatMessage;
       durationStart: string;
+      showAssistantMeta: boolean;
       showCompletionDivider: boolean;
       completionSummary: string | null;
       showAssistantCopyButton: boolean;
@@ -579,6 +580,9 @@ export function deriveMessagesTimelineRows(input: {
     const showCompletionDivider =
       timelineEntry.message.role === "assistant" &&
       input.completionDividerBeforeEntryId === timelineEntry.id;
+    const isTerminalAssistantMessage =
+      timelineEntry.message.role === "assistant" &&
+      terminalAssistantMessageIds.has(timelineEntry.message.id);
 
     nextRows.push({
       kind: "message",
@@ -587,11 +591,10 @@ export function deriveMessagesTimelineRows(input: {
       message: timelineEntry.message,
       durationStart:
         durationStartByMessageId.get(timelineEntry.message.id) ?? timelineEntry.message.createdAt,
+      showAssistantMeta: timelineEntry.message.role !== "assistant" || isTerminalAssistantMessage,
       showCompletionDivider,
       completionSummary: showCompletionDivider ? (input.completionSummary ?? null) : null,
-      showAssistantCopyButton:
-        timelineEntry.message.role === "assistant" &&
-        terminalAssistantMessageIds.has(timelineEntry.message.id),
+      showAssistantCopyButton: isTerminalAssistantMessage,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantTurnStillInProgress,
       assistantTurnDiffSummary:
         timelineEntry.message.role === "assistant"
@@ -688,6 +691,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.message === bm.message &&
         a.durationStart === bm.durationStart &&
+        a.showAssistantMeta === bm.showAssistantMeta &&
         a.showCompletionDivider === bm.showCompletionDivider &&
         a.completionSummary === bm.completionSummary &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&

@@ -790,6 +790,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
     desktopResources: path.join(repoRoot, "apps/desktop/resources"),
     serverDist: path.join(repoRoot, "apps/server/dist"),
+    serverResources: path.join(repoRoot, "apps/server/resources"),
   };
   const bundledClientEntry = path.join(distDirs.serverDist, "client/index.html");
 
@@ -828,6 +829,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
+  yield* fs.copy(distDirs.serverResources, path.join(stageAppDir, "apps/server/resources"));
 
   const stageEngineBinDir = path.join(stageAppDir, "engine-bin");
   yield* fs.makeDirectory(stageEngineBinDir, { recursive: true });

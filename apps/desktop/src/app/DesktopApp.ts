@@ -23,6 +23,7 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import * as DesktopApm from "../telemetry/DesktopApm.ts";
 
 const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
 const MAX_TCP_PORT = 65_535;
@@ -197,6 +198,7 @@ const startup = Effect.gen(function* () {
   const updates = yield* DesktopUpdates.DesktopUpdates;
   const engineUpdater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const apm = yield* DesktopApm.DesktopApm;
 
   yield* shellEnvironment.installIntoProcess;
   const userDataPath = yield* appIdentity.resolveUserDataPath;
@@ -216,6 +218,11 @@ const startup = Effect.gen(function* () {
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),
   );
   yield* logStartupInfo("app ready");
+  yield* apm.track("app_launch", {
+    packaged: environment.isPackaged,
+    development: environment.isDevelopment,
+  });
+  yield* apm.heartbeat("startup");
   yield* appIdentity.configure;
   yield* applicationMenu.configure;
   yield* electronProtocol.registerDesktopFileProtocol;

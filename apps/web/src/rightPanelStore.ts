@@ -31,10 +31,12 @@ interface PersistedRightPanelState {
 interface RightPanelState {
   open: boolean;
   activeSurface: RightPanelSurface;
+  filePath: string | null;
   widthPx: number;
   lastSurfaceByThreadKey: Record<string, RightPanelSurface>;
   close: () => void;
   openSurface: (surface: RightPanelSurface, threadKey?: string | null) => void;
+  openFile: (filePath: string, threadKey?: string | null) => void;
   setActiveSurface: (surface: RightPanelSurface, threadKey?: string | null) => void;
   setWidthPx: (widthPx: number) => void;
   restoreThreadSurface: (threadKey: string | null | undefined) => void;
@@ -108,6 +110,7 @@ export const useRightPanelStore = create<RightPanelState>()(
     (set) => ({
       open: false,
       activeSurface: "home",
+      filePath: null,
       widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
       lastSurfaceByThreadKey: {},
       close: () => set({ open: false }),
@@ -116,6 +119,13 @@ export const useRightPanelStore = create<RightPanelState>()(
           open: true,
           activeSurface: surface,
           lastSurfaceByThreadKey: rememberSurface(state.lastSurfaceByThreadKey, threadKey, surface),
+        })),
+      openFile: (filePath, threadKey) =>
+        set((state) => ({
+          open: true,
+          activeSurface: "file",
+          filePath,
+          lastSurfaceByThreadKey: rememberSurface(state.lastSurfaceByThreadKey, threadKey, "file"),
         })),
       setActiveSurface: (surface, threadKey) =>
         set((state) => ({

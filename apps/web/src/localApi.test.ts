@@ -632,6 +632,7 @@ describe("wsApi", () => {
       sidebarThreadSortOrder: "created_at" as const,
       sidebarThreadPreviewCount: 6,
       telemetryConsent: {
+        operationalTelemetry: true,
         crashReporting: false,
         usageAnalytics: true,
         improveProduct: false,
@@ -702,6 +703,7 @@ describe("wsApi", () => {
       sidebarThreadSortOrder: "created_at" as const,
       sidebarThreadPreviewCount: 6,
       telemetryConsent: {
+        operationalTelemetry: true,
         crashReporting: false,
         usageAnalytics: true,
         improveProduct: false,

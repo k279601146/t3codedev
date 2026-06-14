@@ -112,6 +112,9 @@ const TRANSLATIONS = {
     "settings.textGenerationModel": "Text generation model",
     "settings.textGenerationModelDescription":
       "Configure the model used for generated commit messages, PR titles, and similar Git text.",
+    "settings.operationalTelemetry": "Basic operational telemetry",
+    "settings.operationalTelemetryDescription":
+      "Send install, version, platform, and limited error-summary signals. Code, prompts, file paths, secrets, and full logs are never sent.",
     "settings.usageAnalytics": "Usage analytics",
     "settings.usageAnalyticsDescription":
       "Allow anonymous product usage events. Code content, prompts, and file paths are not sent.",
@@ -311,6 +314,9 @@ const TRANSLATIONS = {
     "settings.textGenerationModel": "文本生成模型",
     "settings.textGenerationModelDescription":
       "配置用于生成提交信息、PR 标题以及类似 Git 文案的模型。",
+    "settings.operationalTelemetry": "基础运营统计",
+    "settings.operationalTelemetryDescription":
+      "发送安装、版本、平台和有限错误摘要信号。不会发送代码、提示词、文件路径、密钥或完整日志。",
     "settings.usageAnalytics": "使用分析",
     "settings.usageAnalyticsDescription":
       "允许发送匿名产品使用事件。不会发送代码内容、提示词或文件路径。",

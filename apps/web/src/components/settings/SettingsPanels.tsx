@@ -1589,6 +1589,41 @@ export function GeneralSettingsPanel() {
 
       <SettingsSection title={t("settings.section.privacy")}>
         <SettingsRow
+          title={t("settings.operationalTelemetry")}
+          description={t("settings.operationalTelemetryDescription")}
+          resetAction={
+            settings.telemetryConsent.operationalTelemetry !==
+            DEFAULT_UNIFIED_SETTINGS.telemetryConsent.operationalTelemetry ? (
+              <SettingResetButton
+                label="operational telemetry"
+                onClick={() =>
+                  updateSettings({
+                    telemetryConsent: {
+                      ...settings.telemetryConsent,
+                      operationalTelemetry:
+                        DEFAULT_UNIFIED_SETTINGS.telemetryConsent.operationalTelemetry,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.telemetryConsent.operationalTelemetry}
+              onCheckedChange={(checked) =>
+                updateSettings({
+                  telemetryConsent: {
+                    ...settings.telemetryConsent,
+                    operationalTelemetry: Boolean(checked),
+                  },
+                })
+              }
+              aria-label={t("settings.operationalTelemetry")}
+            />
+          }
+        />
+        <SettingsRow
           title={t("settings.usageAnalytics")}
           description={t("settings.usageAnalyticsDescription")}
           resetAction={

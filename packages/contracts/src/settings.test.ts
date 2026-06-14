@@ -20,6 +20,7 @@ const encodeServerSettings = Schema.encodeSync(ServerSettings);
 describe("ClientSettings telemetry consent", () => {
   it("defaults every telemetry category to disabled", () => {
     expect(DEFAULT_CLIENT_SETTINGS.telemetryConsent).toEqual({
+      operationalTelemetry: true,
       crashReporting: false,
       usageAnalytics: false,
       improveProduct: false,
