@@ -24,6 +24,7 @@
   XIcon,
   ArrowUpRight,
   TriangleAlertIcon,
+  Share2Icon,
 } from "lucide-react";
 import {
   ChangeRequestStatusIcon,
@@ -61,6 +62,7 @@ import {
   type ThreadEnvMode,
   ThreadId,
 } from "@t3tools/contracts";
+import { resolveCommercialEngineWebAuthBaseUrl } from "@t3tools/shared/commercialEngine";
 import {
   parseScopedThreadKey,
   scopedProjectKey,
@@ -155,10 +157,7 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useCommandPaletteStore } from "../commandPaletteStore";
-import {
-  type DefaultSidebarSectionId,
-  useCursorLayoutStore,
-} from "../cursorLayoutStore";
+import { type DefaultSidebarSectionId, useCursorLayoutStore } from "../cursorLayoutStore";
 import {
   getSidebarThreadIdsToPrewarm,
   getVisibleThreadsForProject,
@@ -697,9 +696,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 ) : (
                   <span
                     className={`text-[13px] tabular-nums ${threadTimeClassName} ${
-                      isHighlighted
-                        ? "text-muted-foreground/70"
-                        : "text-muted-foreground/58"
+                      isHighlighted ? "text-muted-foreground/70" : "text-muted-foreground/58"
                     }`}
                   >
                     {formatRelativeTimeLabel(
@@ -2432,11 +2429,20 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     codexProvider?.auth.email ??
     codexProvider?.auth.label ??
     "T3 Code account";
+  const accountSecondaryLabel =
+    codexProvider?.auth.email && codexProvider.auth.email !== accountLabel
+      ? codexProvider.auth.email
+      : (codexProvider?.auth.label ?? accountLabel);
   const accountPlanLabel =
     providerUsage?.planLabel ??
     (providerUsage?.plan ? formatPlanLabel(providerUsage.plan) : undefined) ??
     codexProvider?.auth.label ??
     "AI Plus";
+  const accountAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+    accountLabel,
+  )}`;
+  const accountWebBaseUrl =
+    commercialAuthState?.webAuthBaseUrl || resolveCommercialEngineWebAuthBaseUrl();
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2470,6 +2476,14 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     if (isMobile) {
       setOpenMobile(false);
     }
+    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/settings");
+    void window.desktopBridge?.openExternal?.(url);
+  }, [accountWebBaseUrl, isMobile, setOpenMobile]);
+
+  const handleOpenSystemSettings = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
     void navigate({ to: "/settings" });
   }, [isMobile, navigate, setOpenMobile]);
 
@@ -2498,14 +2512,24 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   }, [isSigningOut, t]);
 
   const handleOpenBilling = useCallback(() => {
-    const url = resolveAccountActionUrl(commercialAuthState?.gatewayBaseUrl, "/billing");
+    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/billing");
     void window.desktopBridge?.openExternal?.(url);
-  }, [commercialAuthState?.gatewayBaseUrl]);
+  }, [accountWebBaseUrl]);
+
+  const handleOpenSupport = useCallback(() => {
+    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/support");
+    void window.desktopBridge?.openExternal?.(url);
+  }, [accountWebBaseUrl]);
 
   const handleOpenPlans = useCallback(() => {
-    const url = resolveAccountActionUrl(commercialAuthState?.gatewayBaseUrl, "/pricing");
+    const url = resolveAccountActionUrl(accountWebBaseUrl, "/pricing");
     void window.desktopBridge?.openExternal?.(url);
-  }, [commercialAuthState?.gatewayBaseUrl]);
+  }, [accountWebBaseUrl]);
+
+  const handleOpenReferrals = useCallback(() => {
+    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/settings?invite=1");
+    void window.desktopBridge?.openExternal?.(url);
+  }, [accountWebBaseUrl]);
 
   return (
     <SidebarFooter className="border-border/70 border-t px-2 py-1">
@@ -2525,51 +2549,85 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             <SettingsIcon className="size-3.5" />
             <span>{t("sidebar.settings")}</span>
           </MenuTrigger>
-          <MenuPopup align="start" side="top" sideOffset={8} className="w-82 rounded-xl p-0">
+          <MenuPopup
+            align="start"
+            side="top"
+            sideOffset={8}
+            className="w-[324px] overflow-hidden rounded-[20px] border-zinc-200 bg-white p-0 shadow-[0px_8px_32px_0px_rgba(0,0,0,0.08)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[0px_8px_32px_0px_rgba(0,0,0,0.3)] [&>div]:p-0"
+          >
             <MenuGroup>
-              <div className="flex min-w-0 items-center gap-3 border-border/70 border-b px-4 py-4">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <CircleUserRoundIcon className="size-5" />
+              <div className="flex min-w-0 items-center gap-3 border-zinc-200 border-b px-4 py-4 dark:border-zinc-800">
+                <div className="size-10 shrink-0 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                  <img
+                    alt={accountLabel}
+                    className="size-full"
+                    draggable={false}
+                    src={accountAvatarUrl}
+                  />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div
-                    className="truncate text-sm font-semibold text-foreground"
+                    className="truncate text-[14px] font-semibold leading-5 text-zinc-900 dark:text-zinc-100"
                     title={accountLabel}
                   >
                     {accountLabel}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{accountPlanLabel}</div>
+                  <div className="truncate text-[12px] leading-[18px] text-zinc-500 dark:text-zinc-400">
+                    {accountSecondaryLabel}
+                  </div>
+                </div>
+                <div className="shrink-0 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">
+                  {accountPlanLabel}
                 </div>
               </div>
               <AccountUsageCard
                 credits={codexProvider?.auth.rateLimits?.credits ?? null}
                 providerUsage={providerUsage}
+                onInvite={handleOpenReferrals}
                 onUpgrade={handleOpenPlans}
               />
-              <MenuSeparator className="mx-0 my-2" />
-              <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenSettings}>
-                <SettingsIcon className="size-4" />
-                <span>个人设置</span>
-              </MenuItem>
-              <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenBilling}>
-                <CreditCardIcon className="size-4" />
-                <span>订阅与账单</span>
-              </MenuItem>
-              <MenuItem className="mx-3 min-h-10 rounded-md px-2.5" onClick={handleOpenBilling}>
-                <HelpCircleIcon className="size-4" />
-                <span>帮助与支持</span>
-              </MenuItem>
-              {canSignOut ? (
+              <MenuSeparator className="mx-0 my-0 bg-zinc-200 dark:bg-zinc-800" />
+              <div className="p-2">
                 <MenuItem
-                  className="mx-3 mb-2 min-h-10 rounded-md px-2.5"
-                  disabled={isSigningOut}
-                  onClick={handleSignOut}
-                  variant="destructive"
+                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  onClick={handleOpenSettings}
                 >
-                  <LogOutIcon className="size-4" />
-                  <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
+                  <CircleUserRoundIcon className="size-4" />
+                  <span>个人设置</span>
                 </MenuItem>
-              ) : null}
+                <MenuItem
+                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  onClick={handleOpenBilling}
+                >
+                  <CreditCardIcon className="size-4" />
+                  <span>订阅与账单</span>
+                </MenuItem>
+                <MenuItem
+                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  onClick={handleOpenSupport}
+                >
+                  <HelpCircleIcon className="size-4" />
+                  <span>帮助与支持</span>
+                </MenuItem>
+                <MenuItem
+                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  onClick={handleOpenSystemSettings}
+                >
+                  <SettingsIcon className="size-4" />
+                  <span>系统设置</span>
+                </MenuItem>
+                {canSignOut ? (
+                  <MenuItem
+                    className="min-h-10 rounded-lg px-3 text-[13px] font-medium data-[variant=destructive]:text-red-600 data-highlighted:bg-red-50 dark:data-[variant=destructive]:text-red-400 dark:data-highlighted:bg-red-950/30"
+                    disabled={isSigningOut}
+                    onClick={handleSignOut}
+                    variant="destructive"
+                  >
+                    <LogOutIcon className="size-4" />
+                    <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
+                  </MenuItem>
+                ) : null}
+              </div>
             </MenuGroup>
           </MenuPopup>
         </Menu>
@@ -2621,6 +2679,7 @@ function normalizeCommercialUsage(
 function AccountUsageCard(props: {
   credits: NonNullable<ServerProvider["auth"]["rateLimits"]>["credits"] | null;
   providerUsage: CommercialUsageLike | null;
+  onInvite: () => void;
   onUpgrade: () => void;
 }) {
   const [usage, setUsage] = useState<CommercialAccountUsage | undefined>(undefined);
@@ -2677,22 +2736,36 @@ function AccountUsageCard(props: {
       ? resolvedUsage.balance
       : null;
   const balanceLabel = formatCreditBalance(resolvedBalance, props.credits?.balance);
-
-  const nextPlan = planLabel === "free" ? "AI Plus" : "AI Pro";
+  const nearLimit =
+    (currentWindow ? clampUsagePercent(currentWindow.usedPercent) >= 85 : false) ||
+    (weeklyWindow ? clampUsagePercent(weeklyWindow.usedPercent) >= 85 : false);
+  const limitReached =
+    (currentWindow ? clampUsagePercent(currentWindow.usedPercent) >= 100 : false) ||
+    (weeklyWindow ? clampUsagePercent(weeklyWindow.usedPercent) >= 100 : false);
+  const nextPlan = resolvedUsage?.plan === "free" ? "AI Plus" : "AI Pro";
+  const canUpgrade = resolvedUsage?.plan !== "pro";
 
   return (
     <div className="px-3 py-3">
-      <div className="rounded-lg border border-border/80 bg-background px-4 py-3 shadow-sm">
-        <div className="text-sm font-semibold text-foreground">用量限制</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {planLabel} · 标准限额的 {formatUsageMultiplier(multiplier)} 倍
+      <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold text-zinc-900 dark:text-zinc-100">
+              用量限制
+            </div>
+            <div className="mt-0.5 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+              {planLabel} · 标准限额的 {formatUsageMultiplier(multiplier)} 倍
+            </div>
+          </div>
+          {nearLimit ? (
+            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+          ) : null}
         </div>
-        <div className="mt-3 flex items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs">
-          <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">可用积分余额</span>
-          <span className="shrink-0 font-semibold tabular-nums text-foreground">
-            {balanceLabel}
-          </span>
+
+        <div className="mt-3 flex items-center gap-2 rounded-[8px] bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          <SparklesIcon className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">可用积分余额</span>
+          <span className="shrink-0 font-semibold tabular-nums">{balanceLabel}</span>
         </div>
         <UsageLimitRow
           className="mt-4"
@@ -2707,13 +2780,32 @@ function AccountUsageCard(props: {
           window={weeklyWindow}
         />
 
-        <button
-          onClick={props.onUpgrade}
-          className="mt-4 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-800 transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
-        >
-          升级到 {nextPlan}
-          <ArrowUpRight className="size-3.5" />
-        </button>
+        {limitReached || nearLimit ? (
+          <div className="mt-4 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-[18px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            当前额度紧张时，除了升级订阅，也可以邀请好友获得奖励积分继续使用。
+          </div>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-1 gap-2">
+          {canUpgrade ? (
+            <button
+              type="button"
+              onClick={props.onUpgrade}
+              className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[12px] font-medium text-zinc-800 transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+            >
+              升级到 {nextPlan}
+              <ArrowUpRight className="size-3.5" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={props.onInvite}
+            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-[12px] font-medium text-white transition-colors hover:bg-zinc-800 active:bg-zinc-950 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            <Share2Icon className="size-3.5" />
+            邀请好友赚积分
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2731,18 +2823,21 @@ function UsageLimitRow(props: {
   return (
     <div className={props.className}>
       <div className="flex items-center gap-2 text-xs">
-        <span className="font-medium text-foreground">{props.label}</span>
-        <span className="ml-auto font-semibold tabular-nums text-muted-foreground">
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">{props.label}</span>
+        <span className="ml-auto font-semibold tabular-nums text-zinc-700 dark:text-zinc-300">
           {props.loading ? "--" : `${Math.round(percent)}%`}
         </span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
         <div
-          className="h-full rounded-full bg-foreground transition-[width]"
+          className={cn(
+            "h-full rounded-full transition-[width]",
+            percent >= 90 ? "bg-red-500" : "bg-zinc-950 dark:bg-white",
+          )}
           style={{ width: `${percent}%` }}
         />
       </div>
-      <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
         <span className="tabular-nums">
           {props.loading || !props.window
             ? "加载中"
@@ -2807,7 +2902,7 @@ function formatResetTime(value: string | null): string {
 }
 
 function resolveAccountActionUrl(baseUrl: string | null | undefined, path: string): string {
-  const fallback = path === "/pricing" ? "https://chatgpt.com/#pricing" : "https://chatgpt.com/";
+  const fallback = new URL(path, resolveCommercialEngineWebAuthBaseUrl()).toString();
   if (!baseUrl) {
     return fallback;
   }
@@ -2969,9 +3064,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   } = props;
   const defaultSidebarSectionOrderIndex = useMemo(
     () =>
-      new Map(
-        defaultSidebarSectionOrder.map((sectionId, index) => [sectionId, index] as const),
-      ),
+      new Map(defaultSidebarSectionOrder.map((sectionId, index) => [sectionId, index] as const)),
     [defaultSidebarSectionOrder],
   );
   const moveDefaultSidebarSection = useCallback(
@@ -3340,9 +3433,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           draggable
           onDragStart={(event) => handleDefaultSectionDragStart("projects", event)}
           onDragOver={(event) => {
-            if (
-              event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")
-            ) {
+            if (event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")) {
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
             }
@@ -3500,9 +3591,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           draggable
           onDragStart={(event) => handleDefaultSectionDragStart("conversations", event)}
           onDragOver={(event) => {
-            if (
-              event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")
-            ) {
+            if (event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")) {
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
             }
