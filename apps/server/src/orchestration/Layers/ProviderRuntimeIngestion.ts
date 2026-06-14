@@ -1416,7 +1416,8 @@ const make = Effect.gen(function* () {
 
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
-      const activeTurnId = thread.session?.activeTurnId ?? null;
+      const activeTurnId =
+        thread.session?.status === "running" ? (thread.session.activeTurnId ?? null) : null;
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -1466,7 +1467,13 @@ const make = Effect.gen(function* () {
             ? (eventTurnId ?? null)
             : event.type === "turn.completed" || event.type === "session.exited"
               ? null
-              : activeTurnId;
+              : event.type === "session.state.changed" &&
+                  (event.payload.state === "ready" ||
+                    event.payload.state === "stopped" ||
+                    event.payload.state === "interrupted" ||
+                    event.payload.state === "error")
+                ? null
+                : activeTurnId;
         const status = (() => {
           switch (event.type) {
             case "session.state.changed":

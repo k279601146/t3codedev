@@ -175,6 +175,126 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
   );
 });
 
+it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-latest-turn-")))(
+  "OrchestrationProjectionPipeline",
+  (it) => {
+    it.effect("keeps latest turn when a session settles with no active turn", () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const projectId = ProjectId.make("project-latest-turn");
+        const threadId = ThreadId.make("thread-latest-turn");
+        const turnId = TurnId.make("turn-latest-turn");
+        const now = "2026-01-01T00:00:00.000Z";
+        const startedAt = "2026-01-01T00:00:01.000Z";
+        const completedAt = "2026-01-01T00:00:02.000Z";
+
+        yield* eventStore.append({
+          type: "project.created",
+          eventId: EventId.make("evt-latest-turn-project"),
+          aggregateKind: "project",
+          aggregateId: projectId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-latest-turn-project"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-latest-turn-project"),
+          metadata: {},
+          payload: {
+            projectId,
+            title: "Project Latest Turn",
+            workspaceRoot: "/tmp/project-latest-turn",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        yield* eventStore.append({
+          type: "thread.created",
+          eventId: EventId.make("evt-latest-turn-thread"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-latest-turn-thread"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-latest-turn-thread"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId,
+            title: "Thread Latest Turn",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "approval-required",
+            branch: null,
+            worktreePath: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-latest-turn-running"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: startedAt,
+          commandId: CommandId.make("cmd-latest-turn-running"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-latest-turn-running"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "approval-required",
+              activeTurnId: turnId,
+              lastError: null,
+              updatedAt: startedAt,
+            },
+          },
+        });
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-latest-turn-ready"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: completedAt,
+          commandId: CommandId.make("cmd-latest-turn-ready"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-latest-turn-ready"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "approval-required",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: completedAt,
+            },
+          },
+        });
+
+        yield* projectionPipeline.bootstrap;
+
+        const rows = yield* sql<{ readonly latestTurnId: string | null }>`
+          SELECT latest_turn_id AS "latestTurnId"
+          FROM projection_threads
+          WHERE thread_id = ${threadId}
+        `;
+        assert.deepEqual(rows, [{ latestTurnId: "turn-latest-turn" }]);
+      }),
+    );
+  },
+);
+
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-base-")))(
   "OrchestrationProjectionPipeline",
   (it) => {

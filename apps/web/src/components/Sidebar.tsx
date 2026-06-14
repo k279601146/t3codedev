@@ -62,7 +62,7 @@ import {
   type ThreadEnvMode,
   ThreadId,
 } from "@t3tools/contracts";
-import { resolveCommercialEngineWebAuthBaseUrl } from "@t3tools/shared/commercialEngine";
+import { DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL } from "@t3tools/shared/commercialEngine";
 import {
   parseScopedThreadKey,
   scopedProjectKey,
@@ -2442,7 +2442,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     accountLabel,
   )}`;
   const accountWebBaseUrl =
-    commercialAuthState?.webAuthBaseUrl || resolveCommercialEngineWebAuthBaseUrl();
+    commercialAuthState?.webAuthBaseUrl || DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL;
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2477,7 +2477,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       setOpenMobile(false);
     }
     const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/settings");
-    void window.desktopBridge?.openExternal?.(url);
+    openExternalAccountUrl(url);
   }, [accountWebBaseUrl, isMobile, setOpenMobile]);
 
   const handleOpenSystemSettings = useCallback(() => {
@@ -2513,22 +2513,22 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
 
   const handleOpenBilling = useCallback(() => {
     const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/billing");
-    void window.desktopBridge?.openExternal?.(url);
+    openExternalAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   const handleOpenSupport = useCallback(() => {
     const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/support");
-    void window.desktopBridge?.openExternal?.(url);
+    openExternalAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   const handleOpenPlans = useCallback(() => {
     const url = resolveAccountActionUrl(accountWebBaseUrl, "/pricing");
-    void window.desktopBridge?.openExternal?.(url);
+    openExternalAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   const handleOpenReferrals = useCallback(() => {
     const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/settings?invite=1");
-    void window.desktopBridge?.openExternal?.(url);
+    openExternalAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   return (
@@ -2587,44 +2587,60 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                 onUpgrade={handleOpenPlans}
               />
               <MenuSeparator className="mx-0 my-0 bg-zinc-200 dark:bg-zinc-800" />
-              <div className="p-2">
+              <div className="space-y-1 p-3">
                 <MenuItem
-                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  className="min-h-11 rounded-xl px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800"
                   onClick={handleOpenSettings}
                 >
-                  <CircleUserRoundIcon className="size-4" />
-                  <span>个人设置</span>
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    <CircleUserRoundIcon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">个人设置</span>
+                  <ExternalLinkIcon className="size-3.5 text-zinc-400 opacity-70" />
                 </MenuItem>
                 <MenuItem
-                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  className="min-h-11 rounded-xl px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800"
                   onClick={handleOpenBilling}
                 >
-                  <CreditCardIcon className="size-4" />
-                  <span>订阅与账单</span>
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    <CreditCardIcon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">订阅与账单</span>
+                  <ExternalLinkIcon className="size-3.5 text-zinc-400 opacity-70" />
                 </MenuItem>
                 <MenuItem
-                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  className="min-h-11 rounded-xl px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800"
                   onClick={handleOpenSupport}
                 >
-                  <HelpCircleIcon className="size-4" />
-                  <span>帮助与支持</span>
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    <HelpCircleIcon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">帮助与支持</span>
+                  <ExternalLinkIcon className="size-3.5 text-zinc-400 opacity-70" />
                 </MenuItem>
+                <MenuSeparator className="mx-2 my-2 bg-zinc-200 dark:bg-zinc-800" />
                 <MenuItem
-                  className="min-h-10 rounded-lg px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 [&>svg]:text-zinc-500"
+                  className="min-h-11 rounded-xl px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800"
                   onClick={handleOpenSystemSettings}
                 >
-                  <SettingsIcon className="size-4" />
-                  <span>系统设置</span>
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    <SettingsIcon className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">系统设置</span>
                 </MenuItem>
                 {canSignOut ? (
                   <MenuItem
-                    className="min-h-10 rounded-lg px-3 text-[13px] font-medium data-[variant=destructive]:text-red-600 data-highlighted:bg-red-50 dark:data-[variant=destructive]:text-red-400 dark:data-highlighted:bg-red-950/30"
+                    className="min-h-11 rounded-xl px-3 text-[13px] font-medium data-[variant=destructive]:text-red-600 data-highlighted:bg-red-50 dark:data-[variant=destructive]:text-red-400 dark:data-highlighted:bg-red-950/30"
                     disabled={isSigningOut}
                     onClick={handleSignOut}
                     variant="destructive"
                   >
-                    <LogOutIcon className="size-4" />
-                    <span>{isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}</span>
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500 dark:bg-red-950/40 dark:text-red-400">
+                      <LogOutIcon className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      {isSigningOut ? t("sidebar.signingOut") : t("sidebar.signOut")}
+                    </span>
                   </MenuItem>
                 ) : null}
               </div>
@@ -2902,7 +2918,7 @@ function formatResetTime(value: string | null): string {
 }
 
 function resolveAccountActionUrl(baseUrl: string | null | undefined, path: string): string {
-  const fallback = new URL(path, resolveCommercialEngineWebAuthBaseUrl()).toString();
+  const fallback = new URL(path, DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL).toString();
   if (!baseUrl) {
     return fallback;
   }
@@ -2912,6 +2928,15 @@ function resolveAccountActionUrl(baseUrl: string | null | undefined, path: strin
   } catch {
     return fallback;
   }
+}
+
+function openExternalAccountUrl(url: string): void {
+  const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+  if (bridge?.openExternal) {
+    void bridge.openExternal(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 interface SidebarProjectsContentProps {

@@ -224,7 +224,12 @@ describe("ProcessDiagnostics", () => {
       if (isWindows) {
         expect(commands[0]?.command).toBe("powershell.exe");
         expect(commands[0]?.args).toContain("-OutputFormat");
-        expect(commands[0]?.args.join(" ")).toContain("[Console]::OutputEncoding = $utf8");
+        const commandText = commands[0]?.args.join(" ") ?? "";
+        expect(commandText).toContain("[Console]::OutputEncoding = $utf8");
+        expect(commandText).toContain("$perfByPid = @{}");
+        expect(commandText).toContain(
+          "Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue",
+        );
       } else {
         expect(commands).toEqual([
           {
@@ -272,7 +277,10 @@ describe("ProcessDiagnostics", () => {
       expect(commands).toHaveLength(1);
       expect(commands[0]?.command).toBe("powershell.exe");
       expect(commands[0]?.args).toContain("-OutputFormat");
-      expect(commands[0]?.args.join(" ")).toContain("[Console]::OutputEncoding = $utf8");
+      const commandText = commands[0]?.args.join(" ") ?? "";
+      expect(commandText).toContain("[Console]::OutputEncoding = $utf8");
+      expect(commandText).toContain("$perfByPid = @{}");
+      expect(commandText).toContain("$cpu = $perfByPid[[int]$_.ProcessId]");
     }),
   );
 

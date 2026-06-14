@@ -382,6 +382,92 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("turn failed");
   });
 
+  it("recovers when a ready session still carries a stale active turn id", async () => {
+    const harness = await createHarness();
+    const staleAt = "2026-01-01T00:00:00.000Z";
+    const startedAt = "2026-01-01T00:00:01.000Z";
+    const completedAt = "2026-01-01T00:00:02.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-seed-stale-active-turn"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: TurnId.make("turn-stale"),
+          updatedAt: staleAt,
+          lastError: null,
+        },
+        createdAt: staleAt,
+      }),
+    );
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "ready" && thread.session.activeTurnId === "turn-stale",
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-after-stale-active-turn"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: startedAt,
+      turnId: asTurnId("turn-after-stale"),
+    });
+    await harness.drain();
+
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" &&
+        thread.session.activeTurnId === "turn-after-stale" &&
+        thread.latestTurn?.turnId === "turn-after-stale",
+    );
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-assistant-completed-after-stale-active-turn"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: completedAt,
+      turnId: asTurnId("turn-after-stale"),
+      itemId: asItemId("item-after-stale"),
+      payload: {
+        itemType: "assistant_message",
+        status: "completed",
+        detail: "done after stale active turn",
+      },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-after-stale-active-turn"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: completedAt,
+      turnId: asTurnId("turn-after-stale"),
+      payload: {
+        state: "completed",
+      },
+    });
+    await harness.drain();
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.session?.status === "ready" &&
+        entry.session.activeTurnId === null &&
+        entry.latestTurn?.turnId === "turn-after-stale" &&
+        entry.latestTurn.state === "completed" &&
+        entry.latestTurn.completedAt === completedAt,
+    );
+    expect(thread.session?.activeTurnId).toBeNull();
+    expect(thread.latestTurn?.turnId).toBe("turn-after-stale");
+  }, 15_000);
+
   it("applies provider session.state.changed transitions directly", async () => {
     const harness = await createHarness();
     const waitingAt = "2026-01-01T00:00:00.000Z";
@@ -397,6 +483,7 @@ describe("ProviderRuntimeIngestion", () => {
         reason: "awaiting approval",
       },
     });
+    await harness.drain();
 
     let thread = await waitForThread(
       harness.readModel,
@@ -416,6 +503,7 @@ describe("ProviderRuntimeIngestion", () => {
         reason: "provider crashed",
       },
     });
+    await harness.drain();
 
     thread = await waitForThread(
       harness.readModel,
@@ -437,6 +525,7 @@ describe("ProviderRuntimeIngestion", () => {
         state: "stopped",
       },
     });
+    await harness.drain();
 
     thread = await waitForThread(
       harness.readModel,
@@ -458,6 +547,7 @@ describe("ProviderRuntimeIngestion", () => {
         state: "ready",
       },
     });
+    await harness.drain();
 
     thread = await waitForThread(
       harness.readModel,
@@ -468,7 +558,7 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("ready");
     expect(thread.session?.lastError).toBeNull();
-  });
+  }, 15_000);
 
   it("does not clear active turn when session/thread started arrives mid-turn", async () => {
     const harness = await createHarness();

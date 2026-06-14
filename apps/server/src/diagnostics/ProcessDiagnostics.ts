@@ -27,6 +27,7 @@ export interface ProcessRow {
 }
 
 const PROCESS_QUERY_TIMEOUT_MS = 1_000;
+const WINDOWS_PROCESS_QUERY_TIMEOUT_MS = 10_000;
 const POSIX_PROCESS_QUERY_COMMAND = "pid=,ppid=,pgid=,stat=,pcpu=,rss=,etime=,command=";
 const PROCESS_QUERY_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 
@@ -275,6 +276,7 @@ const runProcess = Effect.fn("runProcess")(
     readonly command: string;
     readonly args: ReadonlyArray<string>;
     readonly errorMessage: string;
+    readonly timeoutMs?: number;
   }) {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const child = yield* spawner.spawn(
@@ -309,7 +311,7 @@ const runProcess = Effect.fn("runProcess")(
   (effect, input) =>
     effect.pipe(
       Effect.scoped,
-      Effect.timeoutOption(Duration.millis(PROCESS_QUERY_TIMEOUT_MS)),
+      Effect.timeoutOption(Duration.millis(input.timeoutMs ?? PROCESS_QUERY_TIMEOUT_MS)),
       Effect.flatMap((result) =>
         Option.match(result, {
           onNone: () => Effect.fail(toProcessDiagnosticsError(`${input.errorMessage} timed out.`)),
@@ -351,9 +353,13 @@ function readWindowsProcessRows(): Effect.Effect<
     "$utf8 = [System.Text.UTF8Encoding]::new($false);",
     "[Console]::OutputEncoding = $utf8;",
     "$OutputEncoding = $utf8;",
+    "$perfByPid = @{};",
+    "Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue | ForEach-Object {",
+    "if ($null -ne $_.IDProcess) { $perfByPid[[int]$_.IDProcess] = $_.PercentProcessorTime }",
+    "};",
     "$processes = Get-CimInstance Win32_Process | ForEach-Object {",
-    '$perf = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess = $($_.ProcessId)" -ErrorAction SilentlyContinue;',
-    "[pscustomobject]@{ ProcessId = $_.ProcessId; ParentProcessId = $_.ParentProcessId; Name = $_.Name; CommandLine = $_.CommandLine; Status = $_.Status; WorkingSetSize = $_.WorkingSetSize; PercentProcessorTime = if ($perf) { $perf.PercentProcessorTime } else { 0 } }",
+    "$cpu = $perfByPid[[int]$_.ProcessId];",
+    "[pscustomobject]@{ ProcessId = $_.ProcessId; ParentProcessId = $_.ParentProcessId; Name = $_.Name; CommandLine = $_.CommandLine; Status = $_.Status; WorkingSetSize = $_.WorkingSetSize; PercentProcessorTime = if ($null -ne $cpu) { $cpu } else { 0 } }",
     "};",
     "$processes | ConvertTo-Json -Compress -Depth 3",
   ].join(" ");
@@ -362,6 +368,7 @@ function readWindowsProcessRows(): Effect.Effect<
     command: "powershell.exe",
     args: ["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-Command", command],
     errorMessage: "Failed to query process diagnostics.",
+    timeoutMs: WINDOWS_PROCESS_QUERY_TIMEOUT_MS,
   }).pipe(
     Effect.flatMap((result) =>
       result.exitCode !== 0
