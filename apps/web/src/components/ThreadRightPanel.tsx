@@ -74,7 +74,6 @@ interface ThreadRightPanelProps {
   artifacts?: RightPanelArtifact[] | undefined;
   environmentId: EnvironmentId;
   hasArtifacts: boolean;
-  isGitRepo: boolean;
   markdownCwd: string | undefined;
   mode: "sidebar" | "sheet";
   planLabel: string;
@@ -758,7 +757,6 @@ export function ThreadRightPanel({
   artifacts,
   environmentId,
   hasArtifacts,
-  isGitRepo,
   markdownCwd,
   mode,
   planLabel,
@@ -867,14 +865,12 @@ export function ThreadRightPanel({
               description="查看计划与活动"
               onClick={() => openTab("summary", { title: planLabel })}
             />
-            {isGitRepo ? (
-              <HomeTile
-                icon={<TextSearchIcon className="size-6" />}
-                title="审查"
-                description="查看代码变更"
-                onClick={() => openTab("review")}
-              />
-            ) : null}
+            <HomeTile
+              icon={<TextSearchIcon className="size-6" />}
+              title="审查"
+              description="查看代码变更"
+              onClick={() => openTab("review")}
+            />
             <HomeTile
               icon={<GlobeIcon className="size-6" />}
               title="浏览器"
@@ -905,17 +901,9 @@ export function ThreadRightPanel({
         </div>
       </ScrollArea>
     ) : activeTab.surface === "review" ? (
-      isGitRepo ? (
-        <DiffWorkerPoolProvider>
-          <DiffPanel mode={mode} />
-        </DiffWorkerPoolProvider>
-      ) : (
-        <EmptyState
-          icon={<TextSearchIcon className="size-7" />}
-          title="当前项目不是 Git 仓库"
-          description="初始化 Git 仓库后，这里会显示未提交变更、线程变更和审查结果。"
-        />
-      )
+      <DiffWorkerPoolProvider>
+        <DiffPanel mode={mode} />
+      </DiffWorkerPoolProvider>
     ) : activeTab.surface === "file" ? (
       <FilePanel
         environmentId={environmentId}

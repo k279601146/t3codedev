@@ -271,6 +271,31 @@ export const ProviderWindowsSandboxSetupStartResult = Schema.Struct({
 export type ProviderWindowsSandboxSetupStartResult =
   typeof ProviderWindowsSandboxSetupStartResult.Type;
 
+export const ServerCodexGlobalGuidance = Schema.Struct({
+  content: Schema.String,
+  filePath: TrimmedNonEmptyString,
+  overrideFilePath: TrimmedNonEmptyString,
+  overrideActive: Schema.Boolean,
+});
+export type ServerCodexGlobalGuidance = typeof ServerCodexGlobalGuidance.Type;
+
+export const ServerUpdateCodexGlobalGuidanceInput = Schema.Struct({
+  content: Schema.String.check(Schema.isMaxLength(200_000)),
+});
+export type ServerUpdateCodexGlobalGuidanceInput = typeof ServerUpdateCodexGlobalGuidanceInput.Type;
+
+export class ServerCodexGlobalGuidanceError extends Schema.TaggedErrorClass<ServerCodexGlobalGuidanceError>()(
+  "ServerCodexGlobalGuidanceError",
+  {
+    reason: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {
+  override get message(): string {
+    return `Codex global guidance operation failed: ${this.reason}`;
+  }
+}
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.

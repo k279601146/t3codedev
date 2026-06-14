@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   ClientSettingsSchema,
+  ClientSettingsPatch,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
@@ -13,6 +14,7 @@ import {
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
+const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 
 describe("ClientSettings telemetry consent", () => {
@@ -25,6 +27,18 @@ describe("ClientSettings telemetry consent", () => {
     expect(decodeClientSettings({}).telemetryConsent).toEqual(
       DEFAULT_CLIENT_SETTINGS.telemetryConsent,
     );
+  });
+});
+
+describe("ClientSettingsPatch language", () => {
+  it("accepts client language updates", () => {
+    expect(decodeClientSettingsPatch({ language: "zh-CN" }).language).toBe("zh-CN");
+    expect(decodeClientSettingsPatch({ language: "en" }).language).toBe("en");
+    expect(decodeClientSettingsPatch({ language: "system" }).language).toBe("system");
+  });
+
+  it("rejects unsupported client languages", () => {
+    expect(() => decodeClientSettingsPatch({ language: "fr" })).toThrow();
   });
 });
 

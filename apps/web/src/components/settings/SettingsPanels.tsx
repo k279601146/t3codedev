@@ -6,6 +6,7 @@ import {
   LogOutIcon,
   PlusIcon,
   RefreshCwIcon,
+  SaveIcon,
   ShieldCheckIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -67,6 +68,7 @@ import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
@@ -936,6 +938,150 @@ export function useSettingsRestore(onRestored?: () => void) {
   };
 }
 
+function CodexGlobalGuidanceSection() {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const [saved, setSaved] = useState("");
+  const [filePath, setFilePath] = useState("");
+  const [overrideFilePath, setOverrideFilePath] = useState("");
+  const [overrideActive, setOverrideActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const isDirty = draft !== saved;
+
+  useEffect(() => {
+    let disposed = false;
+
+    const loadGuidance = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const guidance = await ensureLocalApi().server.getCodexGlobalGuidance();
+        if (disposed) return;
+        setDraft(guidance.content);
+        setSaved(guidance.content);
+        setFilePath(guidance.filePath);
+        setOverrideFilePath(guidance.overrideFilePath);
+        setOverrideActive(guidance.overrideActive);
+      } catch (error) {
+        if (disposed) return;
+        setLoadError(
+          error instanceof Error ? error.message : t("settings.customInstructionsLoadFailed"),
+        );
+      } finally {
+        if (!disposed) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadGuidance();
+    return () => {
+      disposed = true;
+    };
+  }, [t]);
+
+  const handleSave = useCallback(async () => {
+    if (isSaving || !isDirty) return;
+    setIsSaving(true);
+    try {
+      const guidance = await ensureLocalApi().server.updateCodexGlobalGuidance({
+        content: draft,
+      });
+      setDraft(guidance.content);
+      setSaved(guidance.content);
+      setFilePath(guidance.filePath);
+      setOverrideFilePath(guidance.overrideFilePath);
+      setOverrideActive(guidance.overrideActive);
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title: t("settings.customInstructionsSaved"),
+          description: guidance.filePath,
+        }),
+      );
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("settings.customInstructionsSaveFailed"),
+          description:
+            error instanceof Error ? error.message : t("settings.customInstructionsSaveFailed"),
+        }),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draft, isDirty, isSaving, t]);
+
+  const description = (
+    <>
+      {t("settings.customInstructionsDescription")}{" "}
+      <a
+        className="font-medium text-primary hover:underline"
+        href="https://developers.openai.com/codex/guides/agents-md#create-global-guidance"
+        rel="noreferrer"
+        target="_blank"
+      >
+        {t("skills.learnMore")}
+      </a>
+    </>
+  );
+
+  const status = (
+    <span className="flex flex-col gap-1">
+      {filePath ? <span>{filePath}</span> : null}
+      {overrideActive ? (
+        <span className="text-amber-600 dark:text-amber-400">
+          {t("settings.customInstructionsOverrideActive", { path: overrideFilePath })}
+        </span>
+      ) : null}
+      {loadError ? <span className="text-destructive">{loadError}</span> : null}
+    </span>
+  );
+
+  return (
+    <SettingsSection title={t("settings.customInstructions")}>
+      <SettingsRow
+        title={t("settings.customInstructions")}
+        description={description}
+        status={status}
+        control={
+          <Button
+            size="xs"
+            disabled={isLoading || isSaving || !isDirty}
+            onClick={() => void handleSave()}
+          >
+            {isSaving ? (
+              <LoaderIcon className="size-3 animate-spin" />
+            ) : (
+              <SaveIcon className="size-3" />
+            )}
+            {t("settings.save")}
+          </Button>
+        }
+      >
+        <div className="pt-3.5">
+          <Textarea
+            className="min-h-60 rounded-lg"
+            value={draft}
+            disabled={isLoading}
+            placeholder={
+              isLoading
+                ? t("settings.customInstructionsLoading")
+                : t("settings.customInstructionsPlaceholder")
+            }
+            spellCheck={false}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            aria-label={t("settings.customInstructions")}
+          />
+        </div>
+      </SettingsRow>
+    </SettingsSection>
+  );
+}
+
 export function GeneralSettingsPanel() {
   const { theme, setTheme } = useTheme();
   const settings = useSettings();
@@ -1132,6 +1278,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <CodexGlobalGuidanceSection />
 
       <SettingsSection title={t("settings.section.editor")}>
         <SettingsRow

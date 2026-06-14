@@ -47,6 +47,7 @@ import type {
 } from "./provider.ts";
 import type {
   ServerConfig,
+  ServerCodexGlobalGuidance,
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
   ServerProcessResourceHistoryResult,
@@ -60,6 +61,7 @@ import type {
   ServerSignalProcessInput,
   ServerSignalProcessResult,
   ServerTraceDiagnosticsResult,
+  ServerUpdateCodexGlobalGuidanceInput,
   ServerUpsertKeybindingResult,
 } from "./server.ts";
 import type {
@@ -734,6 +736,10 @@ export interface LocalApi {
     removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
+    getCodexGlobalGuidance: () => Promise<ServerCodexGlobalGuidance>;
+    updateCodexGlobalGuidance: (
+      input: ServerUpdateCodexGlobalGuidanceInput,
+    ) => Promise<ServerCodexGlobalGuidance>;
     discoverSourceControl: () => Promise<SourceControlDiscoveryResult>;
     getTraceDiagnostics: () => Promise<ServerTraceDiagnosticsResult>;
     getProcessDiagnostics: () => Promise<ServerProcessDiagnosticsResult>;

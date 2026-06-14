@@ -152,6 +152,14 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         rpcClient
           ? rpcClient.server.updateSettings(patch)
           : Promise.reject(unavailableLocalBackendError()),
+      getCodexGlobalGuidance: () =>
+        rpcClient
+          ? rpcClient.server.getCodexGlobalGuidance()
+          : Promise.reject(unavailableLocalBackendError()),
+      updateCodexGlobalGuidance: (input) =>
+        rpcClient
+          ? rpcClient.server.updateCodexGlobalGuidance(input)
+          : Promise.reject(unavailableLocalBackendError()),
       discoverSourceControl: () =>
         rpcClient
           ? rpcClient.server.discoverSourceControl()

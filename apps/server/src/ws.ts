@@ -2,8 +2,10 @@ import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -37,6 +39,7 @@ import {
   WsRpcGroup,
   ProviderWindowsSandboxError,
   ProviderThreadSettingsUpdateError,
+  ServerCodexGlobalGuidanceError,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
@@ -56,6 +59,7 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderService } from "./provider/Services/ProviderService.ts";
+import * as CodexGlobalGuidance from "./provider/CodexGlobalGuidance.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
@@ -213,6 +217,8 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const config = yield* ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents;
       const serverSettings = yield* ServerSettingsService;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
       const plugins = yield* CodexPluginService;
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
@@ -697,6 +703,24 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
+      const getCodexGlobalGuidanceSettings = serverSettings.getSettings.pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerCodexGlobalGuidanceError({
+              reason: "无法读取服务器设置以定位 Codex 全局指令文件",
+              cause,
+            }),
+        ),
+      );
+
+      const provideCodexGlobalGuidanceServices = <A, E>(
+        effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
+      ): Effect.Effect<A, E> =>
+        effect.pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, pathService),
+        );
+
       return WsRpcGroup.of({
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
@@ -1081,6 +1105,34 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateSettings,
             serverSettings.updateSettings(patch).pipe(Effect.map(redactServerSettingsForClient)),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverGetCodexGlobalGuidance]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetCodexGlobalGuidance,
+            getCodexGlobalGuidanceSettings.pipe(
+              Effect.flatMap((settings) =>
+                provideCodexGlobalGuidanceServices(
+                  CodexGlobalGuidance.readCodexGlobalGuidance(settings),
+                ),
+              ),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverUpdateCodexGlobalGuidance]: ({ content }) =>
+          observeRpcEffect(
+            WS_METHODS.serverUpdateCodexGlobalGuidance,
+            getCodexGlobalGuidanceSettings.pipe(
+              Effect.flatMap((settings) =>
+                provideCodexGlobalGuidanceServices(
+                  CodexGlobalGuidance.updateCodexGlobalGuidance({ settings, content }),
+                ),
+              ),
+            ),
             {
               "rpc.aggregate": "server",
             },

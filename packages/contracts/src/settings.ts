@@ -543,5 +543,6 @@ export const ClientSettingsPatch = Schema.Struct({
     }),
   ),
   timestampFormat: Schema.optionalKey(TimestampFormat),
+  language: Schema.optionalKey(ClientLanguage),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

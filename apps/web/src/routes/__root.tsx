@@ -51,6 +51,7 @@ import {
 import { useStore } from "../store";
 import { useUiStateStore } from "../uiStateStore";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
+import { useI18n } from "../i18n";
 import {
   ensureEnvironmentConnectionBootstrapped,
   getPrimaryEnvironmentConnection,
@@ -107,11 +108,16 @@ export const Route = createRootRouteWithContext<{
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
+  const { locale } = useI18n();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
   const [commercialAuthAccepted, setCommercialAuthAccepted] = useState(false);
   const commercialAuthGate = useDesktopCommercialAuthGate(
     pathname !== "/pair" && primaryEnvironmentAuthenticated,
   );
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   useEffect(() => {
     if (commercialAuthGate.status === "requires-sign-in") {

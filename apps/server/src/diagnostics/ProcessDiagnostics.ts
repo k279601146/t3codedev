@@ -348,6 +348,9 @@ function readWindowsProcessRows(): Effect.Effect<
   ChildProcessSpawner.ChildProcessSpawner
 > {
   const command = [
+    "$utf8 = [System.Text.UTF8Encoding]::new($false);",
+    "[Console]::OutputEncoding = $utf8;",
+    "$OutputEncoding = $utf8;",
     "$processes = Get-CimInstance Win32_Process | ForEach-Object {",
     '$perf = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess = $($_.ProcessId)" -ErrorAction SilentlyContinue;',
     "[pscustomobject]@{ ProcessId = $_.ProcessId; ParentProcessId = $_.ParentProcessId; Name = $_.Name; CommandLine = $_.CommandLine; Status = $_.Status; WorkingSetSize = $_.WorkingSetSize; PercentProcessorTime = if ($perf) { $perf.PercentProcessorTime } else { 0 } }",
@@ -357,7 +360,7 @@ function readWindowsProcessRows(): Effect.Effect<
 
   return runProcess({
     command: "powershell.exe",
-    args: ["-NoProfile", "-NonInteractive", "-Command", command],
+    args: ["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-Command", command],
     errorMessage: "Failed to query process diagnostics.",
   }).pipe(
     Effect.flatMap((result) =>

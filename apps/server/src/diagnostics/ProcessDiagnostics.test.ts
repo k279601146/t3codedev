@@ -182,6 +182,7 @@ describe("ProcessDiagnostics", () => {
 
   it.effect("queries processes through the ChildProcessSpawner service", () =>
     Effect.gen(function* () {
+      const isWindows = process.platform === "win32";
       const commands: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> =
         [];
       const spawnerLayer = Layer.succeed(
@@ -194,10 +195,20 @@ describe("ProcessDiagnostics", () => {
           commands.push({ command: childProcess.command, args: childProcess.args });
           return Effect.succeed(
             mockHandle({
-              stdout: [
-                ` ${process.pid}     1 ${process.pid} Ss 0.0 1024 01:02.03 t3 server`,
-                ` 4242 ${process.pid} ${process.pid} S  1.5 2048 00:04 agent`,
-              ].join("\n"),
+              stdout: isWindows
+                ? JSON.stringify({
+                    ProcessId: 4242,
+                    ParentProcessId: process.pid,
+                    Name: "agent.exe",
+                    CommandLine: "agent",
+                    Status: "Live",
+                    WorkingSetSize: 2048,
+                    PercentProcessorTime: 1.5,
+                  })
+                : [
+                    ` ${process.pid}     1 ${process.pid} Ss 0.0 1024 01:02.03 t3 server`,
+                    ` 4242 ${process.pid} ${process.pid} S  1.5 2048 00:04 agent`,
+                  ].join("\n"),
             }),
           );
         }),
@@ -210,12 +221,58 @@ describe("ProcessDiagnostics", () => {
       );
 
       expect(diagnostics.processes.map((process) => process.pid)).toEqual([4242]);
-      expect(commands).toEqual([
-        {
-          command: "ps",
-          args: ["-axo", "pid=,ppid=,pgid=,stat=,pcpu=,rss=,etime=,command="],
-        },
-      ]);
+      if (isWindows) {
+        expect(commands[0]?.command).toBe("powershell.exe");
+        expect(commands[0]?.args).toContain("-OutputFormat");
+        expect(commands[0]?.args.join(" ")).toContain("[Console]::OutputEncoding = $utf8");
+      } else {
+        expect(commands).toEqual([
+          {
+            command: "ps",
+            args: ["-axo", "pid=,ppid=,pgid=,stat=,pcpu=,rss=,etime=,command="],
+          },
+        ]);
+      }
+    }),
+  );
+
+  it.effect("forces Windows PowerShell diagnostics output to UTF-8", () =>
+    Effect.gen(function* () {
+      const commands: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> =
+        [];
+      const spawnerLayer = Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make((command) => {
+          const childProcess = command as unknown as {
+            readonly command: string;
+            readonly args: ReadonlyArray<string>;
+          };
+          commands.push({ command: childProcess.command, args: childProcess.args });
+          return Effect.succeed(
+            mockHandle({
+              stdout: JSON.stringify({
+                ProcessId: 4242,
+                ParentProcessId: process.pid,
+                Name: "node.exe",
+                CommandLine: "node 中文任务.js",
+                Status: "Live",
+                WorkingSetSize: 2048,
+                PercentProcessorTime: 1.5,
+              }),
+            }),
+          );
+        }),
+      );
+
+      const rows = yield* ProcessDiagnostics.readProcessRows("win32").pipe(
+        Effect.provide(spawnerLayer),
+      );
+
+      expect(rows[0]?.command).toBe("node 中文任务.js");
+      expect(commands).toHaveLength(1);
+      expect(commands[0]?.command).toBe("powershell.exe");
+      expect(commands[0]?.args).toContain("-OutputFormat");
+      expect(commands[0]?.args.join(" ")).toContain("[Console]::OutputEncoding = $utf8");
     }),
   );
 

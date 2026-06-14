@@ -99,6 +99,8 @@ import {
   ServerRemoveKeybindingInput,
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
+  ServerCodexGlobalGuidance,
+  ServerCodexGlobalGuidanceError,
   ServerTraceDiagnosticsResult,
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
@@ -112,6 +114,7 @@ import {
   ProviderWindowsSandboxSetupStartInput,
   ProviderWindowsSandboxSetupStartResult,
   ProviderWindowsSandboxError,
+  ServerUpdateCodexGlobalGuidanceInput,
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -220,6 +223,8 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverGetCodexGlobalGuidance: "server.getCodexGlobalGuidance",
+  serverUpdateCodexGlobalGuidance: "server.updateCodexGlobalGuidance",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -316,6 +321,21 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   success: ServerSettings,
   error: ServerSettingsError,
 });
+
+export const WsServerGetCodexGlobalGuidanceRpc = Rpc.make(WS_METHODS.serverGetCodexGlobalGuidance, {
+  payload: Schema.Struct({}),
+  success: ServerCodexGlobalGuidance,
+  error: ServerCodexGlobalGuidanceError,
+});
+
+export const WsServerUpdateCodexGlobalGuidanceRpc = Rpc.make(
+  WS_METHODS.serverUpdateCodexGlobalGuidance,
+  {
+    payload: ServerUpdateCodexGlobalGuidanceInput,
+    success: ServerCodexGlobalGuidance,
+    error: ServerCodexGlobalGuidanceError,
+  },
+);
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -801,6 +821,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerGetCodexGlobalGuidanceRpc,
+  WsServerUpdateCodexGlobalGuidanceRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

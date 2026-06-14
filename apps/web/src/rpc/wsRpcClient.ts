@@ -137,6 +137,12 @@ export interface WsRpcClient {
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.serverUpdateSettings>>;
+    readonly getCodexGlobalGuidance: RpcUnaryNoArgMethod<
+      typeof WS_METHODS.serverGetCodexGlobalGuidance
+    >;
+    readonly updateCodexGlobalGuidance: RpcUnaryMethod<
+      typeof WS_METHODS.serverUpdateCodexGlobalGuidance
+    >;
     readonly discoverSourceControl: RpcUnaryNoArgMethod<
       typeof WS_METHODS.serverDiscoverSourceControl
     >;
@@ -323,6 +329,10 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       getSettings: () => transport.request((client) => client[WS_METHODS.serverGetSettings]({})),
       updateSettings: (patch) =>
         transport.request((client) => client[WS_METHODS.serverUpdateSettings]({ patch })),
+      getCodexGlobalGuidance: () =>
+        transport.request((client) => client[WS_METHODS.serverGetCodexGlobalGuidance]({})),
+      updateCodexGlobalGuidance: (input) =>
+        transport.request((client) => client[WS_METHODS.serverUpdateCodexGlobalGuidance](input)),
       discoverSourceControl: () =>
         transport.request((client) => client[WS_METHODS.serverDiscoverSourceControl]({})),
       getTraceDiagnostics: () =>

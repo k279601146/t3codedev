@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { scopeThreadRef } from "@t3tools/client-runtime";
+import { projectScriptCwd } from "@t3tools/shared/projectScripts";
 import type {
   GitStackedAction,
   TurnId,
@@ -443,7 +444,12 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         })
       : undefined,
   );
-  const activeCwd = activeThread?.worktreePath ?? activeProject?.cwd;
+  const activeCwd = activeProject
+    ? projectScriptCwd({
+        project: { cwd: activeProject.cwd },
+        worktreePath: activeThread?.worktreePath ?? null,
+      })
+    : null;
   const gitActionMutation = useMutation(
     gitRunStackedActionMutationOptions({
       environmentId: activeThread?.environmentId ?? null,
@@ -841,6 +847,25 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
       workingTreeDiffQuery,
     ],
   );
+  const initRepositoryMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeThread?.environmentId || !activeCwd) {
+        throw new Error("当前没有可初始化的项目路径。");
+      }
+      const api = readEnvironmentApi(activeThread.environmentId);
+      if (!api) {
+        throw new Error("环境连接不可用，无法初始化 Git 仓库。");
+      }
+      return await api.vcs.init({ cwd: activeCwd, kind: "git" });
+    },
+    onSuccess: () => {
+      setReviewNotice("已初始化 Git 仓库。");
+      refreshReview({ clearNotice: false });
+    },
+    onError: (error) => {
+      setReviewNotice(error instanceof Error ? error.message : String(error));
+    },
+  });
   const fileOperationMutation = useMutation({
     mutationFn: async (input: {
       operation: "stage" | "unstage" | "restore";
@@ -1229,9 +1254,45 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           选择一个线程以查看对话差异。
         </div>
+      ) : gitStatusQuery.isPending && gitStatusQuery.data === null ? (
+        <DiffPanelLoadingState label="正在检测 Git 仓库状态" />
       ) : !isGitRepo ? (
-        <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          当前项目不是 Git 仓库，无法查看差异。
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-muted-foreground/70">
+          <div className="flex max-w-sm flex-col items-center gap-3">
+            <FileSearchIcon className="size-8 text-muted-foreground/60" />
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-foreground">当前路径不是 Git 仓库</div>
+              <div>初始化 Git 仓库后，这里会显示未提交变更、提交差异和审查操作。</div>
+            </div>
+            {activeCwd ? (
+              <div
+                className="max-w-full truncate rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                title={activeCwd}
+              >
+                {activeCwd}
+              </div>
+            ) : null}
+            {reviewNotice ? (
+              <div className="text-[11px] text-muted-foreground">{reviewNotice}</div>
+            ) : null}
+            <div className="flex items-center gap-2">
+              <Button
+                size="xs"
+                variant="default"
+                disabled={initRepositoryMutation.isPending || !activeCwd}
+                onClick={() => initRepositoryMutation.mutate()}
+              >
+                <GitBranchIcon className="size-3.5" />
+                初始化 Git
+              </Button>
+              <Button size="xs" variant="ghost" onClick={() => refreshReview()}>
+                <RefreshCwIcon
+                  className={cn("size-3.5", gitStatusQuery.isPending ? "animate-spin" : "")}
+                />
+                刷新
+              </Button>
+            </div>
+          </div>
         </div>
       ) : diffScope === "turn" && orderedTurnDiffSummaries.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">

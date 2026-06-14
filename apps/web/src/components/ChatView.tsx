@@ -4587,7 +4587,6 @@ export default function ChatView(props: ChatViewProps) {
           activeSurface={rightPanelSurface}
           environmentId={environmentId}
           hasArtifacts={hasArtifactPanelContent}
-          isGitRepo={isGitRepo}
           markdownCwd={gitCwd ?? undefined}
           mode="sidebar"
           planLabel={planSidebarLabel}
@@ -4938,7 +4937,6 @@ export default function ChatView(props: ChatViewProps) {
             activeSurface={rightPanelSurface}
             environmentId={environmentId}
             hasArtifacts={hasArtifactPanelContent}
-            isGitRepo={isGitRepo}
             markdownCwd={gitCwd ?? undefined}
             mode="sheet"
             planLabel={planSidebarLabel}
