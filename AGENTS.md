@@ -20,10 +20,11 @@ T3 Code 已经不只是早期 Web GUI，而是一个面向商业化的 AI 编程
 - **Provider 体系**：通过统一 Provider 抽象接入 Codex、Claude、OpenCode、Cursor/ACP 等运行时；Codex app-server 仍是重点，但不是唯一后端。
 - **核心大脑**：当前主要依赖 Codex 的 app-server 协议和运行时能力，但 T3 Code 的产品目标是脱离 Codex 品牌的商业化独立客户端。
 - **核心引擎**：桌面商业化分发使用 `ai-engine.exe`，它来自 `D:\workspace\codexdev\codex-rs` 中执行 `cargo build -p codex-app-server --release` 后产出的 `codex-app-server.exe`，再改名为 `ai-engine.exe`。
-- **业务后端/网关**：核心后端服务使用 fork 后的 `sub2api`，源码目录为 `D:\workspace\sub2api-fork`，负责登录、JWT、模型网关、真实上游密钥替换、用量与计费等服务端能力。
+- **SaaS 业务后端**：登录、账号、JWT 签发和商业化用户体系来自 `D:\workspace\dev2_OpenHarness_SaaS`，本地开发默认访问 `http://localhost:3001/`。
+- **模型网关**：模型路由和真实上游密钥转换由 fork 后的 `sub2api` 提供，源码目录为 `D:\workspace\sub2api-fork`。
 - **前端形态**：`apps/web` 是三栏 IDE 体验，包含项目/会话侧栏、对话流、Diff、编辑器、终端、设置、插件/技能、自动化等页面。
 - **桌面端**：`apps/desktop` 负责 Electron 容器、后端进程管理、IPC、安全存储、更新、Tailscale/SSH/远程暴露和系统能力桥接。
-- **商业化方向**：客户端只持有 IDE JWT；真实模型密钥和用量扣费属于网关/sub2api 服务端职责。
+- **商业化方向**：客户端只持有 SaaS 后端签发的 IDE JWT；真实模型密钥不得进入客户端，模型调用通过 sub2api 网关转发。
 
 ## 2. 技术栈与命令
 
@@ -132,9 +133,10 @@ bun run fmt
 
 ## 7. 安全与认证
 
-- 客户端唯一应该长期持有的是 IDE JWT 或桌面端安全存储中的用户登录状态。
+- 客户端唯一应该长期持有的是 `dev2_OpenHarness_SaaS` 签发的 IDE JWT 或桌面端安全存储中的用户登录状态。
 - 真实 AI 提供方密钥不得写入前端状态、localStorage、日志、trace、错误消息或普通配置文件。
-- 发往商业网关/sub2api 的请求使用 `Authorization: Bearer <JWT>`，由服务端网关验证、扣量并替换真实上游密钥。
+- 登录、账号、JWT 签发、订阅状态等 SaaS 用户体系不在本仓库实现，开发时查看 `D:\workspace\dev2_OpenHarness_SaaS`，本地入口通常是 `http://localhost:3001/`。
+- 发往模型网关/sub2api 的请求使用 `Authorization: Bearer <JWT>`，由网关按业务后端认可的身份和策略路由模型，并在服务端替换真实上游密钥。
 - 启动 provider 子进程时不要无脑透传 `process.env`；只传必要白名单和用户显式配置的 provider env。
 - 敏感 provider env 必须通过 server secret store 保存，返回给 Web 时只返回占位/metadata。
 - 文件系统、git、terminal、checkpoint 这类能力必须校验 workspace/root 边界，避免路径穿越。
@@ -145,7 +147,9 @@ bun run fmt
 - `ai-engine.exe` 不是在本仓库直接构建的产物；来源是 `D:\workspace\codexdev\codex-rs` 的 `codex-app-server` release 构建产物。
 - 构建流程：在 `D:\workspace\codexdev\codex-rs` 执行 `cargo build -p codex-app-server --release`，将生成的 `codex-app-server.exe` 按发布约定重命名为 `ai-engine.exe` 后随桌面端或安装包分发。
 - 修改 app-server 协议、引擎能力或 Rust 侧行为时，应先到 `D:\workspace\codexdev\codex-rs` 修改并重新构建，再回到本仓库适配 contracts/provider/web 展示。
-- `sub2api` fork 是商业化业务后端和模型网关，不属于本仓库；相关源码位于 `D:\workspace\sub2api-fork`。
+- `D:\workspace\dev2_OpenHarness_SaaS` 是商业化 SaaS 后端，负责登录页面、账号体系、JWT 签发、订阅/套餐/用户侧商业闭环；T3 Code 只消费它提供的身份和商业状态。
+- `D:\workspace\sub2api-fork` 是模型网关，负责多模型路由、上游 API 适配、真实 provider key 管理和服务端转发；它不应该承担 T3 Code 客户端 UI 或本地 IDE 编排职责。
+- T3 Code 本仓库负责 IDE 客户端、本地 server、provider 编排、桌面壳、Web UI、协议 contracts、本地文件/git/terminal/checkpoint 能力，以及把 SaaS JWT 带入模型网关调用链。
 - T3 Code 可以复用 Codex app-server 的能力，但产品、品牌、登录、计费、模型网关、桌面体验和用户数据闭环都应按独立商业客户端设计，避免在 UI/文案/架构上把 T3 Code 做成 Codex 的简单外壳。
 - 商业化内置引擎配置位于 `@t3tools/shared/commercialEngine` 和 server/desktop provider 相关模块。
 - Windows 沙箱和 artifact 相关共享逻辑在 `@t3tools/shared/windowsSandboxArtifacts`，桌面端系统能力在 `apps/desktop/src/security/**`。

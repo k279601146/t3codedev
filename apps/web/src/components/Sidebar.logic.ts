@@ -300,27 +300,30 @@ export function resolveThreadRowClassName(input: {
   isSelected: boolean;
 }): string {
   const baseClassName =
-    "h-6.5 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+    "h-8.5 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left text-[14px] font-normal select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 
   if (input.isSelected && input.isActive) {
     return cn(
       baseClassName,
-      "bg-accent/90 text-foreground font-medium hover:bg-accent hover:text-foreground",
+      "bg-accent/70 text-foreground/88 hover:bg-accent/75 hover:text-foreground",
     );
   }
 
   if (input.isSelected) {
-    return cn(baseClassName, "bg-accent/75 text-foreground hover:bg-accent hover:text-foreground");
+    return cn(
+      baseClassName,
+      "bg-accent/60 text-foreground/86 hover:bg-accent/70 hover:text-foreground",
+    );
   }
 
   if (input.isActive) {
     return cn(
       baseClassName,
-      "bg-accent/90 text-foreground font-medium hover:bg-accent hover:text-foreground",
+      "bg-accent/70 text-foreground/88 hover:bg-accent/75 hover:text-foreground",
     );
   }
 
-  return cn(baseClassName, "text-foreground/82 hover:bg-accent/55 hover:text-foreground");
+  return cn(baseClassName, "text-foreground/80 hover:bg-accent/45 hover:text-foreground/90");
 }
 
 export function resolveThreadStatusPill(input: {

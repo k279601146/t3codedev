@@ -575,24 +575,24 @@ describe("resolveThreadStatusPill", () => {
 describe("resolveThreadRowClassName", () => {
   it("uses the Codex accent palette when a thread is both selected and active", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: true });
-    expect(className).toContain("bg-accent");
-    expect(className).toContain("font-medium");
-    expect(className).toContain("hover:bg-accent");
+    expect(className).toContain("bg-accent/70");
+    expect(className).toContain("font-normal");
+    expect(className).toContain("hover:bg-accent/75");
     expect(className).not.toContain("bg-primary");
   });
 
   it("uses a quiet accent color for selected threads", () => {
     const className = resolveThreadRowClassName({ isActive: false, isSelected: true });
-    expect(className).toContain("bg-accent/75");
-    expect(className).toContain("hover:bg-accent");
+    expect(className).toContain("bg-accent/60");
+    expect(className).toContain("hover:bg-accent/70");
     expect(className).not.toContain("bg-primary");
   });
 
   it("keeps the Codex accent palette for active-only threads", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: false });
-    expect(className).toContain("bg-accent");
-    expect(className).toContain("font-medium");
-    expect(className).toContain("hover:bg-accent");
+    expect(className).toContain("bg-accent/70");
+    expect(className).toContain("font-normal");
+    expect(className).toContain("hover:bg-accent/75");
   });
 });
 

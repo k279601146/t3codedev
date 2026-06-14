@@ -9,7 +9,9 @@
   ExternalLinkIcon,
   FolderOpenIcon,
   FolderPlusIcon,
+  GitPullRequestIcon,
   LogOutIcon,
+  MessageCircleIcon,
   PanelLeftIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -112,7 +114,6 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -550,7 +551,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} relative isolate font-normal`}
         onClick={handleRowClick}
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
@@ -577,7 +578,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           {renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
-              className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-[12.5px] outline-none"
+              className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-[14px] leading-5 outline-none"
               value={renamingTitle}
               onChange={handleRenameInputChange}
               onKeyDown={handleRenameInputKeyDown}
@@ -589,7 +590,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-[12.5px] leading-5"
+                    className="min-w-0 flex-1 truncate text-[14px] leading-5 text-inherit"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -688,17 +689,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 )}
                 {jumpLabel ? (
                   <span
-                    className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+                    className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-[10px] font-medium tracking-normal text-foreground shadow-sm"
                     title={jumpLabel}
                   >
                     {jumpLabel}
                   </span>
                 ) : (
                   <span
-                    className={`text-[11.5px] tabular-nums ${threadTimeClassName} ${
+                    className={`text-[13px] tabular-nums ${threadTimeClassName} ${
                       isHighlighted
-                        ? "text-foreground/58 dark:text-foreground/70"
-                        : "text-muted-foreground/55"
+                        ? "text-muted-foreground/70"
+                        : "text-muted-foreground/58"
                     }`}
                   >
                     {formatRelativeTimeLabel(
@@ -781,7 +782,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
         render={buttonRender}
         data-thread-selection-safe
         size="sm"
-        className="h-6 w-full translate-x-0 justify-start rounded-md px-2 text-left text-[11px] text-muted-foreground/58 hover:bg-accent/45 hover:text-muted-foreground/80"
+        className="h-8.5 w-full translate-x-0 justify-start rounded-md px-2 text-left text-[14px] font-normal text-muted-foreground/70 hover:bg-accent/45 hover:text-muted-foreground/90"
         onClick={expanded ? onCollapse : onExpand}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -836,13 +837,13 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   return (
     <SidebarMenuSub
       ref={attachThreadListAutoAnimateRef}
-      className="mx-0 my-0 w-full translate-x-0 gap-0.5 overflow-hidden py-0 pl-7 pr-0"
+      className="mx-0 my-0 w-full translate-x-0 gap-0 overflow-hidden py-0 pl-6 pr-0"
     >
       {shouldShowThreadPanel && showEmptyThreadState ? (
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
           <div
             data-thread-selection-safe
-            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[11px] text-muted-foreground/55"
+            className="flex h-8.5 w-full translate-x-0 items-center px-2 text-left text-[14px] text-muted-foreground/55"
           >
             <span>No threads yet</span>
           </div>
@@ -2056,7 +2057,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className={`h-7 gap-2 rounded-md px-2 py-1 pr-8 text-left text-[13px] font-normal text-foreground/88 hover:bg-accent/45 hover:text-foreground group-hover/project-header:bg-accent/45 group-hover/project-header:text-foreground max-sm:pr-14 ${
+          className={`h-8.5 gap-2 rounded-md px-2 py-1 pr-8 text-left text-[14px] font-normal text-foreground/82 hover:bg-accent/45 hover:text-foreground group-hover/project-header:bg-accent/45 group-hover/project-header:text-foreground max-sm:pr-14 ${
             isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
           }`}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
@@ -2066,9 +2067,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           onKeyDown={handleProjectButtonKeyDown}
           onContextMenu={handleProjectButtonContextMenu}
         >
-          <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
+          <ProjectFavicon
+            environmentId={project.environmentId}
+            cwd={project.cwd}
+            className="text-muted-foreground/70"
+          />
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13px] font-normal text-foreground/88">
+            <span className="truncate text-[14px] font-normal text-foreground/82">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -2503,9 +2508,9 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   }, [commercialAuthState?.gatewayBaseUrl]);
 
   return (
-    <SidebarFooter className="border-border/60 border-t p-1.5">
+    <SidebarFooter className="border-border/70 border-t px-2 py-1">
       <SidebarProviderUpdatePill />
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-1.5">
         <Menu>
           <MenuTrigger
             render={
@@ -2513,12 +2518,12 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                className="h-7 gap-1.5 rounded-md px-1.5 py-1 text-[13px] font-normal text-muted-foreground/78 hover:bg-accent/45 hover:text-foreground/86"
               />
             }
           >
             <SettingsIcon className="size-3.5" />
-            <span className="text-xs">{t("sidebar.settings")}</span>
+            <span>{t("sidebar.settings")}</span>
           </MenuTrigger>
           <MenuPopup align="start" side="top" sideOffset={8} className="w-82 rounded-xl p-0">
             <MenuGroup>
@@ -2567,19 +2572,19 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
               ) : null}
             </MenuGroup>
           </MenuPopup>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() =>
-              updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
-            }
-          >
-            <PanelLeftIcon className="size-3.5" />
-            <span className="text-xs">{layoutMode === "cursor" ? "两栏" : "Code模式"}</span>
-          </Button>
         </Menu>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={layoutMode === "cursor" ? "切换到默认布局" : "切换到 Code 模式"}
+          className="size-7 rounded-md text-muted-foreground/78 hover:bg-accent/45 hover:text-foreground/86"
+          onClick={() =>
+            updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
+          }
+        >
+          <PanelLeftIcon className="size-3.5" />
+        </Button>
       </div>
     </SidebarFooter>
   );
@@ -2839,7 +2844,6 @@ interface SidebarProjectsContentProps {
   activeRouteProjectKey: string | null;
   routeThreadKey: string | null;
   newThreadShortcutLabel: string | null;
-  commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
@@ -2870,7 +2874,7 @@ function SidebarSectionTitle({
   return (
     <div
       className={cn(
-        "mb-1 flex h-5 items-center justify-between px-2",
+        "mb-1 flex h-6 items-center justify-between px-2",
         draggable ? "cursor-grab active:cursor-grabbing" : "",
       )}
       draggable={draggable}
@@ -2878,7 +2882,7 @@ function SidebarSectionTitle({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <span className="text-[12px] font-normal text-muted-foreground/72">{children}</span>
+      <span className="text-[13px] font-normal text-muted-foreground/72">{children}</span>
       {action ? <div className="flex items-center gap-1">{action}</div> : null}
     </div>
   );
@@ -2902,13 +2906,13 @@ function SidebarNavButton({
       <SidebarMenuButton
         render={buttonRender}
         size="sm"
-        className="h-8 gap-2 rounded-md px-2 text-[13px] font-normal text-foreground/88 hover:bg-accent hover:text-foreground focus-visible:ring-0"
+        className="h-8.5 gap-2 rounded-md px-2 text-[14px] font-normal text-foreground/82 hover:bg-accent/55 hover:text-foreground focus-visible:ring-0"
         onClick={onClick}
       >
-        <Icon className="size-3.5 text-foreground/80" />
+        <Icon className="size-3.5 text-foreground/70" />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         {trailing ? (
-          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/60">{trailing}</span>
+          <span className="ml-auto shrink-0 text-[12px] text-muted-foreground/60">{trailing}</span>
         ) : null}
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -2952,7 +2956,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     activeRouteProjectKey,
     routeThreadKey,
     newThreadShortcutLabel,
-    commandPaletteShortcutLabel,
     threadJumpLabelByKey,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
@@ -3238,9 +3241,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleOpenPlugins = useCallback(() => {
     void navigate({ to: "/plugins" });
   }, [navigate]);
-  const handleOpenSkills = useCallback(() => {
-    void navigate({ to: "/skills" });
-  }, [navigate]);
   const handleOpenAutomation = useCallback(() => {
     void navigate({ to: "/automations" });
   }, [navigate]);
@@ -3282,8 +3282,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <SidebarGroup className="px-2 pt-2 pb-3">
         <SidebarMenu className="gap-0.5">
           <SidebarNavButton
-            icon={SquarePenIcon}
-            label={"\u65b0\u5bf9\u8bdd"}
+            icon={MessageCircleIcon}
+            label={"\u5feb\u901f\u5bf9\u8bdd"}
             onClick={handleCreateGlobalThread}
           />
           <SidebarMenuItem>
@@ -3291,22 +3291,17 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="h-8 gap-2 rounded-md px-2 text-[13px] font-normal text-foreground/88 hover:bg-accent hover:text-foreground focus-visible:ring-0"
+                  className="h-8.5 gap-2 rounded-md px-2 text-[14px] font-normal text-foreground/82 hover:bg-accent/55 hover:text-foreground focus-visible:ring-0"
                   data-testid="command-palette-trigger"
                 />
               }
             >
-              <SearchIcon className="size-3.5 text-foreground/80" />
+              <SearchIcon className="size-3.5 text-foreground/70" />
               <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.search")}</span>
-              {commandPaletteShortcutLabel ? (
-                <Kbd className="h-4 min-w-0 rounded-sm border-0 bg-muted/80 px-1.5 text-[10px] font-normal text-muted-foreground shadow-none">
-                  {commandPaletteShortcutLabel}
-                </Kbd>
-              ) : null}
             </CommandDialogTrigger>
           </SidebarMenuItem>
-          <SidebarNavButton icon={SparklesIcon} label={"\u6280\u80fd"} onClick={handleOpenSkills} />
           <SidebarNavButton icon={BlocksIcon} label={"\u63d2\u4ef6"} onClick={handleOpenPlugins} />
+          <SidebarNavButton icon={GitPullRequestIcon} label={"\u62c9\u53d6\u8bf7\u6c42"} />
           <SidebarNavButton
             icon={Clock3Icon}
             label={"\u81ea\u52a8\u5316"}
@@ -3338,53 +3333,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarGroup>
       ) : null}
       <SidebarGroup
-        className={cn(
-          "px-2 py-1 transition-colors",
-          isProjectDropActive ? "rounded-lg bg-accent/30" : "",
-        )}
-        onDragEnter={(event) => {
-          if (hasExternalFolderDrop(event)) {
-            event.preventDefault();
-            setIsProjectDropActive(true);
-          }
-        }}
-        onDragOver={(event) => {
-          if (hasExternalFolderDrop(event)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
-          }
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setIsProjectDropActive(false);
-          }
-        }}
-        onDrop={(event) => {
-          if (!hasExternalFolderDrop(event)) {
-            return;
-          }
-          event.preventDefault();
-          setIsProjectDropActive(false);
-          void addExternalProjectsFromDrop(event).catch((error) => {
-            toastManager.add({
-              type: "error",
-              title: "Could not add dropped folder",
-              description:
-                error instanceof Error ? error.message : "The folder could not be added.",
-            });
-          });
-        }}
-      >
-        <SidebarSectionTitle>
-          <span className="inline-flex items-center gap-2">
-            <PinIcon className="size-3 text-muted-foreground/70" />
-            {"\u7f6e\u9876"}
-          </span>
-        </SidebarSectionTitle>
-      </SidebarGroup>
-
-      <SidebarGroup
-        className="px-2 py-1"
+        className="px-2 py-0.5"
         style={{ order: 20 + (defaultSidebarSectionOrderIndex.get("projects") ?? 0) }}
       >
         <SidebarSectionTitle
@@ -3411,7 +3360,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                         type="button"
                         aria-label={t("sidebar.addProject")}
                         data-testid="sidebar-add-project-trigger"
-                        className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                        className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/55 transition-colors hover:bg-accent/45 hover:text-foreground"
                       >
                         <FolderPlusIcon className="size-3.5" />
                       </button>
@@ -4187,11 +4136,6 @@ export default function Sidebar() {
     desktopUpdateState && showArm64IntelBuildWarning
       ? getArm64IntelBuildWarningDescription(desktopUpdateState)
       : null;
-  const commandPaletteShortcutLabel = shortcutLabelForCommand(
-    keybindings,
-    "commandPalette.toggle",
-    newThreadShortcutLabelOptions,
-  );
   const handleDesktopUpdateButtonClick = useCallback(() => {
     const bridge = window.desktopBridge;
     if (!bridge || !desktopUpdateState) return;
@@ -4313,7 +4257,6 @@ export default function Sidebar() {
             activeRouteProjectKey={activeRouteProjectKey}
             routeThreadKey={routeThreadKey}
             newThreadShortcutLabel={newThreadShortcutLabel}
-            commandPaletteShortcutLabel={commandPaletteShortcutLabel}
             threadJumpLabelByKey={visibleThreadJumpLabelByKey}
             attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
             expandThreadListForProject={expandThreadListForProject}
