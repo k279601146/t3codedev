@@ -82,6 +82,8 @@ export interface DesktopEnvironmentShape {
   readonly engineHomePath: string;
   /** 独立热更新引擎版本目录 */
   readonly engineVersionsPath: string;
+  /** 随客户端打包的 T3 内置插件/技能目录 */
+  readonly bundledExtensionsPath: string;
 }
 
 export class DesktopEnvironment extends Context.Service<
@@ -263,6 +265,12 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     }),
     engineHomePath: path.join(baseDir, "agent-data"),
     engineVersionsPath: path.join(stateDir, "engines"),
+    bundledExtensionsPath: resolveBundledExtensionsPath({
+      path,
+      isPackaged: input.isPackaged,
+      resourcesPath,
+      rootDir,
+    }),
   });
 });
 
@@ -287,6 +295,18 @@ function resolveEngineBinaryPath(input: {
   // 开发环境：从项目 apps/desktop/bin/ 目录读取
   // 文件存在性由 server 层的 BundledEngineConfig.isBundledEngineMode 检测
   return input.path.join(input.rootDir, "apps", "desktop", "bin", binaryName);
+}
+
+function resolveBundledExtensionsPath(input: {
+  readonly path: Path.Path;
+  readonly isPackaged: boolean;
+  readonly resourcesPath: string;
+  readonly rootDir: string;
+}): string {
+  if (input.isPackaged) {
+    return input.path.join(input.resourcesPath, "extensions");
+  }
+  return input.path.join(input.rootDir, "extensions");
 }
 
 export const layer = (input: MakeDesktopEnvironmentInput) =>

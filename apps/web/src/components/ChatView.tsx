@@ -53,6 +53,7 @@ import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import type { MarkdownFileLinkMeta } from "../markdown-links";
+import { splitPathAndPosition } from "../terminal-links";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
   collapseExpandedComposerCursor,
@@ -239,20 +240,152 @@ import {
 
 const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more files without additional text. Respond using the conversation context and the attached files.]";
+const TEXT_PREVIEW_EXTENSIONS = new Set([
+  "bat",
+  "c",
+  "cc",
+  "cjs",
+  "cmd",
+  "cpp",
+  "cs",
+  "css",
+  "cts",
+  "cxx",
+  "diff",
+  "env",
+  "go",
+  "gql",
+  "graphql",
+  "h",
+  "hpp",
+  "htm",
+  "html",
+  "ini",
+  "java",
+  "js",
+  "json",
+  "jsx",
+  "kt",
+  "kts",
+  "less",
+  "log",
+  "md",
+  "mdx",
+  "mjs",
+  "mts",
+  "patch",
+  "php",
+  "ps1",
+  "py",
+  "rb",
+  "rs",
+  "sass",
+  "scss",
+  "sh",
+  "sql",
+  "svg",
+  "swift",
+  "toml",
+  "ts",
+  "tsx",
+  "txt",
+  "xml",
+  "yaml",
+  "yml",
+  "zsh",
+]);
 
 function normalizeComparableFilePath(value: string): string {
   return value.replaceAll("\\", "/").replace(/^\/([A-Za-z]:\/)/, "$1");
 }
 
-function resolveWorkspacePreviewPath(filePath: string, workspaceRoot: string): string {
+function isAbsolutePreviewFilePath(value: string): boolean {
+  const normalized = normalizeComparableFilePath(value);
+  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("/");
+}
+
+function splitAbsolutePreviewFilePath(filePath: string): {
+  workspaceRoot: string;
+  filePath: string;
+} | null {
+  const normalizedFilePath = normalizeComparableFilePath(filePath);
+  const separatorIndex = normalizedFilePath.lastIndexOf("/");
+  if (separatorIndex <= 0) {
+    return null;
+  }
+  return {
+    workspaceRoot: normalizedFilePath.slice(0, separatorIndex),
+    filePath: normalizedFilePath.slice(separatorIndex + 1),
+  };
+}
+
+function splitRelativePreviewFilePath(filePath: string): {
+  directoryPath: string | null;
+  basename: string;
+} {
+  const normalizedFilePath = normalizeComparableFilePath(filePath).replace(/^\.?[\\/]+/, "");
+  const separatorIndex = normalizedFilePath.lastIndexOf("/");
+  if (separatorIndex < 0) {
+    return { directoryPath: null, basename: normalizedFilePath };
+  }
+  return {
+    directoryPath: normalizedFilePath.slice(0, separatorIndex),
+    basename: normalizedFilePath.slice(separatorIndex + 1),
+  };
+}
+
+function isTextPreviewFilePath(filePath: string): boolean {
+  const { path } = splitPathAndPosition(filePath);
+  const basename = path.split(/[\\/]/).at(-1) ?? path;
+  const extension = basename.includes(".") ? basename.split(".").at(-1)?.toLowerCase() : undefined;
+  if (!extension) {
+    return true;
+  }
+  return TEXT_PREVIEW_EXTENSIONS.has(extension);
+}
+
+function resolveMarkdownPreviewTarget(
+  filePath: string,
+  workspaceRoot: string | null | undefined,
+): { workspaceRoot: string; filePath: string | null } | null {
+  if (!isTextPreviewFilePath(filePath)) {
+    if (isAbsolutePreviewFilePath(filePath)) {
+      const absoluteTarget = splitAbsolutePreviewFilePath(filePath);
+      return absoluteTarget ? { workspaceRoot: absoluteTarget.workspaceRoot, filePath: null } : null;
+    }
+    if (!workspaceRoot) {
+      return null;
+    }
+    const relativeTarget = splitRelativePreviewFilePath(filePath);
+    return {
+      workspaceRoot: relativeTarget.directoryPath
+        ? `${workspaceRoot.replace(/[\\/]+$/, "")}/${relativeTarget.directoryPath}`
+        : workspaceRoot,
+      filePath: null,
+    };
+  }
+
+  if (!workspaceRoot) {
+    return isAbsolutePreviewFilePath(filePath) ? splitAbsolutePreviewFilePath(filePath) : null;
+  }
+
   const normalizedFilePath = normalizeComparableFilePath(filePath);
   const normalizedWorkspaceRoot = normalizeComparableFilePath(workspaceRoot).replace(/\/+$/, "");
   const filePathForCompare = normalizedFilePath.toLowerCase();
   const workspaceRootForCompare = normalizedWorkspaceRoot.toLowerCase();
   if (filePathForCompare.startsWith(`${workspaceRootForCompare}/`)) {
-    return normalizedFilePath.slice(normalizedWorkspaceRoot.length + 1);
+    return {
+      workspaceRoot,
+      filePath: normalizedFilePath.slice(normalizedWorkspaceRoot.length + 1),
+    };
   }
-  return filePath.replace(/^\.?[\\/]+/, "");
+  if (isAbsolutePreviewFilePath(filePath)) {
+    return splitAbsolutePreviewFilePath(filePath);
+  }
+  return {
+    workspaceRoot,
+    filePath: filePath.replace(/^\.?[\\/]+/, ""),
+  };
 }
 const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
@@ -922,6 +1055,7 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelOpen = useRightPanelStore((state) => state.open);
   const rightPanelSurface = useRightPanelStore((state) => state.activeSurface);
   const rightPanelFilePath = useRightPanelStore((state) => state.filePath);
+  const rightPanelFileWorkspaceRoot = useRightPanelStore((state) => state.fileWorkspaceRoot);
   const rightPanelWidthPx = useRightPanelStore((state) => state.widthPx);
   const openRightPanelSurface = useRightPanelStore((state) => state.openSurface);
   const openRightPanelFile = useRightPanelStore((state) => state.openFile);
@@ -4441,18 +4575,35 @@ export default function ChatView(props: ChatViewProps) {
   );
   const onOpenMarkdownFile = useCallback(
     (file: MarkdownFileLinkMeta) => {
-      if (!activeWorkspaceRoot) {
+      const previewTarget = resolveMarkdownPreviewTarget(file.filePath, activeWorkspaceRoot);
+      if (!previewTarget) {
         toastManager.add({
           type: "error",
-          title: "无法预览文件",
-          description: "当前线程没有可用的工作区。",
+          title: "无法打开文件夹",
+          description: "当前线程没有可用的工作区，且文件链接不是绝对路径。",
         });
         return;
       }
-      openRightPanelFile(
-        resolveWorkspacePreviewPath(file.filePath, activeWorkspaceRoot),
-        activeThreadKey,
-      );
+      if (previewTarget.filePath === null) {
+        const api = readLocalApi();
+        if (!api) {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: "本地 API 不可用。",
+          });
+          return;
+        }
+        void api.shell.openPath(previewTarget.workspaceRoot).catch((error: unknown) => {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: error instanceof Error ? error.message : "打开文件夹失败。",
+          });
+        });
+        return;
+      }
+      openRightPanelFile(previewTarget.filePath, activeThreadKey, previewTarget.workspaceRoot);
     },
     [activeThreadKey, activeWorkspaceRoot, openRightPanelFile],
   );
@@ -4626,6 +4777,7 @@ export default function ChatView(props: ChatViewProps) {
           mode="sidebar"
           planLabel={planSidebarLabel}
           selectedFilePath={rightPanelFilePath}
+          selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
           artifacts={rightPanelArtifacts}
           timestampFormat={timestampFormat}
           workspaceRoot={activeWorkspaceRoot}
@@ -4978,6 +5130,7 @@ export default function ChatView(props: ChatViewProps) {
             mode="sheet"
             planLabel={planSidebarLabel}
             selectedFilePath={rightPanelFilePath}
+            selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
             artifacts={rightPanelArtifacts}
             timestampFormat={timestampFormat}
             workspaceRoot={activeWorkspaceRoot}

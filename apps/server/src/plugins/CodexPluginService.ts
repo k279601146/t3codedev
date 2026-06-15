@@ -1,7 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off instanceOfSchema:off
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexErrors from "effect-codex-app-server/errors";
@@ -29,6 +31,7 @@ import {
 } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
+import { resolveBundledExtensionsRoot } from "../extensions/BundledExtensions.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import {
   buildBundledSpawnArgs,
@@ -133,25 +136,6 @@ const BUILTIN_PLUGINS: readonly PluginSummary[] = [
       marketplacePath: null,
     },
   },
-  {
-    id: "builtin:ppt_master",
-    name: "ppt_master",
-    displayName: "PPT Master",
-    description: "内置演示文稿生成技能，可从结构化大纲生成可编辑 PowerPoint 文件。",
-    installed: true,
-    enabled: true,
-    authPolicy: "ON_USE",
-    installPolicy: "INSTALLED_BY_DEFAULT",
-    availability: "AVAILABLE",
-    source: { type: "builtin", builtinId: "ppt_master" },
-    keywords: ["ppt_master", "ppt-master", "slides", "powerpoint", "presentation"],
-    location: {
-      pluginName: "ppt_master",
-      marketplaceName: "T3 Builtins",
-      remoteMarketplaceName: null,
-      marketplacePath: null,
-    },
-  },
 ] as const;
 
 const BUILTIN_MARKETPLACE: PluginMarketplace = {
@@ -161,50 +145,13 @@ const BUILTIN_MARKETPLACE: PluginMarketplace = {
   plugins: [...BUILTIN_PLUGINS],
 };
 
-function builtinPluginDetailCapabilities(
-  pluginName: string,
-): Pick<PluginDetail, "skills" | "apps" | "appTemplates" | "mcpServers" | "hooks"> {
-  if (pluginName === "ppt_master") {
-    return {
-      skills: [
-        {
-          name: "ppt-master",
-          displayName: "PPT Master",
-          description: "生成可编辑 PPTX，并按结构化大纲、主题和讲稿组织演示内容。",
-        },
-      ],
-      apps: [],
-      appTemplates: [
-        {
-          id: "ppt-master:pitch",
-          name: "pitch-deck",
-          title: "投资人路演",
-          description: "问题、方案、市场、商业模式、路线图和融资计划。",
-        },
-        {
-          id: "ppt-master:business-review",
-          name: "business-review",
-          title: "经营复盘",
-          description: "关键指标、进展、风险、决策点和下一步行动。",
-        },
-        {
-          id: "ppt-master:training",
-          name: "training-deck",
-          title: "培训课件",
-          description: "学习目标、概念拆解、案例练习和总结测验。",
-        },
-      ],
-      mcpServers: [],
-      hooks: [],
-    };
-  }
-  return {
-    skills: [],
-    apps: [],
-    appTemplates: [],
-    mcpServers: [],
-    hooks: [],
-  };
+export function buildPluginListCwds(input: {
+  readonly workspaceCwd: string;
+  readonly bundledExtensionsRoot?: string | undefined;
+}): ReadonlyArray<string> {
+  return input.bundledExtensionsRoot
+    ? [input.workspaceCwd, input.bundledExtensionsRoot]
+    : [input.workspaceCwd];
 }
 
 function normalizeOptionalString(value: string | null | undefined): string | undefined {
@@ -443,7 +390,14 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
   const settings = yield* ServerSettingsService;
   const providerRegistry = yield* ProviderRegistry;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const clientServices = { config, settings, spawner } as const;
+  const resolveBundledRoot = () =>
+    resolveBundledExtensionsRoot().pipe(
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+    );
 
   const refreshCodexProvider = (reason: string) =>
     providerRegistry.refresh(ProviderDriverKind.make("codex")).pipe(
@@ -454,23 +408,35 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
     );
 
   const list: CodexPluginServiceShape["list"] = () =>
-    withClient("plugins.list", clientServices, (client) =>
-      client
-        .request("plugin/list", {
-          cwds: [config.cwd],
-        })
-        .pipe(
-          Effect.map((response) => ({
-            marketplaces: [BUILTIN_MARKETPLACE, ...response.marketplaces.map(normalizeMarketplace)],
-            builtinPlugins: [...BUILTIN_PLUGINS],
-            featuredPluginIds: [...(response.featuredPluginIds ?? [])],
-            marketplaceLoadErrors: (response.marketplaceLoadErrors ?? []).map((error) => ({
-              marketplacePath: error.marketplacePath,
-              message: error.message,
+    Effect.gen(function* () {
+      const bundledExtensionsRoot = yield* resolveBundledRoot().pipe(
+        Effect.orElseSucceed(() => undefined),
+      );
+      const cwds = buildPluginListCwds({
+        workspaceCwd: config.cwd,
+        bundledExtensionsRoot,
+      });
+      return yield* withClient("plugins.list", clientServices, (client) =>
+        client
+          .request("plugin/list", {
+            cwds,
+          })
+          .pipe(
+            Effect.map((response) => ({
+              marketplaces: [
+                BUILTIN_MARKETPLACE,
+                ...response.marketplaces.map(normalizeMarketplace),
+              ],
+              builtinPlugins: [...BUILTIN_PLUGINS],
+              featuredPluginIds: [...(response.featuredPluginIds ?? [])],
+              marketplaceLoadErrors: (response.marketplaceLoadErrors ?? []).map((error) => ({
+                marketplacePath: error.marketplacePath,
+                message: error.message,
+              })),
             })),
-          })),
-        ),
-    ).pipe(
+          ),
+      );
+    }).pipe(
       Effect.catch((error: PluginServiceError) =>
         Effect.succeed({
           marketplaces: [BUILTIN_MARKETPLACE],
@@ -488,14 +454,17 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
   const read: CodexPluginServiceShape["read"] = (input) => {
     const builtin = BUILTIN_PLUGINS.find((plugin) => plugin.name === input.pluginName);
     if (builtin) {
-      const capabilities = builtinPluginDetailCapabilities(builtin.name);
       return Effect.succeed({
         plugin: {
           summary: builtin,
           ...(builtin.description ? { description: builtin.description } : {}),
           marketplaceName: "T3 Builtins",
           marketplacePath: null,
-          ...capabilities,
+          skills: [],
+          apps: [],
+          appTemplates: [],
+          mcpServers: [],
+          hooks: [],
         },
       });
     }

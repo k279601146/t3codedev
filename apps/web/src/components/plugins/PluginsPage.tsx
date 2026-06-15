@@ -8,7 +8,6 @@ import type {
 } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BookOpenIcon,
   BlocksIcon,
   CheckIcon,
   CircleSlashIcon,
@@ -19,7 +18,6 @@ import {
   LaptopIcon,
   Loader2Icon,
   PlugIcon,
-  PresentationIcon,
   PauseIcon,
   PlayIcon,
   RefreshCcwIcon,
@@ -31,6 +29,14 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { toastManager } from "~/components/ui/toast";
@@ -38,7 +44,7 @@ import { cn } from "~/lib/utils";
 import { useBrowserExternalPluginState } from "~/browserExternalPluginState";
 import { getPrimaryEnvironmentConnection } from "~/environments/runtime";
 
-type BuiltinPluginId = "browser_use" | "browser_use_external" | "computer_use" | "ppt_master";
+type BuiltinPluginId = "browser_use" | "browser_use_external" | "computer_use";
 
 interface BuiltinPlugin {
   readonly id: BuiltinPluginId;
@@ -70,13 +76,6 @@ const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
     icon: <PlugIcon className="size-5" />,
     tags: ["browser_use_external", "chrome", "t3_browser_external"],
   },
-  {
-    id: "ppt_master",
-    title: "PPT Master",
-    subtitle: "从结构化大纲生成可编辑 PowerPoint 演示文稿。",
-    icon: <PresentationIcon className="size-5" />,
-    tags: ["ppt_master", "ppt-master", "slides", "powerpoint"],
-  },
 ];
 const PLUGINS_LIST_QUERY = ["plugins", "list"] as const;
 const pluginDetailQueryKey = (plugin: PluginSummary) =>
@@ -102,12 +101,7 @@ function getMarketplaceClient() {
 function builtinPluginId(plugin: PluginSummary): BuiltinPluginId | null {
   if (plugin.source.type !== "builtin") return null;
   const id = plugin.source.builtinId;
-  return id === "browser_use" ||
-    id === "browser_use_external" ||
-    id === "computer_use" ||
-    id === "ppt_master"
-    ? id
-    : null;
+  return id === "browser_use" || id === "browser_use_external" || id === "computer_use" ? id : null;
 }
 
 function builtinMeta(plugin: PluginSummary): BuiltinPlugin | null {
@@ -764,131 +758,6 @@ function DetailRows({ detail }: { readonly detail: PluginDetail }) {
   );
 }
 
-function CapabilityList({
-  title,
-  empty,
-  items,
-}: {
-  readonly title: string;
-  readonly empty: string;
-  readonly items: ReadonlyArray<ReactNode>;
-}) {
-  return (
-    <div>
-      <div className="mb-2 text-[11px] font-medium uppercase text-muted-foreground">{title}</div>
-      {items.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">{items}</div>
-      ) : (
-        <div className="text-xs text-muted-foreground">{empty}</div>
-      )}
-    </div>
-  );
-}
-
-function CapabilityToken({
-  value,
-  title,
-}: {
-  readonly value: string;
-  readonly title?: string | undefined;
-}) {
-  return (
-    <code
-      className="inline-flex max-w-full items-center rounded-md border border-border/70 bg-background px-1.5 py-0.5 text-[11px] text-foreground"
-      title={title ?? value}
-    >
-      <span className="truncate">{value}</span>
-    </code>
-  );
-}
-
-function PluginUsageGuide({
-  detail,
-  installed,
-}: {
-  readonly detail: PluginDetail;
-  readonly installed: boolean;
-}) {
-  const hasSkills = detail.skills.length > 0;
-  const hasApps = detail.apps.length > 0 || detail.appTemplates.length > 0;
-  const hasMcpServers = detail.mcpServers.length > 0;
-  const hasHooks = detail.hooks.length > 0;
-  const hasCapabilities = hasSkills || hasApps || hasMcpServers || hasHooks;
-
-  return (
-    <section className="rounded-md border border-border/70 bg-muted/20 p-3">
-      <div className="flex items-start gap-2">
-        <BookOpenIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <div className="text-[13px] font-medium text-foreground">使用方式</div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {installed
-                ? "安装后的普通运行时插件不会自动进入输入框的启动插件菜单。它声明的技能用 $ 调用，MCP、Apps 和 Hooks 由运行时按需暴露或触发。"
-                : "安装后才能在当前 Codex provider 中加载这些能力。安装完成后可到输入框的技能菜单，或直接输入对应 $技能名 调用。"}
-            </p>
-          </div>
-
-          {hasCapabilities ? (
-            <div className="grid gap-3">
-              <CapabilityList
-                title="技能"
-                empty="未声明技能"
-                items={detail.skills.map((skill) => (
-                  <CapabilityToken
-                    key={skill.name}
-                    value={`$${skill.name}`}
-                    title={skill.description ?? skill.displayName ?? skill.name}
-                  />
-                ))}
-              />
-              {hasApps ? (
-                <CapabilityList
-                  title="Apps"
-                  empty="未声明 App"
-                  items={[...detail.apps, ...detail.appTemplates].map((app) => (
-                    <CapabilityToken
-                      key={`${app.id}:${app.name}`}
-                      value={app.title ?? app.name}
-                      title={app.description ?? app.name}
-                    />
-                  ))}
-                />
-              ) : null}
-              {hasMcpServers ? (
-                <CapabilityList
-                  title="MCP"
-                  empty="未声明 MCP Server"
-                  items={detail.mcpServers.map((server) => (
-                    <CapabilityToken key={server} value={server} />
-                  ))}
-                />
-              ) : null}
-              {hasHooks ? (
-                <CapabilityList
-                  title="Hooks"
-                  empty="未声明 Hook"
-                  items={detail.hooks.map((hook) => (
-                    <CapabilityToken
-                      key={hook.name}
-                      value={hook.name}
-                      title={hook.event ? `事件：${hook.event}` : hook.name}
-                    />
-                  ))}
-                />
-              ) : null}
-            </div>
-          ) : (
-            <div className="text-xs leading-5 text-muted-foreground">
-              这个插件没有声明可在输入框中直接选择的技能、App、MCP 或 Hook。
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function CodexPluginDetails({
   plugin,
   detail,
@@ -907,18 +776,12 @@ function CodexPluginDetails({
   readonly onUninstall: () => void;
 }) {
   const unavailable = plugin.availability === "DISABLED_BY_ADMIN";
-  const isBuiltin = plugin.source.type === "builtin";
   return (
     <div className="space-y-5">
       <section>
         <div className="flex items-center justify-between gap-3">
           <h2 className="truncate text-sm font-semibold text-foreground">{plugin.displayName}</h2>
-          {isBuiltin ? (
-            <Button type="button" variant="outline" size="xs" disabled>
-              <CheckIcon className="size-3.5" />
-              已内置
-            </Button>
-          ) : plugin.installed ? (
+          {plugin.installed ? (
             <Button
               type="button"
               variant="outline"
@@ -961,14 +824,122 @@ function CodexPluginDetails({
           <DetailRows detail={detail} />
         ) : null}
       </section>
-      {detail ? <PluginUsageGuide detail={detail} installed={plugin.installed} /> : null}
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="text-xs leading-5 text-muted-foreground">
-          输入框里的“启动插件”只放 Browser、Computer、Chrome
-          这类会改变本轮工具启动方式的能力；普通插件安装后主要通过技能、MCP、Apps 或 Hooks 生效。
+          Codex 插件的安装、卸载、skills、MCP、apps 和 hooks 生命周期由 Codex app-server 管理。T3
+          Code 只负责展示、授权边界和商业化运行环境。
         </div>
       </section>
     </div>
+  );
+}
+
+function PluginDetailsDialog({
+  open,
+  plugin,
+  builtin,
+  builtinId,
+  detail,
+  detailLoading,
+  browserState,
+  browserExternalState,
+  browserExternalInstalled,
+  computerState,
+  busyAction,
+  installing,
+  uninstalling,
+  onOpenChange,
+  onRefreshBrowser,
+  onRefreshBrowserExternal,
+  onRestartBrowserExternalSetup,
+  onInstallBrowserExternal,
+  onRefreshComputer,
+  onToggleComputerPaused,
+  onAllowForegroundApp,
+  onRemovePermission,
+  onClearPermissions,
+  onInstall,
+  onUninstall,
+}: {
+  readonly open: boolean;
+  readonly plugin: PluginSummary | null;
+  readonly builtin: BuiltinPlugin | null;
+  readonly builtinId: BuiltinPluginId | null;
+  readonly detail: PluginDetail | null;
+  readonly detailLoading: boolean;
+  readonly browserState: DesktopBrowserAutomationState | null;
+  readonly browserExternalState: DesktopBrowserExternalAutomationState | null;
+  readonly browserExternalInstalled: boolean;
+  readonly computerState: DesktopComputerAutomationState | null;
+  readonly busyAction: string | null;
+  readonly installing: boolean;
+  readonly uninstalling: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onRefreshBrowser: () => void;
+  readonly onRefreshBrowserExternal: () => void;
+  readonly onRestartBrowserExternalSetup: () => void;
+  readonly onInstallBrowserExternal: () => void;
+  readonly onRefreshComputer: () => void;
+  readonly onToggleComputerPaused: () => void;
+  readonly onAllowForegroundApp: () => void;
+  readonly onRemovePermission: (appKey: string) => void;
+  readonly onClearPermissions: () => void;
+  readonly onInstall: () => void;
+  readonly onUninstall: () => void;
+}) {
+  return (
+    <Dialog open={open && plugin !== null} onOpenChange={onOpenChange}>
+      {plugin ? (
+        <DialogPopup className="max-w-2xl">
+          <DialogHeader className="flex-row items-start gap-3 pe-12">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              {builtin?.icon ?? <BlocksIcon className="size-5" />}
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="truncate text-base">{plugin.displayName}</DialogTitle>
+              <DialogDescription className="mt-1 truncate text-xs">
+                {plugin.description ?? plugin.name}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <DialogPanel className="space-y-5">
+            {builtinId === "browser_use" ? (
+              <BrowserPluginDetails state={browserState} refresh={onRefreshBrowser} />
+            ) : builtinId === "browser_use_external" ? (
+              browserExternalInstalled ? (
+                <BrowserExternalPluginDetails
+                  state={browserExternalState}
+                  refresh={onRefreshBrowserExternal}
+                  onRestartSetup={onRestartBrowserExternalSetup}
+                />
+              ) : (
+                <BrowserExternalInstallDetails onInstall={onInstallBrowserExternal} />
+              )
+            ) : builtinId === "computer_use" ? (
+              <ComputerPluginDetails
+                state={computerState}
+                refresh={onRefreshComputer}
+                onTogglePaused={onToggleComputerPaused}
+                onAllowForeground={onAllowForegroundApp}
+                onRemovePermission={onRemovePermission}
+                onClearPermissions={onClearPermissions}
+                busyAction={busyAction}
+              />
+            ) : (
+              <CodexPluginDetails
+                plugin={plugin}
+                detail={detail}
+                loading={detailLoading}
+                installing={installing}
+                uninstalling={uninstalling}
+                onInstall={onInstall}
+                onUninstall={onUninstall}
+              />
+            )}
+          </DialogPanel>
+        </DialogPopup>
+      ) : null}
+    </Dialog>
   );
 }
 
@@ -977,6 +948,7 @@ export function PluginsPage() {
   const [search, setSearch] = useState("");
   const [marketplaceSource, setMarketplaceSource] = useState("");
   const [selectedPluginId, setSelectedPluginId] = useState<string>("builtin:browser_use");
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [browserState, setBrowserState] = useState<DesktopBrowserAutomationState | null>(null);
   const browserExternalPlugin = useBrowserExternalPluginState();
   const browserExternalState = browserExternalPlugin.state;
@@ -1013,7 +985,7 @@ export function PluginsPage() {
             remoteMarketplaceName: selectedPlugin.location.remoteMarketplaceName ?? null,
           })
         : Promise.resolve(null),
-    enabled: selectedPlugin !== null,
+    enabled: selectedPlugin !== null && detailDialogOpen,
     staleTime: 30_000,
   });
 
@@ -1222,6 +1194,10 @@ export function PluginsPage() {
   const selectedBuiltin = selectedPlugin ? builtinMeta(selectedPlugin) : null;
   const selectedBuiltinId = selectedPlugin ? builtinPluginId(selectedPlugin) : null;
   const selectedDetail = detailQuery.data?.plugin ?? null;
+  const openPluginDetails = useCallback((pluginId: string) => {
+    setSelectedPluginId(pluginId);
+    setDetailDialogOpen(true);
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
@@ -1277,7 +1253,7 @@ export function PluginsPage() {
       </header>
 
       <ScrollArea className="flex-1 min-h-0">
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-8 py-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+        <div className="mx-auto w-full max-w-4xl px-8 py-10">
           <div>
             <div>
               <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground">
@@ -1327,7 +1303,7 @@ export function PluginsPage() {
                       plugin={plugin}
                       active={selectedPlugin?.id === plugin.id}
                       status={pluginStatus(plugin)}
-                      onSelect={() => setSelectedPluginId(plugin.id)}
+                      onSelect={() => openPluginDetails(plugin.id)}
                     />
                   ))
                 )}
@@ -1344,74 +1320,46 @@ export function PluginsPage() {
                       plugin={plugin}
                       active={selectedPlugin?.id === plugin.id}
                       status={pluginStatus(plugin)}
-                      onSelect={() => setSelectedPluginId(plugin.id)}
+                      onSelect={() => openPluginDetails(plugin.id)}
                     />
                   ))}
                 </div>
               </section>
             ) : null}
           </div>
-
-          <aside className="min-w-0">
-            <div className="rounded-md border border-border/70 bg-background p-5">
-              {!selectedPlugin ? (
-                <div className="text-sm text-muted-foreground">请选择一个插件。</div>
-              ) : (
-                <>
-                  <div className="mb-5 flex items-center gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                      {selectedBuiltin?.icon ?? <BlocksIcon className="size-5" />}
-                    </div>
-                    <div className="min-w-0">
-                      <h2 className="truncate text-base font-semibold text-foreground">
-                        {selectedPlugin.displayName}
-                      </h2>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {selectedPlugin.description ?? selectedPlugin.name}
-                      </p>
-                    </div>
-                  </div>
-                  {selectedBuiltinId === "browser_use" ? (
-                    <BrowserPluginDetails state={browserState} refresh={refreshBrowser} />
-                  ) : selectedBuiltinId === "browser_use_external" ? (
-                    browserExternalPlugin.installed ? (
-                      <BrowserExternalPluginDetails
-                        state={browserExternalState}
-                        refresh={refreshBrowserExternal}
-                        onRestartSetup={() => browserExternalPlugin.setInstalled(false)}
-                      />
-                    ) : (
-                      <BrowserExternalInstallDetails
-                        onInstall={() => browserExternalPlugin.setInstalled(true)}
-                      />
-                    )
-                  ) : selectedBuiltinId === "computer_use" ? (
-                    <ComputerPluginDetails
-                      state={computerState}
-                      refresh={refreshComputer}
-                      onTogglePaused={toggleComputerPaused}
-                      onAllowForeground={allowForegroundApp}
-                      onRemovePermission={removePermission}
-                      onClearPermissions={clearPermissions}
-                      busyAction={busyAction}
-                    />
-                  ) : (
-                    <CodexPluginDetails
-                      plugin={selectedPlugin}
-                      detail={selectedDetail}
-                      loading={detailQuery.isFetching}
-                      installing={installMutation.isPending}
-                      uninstalling={uninstallMutation.isPending}
-                      onInstall={() => installMutation.mutate(selectedPlugin)}
-                      onUninstall={() => uninstallMutation.mutate(selectedPlugin)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </aside>
         </div>
       </ScrollArea>
+      <PluginDetailsDialog
+        open={detailDialogOpen}
+        plugin={selectedPlugin}
+        builtin={selectedBuiltin}
+        builtinId={selectedBuiltinId}
+        detail={selectedDetail}
+        detailLoading={detailQuery.isFetching}
+        browserState={browserState}
+        browserExternalState={browserExternalState}
+        browserExternalInstalled={browserExternalPlugin.installed}
+        computerState={computerState}
+        busyAction={busyAction}
+        installing={installMutation.isPending}
+        uninstalling={uninstallMutation.isPending}
+        onOpenChange={setDetailDialogOpen}
+        onRefreshBrowser={refreshBrowser}
+        onRefreshBrowserExternal={refreshBrowserExternal}
+        onRestartBrowserExternalSetup={() => browserExternalPlugin.setInstalled(false)}
+        onInstallBrowserExternal={() => browserExternalPlugin.setInstalled(true)}
+        onRefreshComputer={refreshComputer}
+        onToggleComputerPaused={toggleComputerPaused}
+        onAllowForegroundApp={allowForegroundApp}
+        onRemovePermission={removePermission}
+        onClearPermissions={clearPermissions}
+        onInstall={() => {
+          if (selectedPlugin) installMutation.mutate(selectedPlugin);
+        }}
+        onUninstall={() => {
+          if (selectedPlugin) uninstallMutation.mutate(selectedPlugin);
+        }}
+      />
     </div>
   );
 }

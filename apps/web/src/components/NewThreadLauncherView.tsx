@@ -1,11 +1,15 @@
+import type { PluginSummary } from "@t3tools/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRightIcon,
   BotIcon,
   CalendarDaysIcon,
+  CheckIcon,
   ChevronDownIcon,
   ClipboardListIcon,
+  DownloadIcon,
   FileBarChartIcon,
   FileTextIcon,
   Grid3X3Icon,
@@ -15,6 +19,7 @@ import {
   LaptopIcon,
   LayoutTemplateIcon,
   LightbulbIcon,
+  Loader2Icon,
   LineChartIcon,
   MonitorIcon,
   PlusIcon,
@@ -29,6 +34,17 @@ import {
 } from "lucide-react";
 
 import { cn } from "~/lib/utils";
+import { getPrimaryEnvironmentConnection } from "~/environments/runtime";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "~/components/ui/dialog";
 
 export type LauncherModeId =
   | "general"
@@ -51,7 +67,10 @@ type StarterCard = {
   desc?: string;
   image?: string;
   icon?: LucideIcon;
-  prompt?: string;
+};
+
+type SlidePromptCard = StarterCard & {
+  prompt: string;
 };
 
 const LAUNCHER_MODES: Array<{ id: LauncherModeId; label: string; icon: LucideIcon }> = [
@@ -172,72 +191,69 @@ const SCHEDULE_PROMPTS: StarterCard[] = [
   { title: "生成每周就业市场报告", icon: LineChartIcon },
 ];
 
-const PPT_MASTER_WORKFLOW_PREFIX =
-  "使用 T3 Code 内置 PPT Master 工作流，优先通过 T3CODE_SERVER_RESOURCES_PATH 定位内置 PPTX 生成器：";
-
-const SLIDE_TEMPLATES: StarterCard[] = [
-  {
-    title: "投资人路演",
-    desc: "问题、方案、市场规模、商业模式、路线图和融资计划。",
-    icon: LineChartIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}为一个新产品设计一份 10 页投资人路演 PPT，包含问题、解决方案、市场机会、商业模式、竞争优势、路线图和融资计划。请生成可编辑 .pptx。`,
-  },
-  {
-    title: "经营复盘",
-    desc: "关键指标、进展、风险、决策点和下一步行动。",
-    icon: FileBarChartIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}创建一份 8 页季度经营复盘演示文稿，结构包含目标回顾、核心指标、关键进展、风险阻塞、决策点和下一步行动。请生成可编辑 .pptx。`,
-  },
-  {
-    title: "产品发布",
-    desc: "用户痛点、核心能力、发布节奏、传播计划和 FAQ。",
-    icon: SparklesIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}制作一份产品发布会 PPT，面向销售和市场团队，包含用户痛点、核心能力、演示流程、发布节奏、传播计划和 FAQ。请生成可编辑 .pptx。`,
-  },
-  {
-    title: "培训课件",
-    desc: "学习目标、概念拆解、案例练习、测验和课后任务。",
-    icon: ClipboardListIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}设计一套 12 页培训课件，包含学习目标、概念拆解、案例练习、课堂测验和课后任务。请生成可编辑 .pptx。`,
-  },
-  {
-    title: "研究报告",
-    desc: "研究问题、方法、发现、洞察、建议和附录。",
-    icon: SearchIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}把一个研究主题整理成 10 页报告型 PPT，包含研究问题、方法、主要发现、洞察、建议和附录说明。请生成可编辑 .pptx。`,
-  },
-  {
-    title: "项目提案",
-    desc: "背景、目标、范围、里程碑、资源、风险和验收标准。",
-    icon: LayoutTemplateIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}生成一份项目提案 PPT，包含背景、目标、范围、里程碑、资源投入、风险应对和验收标准。请生成可编辑 .pptx。`,
-  },
-];
-
-const SLIDE_PROMPTS: StarterCard[] = [
+const SLIDE_PROMPTS: SlidePromptCard[] = [
   {
     title: "从主题生成完整 PPTX",
     desc: "输入主题后自动补齐结构、页面内容和讲稿备注。",
     icon: PresentationIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}根据我的主题制作一份 8-10 页可编辑 PowerPoint。请先给出结构化大纲，再生成 presentation.spec.json，并调用 T3 Code 内置 PPTX 生成器导出 .pptx。主题：`,
+    prompt: "$ppt-master 请根据我的主题制作一份 8-10 页可编辑 PowerPoint。请先给出结构化大纲，再生成 PPTX。主题：",
   },
   {
     title: "把文档改成汇报材料",
     desc: "适合把 PRD、调研、会议纪要整理成管理层汇报。",
     icon: FileTextIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}请把我提供的文档或要点整理成一份面向管理层的可编辑 PPTX，压缩文字、补充页标题结论，并生成讲稿备注。`,
+    prompt: "$ppt-master 请把我提供的文档或要点整理成一份面向管理层的可编辑 PPTX，压缩文字、补充页标题结论，并生成讲稿备注。",
   },
   {
     title: "复用现有品牌模板",
     desc: "上传 PPTX、Logo 或品牌规范后，按原风格重做内容。",
     icon: ImportIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}我会提供现有 PPTX 或品牌素材，请分析版式、颜色和内容结构，并生成一份同风格的可编辑演示文稿。`,
+    prompt: "$ppt-master 我会提供现有 PPTX 或品牌素材，请分析版式、颜色和内容结构，并生成一份同风格的可编辑演示文稿。",
   },
   {
     title: "生成数据型汇报",
     desc: "适合周报、经营指标、实验结果和趋势分析。",
     icon: FileBarChartIcon,
-    prompt: `${PPT_MASTER_WORKFLOW_PREFIX}制作一份数据型汇报 PPTX，请包含指标定义、趋势解读、关键发现、风险和下一步行动。数据或背景：`,
+    prompt: "$ppt-master 请制作一份数据型汇报 PPTX，包含指标定义、趋势解读、关键发现、风险和下一步行动。数据或背景：",
+  },
+];
+
+const SLIDE_TEMPLATES: SlidePromptCard[] = [
+  {
+    title: "投资人路演",
+    desc: "问题、方案、市场规模、商业模式、路线图和融资计划。",
+    icon: LineChartIcon,
+    prompt: "$ppt-master 请为一个新产品设计一份 10 页投资人路演 PPTX，包含问题、解决方案、市场机会、商业模式、竞争优势、路线图和融资计划。",
+  },
+  {
+    title: "经营复盘",
+    desc: "关键指标、进展、风险、决策点和下一步行动。",
+    icon: FileBarChartIcon,
+    prompt: "$ppt-master 请创建一份 8 页季度经营复盘演示文稿，结构包含目标回顾、核心指标、关键进展、风险阻塞、决策点和下一步行动。",
+  },
+  {
+    title: "产品发布",
+    desc: "用户痛点、核心能力、发布节奏、传播计划和 FAQ。",
+    icon: SparklesIcon,
+    prompt: "$ppt-master 请制作一份产品发布会 PPTX，面向销售和市场团队，包含用户痛点、核心能力、演示流程、发布节奏、传播计划和 FAQ。",
+  },
+  {
+    title: "培训课件",
+    desc: "学习目标、概念拆解、案例练习、测验和课后任务。",
+    icon: ClipboardListIcon,
+    prompt: "$ppt-master 请设计一套 12 页培训课件，包含学习目标、概念拆解、案例练习、课堂测验和课后任务，并生成可编辑 PPTX。",
+  },
+  {
+    title: "研究报告",
+    desc: "研究问题、方法、发现、洞察、建议和附录。",
+    icon: SearchIcon,
+    prompt: "$ppt-master 请把一个研究主题整理成 10 页报告型 PPTX，包含研究问题、方法、主要发现、洞察、建议和附录说明。",
+  },
+  {
+    title: "项目提案",
+    desc: "背景、目标、范围、里程碑、资源、风险和验收标准。",
+    icon: LayoutTemplateIcon,
+    prompt: "$ppt-master 请生成一份项目提案 PPTX，包含背景、目标、范围、里程碑、资源投入、风险应对和验收标准。",
   },
 ];
 
@@ -287,6 +303,61 @@ const IDLE_SUGGESTION_POOL = [
   "把学习目标拆成一周行动计划。",
   "生成一份面向管理层的简报提纲。",
 ];
+
+const PLUGINS_LIST_QUERY = ["plugins", "list"] as const;
+
+function getPluginsClient() {
+  return getPrimaryEnvironmentConnection().client.plugins;
+}
+
+function findPptMasterPlugin(plugins: ReadonlyArray<PluginSummary>): PluginSummary | null {
+  return (
+    plugins.find(
+      (plugin) =>
+        plugin.name === "ppt-master" ||
+        plugin.location.pluginName === "ppt-master" ||
+        plugin.id.includes("ppt-master"),
+    ) ?? null
+  );
+}
+
+function usePptMasterPlugin() {
+  const queryClient = useQueryClient();
+  const pluginsQuery = useQuery({
+    queryKey: PLUGINS_LIST_QUERY,
+    queryFn: () => getPluginsClient().list(),
+    staleTime: 30_000,
+  });
+  const plugin = useMemo(
+    () =>
+      findPptMasterPlugin(
+        pluginsQuery.data?.marketplaces.flatMap((marketplace) => marketplace.plugins) ?? [],
+      ),
+    [pluginsQuery.data],
+  );
+  const installMutation = useMutation({
+    mutationFn: (target: PluginSummary) =>
+      getPluginsClient().install({
+        pluginName: target.location.pluginName,
+        marketplacePath: target.location.marketplacePath ?? null,
+        remoteMarketplaceName: target.location.remoteMarketplaceName ?? null,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PLUGINS_LIST_QUERY });
+    },
+  });
+  return {
+    plugin,
+    loading: pluginsQuery.isLoading || pluginsQuery.isFetching,
+    error: pluginsQuery.error,
+    installError: installMutation.error,
+    installing: installMutation.isPending,
+    install: async () => {
+      if (!plugin) return;
+      await installMutation.mutateAsync(plugin);
+    },
+  };
+}
 
 export function getLauncherModeLabel(mode: LauncherModeId) {
   return MODE_LABELS[mode] || MODE_LABELS.general;
@@ -631,109 +702,7 @@ function ModeRecommendations({
   }
 
   if (mode === "slides") {
-    return (
-      <section className="mx-auto w-full max-w-[744px]">
-        <SectionTitle>工作流入口</SectionTitle>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {SLIDE_PROMPTS.map((prompt, index) => {
-            const Icon = prompt.icon ?? PresentationIcon;
-            return (
-              <button
-                key={prompt.title}
-                type="button"
-                onClick={() => onSubmitPreset(prompt.prompt ?? prompt.title, "slides")}
-                className="flex min-h-[118px] animate-in flex-col justify-between rounded-[10px] border border-border bg-background p-3 text-left text-[13px] leading-5 text-foreground fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
-                style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
-              >
-                <span className="flex items-center gap-2 font-medium">
-                  <Icon className="h-4 w-4 text-[#147DFF]" />
-                  {prompt.title}
-                </span>
-                {prompt.desc ? (
-                  <span className="mt-2 text-[12px] leading-5 text-muted-foreground">
-                    {prompt.desc}
-                  </span>
-                ) : null}
-                <ArrowUpRightIcon className="ml-auto mt-2 h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-8 flex items-center justify-between">
-          <SectionTitle className="mb-0">演示模板</SectionTitle>
-          <button
-            type="button"
-            onClick={() =>
-              onSubmitPreset(
-                `${PPT_MASTER_WORKFLOW_PREFIX}请生成一份 8-12 页的可编辑 PPTX。先询问我主题、受众和素材；如果我已经提供内容，则直接整理大纲并导出。`,
-                "slides",
-              )
-            }
-            className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-border px-3 text-[13px] text-muted-foreground"
-          >
-            <LayoutTemplateIcon className="h-4 w-4" />8 - 12
-            <ChevronDownIcon className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
-          <button
-            type="button"
-            onClick={() =>
-              onSubmitPreset(
-                `${PPT_MASTER_WORKFLOW_PREFIX}我想导入现有 PPTX、品牌规范或素材作为模板。请先告诉我需要上传哪些文件，然后按模板风格生成新的可编辑演示文稿。`,
-                "slides",
-              )
-            }
-            className="flex aspect-[16/9] items-center justify-center rounded-[10px] border border-border bg-background text-[13px] text-muted-foreground transition-colors hover:bg-accent"
-          >
-            <ImportIcon className="mr-2 h-4 w-4" />
-            导入模板
-          </button>
-          {SLIDE_TEMPLATES.map((template, index) => (
-            <button
-              key={template.title}
-              type="button"
-              onClick={() =>
-                onSubmitPreset(
-                  template.prompt ??
-                    `${PPT_MASTER_WORKFLOW_PREFIX}使用“${template.title}”结构制作一份可编辑演示文稿。`,
-                  "slides",
-                )
-              }
-              className="group animate-in text-left fade-in slide-in-from-bottom-2 duration-300"
-              style={{ animationDelay: `${(index + 1) * 55}ms`, animationFillMode: "both" }}
-            >
-              <span className="flex aspect-[16/9] flex-col justify-between overflow-hidden rounded-[10px] border border-border bg-background p-3 transition-colors group-hover:bg-accent">
-                {template.image ? (
-                  <img
-                    src={template.image}
-                    alt={template.title}
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                  />
-                ) : (
-                  <>
-                    {template.icon ? (
-                      <template.icon className="h-5 w-5 text-[#147DFF]" />
-                    ) : (
-                      <PresentationIcon className="h-5 w-5 text-[#147DFF]" />
-                    )}
-                    {template.desc ? (
-                      <span className="line-clamp-3 text-[11px] leading-4 text-muted-foreground">
-                        {template.desc}
-                      </span>
-                    ) : null}
-                  </>
-                )}
-              </span>
-              <span className="mt-2 block text-center text-[13px] text-foreground">
-                {template.title} <span className="text-muted-foreground">· PPTX</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
+    return <SlidesRecommendations onSubmitPreset={onSubmitPreset} />;
   }
 
   if (mode === "schedule") {
@@ -793,6 +762,206 @@ function ModeRecommendations({
         })}
       </div>
     </section>
+  );
+}
+
+function SlidesRecommendations({
+  onSubmitPreset,
+}: {
+  onSubmitPreset: (prompt: string, mode?: LauncherModeId) => void;
+}) {
+  const pptMaster = usePptMasterPlugin();
+  const installed = pptMaster.plugin?.installed === true;
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  const [installDialogError, setInstallDialogError] = useState<string | null>(null);
+
+  const submitSlidePrompt = (prompt: string) => {
+    if (installed) {
+      onSubmitPreset(prompt, "slides");
+      return;
+    }
+    setPendingPrompt(prompt);
+    setInstallDialogError(null);
+    setInstallDialogOpen(true);
+  };
+
+  const installAndContinue = async () => {
+    if (!pptMaster.plugin || !pendingPrompt) return;
+    setInstallDialogError(null);
+    try {
+      await pptMaster.install();
+      setInstallDialogOpen(false);
+      onSubmitPreset(pendingPrompt, "slides");
+      setPendingPrompt(null);
+    } catch (error) {
+      setInstallDialogError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  return (
+    <>
+      <section className="mx-auto w-full max-w-[744px]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <SectionTitle className="mb-0">工作流入口</SectionTitle>
+          <SlidePluginStatus installed={installed} loading={pptMaster.loading} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {SLIDE_PROMPTS.map((prompt, index) => {
+            const Icon = prompt.icon ?? PresentationIcon;
+            return (
+              <button
+                key={prompt.title}
+                type="button"
+                onClick={() => submitSlidePrompt(prompt.prompt)}
+                className="flex min-h-[118px] animate-in flex-col justify-between rounded-[10px] border border-border bg-background p-3 text-left text-[13px] leading-5 text-foreground fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
+                style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Icon className="h-4 w-4 text-[#147DFF]" />
+                  {prompt.title}
+                </span>
+                {prompt.desc ? (
+                  <span className="mt-2 text-[12px] leading-5 text-muted-foreground">
+                    {prompt.desc}
+                  </span>
+                ) : null}
+                <ArrowUpRightIcon className="ml-auto mt-2 h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-8 flex items-center justify-between">
+          <SectionTitle className="mb-0">演示模板</SectionTitle>
+          <button
+            type="button"
+            onClick={() =>
+              submitSlidePrompt(
+                "$ppt-master 请生成一份 8-12 页的可编辑 PPTX。先询问我主题、受众和素材；如果我已经提供内容，则直接整理大纲并导出。",
+              )
+            }
+            className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-border px-3 text-[13px] text-muted-foreground"
+          >
+            <LayoutTemplateIcon className="h-4 w-4" />8 - 12
+            <ChevronDownIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+          <button
+            type="button"
+            onClick={() =>
+              submitSlidePrompt(
+                "$ppt-master 我想导入现有 PPTX、品牌规范或素材作为模板。请先告诉我需要上传哪些文件，然后按模板风格生成新的可编辑演示文稿。",
+              )
+            }
+            className="flex aspect-[16/9] items-center justify-center rounded-[10px] border border-border bg-background text-[13px] text-muted-foreground transition-colors hover:bg-accent"
+          >
+            <ImportIcon className="mr-2 h-4 w-4" />
+            导入模板
+          </button>
+          {SLIDE_TEMPLATES.map((template, index) => {
+            const TemplateIcon = template.icon ?? PresentationIcon;
+            return (
+              <button
+                key={template.title}
+                type="button"
+                onClick={() => submitSlidePrompt(template.prompt)}
+                className="group animate-in overflow-hidden text-left fade-in slide-in-from-bottom-2"
+                style={{ animationDelay: `${(index + 1) * 55}ms`, animationFillMode: "both" }}
+              >
+                <span className="flex aspect-[16/9] items-center justify-center rounded-[10px] border border-border bg-background text-muted-foreground transition-colors group-hover:bg-accent">
+                  <TemplateIcon className="h-5 w-5 text-[#147DFF]" />
+                </span>
+                <span className="mt-2 block text-[13px] font-medium text-foreground">
+                  {template.title}
+                </span>
+                {template.desc ? (
+                  <span className="mt-0.5 line-clamp-2 block text-[12px] leading-5 text-muted-foreground">
+                    {template.desc}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <Dialog open={installDialogOpen} onOpenChange={setInstallDialogOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>安装 PPT Master 插件</DialogTitle>
+            <DialogDescription>
+              制作幻灯片需要安装 T3 Code 内置插件 PPT Master。安装后即可用 $ppt-master
+              生成可编辑 PowerPoint 文件。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="rounded-[10px] border border-border bg-muted/30 px-4 py-3 text-[13px] leading-5 text-muted-foreground">
+              {pptMaster.plugin
+                ? "安装完成后会自动继续你刚才选择的幻灯片任务。"
+                : pptMaster.loading
+                  ? "正在检查内置插件，请稍候。"
+                  : "当前未发现 PPT Master 插件，请确认内置扩展资源已正确打包。"}
+              {pptMaster.error || pptMaster.installError || installDialogError ? (
+                <span className="mt-2 block text-destructive">
+                  {installDialogError ??
+                    (pptMaster.installError instanceof Error
+                      ? pptMaster.installError.message
+                      : pptMaster.error instanceof Error
+                        ? pptMaster.error.message
+                        : String(pptMaster.installError ?? pptMaster.error))}
+                </span>
+              ) : null}
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={pptMaster.installing}
+              onClick={() => setInstallDialogOpen(false)}
+            >
+              稍后
+            </Button>
+            <Button
+              type="button"
+              disabled={!pptMaster.plugin || pptMaster.installing}
+              onClick={() => void installAndContinue()}
+            >
+              {pptMaster.installing ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <DownloadIcon className="size-4" />
+              )}
+              {pptMaster.installing ? "安装中" : "安装并继续"}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </>
+  );
+}
+
+function SlidePluginStatus({
+  installed,
+  loading,
+}: {
+  installed: boolean;
+  loading: boolean;
+}) {
+  if (installed) {
+    return (
+      <span className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 px-3 text-[13px] text-emerald-700 dark:text-emerald-300">
+        <CheckIcon className="h-3.5 w-3.5" />
+        已启用
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex h-8 items-center rounded-[8px] border border-border px-3 text-[13px] text-muted-foreground">
+      {loading ? "正在检查" : "首次使用需安装"}
+    </span>
   );
 }
 

@@ -34,6 +34,10 @@ import {
 } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
+import {
+  BUNDLED_SKILL_SOURCE_ID,
+  resolveBundledExtensionsRoot,
+} from "../extensions/BundledExtensions.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import { resolveBundledEngineConfig } from "../provider/BundledEngineConfig.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
@@ -158,8 +162,13 @@ const pickFallbackIconPaths = (
 
 const catalogEntryToItem = (entry: CatalogSkillEntry): SkillCatalogItem => {
   const source = findSkillSource(entry.sourceId);
-  const sourceRepoUrl = source ? repoHttpsUrl(source) : `https://github.com/${entry.sourceId}`;
-  const sourceRef = source?.ref ?? "main";
+  const sourceRepoUrl =
+    entry.sourceId === BUNDLED_SKILL_SOURCE_ID
+      ? "t3code://bundled/extensions"
+      : source
+        ? repoHttpsUrl(source)
+        : `https://github.com/${entry.sourceId}`;
+  const sourceRef = entry.sourceId === BUNDLED_SKILL_SOURCE_ID ? "bundled" : (source?.ref ?? "main");
   return {
     id: entry.id,
     name: entry.name,
@@ -213,6 +222,11 @@ const make = Effect.fn("makeSkillsService")(function* () {
   const providerRegistry = yield* ProviderRegistry;
   const config = yield* ServerConfig;
   const settings = yield* ServerSettingsService;
+  const resolveBundledRoot = () =>
+    resolveBundledExtensionsRoot().pipe(
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+    );
 
   const refreshCodexProvidersInBackground = (reason: "install" | "uninstall", skillName: string) =>
     Effect.gen(function* () {
@@ -378,7 +392,8 @@ const make = Effect.fn("makeSkillsService")(function* () {
         );
       }
       const source = findSkillSource(item.sourceId);
-      if (!source) {
+      const isBundledSkill = item.sourceId === BUNDLED_SKILL_SOURCE_ID;
+      if (!source && !isBundledSkill) {
         return yield* Effect.fail(
           new SkillsServiceError({
             detail: `Unknown source: ${item.sourceId}`,
@@ -390,7 +405,21 @@ const make = Effect.fn("makeSkillsService")(function* () {
       const storage = yield* resolveStorageContext().pipe(
         Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
       );
-      const sourceDir = path.join(config.baseDir, "vendor_imports", source.id, item.repoPath);
+      const sourceDir = isBundledSkill
+        ? yield* resolveBundledRoot().pipe(
+            Effect.flatMap((bundledRoot) =>
+              bundledRoot
+                ? Effect.succeed(path.join(bundledRoot, item.repoPath))
+                : Effect.fail(
+                    new SkillsServiceError({
+                      detail: "Bundled extensions directory was not found.",
+                      kind: "notFound",
+                    }),
+                  ),
+            ),
+            Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
+          )
+        : path.join(config.baseDir, "vendor_imports", source!.id, item.repoPath);
       const targetDir = path.join(storage.skillsRoot, item.name);
 
       if (!isPathInside(storage.skillsRoot, targetDir)) {

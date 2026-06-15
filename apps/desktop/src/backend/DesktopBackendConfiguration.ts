@@ -52,7 +52,7 @@ const DESKTOP_BACKEND_ENV_NAMES = [
   "T3CODE_PORT",
   "T3CODE_MODE",
   "T3CODE_NO_BROWSER",
-  "T3CODE_SERVER_RESOURCES_PATH",
+  "T3CODE_BUNDLED_EXTENSIONS_PATH",
   "T3CODE_HOST",
   "T3CODE_DESKTOP_WS_URL",
   "T3CODE_DESKTOP_LAN_ACCESS",
@@ -116,6 +116,184 @@ const ENGINE_HELPER_ALIASES = [
     aliases: ["codex-windows-sandbox-setup.exe"],
   },
 ] as const;
+
+const EXTENSION_STATE_TOML_ROOTS = new Set(["apps", "marketplaces", "plugins"]);
+
+function tomlHeaderRoot(line: string): string | undefined {
+  const trimmed = line.trim();
+  const arrayTable = trimmed.match(/^\[\[\s*(.+?)\s*\]\]$/);
+  const table = trimmed.match(/^\[\s*(.+?)\s*\]$/);
+  const path = arrayTable?.[1] ?? table?.[1];
+  if (!path) {
+    return undefined;
+  }
+
+  const normalized = path.trimStart();
+  if (normalized.startsWith('"')) {
+    let escaped = false;
+    let value = "";
+    for (let index = 1; index < normalized.length; index += 1) {
+      const char = normalized[index];
+      if (escaped) {
+        value += char;
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        return value;
+      }
+      value += char;
+    }
+    return undefined;
+  }
+
+  const separator = normalized.search(/[.\s]/);
+  return separator === -1 ? normalized : normalized.slice(0, separator);
+}
+
+function extractExtensionStateTomlSections(existingConfig: string): string {
+  const lines = existingConfig.replace(/\r\n/g, "\n").split("\n");
+  const sections: string[] = [];
+  let current: string[] = [];
+  let preserving = false;
+
+  for (const line of lines) {
+    const root = tomlHeaderRoot(line);
+    if (root !== undefined) {
+      if (preserving && current.length > 0) {
+        sections.push(current.join("\n").trimEnd());
+      }
+      preserving = EXTENSION_STATE_TOML_ROOTS.has(root);
+      current = preserving ? [line] : [];
+      continue;
+    }
+
+    if (preserving) {
+      current.push(line);
+    }
+  }
+
+  if (preserving && current.length > 0) {
+    sections.push(current.join("\n").trimEnd());
+  }
+
+  return sections.filter((section) => section.trim().length > 0).join("\n\n");
+}
+
+function unescapeTomlBasicString(value: string): string {
+  return value.replace(/\\(["\\])/g, "$1");
+}
+
+function tomlBasicString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function pluginIdFromTomlHeader(line: string): string | undefined {
+  const trimmed = line.trim();
+  const quoted = trimmed.match(/^\[\s*plugins\."((?:\\.|[^"\\])+)"/);
+  if (quoted?.[1]) {
+    return unescapeTomlBasicString(quoted[1]);
+  }
+  const bare = trimmed.match(/^\[\s*plugins\.([^\].\s]+)/);
+  return bare?.[1];
+}
+
+function configuredPluginIds(existingConfig: string | undefined): Set<string> {
+  const ids = new Set<string>();
+  if (!existingConfig) {
+    return ids;
+  }
+  for (const line of existingConfig.replace(/\r\n/g, "\n").split("\n")) {
+    const id = pluginIdFromTomlHeader(line);
+    if (id) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+function recoveredPluginTomlSections(input: {
+  readonly existingConfig?: string | undefined;
+  readonly cachedPluginIds: ReadonlyArray<string>;
+}): string {
+  const existingIds = configuredPluginIds(input.existingConfig);
+  return [...new Set(input.cachedPluginIds)]
+    .filter((pluginId) => pluginId.trim().length > 0 && !existingIds.has(pluginId))
+    .sort((left, right) => left.localeCompare(right))
+    .map((pluginId) => `[plugins.${tomlBasicString(pluginId)}]\nenabled = true`)
+    .join("\n\n");
+}
+
+export function mergeManagedEngineConfigWithPersistedExtensionState(input: {
+  readonly managedConfig: string;
+  readonly existingConfig?: string | undefined;
+  readonly cachedPluginIds?: ReadonlyArray<string> | undefined;
+}): string {
+  const preserved = input.existingConfig
+    ? extractExtensionStateTomlSections(input.existingConfig)
+    : "";
+  const recovered = recoveredPluginTomlSections({
+    existingConfig: input.existingConfig,
+    cachedPluginIds: input.cachedPluginIds ?? [],
+  });
+  const managed = input.managedConfig.trim();
+  const userState = [preserved, recovered].filter((section) => section.length > 0).join("\n\n");
+  return userState.length > 0 ? `${managed}\n\n${userState}` : managed;
+}
+
+const discoverCachedPluginIds = Effect.fn("desktop.backendConfiguration.discoverCachedPluginIds")(
+  function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const cacheRoot = environment.path.join(environment.engineHomePath, "plugins", "cache");
+    const marketplaceNames = yield* fileSystem
+      .readDirectory(cacheRoot)
+      .pipe(Effect.orElseSucceed(() => []));
+    const pluginIds: string[] = [];
+
+    for (const marketplaceName of marketplaceNames) {
+      if (marketplaceName.startsWith(".")) {
+        continue;
+      }
+      const marketplacePath = environment.path.join(cacheRoot, marketplaceName);
+      const marketplaceStat = yield* fileSystem
+        .stat(marketplacePath)
+        .pipe(Effect.orElseSucceed(() => null));
+      if (!marketplaceStat || marketplaceStat.type !== "Directory") {
+        continue;
+      }
+
+      const pluginNames = yield* fileSystem
+        .readDirectory(marketplacePath)
+        .pipe(Effect.orElseSucceed(() => []));
+      for (const pluginName of pluginNames) {
+        if (pluginName.startsWith(".")) {
+          continue;
+        }
+        const pluginPath = environment.path.join(marketplacePath, pluginName);
+        const pluginStat = yield* fileSystem
+          .stat(pluginPath)
+          .pipe(Effect.orElseSucceed(() => null));
+        if (!pluginStat || pluginStat.type !== "Directory") {
+          continue;
+        }
+        const versions = yield* fileSystem
+          .readDirectory(pluginPath)
+          .pipe(Effect.orElseSucceed(() => []));
+        if (versions.length === 0) {
+          continue;
+        }
+        pluginIds.push(`${pluginName}@${marketplaceName}`);
+      }
+    }
+
+    return pluginIds;
+  },
+);
 
 const ensureEngineHelperAliases = Effect.fn("desktop.backendConfiguration.ensureHelperAliases")(
   function* (engineBinaryPath: string) {
@@ -247,12 +425,7 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         MYIDE_ENGINE_PROTOCOL_VERSION: SUPPORTED_ENGINE_PROTOCOL_VERSION,
         MYIDE_ENGINE_BUILD: input.engineBuild,
         [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: input.windowsSandboxMode,
-        T3CODE_SERVER_RESOURCES_PATH: environment.path.join(
-          environment.appRoot,
-          "apps",
-          "server",
-          "resources",
-        ),
+        T3CODE_BUNDLED_EXTENSIONS_PATH: environment.bundledExtensionsPath,
         T3CODE_TELEMETRY_ENABLED: input.telemetryEnabled ? "true" : "false",
         T3CODE_BROWSER_USE_ENDPOINT: input.browserUseEndpoint,
         T3CODE_BROWSER_USE_TOKEN: input.browserUseToken,
@@ -335,12 +508,42 @@ export const layer = Layer.effect(
           }),
         });
         const windowsSandboxMode = yield* windowsSandbox.resolveMode;
-        const tomlConfig = generateCommercialEngineTomlConfig({
+        const managedTomlConfig = generateCommercialEngineTomlConfig({
           ...commercialConfigEnv,
           [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: windowsSandboxMode,
         });
         const configPath =
           environment.engineHomePath + (process.platform === "win32" ? "\\" : "/") + "config.toml";
+        const configExists = yield* fileSystem
+          .exists(configPath)
+          .pipe(
+            Effect.catch((error) =>
+              logBackendConfigurationWarning(
+                `Failed to inspect existing engine config.toml: ${error.message ?? error}`,
+              ).pipe(Effect.as(false)),
+            ),
+          );
+        let existingConfig: string | undefined;
+        if (configExists) {
+          existingConfig = yield* fileSystem
+            .readFileString(configPath)
+            .pipe(
+              Effect.catch((error) =>
+                logBackendConfigurationWarning(
+                  `Failed to read existing engine config.toml: ${error.message ?? error}`,
+                ).pipe(Effect.as(undefined)),
+              ),
+            );
+        }
+        const cachedPluginIds = yield* discoverCachedPluginIds().pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
+        );
+        const tomlConfig = mergeManagedEngineConfigWithPersistedExtensionState({
+          managedConfig: managedTomlConfig,
+          existingConfig,
+          cachedPluginIds,
+        });
         yield* fileSystem
           .writeFileString(configPath, tomlConfig)
           .pipe(

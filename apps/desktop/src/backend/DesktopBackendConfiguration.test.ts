@@ -275,6 +275,65 @@ const withProcessEnv = <A, E, R>(
   );
 
 describe("DesktopBackendConfiguration", () => {
+  it("生成托管引擎配置时保留已有插件和 marketplace 状态", () => {
+    const merged = DesktopBackendConfiguration.mergeManagedEngineConfigWithPersistedExtensionState({
+      managedConfig: [
+        'model_provider = "myservice"',
+        "",
+        "[features]",
+        "plugins = true",
+        "apps = true",
+      ].join("\n"),
+      existingConfig: [
+        'model_provider = "old"',
+        "",
+        '[plugins."ppt-master@t3-bundled-plugins"]',
+        "enabled = true",
+        "",
+        '[plugins."ppt-master@t3-bundled-plugins".mcp_servers.exporter]',
+        "enabled = false",
+        "",
+        "[marketplaces.debug]",
+        'source_type = "local"',
+        'path = "/tmp/plugins"',
+        "",
+        "[apps.preview]",
+        "enabled = true",
+        "",
+        "[features]",
+        "plugins = false",
+      ].join("\n"),
+      cachedPluginIds: ["ppt-master@t3-bundled-plugins", "calendar@debug"],
+    });
+
+    assert.match(merged, /model_provider = "myservice"/);
+    assert.match(merged, /\[features\]\s+plugins = true\s+apps = true/);
+    assert.match(merged, /\[plugins\."ppt-master@t3-bundled-plugins"\]\s+enabled = true/);
+    assert.match(
+      merged,
+      /\[plugins\."ppt-master@t3-bundled-plugins"\.mcp_servers\.exporter\]\s+enabled = false/,
+    );
+    assert.match(merged, /\[plugins\."calendar@debug"\]\s+enabled = true/);
+    assert.match(
+      merged,
+      /\[marketplaces\.debug\]\s+source_type = "local"\s+path = "\/tmp\/plugins"/,
+    );
+    assert.match(merged, /\[apps\.preview\]\s+enabled = true/);
+    assert.doesNotMatch(merged, /model_provider = "old"/);
+    assert.doesNotMatch(merged, /plugins = false/);
+  });
+
+  it("缓存恢复不会覆盖已有 disabled 插件状态", () => {
+    const merged = DesktopBackendConfiguration.mergeManagedEngineConfigWithPersistedExtensionState({
+      managedConfig: "[features]\nplugins = true",
+      existingConfig: ['[plugins."ppt-master@t3-bundled-plugins"]', "enabled = false"].join("\n"),
+      cachedPluginIds: ["ppt-master@t3-bundled-plugins"],
+    });
+
+    assert.match(merged, /\[plugins\."ppt-master@t3-bundled-plugins"\]\s+enabled = false/);
+    assert.doesNotMatch(merged, /enabled = true/);
+  });
+
   it.effect("resolves backend start config with a stable scoped bootstrap token", () =>
     withHarness(
       Effect.gen(function* () {
@@ -295,6 +354,7 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.env.T3CODE_BROWSER_USE_EXTERNAL_TOKEN, "browser-external-token");
         assert.equal(first.env.T3CODE_COMPUTER_USE_ENDPOINT, "http://127.0.0.1:49877");
         assert.equal(first.env.T3CODE_COMPUTER_USE_TOKEN, "computer-token");
+        assert.equal(first.env.T3CODE_BUNDLED_EXTENSIONS_PATH, environment.bundledExtensionsPath);
         assert.equal(first.env.T3CODE_PORT, undefined);
         assert.equal(first.env.T3CODE_MODE, undefined);
         assert.equal(first.env.T3CODE_DESKTOP_LAN_HOST, undefined);
@@ -453,6 +513,48 @@ describe("DesktopBackendConfiguration", () => {
           assert.equal(engineConfig.includes("jwt-token"), false);
         }),
       ),
+    ),
+  );
+
+  it.effect("rewrites engine config without dropping installed plugin state", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+        const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
+
+        yield* fileSystem.makeDirectory(environment.engineHomePath, { recursive: true });
+        yield* fileSystem.writeFileString(
+          engineConfigPath,
+          [
+            'model_provider = "old"',
+            "",
+            '[plugins."ppt-master@t3-bundled-plugins"]',
+            "enabled = true",
+          ].join("\n"),
+        );
+        yield* fileSystem.makeDirectory(
+          environment.path.join(
+            environment.engineHomePath,
+            "plugins",
+            "cache",
+            "debug",
+            "calendar",
+            "1.0.0",
+          ),
+          { recursive: true },
+        );
+
+        yield* configuration.resolve;
+
+        const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
+        assert.match(engineConfig, /base_url = "http:\/\/localhost:3000\/v1"/);
+        assert.match(engineConfig, /\[features\]\s+image_generation = true\s+plugins = true/);
+        assert.match(engineConfig, /\[plugins\."ppt-master@t3-bundled-plugins"\]\s+enabled = true/);
+        assert.match(engineConfig, /\[plugins\."calendar@debug"\]\s+enabled = true/);
+        assert.doesNotMatch(engineConfig, /model_provider = "old"/);
+      }),
     ),
   );
 

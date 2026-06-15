@@ -36,6 +36,8 @@ const makeEnvironment = (
     return yield* DesktopEnvironment.DesktopEnvironment;
   }).pipe(Effect.provide(makeEnvironmentLayer(overrides, env)));
 
+const slash = (value: string) => value.replace(/\\/g, "/").replace(/^[A-Z]:/i, "");
+
 describe("DesktopEnvironment", () => {
   it.effect("derives state paths and development identity inside Effect", () =>
     Effect.gen(function* () {
@@ -53,18 +55,22 @@ describe("DesktopEnvironment", () => {
       );
 
       assert.equal(environment.isDevelopment, true);
-      assert.equal(environment.appDataDirectory, "/Users/alice/Library/Application Support");
-      assert.equal(environment.baseDir, "/tmp/t3");
-      assert.equal(environment.stateDir, "/tmp/t3/dev");
-      assert.equal(environment.desktopSettingsPath, "/tmp/t3/dev/desktop-settings.json");
-      assert.equal(environment.clientSettingsPath, "/tmp/t3/dev/client-settings.json");
-      assert.equal(environment.savedEnvironmentRegistryPath, "/tmp/t3/dev/saved-environments.json");
-      assert.equal(environment.serverSettingsPath, "/tmp/t3/dev/settings.json");
-      assert.equal(environment.logDir, "/tmp/t3/dev/logs");
-      assert.equal(environment.rootDir, "/repo");
-      assert.equal(environment.appRoot, "/repo");
-      assert.equal(environment.backendEntryPath, "/repo/apps/server/dist/bin.mjs");
-      assert.equal(environment.backendCwd, "/repo");
+      assert.equal(slash(environment.appDataDirectory), "/Users/alice/Library/Application Support");
+      assert.equal(slash(environment.baseDir), "/tmp/t3");
+      assert.equal(slash(environment.stateDir), "/tmp/t3/dev");
+      assert.equal(slash(environment.desktopSettingsPath), "/tmp/t3/dev/desktop-settings.json");
+      assert.equal(slash(environment.clientSettingsPath), "/tmp/t3/dev/client-settings.json");
+      assert.equal(
+        slash(environment.savedEnvironmentRegistryPath),
+        "/tmp/t3/dev/saved-environments.json",
+      );
+      assert.equal(slash(environment.serverSettingsPath), "/tmp/t3/dev/settings.json");
+      assert.equal(slash(environment.logDir), "/tmp/t3/dev/logs");
+      assert.equal(slash(environment.rootDir), "/repo");
+      assert.equal(slash(environment.appRoot), "/repo");
+      assert.equal(slash(environment.backendEntryPath), "/repo/apps/server/dist/bin.mjs");
+      assert.equal(slash(environment.backendCwd), "/repo");
+      assert.equal(slash(environment.bundledExtensionsPath), "/repo/extensions");
       assert.equal(environment.appUserModelId, "com.t3tools.t3code.dev");
       assert.equal(environment.linuxWmClass, "t3code-dev");
       assert.deepEqual(
@@ -89,9 +95,23 @@ describe("DesktopEnvironment", () => {
       );
 
       assert.equal(environment.isDevelopment, false);
-      assert.equal(environment.stateDir, "/tmp/t3/userdata");
-      assert.equal(environment.logDir, "/tmp/t3/userdata/logs");
-      assert.equal(environment.serverSettingsPath, "/tmp/t3/userdata/settings.json");
+      assert.equal(slash(environment.stateDir), "/tmp/t3/userdata");
+      assert.equal(slash(environment.logDir), "/tmp/t3/userdata/logs");
+      assert.equal(slash(environment.serverSettingsPath), "/tmp/t3/userdata/settings.json");
+    }),
+  );
+
+  it.effect("resolves packaged bundled extensions from Electron resources", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment({
+        isPackaged: true,
+        resourcesPath: "/Applications/T3 Code.app/Contents/Resources",
+      });
+
+      assert.equal(
+        slash(environment.bundledExtensionsPath),
+        "/Applications/T3 Code.app/Contents/Resources/extensions",
+      );
     }),
   );
 
@@ -109,8 +129,8 @@ describe("DesktopEnvironment", () => {
         Option.some("/Users/alice"),
       );
       assert.deepEqual(
-        environment.resolvePickFolderDefaultPath({ initialPath: "~/project" }),
-        Option.some("/Users/alice/project"),
+        Option.map(environment.resolvePickFolderDefaultPath({ initialPath: "~/project" }), slash),
+        Option.some(slash("/Users/alice/project")),
       );
     }),
   );

@@ -1,0 +1,20 @@
+{
+  "name": "t3-bundled-plugins",
+  "interface": {
+    "displayName": "T3 Code Built-in Plugins"
+  },
+  "plugins": [
+    {
+      "name": "ppt-master",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ppt-master"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "productivity"
+    }
+  ]
+}

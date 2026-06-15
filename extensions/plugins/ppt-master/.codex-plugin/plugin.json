@@ -1,0 +1,34 @@
+{
+  "name": "ppt-master",
+  "version": "2.10.0",
+  "description": "PPT Master 通过 SVG 到 DrawingML 的流程生成原生可编辑 PowerPoint 文件。",
+  "keywords": [
+    "pptx",
+    "presentation",
+    "powerpoint",
+    "slides",
+    "svg",
+    "drawingml",
+    "office",
+    "document-conversion"
+  ],
+  "skills": "./skills",
+  "interface": {
+    "displayName": "PPT Master",
+    "shortDescription": "生成原生可编辑 PPTX 演示文稿。",
+    "longDescription": "从主题、Markdown、PDF、DOCX、URL 或现有素材生成可编辑 PowerPoint，支持真实文本框、形状、图表和动画。",
+    "developerName": "Hugo He",
+    "category": "Productivity",
+    "capabilities": [
+      "Slides",
+      "PowerPoint",
+      "Document Conversion"
+    ],
+    "websiteURL": "https://github.com/hugohe3/ppt-master",
+    "defaultPrompt": [
+      "$ppt-master 请根据我的主题制作一份 8-10 页可编辑 PowerPoint，并先给出结构化大纲。",
+      "$ppt-master 请把我提供的文档整理成面向管理层汇报的 PPTX，压缩文字并补充讲稿备注。",
+      "$ppt-master 请按品牌风格生成一份数据型汇报 PPTX，包含关键指标、趋势解读和下一步行动。"
+    ]
+  }
+}

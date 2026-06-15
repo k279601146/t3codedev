@@ -64,6 +64,7 @@ type RightPanelTab = {
   title: string;
   icon: ReactNode;
   filePath?: string | undefined;
+  workspaceRoot?: string | undefined;
   artifactId?: string | undefined;
 };
 
@@ -78,6 +79,7 @@ interface ThreadRightPanelProps {
   mode: "sidebar" | "sheet";
   planLabel: string;
   selectedFilePath?: string | null | undefined;
+  selectedFileWorkspaceRoot?: string | null | undefined;
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   onClose: () => void;
@@ -136,8 +138,13 @@ function createTab(surface: RightPanelSurface, input?: Partial<RightPanelTab>): 
     title: input?.title ?? surfaceTitle(surface),
     icon: input?.icon ?? surfaceIcon(surface),
     ...(input?.filePath ? { filePath: input.filePath } : {}),
+    ...(input?.workspaceRoot ? { workspaceRoot: input.workspaceRoot } : {}),
     ...(input?.artifactId ? { artifactId: input.artifactId } : {}),
   };
+}
+
+function basenameOfPanelPath(value: string): string {
+  return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value;
 }
 
 function HomeTile(props: {
@@ -762,6 +769,7 @@ export function ThreadRightPanel({
   mode,
   planLabel,
   selectedFilePath,
+  selectedFileWorkspaceRoot,
   timestampFormat,
   workspaceRoot,
   onClose,
@@ -776,9 +784,50 @@ export function ThreadRightPanel({
   useEffect(() => {
     let nextActiveTabId: string | null = null;
     setTabs((current) => {
+      if (activeSurface === "file" && !selectedFilePath && selectedFileWorkspaceRoot) {
+        const existingDirectoryTab = current.find(
+          (tab) =>
+            tab.surface === "file" &&
+            !tab.filePath &&
+            (tab.workspaceRoot ?? workspaceRoot) === selectedFileWorkspaceRoot,
+        );
+        if (existingDirectoryTab) {
+          nextActiveTabId = existingDirectoryTab.id;
+          return current;
+        }
+
+        const emptyFileTab = current.find((tab) => tab.surface === "file" && !tab.filePath);
+        const title = basenameOfPanelPath(selectedFileWorkspaceRoot);
+        if (emptyFileTab) {
+          nextActiveTabId = emptyFileTab.id;
+          return current.map((tab) =>
+            tab.id === emptyFileTab.id
+              ? {
+                  ...tab,
+                  title,
+                  workspaceRoot: selectedFileWorkspaceRoot,
+                  icon: <FolderOpenIcon className="size-3.5" />,
+                }
+              : tab,
+          );
+        }
+
+        const tab = createTab("file", {
+          title,
+          workspaceRoot: selectedFileWorkspaceRoot,
+          icon: <FolderOpenIcon className="size-3.5" />,
+        });
+        nextActiveTabId = tab.id;
+        return [...current, tab];
+      }
+
       if (activeSurface === "file" && selectedFilePath) {
+        const resolvedWorkspaceRoot = selectedFileWorkspaceRoot ?? workspaceRoot;
         const existingFileTab = current.find(
-          (tab) => tab.surface === "file" && tab.filePath === selectedFilePath,
+          (tab) =>
+            tab.surface === "file" &&
+            tab.filePath === selectedFilePath &&
+            (tab.workspaceRoot ?? workspaceRoot) === resolvedWorkspaceRoot,
         );
         if (existingFileTab) {
           nextActiveTabId = existingFileTab.id;
@@ -794,6 +843,7 @@ export function ThreadRightPanel({
                   ...tab,
                   title: selectedFilePath.split(/[\\/]/).at(-1) ?? selectedFilePath,
                   filePath: selectedFilePath,
+                  ...(resolvedWorkspaceRoot ? { workspaceRoot: resolvedWorkspaceRoot } : {}),
                   icon: <FileIcon className="size-3.5" />,
                 }
               : tab,
@@ -803,6 +853,7 @@ export function ThreadRightPanel({
         const tab = createTab("file", {
           title: selectedFilePath.split(/[\\/]/).at(-1) ?? selectedFilePath,
           filePath: selectedFilePath,
+          ...(resolvedWorkspaceRoot ? { workspaceRoot: resolvedWorkspaceRoot } : {}),
           icon: <FileIcon className="size-3.5" />,
         });
         nextActiveTabId = tab.id;
@@ -822,7 +873,7 @@ export function ThreadRightPanel({
     if (nextActiveTabId !== null) {
       setActiveTabId(nextActiveTabId);
     }
-  }, [activeSurface, selectedFilePath]);
+  }, [activeSurface, selectedFilePath, selectedFileWorkspaceRoot, workspaceRoot]);
 
   const openTab = (surface: RightPanelSurface, input?: Partial<RightPanelTab>) => {
     const tab = createTab(surface, input);
@@ -859,6 +910,7 @@ export function ThreadRightPanel({
     openTab("file", {
       title: filePath.split(/[\\/]/).at(-1) ?? filePath,
       filePath,
+      ...(activeTab.workspaceRoot ? { workspaceRoot: activeTab.workspaceRoot } : {}),
       icon: <FileIcon className="size-3.5" />,
     });
   };
@@ -942,7 +994,7 @@ export function ThreadRightPanel({
     ) : activeTab.surface === "file" ? (
       <FilePanel
         environmentId={environmentId}
-        workspaceRoot={workspaceRoot}
+        workspaceRoot={activeTab.workspaceRoot ?? workspaceRoot}
         filePath={activeTab.filePath}
         onOpenFile={openFile}
       />

@@ -32,11 +32,16 @@ interface RightPanelState {
   open: boolean;
   activeSurface: RightPanelSurface;
   filePath: string | null;
+  fileWorkspaceRoot: string | null;
   widthPx: number;
   lastSurfaceByThreadKey: Record<string, RightPanelSurface>;
   close: () => void;
   openSurface: (surface: RightPanelSurface, threadKey?: string | null) => void;
-  openFile: (filePath: string, threadKey?: string | null) => void;
+  openFile: (
+    filePath: string | null,
+    threadKey?: string | null,
+    workspaceRoot?: string | null,
+  ) => void;
   setActiveSurface: (surface: RightPanelSurface, threadKey?: string | null) => void;
   setWidthPx: (widthPx: number) => void;
   restoreThreadSurface: (threadKey: string | null | undefined) => void;
@@ -111,6 +116,7 @@ export const useRightPanelStore = create<RightPanelState>()(
       open: false,
       activeSurface: "home",
       filePath: null,
+      fileWorkspaceRoot: null,
       widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
       lastSurfaceByThreadKey: {},
       close: () => set({ open: false }),
@@ -120,11 +126,12 @@ export const useRightPanelStore = create<RightPanelState>()(
           activeSurface: surface,
           lastSurfaceByThreadKey: rememberSurface(state.lastSurfaceByThreadKey, threadKey, surface),
         })),
-      openFile: (filePath, threadKey) =>
+      openFile: (filePath, threadKey, workspaceRoot) =>
         set((state) => ({
           open: true,
           activeSurface: "file",
           filePath,
+          fileWorkspaceRoot: workspaceRoot ?? null,
           lastSurfaceByThreadKey: rememberSurface(state.lastSurfaceByThreadKey, threadKey, "file"),
         })),
       setActiveSurface: (surface, threadKey) =>

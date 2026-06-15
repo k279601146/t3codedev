@@ -27,6 +27,10 @@ import * as NodeOS from "node:os";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { ServerConfig } from "../config.ts";
+import {
+  BUNDLED_SKILL_SOURCE_ID,
+  resolveBundledExtensionsRoot,
+} from "../extensions/BundledExtensions.ts";
 import { ProcessRunner, layer as ProcessRunnerLive } from "../processRunner.ts";
 
 import { parseSkillDocument } from "./frontmatter.ts";
@@ -42,6 +46,13 @@ const VENDOR_DIR_NAME = "vendor_imports";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const HTTP_USER_AGENT = "codex-skill-list";
 const REQUEST_TIMEOUT = Duration.seconds(30);
+const BUNDLED_SKILL_SOURCE: SkillSource = {
+  id: BUNDLED_SKILL_SOURCE_ID,
+  displayName: "T3 Code Built-in Skills",
+  repo: "t3tools/t3code",
+  ref: "bundled",
+  curatedPath: "skills",
+};
 
 export interface CatalogSkillEntry {
   /** 全局唯一 id：sourceId:name */
@@ -132,6 +143,11 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
   const sourceCachePath = (source: SkillSource) =>
     path.join(sourceVendorDir(source), CACHE_FILE_NAME);
   const sourceRepoCheckoutDir = (source: SkillSource) => sourceVendorDir(source);
+  const resolveBundledRoot = () =>
+    resolveBundledExtensionsRoot().pipe(
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+    );
 
   const ensureDir = (dir: string) =>
     fs.makeDirectory(dir, { recursive: true }).pipe(
@@ -459,22 +475,23 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
   });
 
   // ───── 解析 vendor 目录生成 catalog ───────────────────────────────────────
-  const buildCatalogFromVendor = Effect.fn("buildCatalogFromVendor")(function* (
-    source: SkillSource,
+  const buildCatalogFromSkillsDirectory = Effect.fn("buildCatalogFromSkillsDirectory")(function* (
+    input: {
+      readonly source: SkillSource;
+      readonly skillsDir: string;
+      readonly repoPathPrefix: string;
+    },
   ) {
-    const checkoutDir = sourceRepoCheckoutDir(source);
-    const curatedDir = path.join(checkoutDir, source.curatedPath);
-
-    const exists = yield* fs.exists(curatedDir).pipe(Effect.orElseSucceed(() => false));
+    const exists = yield* fs.exists(input.skillsDir).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
       return [] as ReadonlyArray<CatalogSkillEntry>;
     }
 
-    const dirEntries = yield* fs.readDirectory(curatedDir).pipe(Effect.orElseSucceed(() => []));
+    const dirEntries = yield* fs.readDirectory(input.skillsDir).pipe(Effect.orElseSucceed(() => []));
     const entries: CatalogSkillEntry[] = [];
 
     for (const entryName of dirEntries) {
-      const entryPath = path.join(curatedDir, entryName);
+      const entryPath = path.join(input.skillsDir, entryName);
       const stat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null));
       if (!stat || stat.type !== "Directory") continue;
       if (entryName.startsWith(".")) continue;
@@ -499,20 +516,50 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
         normalizeIconPath(fallbackIcons.large);
 
       entries.push({
-        id: `${source.id}:${name}`,
+        id: `${input.source.id}:${name}`,
         name,
         displayName,
         description: parsed.frontmatter.description ?? undefined,
         shortDescription: parsed.frontmatter.shortDescription ?? undefined,
-        repoPath: `${source.curatedPath}/${entryName}`,
+        repoPath: `${input.repoPathPrefix}/${entryName}`,
         iconSmall,
         iconLarge,
-        sourceId: source.id,
+        sourceId: input.source.id,
       });
     }
 
     entries.sort((a, b) => a.name.localeCompare(b.name));
     return entries as ReadonlyArray<CatalogSkillEntry>;
+  });
+
+  const buildCatalogFromVendor = Effect.fn("buildCatalogFromVendor")(function* (
+    source: SkillSource,
+  ) {
+    const checkoutDir = sourceRepoCheckoutDir(source);
+    return yield* buildCatalogFromSkillsDirectory({
+      source,
+      skillsDir: path.join(checkoutDir, source.curatedPath),
+      repoPathPrefix: source.curatedPath,
+    });
+  });
+
+  const buildBundledCatalogSnapshot = Effect.fn("buildBundledCatalogSnapshot")(function* () {
+    const bundledRoot = yield* resolveBundledRoot().pipe(
+      Effect.orElseSucceed(() => undefined),
+    );
+    if (!bundledRoot) return undefined;
+    const skills = yield* buildCatalogFromSkillsDirectory({
+      source: BUNDLED_SKILL_SOURCE,
+      skillsDir: path.join(bundledRoot, "skills"),
+      repoPathPrefix: "skills",
+    });
+    if (skills.length === 0) return undefined;
+    const fetchedAt = yield* Effect.sync(() => Date.now());
+    return {
+      source: BUNDLED_SKILL_SOURCE,
+      fetchedAt,
+      skills,
+    } satisfies SourceCatalogSnapshot;
   });
 
   // ───── 单源刷新 ────────────────────────────────────────────────────────────
@@ -611,6 +658,10 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
           hasErrors = true;
         }
       }
+      const bundledSnapshot = yield* buildBundledCatalogSnapshot();
+      if (bundledSnapshot) {
+        snapshots.push(bundledSnapshot);
+      }
       return { snapshots, hasErrors } satisfies SkillsCatalogState;
     });
 
@@ -619,6 +670,10 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
       const colon = catalogItemId.indexOf(":");
       if (colon <= 0) return undefined;
       const sourceId = catalogItemId.slice(0, colon);
+      if (sourceId === BUNDLED_SKILL_SOURCE_ID) {
+        const snapshot = yield* buildBundledCatalogSnapshot();
+        return snapshot?.skills.find((entry) => entry.id === catalogItemId);
+      }
       const source = findSkillSource(sourceId);
       if (!source) return undefined;
       const cached = yield* readCacheFile(source);
@@ -631,6 +686,20 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
     relPath,
   ) =>
     Effect.gen(function* () {
+      if (sourceId === BUNDLED_SKILL_SOURCE_ID) {
+        const bundledRoot = yield* resolveBundledRoot().pipe(
+          Effect.orElseSucceed(() => undefined),
+        );
+        if (!bundledRoot) return null;
+        const safe = sanitizeRelPath(relPath);
+        if (safe === null) return null;
+        const root = path.resolve(bundledRoot);
+        const target = path.resolve(root, safe);
+        if (!isInsideDir(root, target)) return null;
+        const stat = yield* fs.stat(target).pipe(Effect.orElseSucceed(() => null));
+        if (!stat || stat.type !== "File") return null;
+        return target;
+      }
       const source = findSkillSource(sourceId);
       if (!source) return null;
       const safe = sanitizeRelPath(relPath);
@@ -647,6 +716,20 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
     Effect.gen(function* () {
       const item = yield* findCatalogItem(catalogItemId);
       if (!item) return null;
+      if (item.sourceId === BUNDLED_SKILL_SOURCE_ID) {
+        const bundledRoot = yield* resolveBundledRoot().pipe(
+          Effect.orElseSucceed(() => undefined),
+        );
+        if (!bundledRoot) return null;
+        const skillMdPath = path.join(bundledRoot, item.repoPath, "SKILL.md");
+        const md = yield* fs.readFileString(skillMdPath).pipe(Effect.orElseSucceed(() => ""));
+        if (md.length === 0) return null;
+        const parsed = parseSkillDocument(md);
+        const assetBaseUrl = `/api/skills/asset?source=${encodeURIComponent(
+          BUNDLED_SKILL_SOURCE_ID,
+        )}&path=${encodeURIComponent(item.repoPath)}/`;
+        return { markdown: parsed.body.trim(), assetBaseUrl };
+      }
       const source = findSkillSource(item.sourceId);
       if (!source) return null;
       const checkoutDir = sourceRepoCheckoutDir(source);
