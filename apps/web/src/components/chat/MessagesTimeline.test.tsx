@@ -172,7 +172,42 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-collapsible="false"');
   });
 
-  it("renders a steer marker for user messages attached to an active turn", async () => {
+  it("renders a steer marker before the first assistant reply guided by a user steer", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const turnId = TurnId.make("turn-1");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildUserTimelineEntry("继续补充这点。", turnId),
+          buildAssistantTimelineEntry({
+            id: "assistant-confirm",
+            entryId: "entry-assistant-confirm",
+            text: "收到，改成 5 页。",
+            turnId,
+            createdAt: "2026-03-17T19:13:28.000Z",
+            completedAt: "2026-03-17T19:13:30.000Z",
+          }),
+          buildAssistantTimelineEntry({
+            id: "assistant-final",
+            entryId: "entry-assistant-final",
+            text: "已改为 5 页并完成导出。",
+            turnId,
+            createdAt: "2026-03-17T19:14:28.000Z",
+            completedAt: "2026-03-17T19:14:30.000Z",
+          }),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("已引导对话");
+    expect(markup.indexOf("已引导对话")).toBeLessThan(markup.indexOf("收到，改成 5 页。"));
+    expect(markup.indexOf("已引导对话")).toBeGreaterThan(markup.indexOf("继续补充这点。"));
+    expect(markup.indexOf("已引导对话")).toBeLessThan(markup.indexOf("已改为 5 页并完成导出。"));
+    expect(markup).toContain('data-steer-conversation-marker="true"');
+  });
+
+  it("does not render a steer marker on a lone user steer message", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -181,7 +216,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已引导对话");
+    expect(markup).not.toContain("已引导对话");
   });
 
   it("does not render a steer marker for ordinary user messages", async () => {

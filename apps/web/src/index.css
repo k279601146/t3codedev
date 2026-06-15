@@ -839,18 +839,20 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown {
   container-type: inline-size;
   min-width: 0;
+  max-width: min(100%, 760px);
   overflow-wrap: break-word;
   word-break: normal;
   font-family:
-    "PingFang SC",
-    -apple-system,
-    "Microsoft YaHei",
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
   font-size: 15px;
   font-weight: 400;
-  color: var(--foreground);
-  line-height: 1.78;
+  color: color-mix(in srgb, var(--foreground) 93%, transparent);
+  line-height: 1.72;
+  letter-spacing: 0;
   text-align: left;
+  text-rendering: optimizeLegibility;
+  line-break: auto;
 }
 
 .chat-markdown > :first-child {
@@ -867,7 +869,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown blockquote,
 .chat-markdown pre,
 .chat-markdown table {
-  margin: 0 0 14px 0;
+  margin: 0 0 13px 0;
 }
 
 .chat-markdown h1,
@@ -912,16 +914,26 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ul {
-  padding-left: 1.25rem;
+  padding-left: 1.15rem;
   list-style-type: disc;
 }
 
 .chat-markdown ol {
-  padding-left: 1.25rem;
+  padding-left: 1.35rem;
   list-style-type: decimal;
 }
 
+.chat-markdown li {
+  padding-left: 0.08rem;
+}
+
+.chat-markdown li::marker {
+  color: color-mix(in srgb, var(--foreground) 72%, transparent);
+  font-weight: 500;
+}
+
 .chat-markdown ul ul {
+  margin-top: 0.3rem;
   list-style-type: circle;
 }
 
@@ -930,6 +942,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ol ol {
+  margin-top: 0.3rem;
   list-style-type: lower-alpha;
 }
 
@@ -938,11 +951,22 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown li + li {
-  margin-top: 0.35rem;
+  margin-top: 0.32rem;
+}
+
+.chat-markdown > ul > li + li,
+.chat-markdown > ol > li + li {
+  margin-top: 0.58rem;
 }
 
 .chat-markdown li > p {
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.36rem;
+}
+
+.chat-markdown li > ul,
+.chat-markdown li > ol {
+  margin-top: 0.34rem;
+  margin-bottom: 0.2rem;
 }
 
 .chat-markdown li > p:last-child {
@@ -951,7 +975,7 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown strong {
   color: color-mix(in srgb, var(--foreground) 96%, transparent);
-  font-weight: 700;
+  font-weight: 680;
 }
 
 .proposed-plan-card .chat-markdown {
@@ -1010,9 +1034,11 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown a {
-  color: var(--info-foreground);
+  color: color-mix(in srgb, var(--info-foreground) 86%, var(--foreground));
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--info-foreground) 40%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--info-foreground) 28%, transparent);
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.16em;
 }
 
 .chat-markdown a:hover {
@@ -1021,10 +1047,10 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown-web-link {
   max-width: 100%;
-  color: color-mix(in srgb, var(--info-foreground) 92%, var(--foreground));
+  color: color-mix(in srgb, var(--info-foreground) 84%, var(--foreground));
   overflow-wrap: anywhere;
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--info-foreground) 34%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--info-foreground) 24%, transparent);
   text-underline-offset: 0.16em;
 }
 
@@ -1037,14 +1063,14 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown-url-link {
   display: inline-flex;
   min-width: 0;
-  max-width: min(100%, 34rem);
+  max-width: min(100%, 28rem);
   align-items: baseline;
   gap: 0.08rem;
   overflow: hidden;
   border-radius: 0.25rem;
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
-  font-size: 0.9em;
-  line-height: 1.55;
+  font-size: 0.84em;
+  line-height: 1.45;
   text-decoration: none;
   vertical-align: baseline;
 }
@@ -1055,56 +1081,54 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown-url-host {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--info-foreground) 92%, var(--foreground));
-  font-weight: 600;
+  color: color-mix(in srgb, var(--info-foreground) 82%, var(--foreground));
+  font-weight: 560;
 }
 
 .chat-markdown-url-path {
   min-width: 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--muted-foreground) 92%, var(--foreground));
+  color: color-mix(in srgb, var(--muted-foreground) 84%, var(--foreground));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chat-markdown blockquote {
-  border-left: 3px solid color-mix(in srgb, var(--info-foreground) 30%, var(--border));
-  border-radius: 0 0.5rem 0.5rem 0;
-  background: color-mix(in srgb, var(--muted) 58%, transparent);
-  padding: 0.55rem 0.85rem;
-  color: var(--claude-text-secondary);
+  border-left: 2px solid color-mix(in srgb, var(--info-foreground) 28%, var(--border));
+  border-radius: 0 0.35rem 0.35rem 0;
+  background: color-mix(in srgb, var(--muted) 38%, transparent);
+  padding: 0.45rem 0.8rem;
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground));
   font-size: 14px;
-  line-height: 1.72;
+  line-height: 1.68;
 }
 
 .chat-markdown :not(pre) > code {
-  border: 1px solid var(--claude-border-subtle);
-  border-radius: 0.375rem;
-  background: var(--claude-bg-subtle);
-  padding: 0.1rem 0.35rem;
-  color: var(--claude-text-primary);
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  border-radius: 0.28rem;
+  background: color-mix(in srgb, var(--muted) 48%, transparent);
+  padding: 0.06rem 0.28rem;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
-  font-size: 0.85em;
+  font-size: 0.82em;
+  line-height: 1.45;
   overflow-wrap: anywhere;
   word-break: normal;
+  vertical-align: 0.02em;
 }
 
 .chat-markdown .chat-markdown-file-link {
   display: inline-flex;
   align-items: center;
-  gap: 0.22rem;
-  border-radius: 0.25rem;
-  padding: 0 0.08rem;
-  color: color-mix(in srgb, var(--info-foreground) 94%, var(--foreground));
-  font-family:
-    "PingFang SC",
-    -apple-system,
-    "Microsoft YaHei",
-    sans-serif;
-  font-size: 0.86em;
-  font-weight: 520;
-  line-height: 1.35;
-  vertical-align: text-bottom;
+  gap: 0.16rem;
+  border-radius: 0.22rem;
+  padding: 0 0.04rem;
+  color: color-mix(in srgb, var(--info-foreground) 82%, var(--foreground));
+  font-family: inherit;
+  font-size: 0.9em;
+  font-weight: 500;
+  line-height: 1.28;
+  vertical-align: -0.04em;
   text-decoration: none;
   text-decoration-line: none;
   transition:
@@ -1115,8 +1139,8 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown .chat-markdown-file-link:hover {
   opacity: 1;
-  color: color-mix(in srgb, var(--info-foreground) 100%, var(--foreground));
-  background: color-mix(in srgb, var(--info-foreground) 7%, transparent);
+  color: color-mix(in srgb, var(--info-foreground) 92%, var(--foreground));
+  background: color-mix(in srgb, var(--info-foreground) 5%, transparent);
   text-decoration: none;
   text-decoration-line: none;
 }
@@ -1127,9 +1151,9 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-file-link-icon {
-  width: 0.9rem;
-  height: 0.9rem;
-  opacity: 0.9;
+  width: 0.78rem;
+  height: 0.78rem;
+  opacity: 0.62;
   color: currentColor;
   stroke-width: 2;
 }
@@ -1140,19 +1164,16 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-file-link-chevron {
-  color: color-mix(in srgb, var(--muted-foreground) 76%, currentColor);
-  font-size: 0.95em;
-  line-height: 1;
-  transform: translateY(-0.01em);
+  display: none;
 }
 
 .chat-markdown pre {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  background: color-mix(in srgb, var(--muted) 84%, var(--background));
-  padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--muted) 62%, var(--background));
+  padding: 0.72rem 0.82rem;
   box-shadow: none;
 }
 
@@ -1161,7 +1182,8 @@ label:has(> select#reasoning-effort) select {
   background: transparent;
   padding: 0;
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.62;
 }
 
 .markdown-file-link-tooltip-scroll {
@@ -1185,7 +1207,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown .chat-markdown-codeblock {
   --chat-markdown-codeblock-copy-button-space: 1.5rem;
   position: relative;
-  margin: 0.65rem 0;
+  margin: 0.75rem 0;
 }
 
 .chat-markdown .chat-markdown-codeblock-language {
@@ -1247,7 +1269,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-shiki .shiki {
-  background: color-mix(in srgb, var(--muted) 78%, var(--background)) !important;
+  background: color-mix(in srgb, var(--muted) 58%, var(--background)) !important;
 }
 
 .chat-markdown table {
@@ -1261,13 +1283,13 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown .chat-markdown-table-scroll {
   max-width: 100%;
-  margin: 0 0 14px 0;
+  margin: 0.2rem 0 15px 0;
   overflow-x: auto;
   overflow-y: auto;
   max-height: min(32rem, 70vh);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--background) 88%, var(--card));
+  background: color-mix(in srgb, var(--background) 94%, var(--card));
   scrollbar-gutter: stable;
 }
 
@@ -1284,9 +1306,9 @@ label:has(> select#reasoning-effort) select {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: color-mix(in srgb, var(--muted) 72%, var(--background));
-  color: color-mix(in srgb, var(--foreground) 92%, transparent);
-  font-weight: 650;
+  background: color-mix(in srgb, var(--muted) 58%, var(--background));
+  color: color-mix(in srgb, var(--foreground) 86%, transparent);
+  font-weight: 600;
 }
 
 .chat-markdown .chat-markdown-table-scroll th,
@@ -1294,13 +1316,13 @@ label:has(> select#reasoning-effort) select {
   min-width: 8rem;
   max-width: 24rem;
   border: 0;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  padding: 0.55rem 0.7rem;
+  border-right: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding: 0.5rem 0.68rem;
   vertical-align: top;
   overflow-wrap: break-word;
   word-break: normal;
-  line-height: 1.62;
+  line-height: 1.58;
 }
 
 .chat-markdown .chat-markdown-table-scroll th {

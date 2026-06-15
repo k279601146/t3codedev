@@ -684,7 +684,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     displayedUserMessage.visibleText.trim().length > 0 || terminalContexts.length > 0;
   const hasUserMessageBubble = imageAttachments.length > 0 || hasVisibleUserMessageBody;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
-  const isSteerMessage = row.message.turnId !== undefined && row.message.turnId !== null;
   const editableText = displayedUserMessage.copyText || row.message.text;
   const canEditUserMessage =
     ctx.onSubmitEditedUserMessage !== null &&
@@ -845,11 +844,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               ) : null}
             </>
           )}
-          {isSteerMessage ? (
-            <div className="mt-2 self-start text-[13px] leading-5 text-muted-foreground/55">
-              已引导对话
-            </div>
-          ) : null}
           <div
             className="mt-1 flex min-h-6 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
             data-user-message-actions="true"
@@ -1094,6 +1088,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
 
   return (
     <>
+      {row.showSteerMarkerBefore ? <SteerConversationMarker /> : null}
       <div className="min-w-0 px-1 py-0.5">
         <ChatMarkdown
           text={messageText}
@@ -1131,6 +1126,17 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       </div>
       {row.showCompletionDivider && <AssistantCompletionDivider />}
     </>
+  );
+}
+
+function SteerConversationMarker() {
+  return (
+    <div
+      className="mb-1.5 px-1 text-[13px] leading-5 text-muted-foreground/55"
+      data-steer-conversation-marker="true"
+    >
+      已引导对话
+    </div>
   );
 }
 

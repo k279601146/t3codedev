@@ -30,6 +30,7 @@ export type MessagesTimelineRow =
       completionSummary: string | null;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
+      showSteerMarkerBefore?: boolean | undefined;
       showUrlPreviewCard: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
       revertTurnCount?: number | undefined;
@@ -486,6 +487,7 @@ export function deriveMessagesTimelineRows(input: {
     input.timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
   );
   const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(input.timelineEntries);
+  const pendingSteerMarkerTurnIds = new Set<TurnId>();
   let editableUserMessageId: MessageId | null = null;
   for (let index = input.timelineEntries.length - 1; index >= 0; index -= 1) {
     const entry = input.timelineEntries[index];
@@ -572,6 +574,14 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    const shouldShowSteerMarkerBefore =
+      timelineEntry.message.role === "assistant" &&
+      timelineEntry.message.turnId != null &&
+      pendingSteerMarkerTurnIds.has(timelineEntry.message.turnId);
+    if (shouldShowSteerMarkerBefore && timelineEntry.message.turnId != null) {
+      pendingSteerMarkerTurnIds.delete(timelineEntry.message.turnId);
+    }
+
     const assistantTurnStillInProgress =
       timelineEntry.message.role === "assistant" &&
       input.activeTurnInProgress === true &&
@@ -595,6 +605,7 @@ export function deriveMessagesTimelineRows(input: {
       completionSummary: showCompletionDivider ? (input.completionSummary ?? null) : null,
       showAssistantCopyButton: isTerminalAssistantMessage,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantTurnStillInProgress,
+      showSteerMarkerBefore: shouldShowSteerMarkerBefore ? true : undefined,
       showUrlPreviewCard:
         timelineEntry.message.role === "assistant" &&
         isTerminalAssistantMessage &&
@@ -613,6 +624,13 @@ export function deriveMessagesTimelineRows(input: {
           ? true
           : undefined,
     });
+    if (
+      timelineEntry.message.role === "user" &&
+      timelineEntry.message.turnId !== undefined &&
+      timelineEntry.message.turnId !== null
+    ) {
+      pendingSteerMarkerTurnIds.add(timelineEntry.message.turnId);
+    }
   }
 
   const hasRunningWork = nextRows.some((row) => {
@@ -700,6 +718,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.completionSummary === bm.completionSummary &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
+        a.showSteerMarkerBefore === bm.showSteerMarkerBefore &&
         a.showUrlPreviewCard === bm.showUrlPreviewCard &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
         a.revertTurnCount === bm.revertTurnCount &&
