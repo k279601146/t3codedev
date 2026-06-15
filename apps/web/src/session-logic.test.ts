@@ -818,20 +818,30 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.tone).toBe("error");
   });
 
-  it("filters by turn id when provided", () => {
+  it("keeps historical turn work when a later turn becomes latest", () => {
     const activities: OrchestrationThreadActivity[] = [
-      makeActivity({ id: "turn-1", turnId: "turn-1", summary: "Tool call", kind: "tool.started" }),
+      makeActivity({
+        id: "turn-1",
+        turnId: "turn-1",
+        summary: "Ran previous command",
+        kind: "tool.completed",
+      }),
       makeActivity({
         id: "turn-2",
         turnId: "turn-2",
-        summary: "Tool call complete",
+        summary: "Ran latest command",
         kind: "tool.completed",
       }),
-      makeActivity({ id: "no-turn", summary: "Checkpoint captured", tone: "info" }),
+      makeActivity({
+        id: "no-turn",
+        summary: "Runtime warning",
+        kind: "runtime.warning",
+        tone: "info",
+      }),
     ];
 
     const entries = deriveWorkLogEntries(activities, TurnId.make("turn-2"));
-    expect(entries.map((entry) => entry.id)).toEqual(["turn-2"]);
+    expect(entries.map((entry) => entry.id)).toEqual(["turn-1", "turn-2"]);
   });
 
   it("omits checkpoint captured info entries", () => {
@@ -1109,7 +1119,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.requestKind).toBe("file-change");
     expect(entry?.changedFiles).toEqual(["hello.py"]);
     expect(entry?.detail).toContain("--- /dev/null");
-    expect(entry?.detail).toContain('+++ b/hello.py');
+    expect(entry?.detail).toContain("+++ b/hello.py");
     expect(entry?.detail).toContain('+print("你好")');
   });
 

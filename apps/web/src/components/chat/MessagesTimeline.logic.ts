@@ -30,6 +30,7 @@ export type MessagesTimelineRow =
       completionSummary: string | null;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
+      showUrlPreviewCard: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
       revertTurnCount?: number | undefined;
       canEditUserMessage?: boolean | undefined;
@@ -596,6 +597,11 @@ export function deriveMessagesTimelineRows(input: {
       completionSummary: showCompletionDivider ? (input.completionSummary ?? null) : null,
       showAssistantCopyButton: isTerminalAssistantMessage,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantTurnStillInProgress,
+      showUrlPreviewCard:
+        timelineEntry.message.role === "assistant" &&
+        isTerminalAssistantMessage &&
+        !timelineEntry.message.streaming &&
+        !input.activeTurnInProgress,
       assistantTurnDiffSummary:
         timelineEntry.message.role === "assistant"
           ? input.turnDiffSummaryByAssistantMessageId.get(timelineEntry.message.id)
@@ -696,6 +702,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.completionSummary === bm.completionSummary &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
+        a.showUrlPreviewCard === bm.showUrlPreviewCard &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
         a.revertTurnCount === bm.revertTurnCount &&
         a.canEditUserMessage === bm.canEditUserMessage

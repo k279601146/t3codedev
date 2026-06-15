@@ -40,6 +40,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { cn } from "~/lib/utils";
 import { useFileContent } from "../hooks/useFileContent";
 import { useFileTree } from "../hooks/useFileTree";
+import { readLocalApi } from "../localApi";
 import { rewriteMarkdownFileUriHref } from "../markdown-links";
 import type { ActivePlanState, LatestProposedPlanState } from "../session-logic";
 import type { RightPanelSurface } from "../rightPanelStore";
@@ -64,6 +65,7 @@ type RightPanelTab = {
   title: string;
   icon: ReactNode;
   filePath?: string | undefined;
+  fileMode?: "browse" | "preview" | undefined;
   workspaceRoot?: string | undefined;
   artifactId?: string | undefined;
 };
@@ -139,6 +141,7 @@ function createTab(surface: RightPanelSurface, input?: Partial<RightPanelTab>): 
     title: input?.title ?? surfaceTitle(surface),
     icon: input?.icon ?? surfaceIcon(surface),
     ...(input?.filePath ? { filePath: input.filePath } : {}),
+    ...(input?.fileMode ? { fileMode: input.fileMode } : {}),
     ...(input?.workspaceRoot ? { workspaceRoot: input.workspaceRoot } : {}),
     ...(input?.artifactId ? { artifactId: input.artifactId } : {}),
   };
@@ -146,6 +149,24 @@ function createTab(surface: RightPanelSurface, input?: Partial<RightPanelTab>): 
 
 function basenameOfPanelPath(value: string): string {
   return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value;
+}
+
+function dirnameOfPanelFilePath(
+  workspaceRoot: string | undefined,
+  filePath: string | undefined,
+): string | null {
+  if (!workspaceRoot || !filePath) {
+    return null;
+  }
+
+  const separator = workspaceRoot.includes("\\") && !workspaceRoot.includes("/") ? "\\" : "/";
+  const cleanWorkspaceRoot = workspaceRoot.replace(/[\\/]+$/, "");
+  const cleanRelativePath = filePath.replace(/^\.?[\\/]+/, "").replaceAll(/[\\/]/g, separator);
+  const separatorIndex = cleanRelativePath.lastIndexOf(separator);
+  if (separatorIndex <= 0) {
+    return cleanWorkspaceRoot;
+  }
+  return `${cleanWorkspaceRoot}${separator}${cleanRelativePath.slice(0, separatorIndex)}`;
 }
 
 function HomeTile(props: {
@@ -167,12 +188,12 @@ function HomeTile(props: {
   );
 }
 
-function EmptyState(props: { icon: ReactNode; title: string; description: string }) {
+function EmptyState(props: { icon: ReactNode; title: string; description: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center px-8 text-center">
       <div className="mb-3 text-muted-foreground">{props.icon}</div>
       <div className="text-sm font-semibold text-foreground">{props.title}</div>
-      <div className="mt-2 max-w-72 text-xs leading-relaxed text-muted-foreground">
+      <div className="mt-2 max-w-72 break-words text-xs leading-relaxed text-muted-foreground">
         {props.description}
       </div>
     </div>
@@ -183,32 +204,65 @@ function FilePanel(props: {
   environmentId: EnvironmentId;
   workspaceRoot: string | undefined;
   filePath: string | undefined;
+  mode: "browse" | "preview";
   onOpenFile: (filePath: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [openDirectories, setOpenDirectories] = useState<ReadonlySet<string>>(() => new Set());
   const [loadedFile, setLoadedFile] = useState<{ path: string; content: string } | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const openedErrorDirectoryRef = useRef<string | null>(null);
   const { fetchFile } = useFileContent(props.environmentId, props.workspaceRoot ?? null);
-  const treeQuery = useFileTree(props.environmentId, props.workspaceRoot ?? null);
+  const showFileTree = props.mode === "browse";
+  const treeQuery = useFileTree(
+    props.environmentId,
+    showFileTree ? (props.workspaceRoot ?? null) : null,
+  );
   const root = treeQuery.data?.tree ?? null;
 
   useEffect(() => {
     let cancelled = false;
     if (!props.filePath) {
       setLoadedFile(null);
+      setFileLoading(false);
+      setFileError(null);
+      openedErrorDirectoryRef.current = null;
       return;
     }
+    setLoadedFile(null);
+    setFileLoading(true);
+    setFileError(null);
+    openedErrorDirectoryRef.current = null;
     void fetchFile(props.filePath)
       .then((content) => {
-        if (!cancelled) setLoadedFile(content === null ? null : { path: props.filePath!, content });
+        if (!cancelled) setLoadedFile({ path: props.filePath!, content });
       })
-      .catch(() => {
-        if (!cancelled) setLoadedFile(null);
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadedFile(null);
+          setFileError(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFileLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [fetchFile, props.filePath]);
+
+  useEffect(() => {
+    if (!props.filePath || !fileError) {
+      return;
+    }
+    const directoryPath = dirnameOfPanelFilePath(props.workspaceRoot, props.filePath);
+    if (!directoryPath || openedErrorDirectoryRef.current === directoryPath) {
+      return;
+    }
+    openedErrorDirectoryRef.current = directoryPath;
+    void readLocalApi()?.shell.openPath(directoryPath).catch(() => undefined);
+  }, [fileError, props.filePath, props.workspaceRoot]);
 
   const visibleNodes = useMemo(() => {
     const children = root?.children ?? [];
@@ -217,9 +271,18 @@ function FilePanel(props: {
     return children.filter((node) => node.name.toLowerCase().includes(normalizedQuery));
   }, [query, root?.children]);
 
+  const emptyDescription = showFileTree
+    ? "从工作区目录树或产物列表中选择文件后，这里会显示内容预览。"
+    : "选择聊天中的可预览文件后，这里会直接显示文件内容。";
+
   return (
     <div className="flex h-full min-h-0 bg-background">
-      <div className="flex min-w-0 flex-1 flex-col border-r border-border/60">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-col",
+          showFileTree ? "border-r border-border/60" : "",
+        )}
+      >
         {loadedFile ? (
           <>
             <div className="shrink-0 border-b border-border/60 px-4 py-3 text-xs text-muted-foreground">
@@ -231,54 +294,73 @@ function FilePanel(props: {
               </pre>
             </ScrollArea>
           </>
+        ) : props.filePath && fileLoading ? (
+          <EmptyState
+            icon={<RefreshCwIcon className="size-7 animate-spin" />}
+            title="正在打开文件"
+            description={props.filePath}
+          />
+        ) : props.filePath && fileError ? (
+          <EmptyState
+            icon={<FileIcon className="size-7" />}
+            title="无法打开文件"
+            description={
+              <>
+                <span className="block">{props.filePath}</span>
+                <span className="mt-2 block">读取失败：{fileError}</span>
+              </>
+            }
+          />
         ) : (
           <EmptyState
             icon={<FolderOpenIcon className="size-7" />}
             title="打开文件"
-            description="从工作区目录树或产物列表中选择文件后，这里会显示内容预览。"
+            description={emptyDescription}
           />
         )}
       </div>
-      <div className="flex w-[min(18rem,45%)] min-w-40 shrink-0 flex-col">
-        <div className="border-b border-border/60 p-2">
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="h-8 rounded-lg pl-8 text-xs"
-              placeholder="筛选文件..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
+      {showFileTree ? (
+        <div className="flex w-[min(18rem,45%)] min-w-40 shrink-0 flex-col">
+          <div className="border-b border-border/60 p-2">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 rounded-lg pl-8 text-xs"
+                placeholder="筛选文件..."
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
           </div>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-2">
+              {visibleNodes.length > 0 ? (
+                visibleNodes.map((node) => (
+                  <FileTreeRow
+                    key={node.path}
+                    node={node}
+                    depth={0}
+                    openDirectories={openDirectories}
+                    onToggleDirectory={(path) =>
+                      setOpenDirectories((current) => {
+                        const next = new Set(current);
+                        if (next.has(path)) next.delete(path);
+                        else next.add(path);
+                        return next;
+                      })
+                    }
+                    onOpenFile={props.onOpenFile}
+                  />
+                ))
+              ) : (
+                <div className="px-2 py-8 text-center text-xs text-muted-foreground">
+                  {treeQuery.isLoading ? "正在加载文件..." : "没有找到文件"}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
         </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="p-2">
-            {visibleNodes.length > 0 ? (
-              visibleNodes.map((node) => (
-                <FileTreeRow
-                  key={node.path}
-                  node={node}
-                  depth={0}
-                  openDirectories={openDirectories}
-                  onToggleDirectory={(path) =>
-                    setOpenDirectories((current) => {
-                      const next = new Set(current);
-                      if (next.has(path)) next.delete(path);
-                      else next.add(path);
-                      return next;
-                    })
-                  }
-                  onOpenFile={props.onOpenFile}
-                />
-              ))
-            ) : (
-              <div className="px-2 py-8 text-center text-xs text-muted-foreground">
-                {treeQuery.isLoading ? "正在加载文件..." : "没有找到文件"}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -827,6 +909,7 @@ export function ThreadRightPanel({
                   ...tab,
                   title,
                   workspaceRoot: selectedFileWorkspaceRoot,
+                  fileMode: "browse",
                   icon: <FolderOpenIcon className="size-3.5" />,
                 }
               : tab,
@@ -836,6 +919,7 @@ export function ThreadRightPanel({
         const tab = createTab("file", {
           title,
           workspaceRoot: selectedFileWorkspaceRoot,
+          fileMode: "browse",
           icon: <FolderOpenIcon className="size-3.5" />,
         });
         nextActiveTabId = tab.id;
@@ -864,6 +948,7 @@ export function ThreadRightPanel({
                   ...tab,
                   title: selectedFilePath.split(/[\\/]/).at(-1) ?? selectedFilePath,
                   filePath: selectedFilePath,
+                  fileMode: "preview",
                   ...(resolvedWorkspaceRoot ? { workspaceRoot: resolvedWorkspaceRoot } : {}),
                   icon: <FileIcon className="size-3.5" />,
                 }
@@ -874,6 +959,7 @@ export function ThreadRightPanel({
         const tab = createTab("file", {
           title: selectedFilePath.split(/[\\/]/).at(-1) ?? selectedFilePath,
           filePath: selectedFilePath,
+          fileMode: "preview",
           ...(resolvedWorkspaceRoot ? { workspaceRoot: resolvedWorkspaceRoot } : {}),
           icon: <FileIcon className="size-3.5" />,
         });
@@ -931,6 +1017,7 @@ export function ThreadRightPanel({
     openTab("file", {
       title: filePath.split(/[\\/]/).at(-1) ?? filePath,
       filePath,
+      fileMode: "browse",
       ...(activeTab.workspaceRoot ? { workspaceRoot: activeTab.workspaceRoot } : {}),
       icon: <FileIcon className="size-3.5" />,
     });
@@ -948,6 +1035,7 @@ export function ThreadRightPanel({
     openTab("file", {
       title: artifact.name,
       filePath: artifact.filePath,
+      fileMode: "preview",
       artifactId: artifact.id,
       icon: <FileIcon className="size-3.5" />,
     });
@@ -965,7 +1053,7 @@ export function ThreadRightPanel({
               icon={<FolderOpenIcon className="size-6" />}
               title="文件"
               description="浏览项目文件"
-              onClick={() => openTab("file", { title: "打开文件" })}
+              onClick={() => openTab("file", { title: "打开文件", fileMode: "browse" })}
             />
             <HomeTile
               icon={<BotIcon className="size-6" />}
@@ -1017,6 +1105,7 @@ export function ThreadRightPanel({
         environmentId={environmentId}
         workspaceRoot={activeTab.workspaceRoot ?? workspaceRoot}
         filePath={activeTab.filePath}
+        mode={activeTab.fileMode ?? (activeTab.filePath ? "preview" : "browse")}
         onOpenFile={openFile}
       />
     ) : activeTab.surface === "image" || activeTab.surface === "artifacts" ? (

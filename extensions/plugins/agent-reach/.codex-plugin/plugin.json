@@ -1,0 +1,44 @@
+{
+  "name": "agent-reach",
+  "version": "1.5.0",
+  "description": "Agent Reach 是面向互联网调研的多平台能力路由器，支持公开网页搜索、URL 阅读、GitHub、RSS、公开视频资料等信息获取工作流。",
+  "author": {
+    "name": "Panniantong",
+    "url": "https://github.com/Panniantong"
+  },
+  "homepage": "https://github.com/Panniantong/agent-reach",
+  "repository": "https://github.com/Panniantong/agent-reach",
+  "license": "MIT",
+  "keywords": [
+    "research",
+    "search",
+    "internet",
+    "web",
+    "github",
+    "rss",
+    "video",
+    "agent-reach"
+  ],
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Agent Reach",
+    "shortDescription": "用于联网调研、搜索和公开资料收集。",
+    "longDescription": "将 Agent Reach 作为 T3 Code 内置插件分发。安装后可以通过 $agent-reach 发起网页搜索、链接阅读、GitHub/RSS/公开视频资料整理等调研任务；外部依赖和个人配置仍由用户在本机按上游文档自行配置。",
+    "developerName": "Panniantong",
+    "category": "Research",
+    "capabilities": [
+      "Internet Research",
+      "Web Search",
+      "URL Reading",
+      "GitHub Research",
+      "RSS",
+      "Video Research"
+    ],
+    "websiteURL": "https://github.com/Panniantong/agent-reach",
+    "defaultPrompt": [
+      "$agent-reach 请围绕这个主题做一次公开资料调研，先列出搜索路径和信息来源，再汇总关键发现、证据链接和不确定点。主题：",
+      "$agent-reach 请阅读我提供的 URL，提取核心观点、关键数据、引用来源和可继续追问的问题。",
+      "$agent-reach 请对比几个 GitHub 项目或技术方案，整理定位、活跃度、生态、风险和推荐结论。"
+    ]
+  }
+}

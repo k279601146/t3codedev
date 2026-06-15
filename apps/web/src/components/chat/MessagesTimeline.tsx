@@ -216,6 +216,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         timelineEntries,
         completionDividerBeforeEntryId,
         isWorking,
+        activeTurnInProgress,
+        activeTurnId: activeTurnId ?? null,
         activeTurnStartedAt,
         turnDiffSummaryByAssistantMessageId,
         revertTurnCountByUserMessageId,
@@ -224,6 +226,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       timelineEntries,
       completionDividerBeforeEntryId,
       isWorking,
+      activeTurnInProgress,
+      activeTurnId,
       activeTurnStartedAt,
       turnDiffSummaryByAssistantMessageId,
       revertTurnCountByUserMessageId,
@@ -1018,7 +1022,7 @@ function UrlPreviewCard({ url }: { url: string }) {
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  const previewUrl = !row.message.streaming ? (extractAssistantUrls(messageText)[0] ?? null) : null;
+  const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
 
   return (
     <>
@@ -1033,8 +1037,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
-          routeThreadKey={ctx.routeThreadKey}
-          resolvedTheme={ctx.resolvedTheme}
+          workspaceRoot={ctx.workspaceRoot}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
         {previewUrl ? <UrlPreviewCard url={previewUrl} /> : null}
@@ -1639,13 +1642,11 @@ function runningWorkEntryLabel(entry: TimelineWorkEntry): string {
  *  so toggling re-renders only this component — not the entire list. */
 const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection({
   turnSummary,
-  routeThreadKey,
-  resolvedTheme,
+  workspaceRoot,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary | undefined;
-  routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
+  workspaceRoot: string | undefined;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   if (!turnSummary) return null;
@@ -1656,8 +1657,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
     <AssistantChangedFilesSectionInner
       turnSummary={turnSummary}
       checkpointFiles={checkpointFiles}
-      routeThreadKey={routeThreadKey}
-      resolvedTheme={resolvedTheme}
+      workspaceRoot={workspaceRoot}
       onOpenTurnDiff={onOpenTurnDiff}
     />
   );
@@ -1668,71 +1668,120 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
 function AssistantChangedFilesSectionInner({
   turnSummary,
   checkpointFiles,
-  routeThreadKey,
-  resolvedTheme,
+  workspaceRoot,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
-  routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
+  workspaceRoot: string | undefined;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
-  const allDirectoriesExpanded = useUiStateStore(
-    (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId] ?? true,
-  );
-  const setExpanded = useUiStateStore((store) => store.setThreadChangedFilesExpanded);
+  const [showAllFiles, setShowAllFiles] = useState(false);
   const summaryStat = summarizeTurnDiffStats(checkpointFiles);
-  const changedFileCountLabel = String(checkpointFiles.length);
+  const isSingleFile = checkpointFiles.length === 1;
+  const firstFile = checkpointFiles[0];
+  const visibleFiles = showAllFiles ? checkpointFiles : checkpointFiles.slice(0, 3);
+  const hiddenFileCount = Math.max(0, checkpointFiles.length - visibleFiles.length);
+  const singleFileTitle = firstFile
+    ? basenameOfChangedFile(firstFile.path)
+    : `${checkpointFiles.length} 个文件`;
 
   return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-        <p className="text-[13px] text-foreground/86">
-          <span>{changedFileCountLabel} 个文件已更改</span>
-          {hasNonZeroStat(summaryStat) && (
-            <>
-              <span className="mx-1.5 text-muted-foreground/50"> </span>
-              <DiffStatLabel additions={summaryStat.additions} deletions={summaryStat.deletions} />
-            </>
-          )}
-        </p>
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            data-scroll-anchor-ignore
-            className="h-6 rounded-md border-transparent bg-transparent px-2 text-[12px] text-muted-foreground/70 shadow-none hover:bg-accent hover:text-foreground"
-            onClick={() => setExpanded(routeThreadKey, turnSummary.turnId, !allDirectoriesExpanded)}
-          >
-            {allDirectoriesExpanded ? "折叠" : "展开"}
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            className="h-6 rounded-md border-transparent bg-transparent px-2 text-[12px] text-foreground shadow-none hover:bg-accent"
-            onClick={() => onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)}
-          >
-            查看更改
-          </Button>
+    <div className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-card/70 p-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
+          <FilePlus2Icon className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-[14px] font-semibold leading-5 text-foreground">
+                {isSingleFile ? `已编辑 ${singleFileTitle}` : `已编辑 ${checkpointFiles.length} 个文件`}
+              </div>
+              {hasNonZeroStat(summaryStat) ? (
+                <div className="mt-0.5 font-mono text-[13px] leading-5 tabular-nums">
+                  <DiffStatLabel
+                    additions={summaryStat.additions}
+                    deletions={summaryStat.deletions}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled
+                title="撤销更改暂不可用"
+                className="h-8 gap-1 rounded-md px-2 text-[13px] text-foreground opacity-70"
+              >
+                撤销
+                <Undo2Icon className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-lg px-3 text-[13px] font-medium"
+                onClick={() => onOpenTurnDiff(turnSummary.turnId, firstFile?.path)}
+              >
+                审核
+              </Button>
+            </div>
+          </div>
+          {!isSingleFile ? (
+            <div className="mt-4 space-y-3">
+              {visibleFiles.map((file) => (
+                <button
+                  key={`${turnSummary.turnId}:${file.path}`}
+                  type="button"
+                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 hover:text-foreground"
+                  onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
+                >
+                  <span className="min-w-0 truncate font-mono text-foreground/88">
+                    {formatChangedFilePath(file.path, workspaceRoot)}
+                  </span>
+                  <span className="shrink-0 font-mono text-[13px] tabular-nums">
+                    <DiffStatLabel
+                      additions={file.additions ?? 0}
+                      deletions={file.deletions ?? 0}
+                    />
+                  </span>
+                </button>
+              ))}
+              {hiddenFileCount > 0 || showAllFiles ? (
+                <button
+                  type="button"
+                  className="inline-flex h-6 items-center gap-1 text-[13px] text-foreground/90 hover:text-foreground"
+                  onClick={() => setShowAllFiles((value) => !value)}
+                >
+                  {showAllFiles ? "收起文件" : `再显示 ${hiddenFileCount} 个文件`}
+                  <ChevronDownIcon
+                    className={cn("size-3.5 transition-transform", showAllFiles && "rotate-180")}
+                  />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
-      {allDirectoriesExpanded ? (
-        <div className="px-2 py-1.5">
-          <ChangedFilesTree
-            key={`changed-files-tree:${turnSummary.turnId}`}
-            turnId={turnSummary.turnId}
-            files={checkpointFiles}
-            allDirectoriesExpanded={allDirectoriesExpanded}
-            resolvedTheme={resolvedTheme}
-            onOpenTurnDiff={onOpenTurnDiff}
-          />
-        </div>
-      ) : null}
     </div>
   );
+}
+
+function basenameOfChangedFile(filePath: string): string {
+  return filePath.split(/[\\/]/).filter(Boolean).at(-1) ?? filePath;
+}
+
+function formatChangedFilePath(filePath: string, workspaceRoot: string | undefined): string {
+  const displayedPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
+  if (!workspaceRoot) return displayedPath;
+  const normalizedWorkspaceName = workspaceRoot.replaceAll("\\", "/").split("/").filter(Boolean).at(-1);
+  if (normalizedWorkspaceName && displayedPath.startsWith(`${normalizedWorkspaceName}/`)) {
+    return displayedPath.slice(normalizedWorkspaceName.length + 1);
+  }
+  return displayedPath;
 }
 
 interface InlineDiffFileSummary {

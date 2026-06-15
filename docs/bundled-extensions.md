@@ -89,9 +89,20 @@ extensions/plugins/<plugin-name>/.codex-plugin/plugin.json
 }
 ```
 
+当前已接入的内置插件示例：
+
+- `extensions/plugins/ppt-master/`：完整 PPT Master 插件快照，首页“制作幻灯片”入口通过 `$ppt-master` 引导真实 PPTX 生成。
+- `extensions/plugins/agent-reach/`：完整 Agent Reach 上游快照，首页“联网调研”入口通过 `$agent-reach` 引导公开资料搜索、URL 阅读、GitHub/RSS/公开视频资料整理等工作流。
+
 4. 保留第三方插件的 `LICENSE`、`README`、必要脚本、skills、templates、manifest 和运行所需资源。
 
 5. 不要导入无关大体积产物，例如构建输出、缓存、临时目录、用户生成结果、私有测试数据。
+
+### Agent Reach 接入说明
+
+Agent Reach 使用 vendor snapshot 方式导入，T3 Code 保留上游项目结构、源码、文档、`LICENSE`、`README.md`、`pyproject.toml`、`constraints.txt`、`.env.example`、`agent_reach/skill/**` 和 `skills/agent-reach/**`。其中 `skills/agent-reach` 是为了让 T3/Codex 插件安装后能发现 `$agent-reach`，原始上游 skill 目录也应保留。
+
+T3 首页只提供产品化的“联网调研”入口，用于公开资料搜索、链接阅读、GitHub/RSS/公开视频资料整理等正向场景。Agent Reach 的外部依赖、个人 API key、Cookie、代理、登录态或可选 channel 配置必须由用户在本机按上游文档自行处理，不能写入 `extensions/`，也不要做成随客户端自动执行的一键安装流程。
 
 ## 新增内置技能
 

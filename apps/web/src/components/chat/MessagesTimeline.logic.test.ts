@@ -218,6 +218,7 @@ describe("deriveTurnProcessCollapseState", () => {
         completionSummary: null,
         showAssistantCopyButton: false,
         assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
         message: {
           id: "user-1" as never,
           role: "user",
@@ -265,6 +266,7 @@ describe("deriveTurnProcessCollapseState", () => {
         completionSummary: null,
         showAssistantCopyButton: true,
         assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
         message: {
           id: "assistant-1" as never,
           role: "assistant",
@@ -296,6 +298,7 @@ describe("deriveTurnProcessCollapseState", () => {
         completionSummary: null,
         showAssistantCopyButton: false,
         assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
         message: {
           id: "user-1" as never,
           role: "user",
@@ -315,6 +318,7 @@ describe("deriveTurnProcessCollapseState", () => {
         completionSummary: null,
         showAssistantCopyButton: false,
         assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
         message: {
           id: "assistant-intro" as never,
           role: "assistant",
@@ -757,6 +761,66 @@ describe("deriveMessagesTimelineRows", () => {
     expect(assistantRows[0]?.completionSummary).toBeNull();
     expect(assistantRows[1]?.assistantCopyStreaming).toBe(true);
     expect(assistantRows[1]?.completionSummary).toBe("done");
+  });
+
+  it("shows the URL preview card only after the turn finishes on the final assistant message", () => {
+    const baseInput = {
+      timelineEntries: [
+        {
+          id: "assistant-one-entry",
+          kind: "message" as const,
+          createdAt: "2026-01-01T00:00:10Z",
+          message: {
+            id: "assistant-one" as never,
+            role: "assistant" as const,
+            text: "实时预览在 http://localhost:5050 监听。",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:10Z",
+            completedAt: "2026-01-01T00:00:11Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "assistant-two-entry",
+          kind: "message" as const,
+          createdAt: "2026-01-01T00:00:20Z",
+          message: {
+            id: "assistant-two" as never,
+            role: "assistant" as const,
+            text: "已完成，预览地址 http://localhost:5050 。",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:20Z",
+            completedAt: "2026-01-01T00:00:30Z",
+            streaming: false,
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: "assistant-two-entry",
+      completionSummary: "done",
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    };
+
+    const urlPreviewFlags = (rows: ReturnType<typeof deriveMessagesTimelineRows>) =>
+      rows.flatMap((row) => (row.kind === "message" ? [row.showUrlPreviewCard] : []));
+
+    const runningRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      activeTurnInProgress: true,
+      activeTurnId: "turn-1" as never,
+    });
+
+    expect(urlPreviewFlags(runningRows)).toEqual([false, false]);
+
+    const completedRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      activeTurnInProgress: false,
+      activeTurnId: null,
+    });
+
+    expect(urlPreviewFlags(completedRows)).toEqual([false, true]);
   });
 
   it("projects assistant diff summaries and user revert counts onto the affected rows", () => {

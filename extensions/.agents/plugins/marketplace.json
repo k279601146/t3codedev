@@ -15,6 +15,18 @@
         "authentication": "ON_USE"
       },
       "category": "productivity"
+    },
+    {
+      "name": "agent-reach",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-reach"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "research"
     }
   ]
 }

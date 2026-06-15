@@ -75,6 +75,7 @@ type SlidePromptCard = StarterCard & {
 
 const LAUNCHER_MODES: Array<{ id: LauncherModeId; label: string; icon: LucideIcon }> = [
   { id: "slides", label: "制作幻灯片", icon: PresentationIcon },
+  { id: "research", label: "联网调研", icon: SearchIcon },
   { id: "website", label: "创建网站", icon: FileTextIcon },
   { id: "desktop", label: "开发桌面应用", icon: LaptopIcon },
   { id: "design", label: "设计", icon: Wand2Icon },
@@ -84,7 +85,6 @@ const MORE_MODES: Array<{ id: LauncherModeId; label: string; icon: LucideIcon }>
   { id: "video", label: "视频", icon: VideoIcon },
   { id: "app", label: "开发应用", icon: MonitorIcon },
   { id: "schedule", label: "定时任务", icon: CalendarDaysIcon },
-  { id: "research", label: "Wide Research", icon: SearchIcon },
   { id: "spreadsheet", label: "电子表格", icon: Grid3X3Icon },
   { id: "visualization", label: "可视化", icon: FileBarChartIcon },
   { id: "audio", label: "音频", icon: HeadphonesIcon },
@@ -101,7 +101,7 @@ const MODE_LABELS: Record<LauncherModeId, string> = {
   video: "视频",
   app: "开发应用",
   schedule: "定时任务",
-  research: "Wide Research",
+  research: "联网调研",
   spreadsheet: "电子表格",
   visualization: "可视化",
   audio: "音频",
@@ -118,7 +118,7 @@ export const MODE_PLACEHOLDERS: Record<LauncherModeId, string> = {
   video: "描述你想制作的视频",
   app: "描述你想开发的应用",
   schedule: "描述你希望我定时执行的操作，例如每天早上8点发送市场简报",
-  research: "描述你想深入研究的问题",
+  research: "描述你想调研的主题、链接或公开资料问题",
   spreadsheet: "上传一个电子表格进行分析，或者从零开始创建一个",
   visualization: "描述你想分析和可视化的数据",
   audio: "描述你想生成或处理的音频",
@@ -337,6 +337,96 @@ const SLIDE_TEMPLATES: SlidePromptCard[] = [
   },
 ];
 
+const RESEARCH_PROMPTS: SlidePromptCard[] = [
+  {
+    title: "全网主题调研",
+    desc: "围绕一个问题梳理公开资料、关键观点、证据链接和待确认信息。",
+    icon: SearchIcon,
+    prompt:
+      "$agent-reach 请围绕这个主题做一次公开资料调研。请先给出调研路径和信息来源类型，再收集关键事实、不同观点、证据链接、不确定点和下一步追问建议。主题：",
+  },
+  {
+    title: "URL / 文章阅读",
+    desc: "读取网页链接，提取核心观点、数据、引用和可复用摘要。",
+    icon: FileTextIcon,
+    prompt:
+      "$agent-reach 我会提供一个或多个 URL。请读取公开页面内容，提取核心观点、关键数据、重要引用、来源链接、潜在偏见和适合继续追问的问题。",
+  },
+  {
+    title: "GitHub 项目调研",
+    desc: "比较仓库定位、活跃度、生态、文档质量、风险和适用场景。",
+    icon: Grid3X3Icon,
+    prompt:
+      "$agent-reach 请调研并对比这些 GitHub 项目或技术方案。请关注仓库定位、活跃度、维护状态、文档质量、生态依赖、典型使用场景、风险和推荐结论。对象：",
+  },
+  {
+    title: "视频资料整理",
+    desc: "整理 YouTube、B站等公开视频资料的主题、结构和关键信息。",
+    icon: VideoIcon,
+    prompt:
+      "$agent-reach 请整理我提供的公开视频链接或视频主题。请提取标题、来源、发布时间、内容结构、关键观点、可引用片段、相关链接和后续资料线索。",
+  },
+];
+
+const RESEARCH_TEMPLATES: SlidePromptCard[] = [
+  {
+    title: "竞品公开信息调研",
+    desc: "官网、文档、公开发布、仓库和媒体资料，整理定位与差异。",
+    icon: FileBarChartIcon,
+    prompt:
+      "$agent-reach 请对这些竞品做公开信息调研。请覆盖官网/文档/公开发布/媒体资料/GitHub 等公开来源，整理产品定位、核心功能、定价线索、近期变化、差异点、证据链接和可验证假设。竞品：",
+  },
+  {
+    title: "技术选型资料收集",
+    desc: "面向工程决策，收集官方文档、仓库、案例和限制条件。",
+    icon: ClipboardListIcon,
+    prompt:
+      "$agent-reach 请为这个技术选型收集公开资料。请优先查官方文档、GitHub、技术博客和案例，整理能力边界、成熟度、学习成本、集成风险、替代方案和推荐结论。技术方向：",
+  },
+  {
+    title: "行业趋势追踪",
+    desc: "用公开文章、RSS、报告和新闻线索整理趋势与时间线。",
+    icon: LineChartIcon,
+    prompt:
+      "$agent-reach 请围绕这个行业主题追踪近期公开资料和 RSS/新闻线索，整理时间线、关键事件、主要参与者、数据点、争议问题、来源链接和对 T3 Code 的启发。主题：",
+  },
+  {
+    title: "产品口碑公开信息",
+    desc: "整理公开评论、测评、社区讨论和常见正负面反馈。",
+    icon: SparklesIcon,
+    prompt:
+      "$agent-reach 请整理这个产品的公开口碑信息。请只基于可访问的公开资料，归纳正面评价、负面反馈、典型用户场景、反复出现的问题、证据链接和后续验证建议。产品：",
+  },
+  {
+    title: "论文 / 报告速读",
+    desc: "读取公开论文、白皮书或长报告，提炼结构化摘要。",
+    icon: FileTextIcon,
+    prompt:
+      "$agent-reach 请读取我提供的公开论文、白皮书或长报告链接，整理研究问题、方法、关键结论、数据来源、局限性、可引用观点和适合做成汇报的结构。",
+  },
+  {
+    title: "开源生态地图",
+    desc: "围绕一个领域找到代表项目、工具链、社区和演进方向。",
+    icon: Grid3X3Icon,
+    prompt:
+      "$agent-reach 请围绕这个开源领域做生态地图调研。请找出代表项目、工具链、社区资源、维护活跃度、许可证线索、技术路线差异、风险和推荐关注列表。领域：",
+  },
+  {
+    title: "公开资料事实核对",
+    desc: "对一个结论或说法查找来源，区分事实、推断和争议。",
+    icon: CheckIcon,
+    prompt:
+      "$agent-reach 请对这个说法做公开资料事实核对。请查找原始来源和多个可信公开来源，区分已证实事实、合理推断、争议点、缺失证据，并给出引用链接。说法：",
+  },
+  {
+    title: "学习路线资料包",
+    desc: "收集官方文档、教程、示例项目和视频资料，形成学习路径。",
+    icon: LayoutTemplateIcon,
+    prompt:
+      "$agent-reach 请为这个主题收集公开学习资料包。请包含官方文档、入门教程、示例项目、公开视频、进阶文章、常见坑和 7 天学习路线。主题：",
+  },
+];
+
 const DEFAULT_TITLES = [
   "我能为你做什么？",
   "今天想推进哪件事？",
@@ -353,7 +443,7 @@ const MODE_TITLES: Record<LauncherModeId, string> = {
   video: "想制作什么视频？",
   app: "想开发什么应用？",
   schedule: "要我定期帮你做什么？",
-  research: "想深入研究什么问题？",
+  research: "想调研什么公开资料？",
   spreadsheet: "要分析或创建什么数据？",
   visualization: "想把什么数据可视化？",
   audio: "想处理或生成什么音频？",
@@ -390,18 +480,21 @@ function getPluginsClient() {
   return getPrimaryEnvironmentConnection().client.plugins;
 }
 
-function findPptMasterPlugin(plugins: ReadonlyArray<PluginSummary>): PluginSummary | null {
+function findPluginByName(
+  plugins: ReadonlyArray<PluginSummary>,
+  pluginName: string,
+): PluginSummary | null {
   return (
     plugins.find(
       (plugin) =>
-        plugin.name === "ppt-master" ||
-        plugin.location.pluginName === "ppt-master" ||
-        plugin.id.includes("ppt-master"),
+        plugin.name === pluginName ||
+        plugin.location.pluginName === pluginName ||
+        plugin.id.includes(pluginName),
     ) ?? null
   );
 }
 
-function usePptMasterPlugin() {
+function useBundledPlugin(pluginName: string) {
   const queryClient = useQueryClient();
   const pluginsQuery = useQuery({
     queryKey: PLUGINS_LIST_QUERY,
@@ -410,10 +503,11 @@ function usePptMasterPlugin() {
   });
   const plugin = useMemo(
     () =>
-      findPptMasterPlugin(
+      findPluginByName(
         pluginsQuery.data?.marketplaces.flatMap((marketplace) => marketplace.plugins) ?? [],
+        pluginName,
       ),
-    [pluginsQuery.data],
+    [pluginName, pluginsQuery.data],
   );
   const installMutation = useMutation({
     mutationFn: (target: PluginSummary) =>
@@ -437,6 +531,14 @@ function usePptMasterPlugin() {
       await installMutation.mutateAsync(plugin);
     },
   };
+}
+
+function usePptMasterPlugin() {
+  return useBundledPlugin("ppt-master");
+}
+
+function useAgentReachPlugin() {
+  return useBundledPlugin("agent-reach");
 }
 
 export function getLauncherModeLabel(mode: LauncherModeId) {
@@ -785,6 +887,10 @@ function ModeRecommendations({
     return <SlidesRecommendations onSubmitPreset={onSubmitPreset} />;
   }
 
+  if (mode === "research") {
+    return <ResearchRecommendations onSubmitPreset={onSubmitPreset} />;
+  }
+
   if (mode === "schedule") {
     return (
       <section className="w-full">
@@ -884,7 +990,7 @@ function SlidesRecommendations({
       <section className="mx-auto w-full max-w-[744px]">
         <div className="mb-4 flex items-center justify-between gap-3">
           <SectionTitle className="mb-0">工作流入口</SectionTitle>
-          <SlidePluginStatus installed={installed} loading={pptMaster.loading} />
+          <PluginStatusBadge installed={installed} loading={pptMaster.loading} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {SLIDE_PROMPTS.map((prompt, index) => {
@@ -1024,7 +1130,186 @@ function SlidesRecommendations({
   );
 }
 
-function SlidePluginStatus({ installed, loading }: { installed: boolean; loading: boolean }) {
+function ResearchRecommendations({
+  onSubmitPreset,
+}: {
+  onSubmitPreset: (prompt: string, mode?: LauncherModeId) => void;
+}) {
+  const agentReach = useAgentReachPlugin();
+  const installed = agentReach.plugin?.installed === true;
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  const [installDialogError, setInstallDialogError] = useState<string | null>(null);
+
+  const submitResearchPrompt = (prompt: string) => {
+    if (installed) {
+      onSubmitPreset(prompt, "research");
+      return;
+    }
+    setPendingPrompt(prompt);
+    setInstallDialogError(null);
+    setInstallDialogOpen(true);
+  };
+
+  const installAndContinue = async () => {
+    if (!agentReach.plugin || !pendingPrompt) return;
+    setInstallDialogError(null);
+    try {
+      await agentReach.install();
+      setInstallDialogOpen(false);
+      onSubmitPreset(pendingPrompt, "research");
+      setPendingPrompt(null);
+    } catch (error) {
+      setInstallDialogError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  return (
+    <>
+      <section className="mx-auto w-full max-w-[744px]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <SectionTitle className="mb-0">调研入口</SectionTitle>
+          <PluginStatusBadge installed={installed} loading={agentReach.loading} />
+        </div>
+
+        {!installed ? (
+          <button
+            type="button"
+            onClick={() => submitResearchPrompt(RESEARCH_PROMPTS[0]?.prompt ?? "$agent-reach ")}
+            className="group mb-4 flex min-h-[86px] w-full animate-in items-center gap-3 rounded-[10px] border border-[#147DFF]/30 bg-[#147DFF]/5 px-4 py-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-[#147DFF]/10"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#147DFF]/10 text-[#147DFF]">
+              <DownloadIcon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-medium text-foreground">
+                安装 Agent Reach 插件
+              </span>
+              <span className="mt-1 line-clamp-2 block text-[12px] leading-5 text-muted-foreground">
+                安装后可用 $agent-reach 做网页搜索、链接阅读、GitHub、RSS 和公开视频资料调研。
+              </span>
+            </span>
+            <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
+          </button>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {RESEARCH_PROMPTS.map((prompt, index) => {
+            const Icon = prompt.icon ?? SearchIcon;
+            return (
+              <button
+                key={prompt.title}
+                type="button"
+                onClick={() => submitResearchPrompt(prompt.prompt)}
+                className="flex min-h-[118px] animate-in flex-col justify-between rounded-[10px] border border-border bg-background p-3 text-left text-[13px] leading-5 text-foreground fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
+                style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Icon className="h-4 w-4 text-[#147DFF]" />
+                  {prompt.title}
+                </span>
+                {prompt.desc ? (
+                  <span className="mt-2 text-[12px] leading-5 text-muted-foreground">
+                    {prompt.desc}
+                  </span>
+                ) : null}
+                <ArrowUpRightIcon className="ml-auto mt-2 h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-8">
+          <SectionTitle className="mb-3">演示模板</SectionTitle>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {RESEARCH_TEMPLATES.map((template, index) => {
+              const TemplateIcon = template.icon ?? SearchIcon;
+              return (
+                <button
+                  key={template.title}
+                  type="button"
+                  onClick={() => submitResearchPrompt(template.prompt)}
+                  className="group flex min-h-[136px] animate-in flex-col rounded-[10px] border border-border bg-background p-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
+                  style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-[#147DFF] transition-colors group-hover:bg-[#147DFF]/10">
+                      <TemplateIcon className="h-4.5 w-4.5" />
+                    </span>
+                    <ArrowUpRightIcon className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
+                  </span>
+                  <span className="mt-3 block text-[13px] font-medium leading-5 text-foreground">
+                    {template.title}
+                  </span>
+                  {template.desc ? (
+                    <span className="mt-1 line-clamp-3 block text-[12px] leading-5 text-muted-foreground">
+                      {template.desc}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <Dialog open={installDialogOpen} onOpenChange={setInstallDialogOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>安装 Agent Reach 插件</DialogTitle>
+            <DialogDescription>
+              联网调研需要安装 T3 Code 内置插件 Agent Reach。安装后即可用 $agent-reach
+              发起公开资料搜索、链接阅读和研究整理任务。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="rounded-[10px] border border-border bg-muted/30 px-4 py-3 text-[13px] leading-5 text-muted-foreground">
+              {agentReach.plugin
+                ? "安装完成后会自动继续你刚才选择的调研任务。"
+                : agentReach.loading
+                  ? "正在检查内置插件，请稍候。"
+                  : "当前未发现 Agent Reach 插件，请确认内置扩展资源已正确打包。"}
+              {agentReach.error || agentReach.installError || installDialogError ? (
+                <span className="mt-2 block text-destructive">
+                  {installDialogError ??
+                    (agentReach.installError instanceof Error
+                      ? agentReach.installError.message
+                      : agentReach.error instanceof Error
+                        ? agentReach.error.message
+                        : String(agentReach.installError ?? agentReach.error))}
+                </span>
+              ) : null}
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={agentReach.installing}
+              onClick={() => setInstallDialogOpen(false)}
+            >
+              稍后
+            </Button>
+            <Button
+              type="button"
+              disabled={!agentReach.plugin || agentReach.installing}
+              onClick={() => void installAndContinue()}
+            >
+              {agentReach.installing ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <DownloadIcon className="size-4" />
+              )}
+              {agentReach.installing ? "安装中" : "安装并继续"}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </>
+  );
+}
+
+function PluginStatusBadge({ installed, loading }: { installed: boolean; loading: boolean }) {
   if (installed) {
     return (
       <span className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 px-3 text-[13px] text-emerald-700 dark:text-emerald-300">

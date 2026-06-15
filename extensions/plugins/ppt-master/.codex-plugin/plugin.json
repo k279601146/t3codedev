@@ -2,6 +2,13 @@
   "name": "ppt-master",
   "version": "2.10.0",
   "description": "PPT Master 通过 SVG 到 DrawingML 的流程生成原生可编辑 PowerPoint 文件。",
+  "author": {
+    "name": "Hugo He",
+    "url": "https://github.com/hugohe3"
+  },
+  "homepage": "https://github.com/hugohe3/ppt-master",
+  "repository": "https://github.com/hugohe3/ppt-master",
+  "license": "MIT",
   "keywords": [
     "pptx",
     "presentation",

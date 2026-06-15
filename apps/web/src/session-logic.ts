@@ -515,9 +515,12 @@ export function deriveWorkLogEntries(
       resolvedUserInputRequestIds.add(requestId);
     }
   }
-  const requestedUserInputQuestionsByRequestId = new Map<string, ReadonlyArray<UserInputQuestion>>();
+  const requestedUserInputQuestionsByRequestId = new Map<
+    string,
+    ReadonlyArray<UserInputQuestion>
+  >();
   const entries = ordered
-    .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
+    .filter((activity) => (latestTurnId ? activity.turnId !== null : true))
     .filter(
       (activity) => activity.kind !== "tool.started" || isImageGenerationStartActivity(activity),
     )
@@ -602,16 +605,18 @@ function toDerivedWorkLogEntry(
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
-  const detail = commandFileChange?.diff ?? (isTaskActivity
-    ? !taskDetailAsLabel &&
-      payload &&
-      typeof payload.detail === "string" &&
-      payload.detail.length > 0
-      ? stripTrailingExitCode(payload.detail).output
-      : null
-    : (extractRuntimeIssueDetail(activity.kind, payload) ??
-      (toolPresentation?.family === "command" ? null : toolPresentation?.detail) ??
-      extractToolDetail(payload, title ?? activity.summary)));
+  const detail =
+    commandFileChange?.diff ??
+    (isTaskActivity
+      ? !taskDetailAsLabel &&
+        payload &&
+        typeof payload.detail === "string" &&
+        payload.detail.length > 0
+        ? stripTrailingExitCode(payload.detail).output
+        : null
+      : (extractRuntimeIssueDetail(activity.kind, payload) ??
+        (toolPresentation?.family === "command" ? null : toolPresentation?.detail) ??
+        extractToolDetail(payload, title ?? activity.summary)));
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
@@ -666,7 +671,11 @@ function toDerivedWorkLogEntry(
   if (toolCallId) {
     entry.toolCallId = toolCallId;
   }
-  const userInputSummary = deriveUserInputWorkSummary(activity, payload, requestedUserInputQuestions);
+  const userInputSummary = deriveUserInputWorkSummary(
+    activity,
+    payload,
+    requestedUserInputQuestions,
+  );
   if (userInputSummary) {
     entry.userInputSummary = userInputSummary;
     entry.label =
@@ -1127,9 +1136,7 @@ function extractPowerShellWriteContent(command: string): string | null {
   if (!writeOutputMatch?.[1]) {
     return null;
   }
-  return unquoteCommandToken(writeOutputMatch[1])
-    .replace(/\\"/g, '"')
-    .replace(/\\'/g, "'");
+  return unquoteCommandToken(writeOutputMatch[1]).replace(/\\"/g, '"').replace(/\\'/g, "'");
 }
 
 function extractCommandFileChange(

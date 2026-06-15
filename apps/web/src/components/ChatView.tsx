@@ -295,6 +295,18 @@ const TEXT_PREVIEW_EXTENSIONS = new Set([
   "yml",
   "zsh",
 ]);
+const KNOWN_EXTENSIONLESS_TEXT_FILENAMES = new Set([
+  "dockerfile",
+  "makefile",
+  "readme",
+  "license",
+  "changelog",
+  "gitignore",
+  "gitattributes",
+  "editorconfig",
+  "npmrc",
+  "yarnrc",
+]);
 
 function normalizeComparableFilePath(value: string): string {
   return value.replaceAll("\\", "/").replace(/^\/([A-Za-z]:\/)/, "$1");
@@ -333,6 +345,22 @@ function splitRelativePreviewFilePath(filePath: string): {
     directoryPath: normalizedFilePath.slice(0, separatorIndex),
     basename: normalizedFilePath.slice(separatorIndex + 1),
   };
+}
+
+function looksLikeDirectoryPreviewPath(filePath: string): boolean {
+  const { path } = splitPathAndPosition(filePath);
+  if (/[\\/]$/.test(path)) {
+    return true;
+  }
+
+  const basename = path.split(/[\\/]/).filter(Boolean).at(-1);
+  if (!basename) {
+    return false;
+  }
+  if (basename.includes(".")) {
+    return false;
+  }
+  return !KNOWN_EXTENSIONLESS_TEXT_FILENAMES.has(basename.toLowerCase());
 }
 
 function isTextPreviewFilePath(filePath: string): boolean {
@@ -4586,6 +4614,27 @@ export default function ChatView(props: ChatViewProps) {
   );
   const onOpenMarkdownFile = useCallback(
     (file: MarkdownFileLinkMeta) => {
+      if (looksLikeDirectoryPreviewPath(file.filePath)) {
+        const api = readLocalApi();
+        if (!api) {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: "本地 API 不可用。",
+          });
+          return;
+        }
+        const { path } = splitPathAndPosition(file.filePath);
+        void api.shell.openPath(path).catch((error: unknown) => {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: error instanceof Error ? error.message : "打开文件夹失败。",
+          });
+        });
+        return;
+      }
+
       const previewTarget = resolveMarkdownPreviewTarget(file.filePath, activeWorkspaceRoot);
       if (!previewTarget) {
         toastManager.add({
