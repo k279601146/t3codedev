@@ -550,7 +550,10 @@ describe("DesktopBackendConfiguration", () => {
 
         const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
         assert.match(engineConfig, /base_url = "http:\/\/localhost:3000\/v1"/);
-        assert.match(engineConfig, /\[features\]\s+image_generation = true\s+plugins = true/);
+        assert.match(
+          engineConfig,
+          /\[features\]\s+image_generation = true\s+imagegenext = true\s+plugins = true/,
+        );
         assert.match(engineConfig, /\[plugins\."ppt-master@t3-bundled-plugins"\]\s+enabled = true/);
         assert.match(engineConfig, /\[plugins\."calendar@debug"\]\s+enabled = true/);
         assert.doesNotMatch(engineConfig, /model_provider = "old"/);

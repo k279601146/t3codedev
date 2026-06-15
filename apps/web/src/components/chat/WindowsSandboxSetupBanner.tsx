@@ -30,9 +30,6 @@ function deriveWindowsSandboxBannerCopy(
   if (!provider || provider.driver !== "codex") {
     return null;
   }
-  if (provider.status === "error" && !checkedSandbox) {
-    return null;
-  }
 
   const sandbox = checkedSandbox ?? provider.windowsSandbox;
   if (!sandbox) {
@@ -63,7 +60,16 @@ function deriveWindowsSandboxBannerCopy(
       };
     case "error":
       if (isProviderProbeUnavailableMessage(sandbox.lastError)) {
-        return null;
+        return {
+          kind: "error",
+          tone: "warning",
+          title: "Agent 沙箱需要确认",
+          detail: getFriendlyProviderInfrastructureMessage(
+            getServerProviderLabel(provider),
+            sandbox.lastError,
+            "本地引擎状态暂时不可用，仍可尝试重新启动 Agent 沙箱或进入设置检查配置。",
+          ),
+        };
       }
       return {
         kind: "error",

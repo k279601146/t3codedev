@@ -102,6 +102,7 @@ export function resolveBundledEngineConfig(
       ...COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY,
     ]),
     CODEX_DISABLE_TELEMETRY: "true",
+    CODEX_FEATURES_IMAGEGENEXT: "true",
     // 强制重定向内置的 OpenAI 提供商到我们的网关
     CODEX_OPENAI_BASE_URL: gatewayBaseUrl,
     CODEX_CHATGPT_BASE_URL: gatewayBaseUrl,

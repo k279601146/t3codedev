@@ -29,6 +29,7 @@ describe("BundledEngineConfig", () => {
     assert.equal(config.spawnEnvPatch[COMMERCIAL_ENGINE_IDE_JWT_ENV], "jwt-token");
     assert.equal(config.spawnEnvPatch.MYIDE_API_KEY, undefined);
     assert.equal(config.spawnEnvPatch.CODEX_MODEL_PROVIDER, "myservice");
+    assert.equal(config.spawnEnvPatch.CODEX_FEATURES_IMAGEGENEXT, "true");
     assert.equal(
       config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_BASE_URL,
       "https://api.example.com/v1",

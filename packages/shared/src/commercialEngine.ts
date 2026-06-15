@@ -160,6 +160,7 @@ image_generation = true
 
 [features]
 image_generation = true
+imagegenext = true
 plugins = true
 apps = true
 browser_use = true
