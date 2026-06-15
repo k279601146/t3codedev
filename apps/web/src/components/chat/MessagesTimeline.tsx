@@ -28,6 +28,7 @@ import {
   ChevronDownIcon,
   CircleAlertIcon,
   CopyIcon,
+  FilePlus2Icon,
   FileIcon,
   EyeIcon,
   GoalIcon,
@@ -46,9 +47,9 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
-import { ChangedFilesTree } from "./ChangedFilesTree";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
@@ -104,6 +105,7 @@ interface TimelineRowSharedState {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onOpenMarkdownFile: ((file: MarkdownFileLinkMeta) => void) | undefined;
+  onOpenUrl: ((url: string, mode: "preview" | "external") => void) | undefined;
   onSubmitEditedUserMessage: ((messageId: MessageId, text: string) => Promise<void>) | null;
   /** 历史字段名保留；这里的 id 是成果 owner，可能是助手消息，也可能是计划/图片行。 */
   collapsedAssistantMessageIds: ReadonlySet<string>;
@@ -141,6 +143,7 @@ const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 const CHAT_FONT_STACK =
   "'PingFang SC', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif";
 const USER_MESSAGE_FONT_STYLE: React.CSSProperties = { fontFamily: CHAT_FONT_STACK };
+const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -159,6 +162,7 @@ interface MessagesTimelineProps {
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onOpenMarkdownFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
+  onOpenUrl?: ((url: string, mode: "preview" | "external") => void) | undefined;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   onSubmitEditedUserMessage?: (messageId: MessageId, text: string) => Promise<void>;
@@ -191,6 +195,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   routeThreadKey,
   onOpenTurnDiff,
   onOpenMarkdownFile,
+  onOpenUrl,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   onSubmitEditedUserMessage,
@@ -371,6 +376,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       onOpenMarkdownFile,
+      onOpenUrl,
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
@@ -393,6 +399,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       onOpenMarkdownFile,
+      onOpenUrl,
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
@@ -483,7 +490,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const innerRow = (
     <div
       className={cn(
-        "pb-4",
+        timelineRowSpacingClass(row),
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
       data-timeline-row-id={row.id}
@@ -515,6 +522,17 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     </>
   );
 });
+
+function timelineRowSpacingClass(row: TimelineRow): string {
+  if (row.kind === "message") {
+    if (row.message.role === "assistant") {
+      return row.showAssistantMeta ? "pb-3" : "pb-2";
+    }
+    return "pb-4";
+  }
+  if (row.kind === "work") return "pb-2";
+  return "pb-3";
+}
 
 /** Toggle header rendered above the first member row of a collapsed span. */
 function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: string }) {
@@ -923,9 +941,84 @@ function GoalMessageMarker() {
   );
 }
 
+function trimAssistantUrl(value: string): string {
+  let output = value.replace(/[.,;!?，。；！？]+$/g, "");
+  while (output.endsWith(")") || output.endsWith("]") || output.endsWith("}")) {
+    const close = output.charAt(output.length - 1);
+    const open = close === ")" ? "(" : close === "]" ? "[" : "{";
+    const opens = output.split(open).length - 1;
+    const closes = output.split(close).length - 1;
+    if (opens >= closes) break;
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
+function extractAssistantUrls(text: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  ASSISTANT_URL_PATTERN.lastIndex = 0;
+  for (const match of text.matchAll(ASSISTANT_URL_PATTERN)) {
+    const url = trimAssistantUrl(match[0]);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
+function UrlPreviewCard({ url }: { url: string }) {
+  const ctx = use(TimelineRowCtx);
+  const onOpenUrl = ctx.onOpenUrl;
+  if (!onOpenUrl) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border/60 bg-card/45 p-4 shadow-sm">
+      <div className="flex items-center gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500">
+          <GlobeIcon className="size-5" />
+        </span>
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={() => onOpenUrl(url, "preview")}
+          title={url}
+        >
+          <div className="truncate text-[14px] font-semibold leading-5 text-foreground">
+            网页预览
+          </div>
+          <div className="truncate text-[13px] leading-5 text-muted-foreground">网站</div>
+        </button>
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0 gap-1.5 rounded-lg px-3 text-[13px]"
+              >
+                打开方式
+                <ChevronDownIcon className="size-3.5 opacity-60" />
+              </Button>
+            }
+          />
+          <MenuPopup align="end">
+            <MenuItem onClick={() => onOpenUrl(url, "preview")}>侧边预览</MenuItem>
+            <MenuItem onClick={() => onOpenUrl(url, "external")}>外部浏览器</MenuItem>
+          </MenuPopup>
+        </Menu>
+      </div>
+    </div>
+  );
+}
+
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const previewUrl = !row.message.streaming ? (extractAssistantUrls(messageText)[0] ?? null) : null;
 
   return (
     <>
@@ -944,6 +1037,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           resolvedTheme={ctx.resolvedTheme}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
+        {previewUrl ? <UrlPreviewCard url={previewUrl} /> : null}
         {row.showAssistantMeta ? (
           <div className="mt-1.5 flex items-center gap-2">
             <p className="text-[11px] text-muted-foreground/40" data-assistant-message-meta="true">

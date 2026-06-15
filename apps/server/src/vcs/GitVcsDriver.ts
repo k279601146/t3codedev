@@ -27,6 +27,7 @@ import {
   type VcsStatusResult,
 } from "@t3tools/contracts";
 import * as GitVcsDriverCore from "./GitVcsDriverCore.ts";
+import { CHECKPOINT_GIT_ADD_ARGS } from "./CheckpointGitArgs.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
@@ -632,7 +633,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         yield* execute({
           operation,
           cwd: input.cwd,
-          args: ["add", "-A", "--", "."],
+          args: CHECKPOINT_GIT_ADD_ARGS,
           env: commitEnv,
         });
 

@@ -294,8 +294,10 @@ interface MarkdownFileLinkProps {
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
 const PLAIN_FILE_PATH_PATTERN =
   /(?:~\/|\.{1,2}\/|\/|[A-Za-z]:[\\/]|\\\\)[^\s"'`<>)\]]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}|[A-Za-z0-9._-]+\.(?:c|cc|cjs|cpp|cs|css|cts|cxx|env|gif|go|gql|graphql|h|hpp|htm|html|ini|java|jpeg|jpg|js|json|jsx|kt|kts|log|md|mdx|mjs|mts|pdf|php|png|ps1|py|rb|rs|sass|scss|sh|sql|svg|swift|toml|ts|tsx|txt|webp|xml|yaml|yml|zsh)(?::\d+){0,2}/gi;
+const PLAIN_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
+const INLINE_CODE_PATTERN = /`([^`\n]+)`/g;
 const PLAIN_LINE_SUFFIX_PATTERN = /^\s*\(line\s+(\d+)\)/i;
-const MARKDOWN_PROTECTED_INLINE_PATTERN = /`[^`\n]*`|!?\[[^\]\n]*]\([^)\n]*\)/g;
+const MARKDOWN_PROTECTED_INLINE_PATTERN = /!?\[[^\]\n]*]\([^)\n]*\)/g;
 const MARKDOWN_FILE_LINK_CLASS_NAME =
   "chat-markdown-file-link relative top-[2px] max-w-full no-underline";
 const MARKDOWN_FILE_LINK_ICON_CLASS_NAME = "chat-markdown-file-link-icon size-3.5 shrink-0";
@@ -397,6 +399,19 @@ function trimPlainFilePathCandidate(value: string): string {
   return output;
 }
 
+function trimPlainUrlCandidate(value: string): string {
+  let output = value.replace(/[.,;!?，。；！？]+$/g, "");
+  while (output.endsWith(")") || output.endsWith("]") || output.endsWith("}")) {
+    const close = output.charAt(output.length - 1);
+    const open = close === ")" ? "(" : close === "]" ? "[" : "{";
+    const opens = output.split(open).length - 1;
+    const closes = output.split(close).length - 1;
+    if (opens >= closes) break;
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
 function protectedMarkdownRanges(segment: string): Array<{ start: number; end: number }> {
   const ranges: Array<{ start: number; end: number }> = [];
   MARKDOWN_PROTECTED_INLINE_PATTERN.lastIndex = 0;
@@ -416,6 +431,14 @@ function rangeContains(
   return ranges.some((range) => start < range.end && range.start < end);
 }
 
+function markdownUrlLink(value: string): string {
+  return `[${escapeMarkdownLinkLabel(value)}](${escapeMarkdownLinkDestination(value)})`;
+}
+
+function markdownFileLink(value: string): string {
+  return `[${escapeMarkdownLinkLabel(value)}](<${escapeMarkdownLinkDestination(value)}>)`;
+}
+
 function addLineSuffixToTarget(target: string, textAfterMatch: string): {
   target: string;
   consumedSuffix: string;
@@ -431,9 +454,70 @@ function addLineSuffixToTarget(target: string, textAfterMatch: string): {
   return { target: `${target}:${line}`, consumedSuffix: lineMatch[0] };
 }
 
+function linkifyInlineCodeTargetsInSegment(segment: string, cwd: string | undefined): string {
+  const replacements: Array<{ start: number; end: number; value: string }> = [];
+  INLINE_CODE_PATTERN.lastIndex = 0;
+
+  for (const match of segment.matchAll(INLINE_CODE_PATTERN)) {
+    const start = match.index ?? -1;
+    const rawValue = match[1];
+    if (start < 0 || !rawValue) continue;
+    const trimmedValue = rawValue.trim();
+    if (trimmedValue.length !== rawValue.length || /\s/.test(trimmedValue)) continue;
+
+    const urlValue = trimPlainUrlCandidate(trimmedValue);
+    if (/^https?:\/\//i.test(urlValue)) {
+      replacements.push({
+        start,
+        end: start + match[0].length,
+        value: markdownUrlLink(urlValue),
+      });
+      continue;
+    }
+
+    const fileValue = trimPlainFilePathCandidate(trimmedValue);
+    if (resolveMarkdownFileLinkMeta(fileValue, cwd)) {
+      replacements.push({
+        start,
+        end: start + match[0].length,
+        value: markdownFileLink(fileValue),
+      });
+    }
+  }
+
+  if (replacements.length === 0) return segment;
+
+  let output = "";
+  let cursor = 0;
+  for (const replacement of replacements) {
+    output += segment.slice(cursor, replacement.start);
+    output += replacement.value;
+    cursor = replacement.end;
+  }
+  output += segment.slice(cursor);
+  return output;
+}
+
 function linkifyPlainFilePathsInSegment(segment: string, cwd: string | undefined): string {
   const protectedRanges = protectedMarkdownRanges(segment);
   const replacements: Array<{ start: number; end: number; value: string }> = [];
+  PLAIN_URL_PATTERN.lastIndex = 0;
+  for (const match of segment.matchAll(PLAIN_URL_PATTERN)) {
+    const start = match.index ?? -1;
+    if (start < 0) continue;
+    const rawCandidate = match[0];
+    const trimmedCandidate = trimPlainUrlCandidate(rawCandidate);
+    if (trimmedCandidate.length === 0) continue;
+
+    const candidateEnd = start + trimmedCandidate.length;
+    if (rangeContains(protectedRanges, start, candidateEnd)) continue;
+    replacements.push({
+      start,
+      end: candidateEnd,
+      value: markdownUrlLink(trimmedCandidate),
+    });
+  }
+
   PLAIN_FILE_PATH_PATTERN.lastIndex = 0;
 
   for (const match of segment.matchAll(PLAIN_FILE_PATH_PATTERN)) {
@@ -445,6 +529,7 @@ function linkifyPlainFilePathsInSegment(segment: string, cwd: string | undefined
 
     const candidateEnd = start + trimmedCandidate.length;
     if (rangeContains(protectedRanges, start, candidateEnd)) continue;
+    if (rangeContains(replacements, start, candidateEnd)) continue;
 
     const { target, consumedSuffix } = addLineSuffixToTarget(
       trimmedCandidate,
@@ -455,9 +540,7 @@ function linkifyPlainFilePathsInSegment(segment: string, cwd: string | undefined
     replacements.push({
       start,
       end: candidateEnd + consumedSuffix.length,
-      value: `[${escapeMarkdownLinkLabel(trimmedCandidate)}](<${escapeMarkdownLinkDestination(
-        target,
-      )}>)`,
+      value: markdownFileLink(trimmedCandidate),
     });
   }
 
@@ -467,7 +550,7 @@ function linkifyPlainFilePathsInSegment(segment: string, cwd: string | undefined
 
   let output = "";
   let cursor = 0;
-  for (const replacement of replacements) {
+  for (const replacement of replacements.toSorted((a, b) => a.start - b.start)) {
     if (replacement.start < cursor) continue;
     output += segment.slice(cursor, replacement.start);
     output += replacement.value;
@@ -503,7 +586,9 @@ function linkifyPlainFilePaths(text: string, cwd: string | undefined): string {
         return part;
       }
 
-      return inFence ? part : linkifyPlainFilePathsInSegment(part, cwd);
+      return inFence
+        ? part
+        : linkifyPlainFilePathsInSegment(linkifyInlineCodeTargetsInSegment(part, cwd), cwd);
     })
     .join("");
 }

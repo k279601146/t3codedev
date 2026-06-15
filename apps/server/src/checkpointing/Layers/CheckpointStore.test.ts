@@ -264,6 +264,40 @@ it.layer(TestLayer)("CheckpointStoreLive", (it) => {
         expect(yield* pathExists(`${nestedGitDir}_disabled`)).toBe(false);
       }),
     );
+
+    it.effect("ignores Office lock files during shadow checkpoint capture", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir("checkpoint-store-shadow-office-lock-test-");
+        const checkpointStore = yield* CheckpointStore;
+        const threadId = ThreadId.make("thread-checkpoint-shadow-office-lock");
+        const fromCheckpointRef = checkpointRefForThreadTurn(threadId, 0);
+        const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+
+        yield* makeDirectory(path.join(tmp, "exports"));
+        yield* writeTextFile(path.join(tmp, "exports", "deck.pptx"), "deck before\n");
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: fromCheckpointRef,
+        });
+
+        yield* writeTextFile(path.join(tmp, "exports", "deck.pptx"), "deck after\n");
+        yield* writeTextFile(path.join(tmp, "exports", "~$deck.pptx"), "office lock\n");
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: toCheckpointRef,
+        });
+
+        const diff = yield* checkpointStore.diffCheckpoints({
+          cwd: tmp,
+          fromCheckpointRef,
+          toCheckpointRef,
+          ignoreWhitespace: false,
+        });
+
+        expect(diff).toContain("exports/deck.pptx");
+        expect(diff).not.toContain("~$deck.pptx");
+      }),
+    );
   });
 
   describe("diffCheckpoints", () => {

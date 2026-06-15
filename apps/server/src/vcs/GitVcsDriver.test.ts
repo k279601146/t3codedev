@@ -7,9 +7,10 @@ import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { assert, it } from "@effect/vitest";
 
-import { GitCommandError } from "@t3tools/contracts";
+import { CheckpointRef, GitCommandError } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 import { runVcsDriverContractSuite } from "./testing/VcsDriverContractHarness.ts";
 
@@ -63,6 +64,58 @@ runVcsDriverContractSuite<GitVcsDriver.GitVcsDriver, GitContractError>({
         yield* fileSystem.writeFileString(path.join(cwd, ".gitignore"), `${pattern}\n`);
       }),
   },
+});
+
+it.layer(GitContractLayer)("GitVcsDriver checkpoint capture ignores Office lock files", (it) => {
+  it.effect("keeps ~$ files out of checkpoint diffs", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
+      const cwd = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-git-vcs-office-lock-",
+      });
+      const driver = yield* VcsDriver.VcsDriver;
+      const checkpoints = driver.checkpoints;
+      if (!checkpoints) {
+        throw new Error("Git driver checkpoint operations are unavailable.");
+      }
+      const fromCheckpointRef = CheckpointRef.make("refs/t3/checkpoints/git-office-lock/0");
+      const toCheckpointRef = CheckpointRef.make("refs/t3/checkpoints/git-office-lock/1");
+
+      yield* runGit(cwd, ["init"]);
+      yield* runGit(cwd, ["config", "user.email", "test@test.com"]);
+      yield* runGit(cwd, ["config", "user.name", "Test"]);
+      yield* fileSystem.makeDirectory(pathService.join(cwd, "exports"), { recursive: true });
+      yield* fileSystem.writeFileString(pathService.join(cwd, "exports", "deck.pptx"), "before\n");
+      yield* runGit(cwd, ["add", "exports/deck.pptx"]);
+      yield* runGit(cwd, ["commit", "-m", "Track deck"]);
+
+      yield* checkpoints.captureCheckpoint({
+        cwd,
+        checkpointRef: fromCheckpointRef,
+      });
+
+      yield* fileSystem.writeFileString(pathService.join(cwd, "exports", "deck.pptx"), "after\n");
+      yield* fileSystem.writeFileString(
+        pathService.join(cwd, "exports", "~$deck.pptx"),
+        "office lock\n",
+      );
+      yield* checkpoints.captureCheckpoint({
+        cwd,
+        checkpointRef: toCheckpointRef,
+      });
+
+      const diff = yield* checkpoints.diffCheckpoints({
+        cwd,
+        fromCheckpointRef,
+        toCheckpointRef,
+        ignoreWhitespace: false,
+      });
+
+      assert.include(diff, "exports/deck.pptx");
+      assert.notInclude(diff, "~$deck.pptx");
+    }),
+  );
 });
 
 it.effect("GitVcsDriver forwards execute env to the VCS process", () => {

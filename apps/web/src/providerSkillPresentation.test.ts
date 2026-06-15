@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatProviderSkillDisplayName,
   formatProviderSkillInstallSource,
+  mergeProviderSkillsForInlineDisplay,
 } from "./providerSkillPresentation";
 
 describe("formatProviderSkillDisplayName", () => {
@@ -53,5 +54,43 @@ describe("formatProviderSkillInstallSource", () => {
         scope: "project",
       }),
     ).toBe("Project");
+  });
+});
+
+describe("mergeProviderSkillsForInlineDisplay", () => {
+  it("keeps primary provider skills first and fills skills from other providers", () => {
+    expect(
+      mergeProviderSkillsForInlineDisplay(
+        [
+          {
+            name: "ppt-master",
+            displayName: "Ppt Master",
+          },
+        ],
+        [
+          {
+            skills: [
+              {
+                name: "ppt-master",
+                displayName: "PPT Master Other",
+              },
+              {
+                name: "imagegen",
+                displayName: "Image Gen",
+              },
+            ],
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        name: "ppt-master",
+        displayName: "Ppt Master",
+      },
+      {
+        name: "imagegen",
+        displayName: "Image Gen",
+      },
+    ]);
   });
 });

@@ -33,10 +33,12 @@ interface RightPanelState {
   activeSurface: RightPanelSurface;
   filePath: string | null;
   fileWorkspaceRoot: string | null;
+  browserUrl: string | null;
   widthPx: number;
   lastSurfaceByThreadKey: Record<string, RightPanelSurface>;
   close: () => void;
   openSurface: (surface: RightPanelSurface, threadKey?: string | null) => void;
+  openBrowser: (url: string, threadKey?: string | null) => void;
   openFile: (
     filePath: string | null,
     threadKey?: string | null,
@@ -117,6 +119,7 @@ export const useRightPanelStore = create<RightPanelState>()(
       activeSurface: "home",
       filePath: null,
       fileWorkspaceRoot: null,
+      browserUrl: null,
       widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
       lastSurfaceByThreadKey: {},
       close: () => set({ open: false }),
@@ -125,6 +128,17 @@ export const useRightPanelStore = create<RightPanelState>()(
           open: true,
           activeSurface: surface,
           lastSurfaceByThreadKey: rememberSurface(state.lastSurfaceByThreadKey, threadKey, surface),
+        })),
+      openBrowser: (url, threadKey) =>
+        set((state) => ({
+          open: true,
+          activeSurface: "browser",
+          browserUrl: url,
+          lastSurfaceByThreadKey: rememberSurface(
+            state.lastSurfaceByThreadKey,
+            threadKey,
+            "browser",
+          ),
         })),
       openFile: (filePath, threadKey, workspaceRoot) =>
         set((state) => ({

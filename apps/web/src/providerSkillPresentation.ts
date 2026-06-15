@@ -22,6 +22,35 @@ export function formatProviderSkillDisplayName(
   return titleCaseWords(skill.name);
 }
 
+export function mergeProviderSkillsForInlineDisplay(
+  primarySkills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>,
+  providerSkillGroups: ReadonlyArray<{
+    skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  }>,
+): ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> {
+  const merged: Array<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+  const seenNames = new Set<string>();
+
+  const appendSkills = (
+    skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>,
+  ) => {
+    for (const skill of skills) {
+      if (seenNames.has(skill.name)) {
+        continue;
+      }
+      seenNames.add(skill.name);
+      merged.push(skill);
+    }
+  };
+
+  appendSkills(primarySkills);
+  for (const provider of providerSkillGroups) {
+    appendSkills(provider.skills);
+  }
+
+  return merged;
+}
+
 export function formatProviderSkillInstallSource(
   skill: Pick<ServerProviderSkill, "path" | "scope">,
 ): string | null {

@@ -193,6 +193,27 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("已引导对话");
   });
 
+  it("renders skill tokens in user messages with the inline skill chip UI", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("$ppt-master 请制作一份季度经营复盘。")]}
+        skills={[
+          {
+            name: "ppt-master",
+            displayName: "Ppt Master",
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Ppt Master");
+    expect(markup).toContain("sr-only");
+    expect(markup).toContain("$ppt-master");
+    expect(markup).toContain("border-fuchsia-500");
+  });
+
   it("only renders assistant time metadata for the terminal assistant message in a turn", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const turnId = TurnId.make("turn-1");

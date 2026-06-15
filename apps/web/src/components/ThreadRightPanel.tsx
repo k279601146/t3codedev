@@ -80,6 +80,7 @@ interface ThreadRightPanelProps {
   planLabel: string;
   selectedFilePath?: string | null | undefined;
   selectedFileWorkspaceRoot?: string | null | undefined;
+  selectedBrowserUrl?: string | null | undefined;
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   onClose: () => void;
@@ -367,14 +368,18 @@ function formatBrowserAddress(url: string | undefined): string {
   }
 }
 
-function BrowserPanel(props: { onTitleChange?: (title: string) => void }) {
+function BrowserPanel(props: {
+  selectedUrl?: string | null | undefined;
+  onTitleChange?: (title: string) => void;
+}) {
   const [state, setState] = useState<DesktopBrowserAutomationState | null>(null);
   const [addressDraft, setAddressDraft] = useState("");
   const [addressFocused, setAddressFocused] = useState(false);
   const [navigationPending, setNavigationPending] = useState(false);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const embedRef = useRef<HTMLDivElement | null>(null);
-  const { onTitleChange } = props;
+  const lastSelectedUrlRef = useRef<string | null>(null);
+  const { onTitleChange, selectedUrl } = props;
 
   useEffect(() => {
     const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
@@ -480,6 +485,21 @@ function BrowserPanel(props: { onTitleChange?: (title: string) => void }) {
     },
     [addressDraft, runBrowserControl],
   );
+
+  useEffect(() => {
+    const url = selectedUrl?.trim();
+    if (!url || lastSelectedUrlRef.current === url) {
+      return;
+    }
+    lastSelectedUrlRef.current = url;
+    setAddressDraft(url);
+    void runBrowserControl(async (bridge) => {
+      if (!bridge.navigateBrowserAutomation) {
+        throw new Error("当前桌面端不支持浏览器地址栏导航。");
+      }
+      return bridge.navigateBrowserAutomation(url);
+    });
+  }, [runBrowserControl, selectedUrl]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -770,6 +790,7 @@ export function ThreadRightPanel({
   planLabel,
   selectedFilePath,
   selectedFileWorkspaceRoot,
+  selectedBrowserUrl,
   timestampFormat,
   workspaceRoot,
   onClose,
@@ -1002,6 +1023,7 @@ export function ThreadRightPanel({
       <ImagePanel artifact={activeArtifact} />
     ) : activeTab.surface === "browser" ? (
       <BrowserPanel
+        selectedUrl={selectedBrowserUrl}
         onTitleChange={(title) => {
           setTabs((current) => {
             let changed = false;

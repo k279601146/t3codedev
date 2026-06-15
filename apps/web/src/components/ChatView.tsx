@@ -231,6 +231,7 @@ import {
   formatUsageLimitResetHint,
   resolveCommercialUsageLimitBlock,
 } from "../lib/commercialUsageGate";
+import { mergeProviderSkillsForInlineDisplay } from "../providerSkillPresentation";
 import {
   buildVersionMismatchDismissalKey,
   dismissVersionMismatch,
@@ -1056,8 +1057,10 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelSurface = useRightPanelStore((state) => state.activeSurface);
   const rightPanelFilePath = useRightPanelStore((state) => state.filePath);
   const rightPanelFileWorkspaceRoot = useRightPanelStore((state) => state.fileWorkspaceRoot);
+  const rightPanelBrowserUrl = useRightPanelStore((state) => state.browserUrl);
   const rightPanelWidthPx = useRightPanelStore((state) => state.widthPx);
   const openRightPanelSurface = useRightPanelStore((state) => state.openSurface);
+  const openRightPanelBrowser = useRightPanelStore((state) => state.openBrowser);
   const openRightPanelFile = useRightPanelStore((state) => state.openFile);
   const setRightPanelSurface = useRightPanelStore((state) => state.setActiveSurface);
   const setRightPanelWidthPx = useRightPanelStore((state) => state.setWidthPx);
@@ -2235,6 +2238,14 @@ export default function ChatView(props: ChatViewProps) {
     const defaultInstanceId = defaultInstanceIdForDriver(selectedProvider);
     return providerStatuses.find((status) => status.instanceId === defaultInstanceId) ?? null;
   }, [activeProviderInstanceId, providerStatuses, selectedProvider]);
+  const inlineDisplaySkills = useMemo(
+    () =>
+      mergeProviderSkillsForInlineDisplay(
+        activeProviderStatus?.skills ?? EMPTY_PROVIDER_SKILLS,
+        providerStatuses,
+      ),
+    [activeProviderStatus?.skills, providerStatuses],
+  );
   const usageLimitBlock = useMemo(
     () => resolveCommercialUsageLimitBlock(activeProviderStatus),
     [activeProviderStatus],
@@ -4607,6 +4618,32 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadKey, activeWorkspaceRoot, openRightPanelFile],
   );
+  const onOpenMessageUrl = useCallback(
+    (url: string, mode: "preview" | "external") => {
+      if (mode === "preview") {
+        openRightPanelBrowser(url, activeThreadKey);
+        return;
+      }
+
+      const api = readLocalApi();
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "无法打开网站",
+          description: "本地 API 不可用。",
+        });
+        return;
+      }
+      void api.shell.openExternal(url).catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: "无法打开网站",
+          description: error instanceof Error ? error.message : "打开网站失败。",
+        });
+      });
+    },
+    [activeThreadKey, openRightPanelBrowser],
+  );
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
   const revertTurnCountRef = useRef(revertTurnCountByUserMessageId);
@@ -4747,6 +4784,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const hideProjectChromeForEmptyNewThread =
     isEmptyNewThread && (isConversationThread || !activeProject);
+  const markdownCwd = gitCwd ?? activeWorkspaceRoot ?? undefined;
   const inlineRightPanel =
     rightPanelOpen && !shouldUseRightPanelSheet ? (
       <div
@@ -4773,11 +4811,12 @@ export default function ChatView(props: ChatViewProps) {
           activeSurface={rightPanelSurface}
           environmentId={environmentId}
           hasArtifacts={hasArtifactPanelContent}
-          markdownCwd={gitCwd ?? undefined}
+          markdownCwd={markdownCwd}
           mode="sidebar"
           planLabel={planSidebarLabel}
           selectedFilePath={rightPanelFilePath}
           selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
+          selectedBrowserUrl={rightPanelBrowserUrl}
           artifacts={rightPanelArtifacts}
           timestampFormat={timestampFormat}
           workspaceRoot={activeWorkspaceRoot}
@@ -5008,17 +5047,18 @@ export default function ChatView(props: ChatViewProps) {
                   routeThreadKey={routeThreadKey}
                   onOpenTurnDiff={onOpenTurnDiff}
                   onOpenMarkdownFile={onOpenMarkdownFile}
+                  onOpenUrl={onOpenMessageUrl}
                   revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                   onRevertUserMessage={onRevertUserMessage}
                   onSubmitEditedUserMessage={onSubmitEditedUserMessage}
                   goalMessageIds={goalMessageIds}
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImage}
-                  markdownCwd={gitCwd ?? undefined}
+                  markdownCwd={markdownCwd}
                   resolvedTheme={resolvedTheme}
                   timestampFormat={timestampFormat}
                   workspaceRoot={activeWorkspaceRoot}
-                  skills={activeProviderStatus?.skills ?? EMPTY_PROVIDER_SKILLS}
+                  skills={inlineDisplaySkills}
                   onIsAtEndChange={onIsAtEndChange}
                 />
 
@@ -5126,11 +5166,12 @@ export default function ChatView(props: ChatViewProps) {
             activeSurface={rightPanelSurface}
             environmentId={environmentId}
             hasArtifacts={hasArtifactPanelContent}
-            markdownCwd={gitCwd ?? undefined}
+            markdownCwd={markdownCwd}
             mode="sheet"
             planLabel={planSidebarLabel}
             selectedFilePath={rightPanelFilePath}
             selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
+            selectedBrowserUrl={rightPanelBrowserUrl}
             artifacts={rightPanelArtifacts}
             timestampFormat={timestampFormat}
             workspaceRoot={activeWorkspaceRoot}

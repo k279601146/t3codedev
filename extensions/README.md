@@ -2,6 +2,8 @@
 
 这个目录存放随 T3 Code 商业客户端一起打包分发的内置插件和技能。
 
+完整接入规范见：`../docs/bundled-extensions.md`。
+
 - `plugins/`：完整插件目录，每个插件应包含 `.codex-plugin/plugin.json`。
 - `.agents/plugins/marketplace.json`：T3 Code 内置插件 marketplace，server 会把本目录作为本地 marketplace root 传给运行时。
 - `skills/`：独立技能目录，每个技能使用 `<name>/SKILL.md` 结构。

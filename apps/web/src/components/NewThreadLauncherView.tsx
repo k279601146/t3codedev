@@ -193,67 +193,147 @@ const SCHEDULE_PROMPTS: StarterCard[] = [
 
 const SLIDE_PROMPTS: SlidePromptCard[] = [
   {
-    title: "从主题生成完整 PPTX",
-    desc: "输入主题后自动补齐结构、页面内容和讲稿备注。",
+    title: "完整生成工作流",
+    desc: "从主题到大纲、视觉方向、页面 SVG、校验与可编辑 PPTX 导出。",
     icon: PresentationIcon,
-    prompt: "$ppt-master 请根据我的主题制作一份 8-10 页可编辑 PowerPoint。请先给出结构化大纲，再生成 PPTX。主题：",
+    prompt:
+      "$ppt-master 请按 PPT Master 的完整生成工作流制作一份 8-12 页可编辑 PPTX。请先确认主题、受众、页数、叙事 mode、视觉 style 和素材来源；确认后生成结构化大纲、设计规格、页面内容、讲稿备注，并导出 PPTX。主题：",
   },
   {
-    title: "把文档改成汇报材料",
-    desc: "适合把 PRD、调研、会议纪要整理成管理层汇报。",
+    title: "文档转汇报",
+    desc: "把 PRD、报告、会议纪要或长文整理成结论先行的管理层材料。",
     icon: FileTextIcon,
-    prompt: "$ppt-master 请把我提供的文档或要点整理成一份面向管理层的可编辑 PPTX，压缩文字、补充页标题结论，并生成讲稿备注。",
+    prompt:
+      "$ppt-master 我会提供文档、会议纪要或要点，请按 pyramid / briefing 中更适合的一种叙事方式整理为管理层汇报 PPTX。请压缩文字、补充页标题结论、规划图表页和讲稿备注，并生成可编辑 PPTX。",
   },
   {
-    title: "复用现有品牌模板",
-    desc: "上传 PPTX、Logo 或品牌规范后，按原风格重做内容。",
+    title: "PPTX 模板填充",
+    desc: "上传现有 PPTX 后，选页、换文案、保留原 PowerPoint 设计。",
     icon: ImportIcon,
-    prompt: "$ppt-master 我会提供现有 PPTX 或品牌素材，请分析版式、颜色和内容结构，并生成一份同风格的可编辑演示文稿。",
+    prompt:
+      "$ppt-master 请使用 template-fill-pptx 工作流。我会提供一个现有 PPTX 模板和新内容，请先分析模板页库，选择最适合的源页面，可重排、复用或删减页面；然后把新内容填回原生 PowerPoint 模板，保留原设计、表格、图表和转场，输出可编辑 PPTX。",
   },
   {
-    title: "生成数据型汇报",
-    desc: "适合周报、经营指标、实验结果和趋势分析。",
+    title: "创建品牌/模板",
+    desc: "从品牌规范、参考 PPT 或视觉截图生成可复用模板资产。",
+    icon: LayoutTemplateIcon,
+    prompt:
+      "$ppt-master 请使用 create-brand / create-template 相关工作流，帮我把品牌规范、参考 PPT 或视觉截图沉淀为可复用的 PPT Master 模板。请先询问模板 ID、适用场景、画布比例、视觉保真度和要保留的页面类型。",
+  },
+  {
+    title: "主题研究成稿",
+    desc: "围绕一个主题先做资料结构化，再生成报告型演示。",
+    icon: SearchIcon,
+    prompt:
+      "$ppt-master 请使用 topic-research 工作流，把我的主题整理成可演示的研究型 PPTX。请先明确研究问题、受众、证据来源和输出页数，再生成大纲、关键论点、引用说明、图表建议和可编辑 PPTX。主题：",
+  },
+  {
+    title: "数据图表校验",
+    desc: "适合经营指标、趋势、对比、漏斗、矩阵和时间线页面。",
     icon: FileBarChartIcon,
-    prompt: "$ppt-master 请制作一份数据型汇报 PPTX，包含指标定义、趋势解读、关键发现、风险和下一步行动。数据或背景：",
+    prompt:
+      "$ppt-master 请制作一份数据型汇报 PPTX，并使用 verify-charts 工作流检查图表表达。请包含指标定义、趋势解读、关键发现、风险、下一步行动；图表需可读、比例合理、标题结论明确。数据或背景：",
+  },
+  {
+    title: "视觉审查改稿",
+    desc: "对已有草稿做可读性、层级、溢出、配色和一致性检查。",
+    icon: CheckIcon,
+    prompt:
+      "$ppt-master 请使用 visual-review / refine-spec 工作流审查并改进我提供的 PPT 草稿或页面规格。重点检查文字溢出、标题结论、视觉层级、版式一致性、图表可读性和导出质量，并给出修订后的可编辑 PPTX。",
+  },
+  {
+    title: "旁白与动画",
+    desc: "为演示补充讲稿备注、旁白音频和对象级动画节奏。",
+    icon: HeadphonesIcon,
+    prompt:
+      "$ppt-master 请为一份演示文稿补充讲稿备注、旁白音频和动画节奏。请使用 generate-audio / customize-animations 相关能力，先确认语种、声音风格、每页讲稿长度和动画密度，再生成可编辑 PPTX。",
   },
 ];
 
 const SLIDE_TEMPLATES: SlidePromptCard[] = [
   {
     title: "投资人路演",
-    desc: "问题、方案、市场规模、商业模式、路线图和融资计划。",
+    desc: "叙事型 pitch：问题、方案、市场、商业模式、路线图与融资计划。",
     icon: LineChartIcon,
-    prompt: "$ppt-master 请为一个新产品设计一份 10 页投资人路演 PPTX，包含问题、解决方案、市场机会、商业模式、竞争优势、路线图和融资计划。",
+    prompt:
+      "$ppt-master 请为一个新产品设计一份 10-12 页投资人路演 PPTX。叙事 mode 使用 narrative，视觉 style 可在 glassmorphism / dark-tech / swiss-minimal 中推荐一个；包含问题、解决方案、市场机会、商业模式、竞争优势、路线图、团队和融资计划。",
   },
   {
     title: "经营复盘",
-    desc: "关键指标、进展、风险、决策点和下一步行动。",
+    desc: "结论先行：指标、进展、风险、决策点、行动计划。",
     icon: FileBarChartIcon,
-    prompt: "$ppt-master 请创建一份 8 页季度经营复盘演示文稿，结构包含目标回顾、核心指标、关键进展、风险阻塞、决策点和下一步行动。",
+    prompt:
+      "$ppt-master 请创建一份 8-10 页季度经营复盘 PPTX。mode 使用 pyramid，visual style 推荐 data-journalism 或 editorial；结构包含目标回顾、核心指标、关键进展、风险阻塞、决策点和下一步行动。",
   },
   {
-    title: "产品发布",
-    desc: "用户痛点、核心能力、发布节奏、传播计划和 FAQ。",
+    title: "AI 产品发布",
+    desc: "参考 Glassmorphism Demo：毛玻璃 SaaS、能力演示、发布节奏。",
     icon: SparklesIcon,
-    prompt: "$ppt-master 请制作一份产品发布会 PPTX，面向销售和市场团队，包含用户痛点、核心能力、演示流程、发布节奏、传播计划和 FAQ。",
+    prompt:
+      "$ppt-master 请制作一份 AI 产品发布会 PPTX，参考 PPT Master 示例 Glassmorphism Demo 的现代 SaaS 视觉语言。mode 使用 showcase，visual style 使用 glassmorphism；包含用户痛点、核心能力、产品演示流程、发布节奏、传播计划和 FAQ。",
   },
   {
     title: "培训课件",
-    desc: "学习目标、概念拆解、案例练习、测验和课后任务。",
+    desc: "教学型结构：目标、概念、步骤、案例、测验、课后任务。",
     icon: ClipboardListIcon,
-    prompt: "$ppt-master 请设计一套 12 页培训课件，包含学习目标、概念拆解、案例练习、课堂测验和课后任务，并生成可编辑 PPTX。",
+    prompt:
+      "$ppt-master 请设计一套 12 页培训课件 PPTX。mode 使用 instructional，visual style 可推荐 sketch-notes / soft-rounded / chalkboard；包含学习目标、概念拆解、步骤示范、案例练习、课堂测验和课后任务。",
   },
   {
-    title: "研究报告",
-    desc: "研究问题、方法、发现、洞察、建议和附录。",
+    title: "论文/技术解读",
+    desc: "参考 Transformer / LoRA 示例：蓝图风、结构图、公式、表格。",
     icon: SearchIcon,
-    prompt: "$ppt-master 请把一个研究主题整理成 10 页报告型 PPTX，包含研究问题、方法、主要发现、洞察、建议和附录说明。",
+    prompt:
+      "$ppt-master 请把一个技术论文或工程主题整理成 12-16 页深读 PPTX，参考 Attention Is All You Need / LoRA Hu 2021 示例。mode 使用 instructional 或 briefing，visual style 使用 blueprint；包含背景、核心方法、架构图、关键公式/表格、实验结果、局限和影响。",
   },
   {
-    title: "项目提案",
-    desc: "背景、目标、范围、里程碑、资源、风险和验收标准。",
+    title: "财经数据年报",
+    desc: "参考 Global AI Capital：Bloomberg / Economist 信息图风。",
+    icon: LineChartIcon,
+    prompt:
+      "$ppt-master 请制作一份财经或行业数据年报 PPTX，参考 Global AI Capital 2026 示例。mode 使用 pyramid，visual style 使用 data-journalism；包含年度摘要、资本/市场格局、关键排名、趋势图、风险矩阵和结论页。",
+  },
+  {
+    title: "建筑/设计长读",
+    desc: "参考 Pritzker / 高层住宅：摄影主导、杂志化排版。",
+    icon: ImageIcon,
+    prompt:
+      "$ppt-master 请制作一份建筑、空间或设计主题的长读型 PPTX，参考 Pritzker 2026 / 高层住宅主动再生示例。mode 使用 briefing 或 narrative，visual style 使用 photo-editorial；请突出大图、图注、案例对比和编辑杂志节奏。",
+  },
+  {
+    title: "MBB 战略提案",
+    desc: "参考 Kimsoong：高端咨询、根因分析、四支柱和路线图。",
     icon: LayoutTemplateIcon,
-    prompt: "$ppt-master 请生成一份项目提案 PPTX，包含背景、目标、范围、里程碑、资源投入、风险应对和验收标准。",
+    prompt:
+      "$ppt-master 请生成一份 MBB 风格战略提案 PPTX，参考 Kimsoong Loyalty Programme 示例。mode 使用 pyramid，visual style 使用 swiss-minimal；包含关键挑战、现状诊断、根因分析、战略支柱、实施路线图、资源投入和预期收益。",
+  },
+  {
+    title: "工程架构蓝图",
+    desc: "参考 Kubernetes Blueprint：系统结构、拓扑、流程和组件关系。",
+    icon: Grid3X3Icon,
+    prompt:
+      "$ppt-master 请制作一份工程架构讲解 PPTX，参考 Kubernetes Blueprint 2026 示例。mode 使用 instructional，visual style 使用 blueprint；包含系统目标、架构总览、核心组件、数据流、部署拓扑、风险和演进路线。",
+  },
+  {
+    title: "奢侈品周报",
+    desc: "参考时尚美学周鉴：高端杂志、品牌动态、生活方式。",
+    icon: SparklesIcon,
+    prompt:
+      "$ppt-master 请制作一份奢侈品、时尚或生活方式品牌周报 PPTX，参考时尚美学周鉴示例。mode 使用 briefing，visual style 使用 editorial 或 photo-editorial；包含品牌动态、重点案例、趋势观察、视觉亮点和下周关注。",
+  },
+  {
+    title: "东方文化叙事",
+    desc: "参考植物染/藏拙：新中式、水墨留白、文化解释。",
+    icon: ImageIcon,
+    prompt:
+      "$ppt-master 请制作一份东方文化或传统美学主题 PPTX，参考李子柒植物染色彩 / 藏拙示例。mode 使用 narrative，visual style 使用 ink-wash；请结合文化背景、色彩/器物/人物故事、视觉留白和讲稿备注。",
+  },
+  {
+    title: "图文版式图鉴",
+    desc: "参考 Image-Text Showcase：20 种图文组合与页面范式。",
+    icon: LayoutTemplateIcon,
+    prompt:
+      "$ppt-master 请制作一份图文组合范式展示 PPTX，参考 Image-Text Showcase 示例。请在 12-20 页中覆盖不同图文比例、拼贴、九宫格、底图浮文、对角分割、时间线、矩阵和中心放射等版式，并导出可编辑 PPTX。",
   },
 ];
 
@@ -832,34 +912,32 @@ function SlidesRecommendations({
           })}
         </div>
 
-        <div className="mt-8 flex items-center justify-between">
-          <SectionTitle className="mb-0">演示模板</SectionTitle>
+        <div className="mt-8">
+          <SectionTitle className="mb-3">演示模板</SectionTitle>
           <button
             type="button"
             onClick={() =>
               submitSlidePrompt(
-                "$ppt-master 请生成一份 8-12 页的可编辑 PPTX。先询问我主题、受众和素材；如果我已经提供内容，则直接整理大纲并导出。",
+                "$ppt-master 请使用 template-fill-pptx 工作流。我会提供一个现有 PPTX 模板和新内容，请先告诉我需要上传哪些文件；收到后分析模板页库，选择最适合的源页面，可重排、复用或删减页面；然后把新内容填回原生 PowerPoint 模板，保留原设计、表格、图表和转场，输出可编辑 PPTX。",
               )
             }
-            className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-border px-3 text-[13px] text-muted-foreground"
+            className="group flex min-h-[86px] w-full animate-in items-center gap-3 rounded-[10px] border border-border bg-background px-4 py-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
           >
-            <LayoutTemplateIcon className="h-4 w-4" />8 - 12
-            <ChevronDownIcon className="h-3.5 w-3.5" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#147DFF]/10 text-[#147DFF]">
+              <ImportIcon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-medium text-foreground">
+                导入现有 PPTX 模板填充
+              </span>
+              <span className="mt-1 line-clamp-2 block text-[12px] leading-5 text-muted-foreground">
+                上传已有 PPTX 和新内容，保留原设计，自动选页、重排、替换文案并导出。
+              </span>
+            </span>
+            <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
           </button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
-          <button
-            type="button"
-            onClick={() =>
-              submitSlidePrompt(
-                "$ppt-master 我想导入现有 PPTX、品牌规范或素材作为模板。请先告诉我需要上传哪些文件，然后按模板风格生成新的可编辑演示文稿。",
-              )
-            }
-            className="flex aspect-[16/9] items-center justify-center rounded-[10px] border border-border bg-background text-[13px] text-muted-foreground transition-colors hover:bg-accent"
-          >
-            <ImportIcon className="mr-2 h-4 w-4" />
-            导入模板
-          </button>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {SLIDE_TEMPLATES.map((template, index) => {
             const TemplateIcon = template.icon ?? PresentationIcon;
             return (
@@ -867,17 +945,20 @@ function SlidesRecommendations({
                 key={template.title}
                 type="button"
                 onClick={() => submitSlidePrompt(template.prompt)}
-                className="group animate-in overflow-hidden text-left fade-in slide-in-from-bottom-2"
+                className="group flex min-h-[136px] animate-in flex-col rounded-[10px] border border-border bg-background p-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
                 style={{ animationDelay: `${(index + 1) * 55}ms`, animationFillMode: "both" }}
               >
-                <span className="flex aspect-[16/9] items-center justify-center rounded-[10px] border border-border bg-background text-muted-foreground transition-colors group-hover:bg-accent">
-                  <TemplateIcon className="h-5 w-5 text-[#147DFF]" />
+                <span className="flex items-start justify-between gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-[#147DFF] transition-colors group-hover:bg-[#147DFF]/10">
+                    <TemplateIcon className="h-4.5 w-4.5" />
+                  </span>
+                  <ArrowUpRightIcon className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
                 </span>
-                <span className="mt-2 block text-[13px] font-medium text-foreground">
+                <span className="mt-3 block text-[13px] font-medium leading-5 text-foreground">
                   {template.title}
                 </span>
                 {template.desc ? (
-                  <span className="mt-0.5 line-clamp-2 block text-[12px] leading-5 text-muted-foreground">
+                  <span className="mt-1 line-clamp-3 block text-[12px] leading-5 text-muted-foreground">
                     {template.desc}
                   </span>
                 ) : null}
@@ -892,8 +973,8 @@ function SlidesRecommendations({
           <DialogHeader>
             <DialogTitle>安装 PPT Master 插件</DialogTitle>
             <DialogDescription>
-              制作幻灯片需要安装 T3 Code 内置插件 PPT Master。安装后即可用 $ppt-master
-              生成可编辑 PowerPoint 文件。
+              制作幻灯片需要安装 T3 Code 内置插件 PPT Master。安装后即可用 $ppt-master 生成可编辑
+              PowerPoint 文件。
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -943,13 +1024,7 @@ function SlidesRecommendations({
   );
 }
 
-function SlidePluginStatus({
-  installed,
-  loading,
-}: {
-  installed: boolean;
-  loading: boolean;
-}) {
+function SlidePluginStatus({ installed, loading }: { installed: boolean; loading: boolean }) {
   if (installed) {
     return (
       <span className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 px-3 text-[13px] text-emerald-700 dark:text-emerald-300">

@@ -19,6 +19,7 @@ import * as Path from "effect/Path";
 
 import { VcsProcessExitError, VcsProcessSpawnError, type VcsError } from "@t3tools/contracts";
 import type { VcsCheckpointOps } from "../../vcs/VcsDriver.ts";
+import { CHECKPOINT_GIT_ADD_ARGS } from "../../vcs/CheckpointGitArgs.ts";
 import { VcsProcess, type VcsProcessOutput } from "../../vcs/VcsProcess.ts";
 import { ServerConfig } from "../../config.ts";
 
@@ -37,6 +38,7 @@ const DEFAULT_EXCLUDES = [
   ".venv/",
   "target/",
   "*.lock",
+  "~$*",
 ].join("\n");
 
 export interface ShadowGitCheckpointsShape {
@@ -93,8 +95,16 @@ export const make = Effect.gen(function* () {
     cwd: string,
   ) {
     const gitDir = shadowGitDir(cwd);
+
+    const writeDefaultExcludes = Effect.gen(function* () {
+      const excludesDir = pathService.join(gitDir, "info");
+      yield* fileSystem.makeDirectory(excludesDir, { recursive: true });
+      yield* fileSystem.writeFileString(pathService.join(excludesDir, "exclude"), DEFAULT_EXCLUDES);
+    });
+
     const exists = yield* fileSystem.exists(gitDir).pipe(Effect.orElseSucceed(() => false));
     if (exists) {
+      yield* writeDefaultExcludes;
       return;
     }
 
@@ -121,9 +131,7 @@ export const make = Effect.gen(function* () {
       "checkpointer@noreply",
     ]);
 
-    const excludesDir = pathService.join(gitDir, "info");
-    yield* fileSystem.makeDirectory(excludesDir, { recursive: true });
-    yield* fileSystem.writeFileString(pathService.join(excludesDir, "exclude"), DEFAULT_EXCLUDES);
+    yield* writeDefaultExcludes;
   });
 
   const resolve: ShadowGitCheckpointsShape["resolve"] = (cwd) =>
@@ -162,7 +170,7 @@ export const make = Effect.gen(function* () {
             .pipe(Effect.ignore);
 
           yield* Effect.gen(function* () {
-            yield* gitShadow(operation, input.cwd, ["add", "-A", "--", "."], {
+            yield* gitShadow(operation, input.cwd, CHECKPOINT_GIT_ADD_ARGS, {
               env: commitEnv,
             });
 

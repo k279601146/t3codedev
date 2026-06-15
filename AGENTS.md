@@ -151,6 +151,7 @@ bun run fmt
 - `D:\workspace\sub2api-fork` 是模型网关，负责多模型路由、上游 API 适配、真实 provider key 管理和服务端转发；它不应该承担 T3 Code 客户端 UI 或本地 IDE 编排职责。
 - T3 Code 本仓库负责 IDE 客户端、本地 server、provider 编排、桌面壳、Web UI、协议 contracts、本地文件/git/terminal/checkpoint 能力，以及把 SaaS JWT 带入模型网关调用链。
 - T3 Code 可以复用 Codex app-server 的能力，但产品、品牌、登录、计费、模型网关、桌面体验和用户数据闭环都应按独立商业客户端设计，避免在 UI/文案/架构上把 T3 Code 做成 Codex 的简单外壳。
+- 新增随客户端分发的插件或技能必须走仓库根目录 `extensions/` 内置扩展体系，具体规则见 `docs/bundled-extensions.md`。不要把新插件放到 `.codex`、用户 home、`apps/server/resources` 或另起一套发现/安装/打包链路；除 Browser/Computer/Chrome 这类 T3 自有桥接能力外，不要把普通 marketplace 插件硬编码进 `BUILTIN_PLUGINS`。
 - 商业化内置引擎配置位于 `@t3tools/shared/commercialEngine` 和 server/desktop provider 相关模块。
 - Windows 沙箱和 artifact 相关共享逻辑在 `@t3tools/shared/windowsSandboxArtifacts`，桌面端系统能力在 `apps/desktop/src/security/**`。
 - Codex 类运行时需要注意 `CODEX_HOME`/shadow home 隔离，避免污染用户全局配置。
@@ -206,6 +207,7 @@ bun run fmt
 
 - 总览：`README.md`
 - 贡献约束：`CONTRIBUTING.md`
+- 内置插件与技能接入：`docs/bundled-extensions.md`
 - 可观测性：`docs/observability.md`
 - Codex provider 多账号：`docs/providers/codex.md`
 - Claude provider 多账号和路由：`docs/providers/claude.md`
