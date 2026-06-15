@@ -1,5 +1,5 @@
 import { DiffsHighlighter, getSharedHighlighter, SupportedLanguages } from "@pierre/diffs";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, FileTextIcon } from "lucide-react";
 import type { ServerProviderSkill } from "@t3tools/contracts";
 import React, {
   Children,
@@ -376,6 +376,12 @@ interface MarkdownFileLinkProps {
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }
 
+interface MarkdownWebLinkProps {
+  href: string | undefined;
+  children: ReactNode;
+  className?: string | undefined;
+}
+
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
 const PLAIN_FILE_PATH_PATTERN =
   /(?:~\/|\.{1,2}\/|\/|[A-Za-z]:[\\/]|\\\\)[^\s"'`<>)\]]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}|[A-Za-z0-9._-]+\.(?:c|cc|cjs|cpp|cs|css|cts|cxx|env|gif|go|gql|graphql|h|hpp|htm|html|ini|java|jpeg|jpg|js|json|jsx|kt|kts|log|md|mdx|mjs|mts|pdf|php|png|ps1|py|rb|rs|sass|scss|sh|sql|svg|swift|toml|ts|tsx|txt|webp|xml|yaml|yml|zsh)(?::\d+){0,2}/gi;
@@ -387,6 +393,7 @@ const MARKDOWN_FILE_LINK_CLASS_NAME =
   "chat-markdown-file-link relative top-[2px] max-w-full no-underline";
 const MARKDOWN_FILE_LINK_ICON_CLASS_NAME = "chat-markdown-file-link-icon size-3.5 shrink-0";
 const MARKDOWN_FILE_LINK_LABEL_CLASS_NAME = "chat-markdown-file-link-label truncate";
+const DOCUMENT_FILE_EXTENSION_PATTERN = /\.(?:md|mdx|markdown|txt|rst|adoc|pdf|doc|docx)$/i;
 
 function pathParentSegments(path: string): string[] {
   const normalized = path.replaceAll("\\", "/");
@@ -522,6 +529,40 @@ function markdownUrlLink(value: string): string {
 
 function markdownFileLink(value: string): string {
   return `[${escapeMarkdownLinkLabel(value)}](<${escapeMarkdownLinkDestination(value)}>)`;
+}
+
+function isDocumentFileLink(filePath: string): boolean {
+  return DOCUMENT_FILE_EXTENSION_PATTERN.test(filePath);
+}
+
+function parseHttpUrl(value: string | undefined): URL | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeUrlForLabelCompare(value: string): string {
+  const url = parseHttpUrl(value);
+  if (!url) return value.trim().replace(/\/$/g, "");
+  return `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`.replace(/\/$/g, "");
+}
+
+function isPlainUrlLabel(label: string, href: string | undefined): boolean {
+  if (!href) return false;
+  if (!/^https?:\/\//i.test(label)) return false;
+  return normalizeUrlForLabelCompare(label) === normalizeUrlForLabelCompare(href);
+}
+
+function buildWebLinkPreview(href: string | undefined): { host: string; path: string } | null {
+  const url = parseHttpUrl(href);
+  if (!url) return null;
+  const host = url.hostname.replace(/^www\./i, "");
+  const path = `${url.pathname === "/" ? "" : url.pathname}${url.search}${url.hash}`;
+  return { host, path };
 }
 
 function addLineSuffixToTarget(
@@ -790,6 +831,17 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     [displayPath, handleCopy, handleOpen, targetPath],
   );
 
+  const icon = isDocumentFileLink(filePath) ? (
+    <FileTextIcon className={MARKDOWN_FILE_LINK_ICON_CLASS_NAME} aria-hidden="true" />
+  ) : (
+    <VscodeEntryIcon
+      pathValue={filePath}
+      kind="file"
+      theme={theme}
+      className={cn(MARKDOWN_FILE_LINK_ICON_CLASS_NAME, "text-current")}
+    />
+  );
+
   return (
     <Tooltip>
       <TooltipTrigger
@@ -804,13 +856,11 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
             }}
             onContextMenu={handleContextMenu}
           >
-            <VscodeEntryIcon
-              pathValue={filePath}
-              kind="file"
-              theme={theme}
-              className={cn(MARKDOWN_FILE_LINK_ICON_CLASS_NAME, "text-current")}
-            />
+            {icon}
             <span className={MARKDOWN_FILE_LINK_LABEL_CLASS_NAME}>{label}</span>
+            <span className="chat-markdown-file-link-chevron" aria-hidden="true">
+              ›
+            </span>
           </a>
         }
       />
@@ -825,6 +875,42 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     </Tooltip>
   );
 }, areMarkdownFileLinkPropsEqual);
+
+const MarkdownWebLink = memo(function MarkdownWebLink({
+  href,
+  children,
+  className,
+}: MarkdownWebLinkProps) {
+  const label = nodeToPlainText(children).trim();
+  const preview = isPlainUrlLabel(label, href) ? buildWebLinkPreview(href) : null;
+  if (!preview) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={href}
+        className={cn("chat-markdown-web-link", className)}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={href}
+      aria-label={href}
+      className={cn("chat-markdown-web-link chat-markdown-url-link", className)}
+    >
+      <span className="chat-markdown-url-host">{preview.host}</span>
+      {preview.path ? <span className="chat-markdown-url-path">{preview.path}</span> : null}
+    </a>
+  );
+});
 
 function areMarkdownFileLinkPropsEqual(
   previous: Readonly<MarkdownFileLinkProps>,
@@ -899,19 +985,14 @@ function ChatMarkdown({
           </div>
         );
       },
-      a({ node: _node, href, ...props }) {
+      a({ node: _node, href, children, ...props }) {
         const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
         const fileLinkMeta = normalizedHref ? markdownFileLinkMetaByHref.get(normalizedHref) : null;
         if (!fileLinkMeta) {
           return (
-            <a
-              {...props}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={href}
-              className={cn("chat-markdown-web-link", props.className)}
-            />
+            <MarkdownWebLink href={href} className={props.className}>
+              {children}
+            </MarkdownWebLink>
           );
         }
 

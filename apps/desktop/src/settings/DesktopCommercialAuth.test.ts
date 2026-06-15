@@ -84,6 +84,7 @@ function makeLayer(
             return true;
           }),
         openPath: () => Effect.succeed(true),
+        revealPath: () => Effect.succeed(true),
         copyText: () => Effect.void,
       } satisfies ElectronShell.ElectronShellShape),
     ),

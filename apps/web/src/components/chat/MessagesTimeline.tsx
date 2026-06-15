@@ -29,7 +29,7 @@ import {
   CircleAlertIcon,
   CopyIcon,
   FilePlus2Icon,
-  FileIcon,
+  FileTextIcon,
   EyeIcon,
   GoalIcon,
   GlobeIcon,
@@ -72,6 +72,10 @@ import {
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
+import { readEnvironmentApi } from "../../environmentApi";
+import { readLocalApi } from "../../localApi";
+import { revealFileInFolder } from "../../lib/openContainingFolder";
+import { toastManager } from "../ui/toast";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatTimestamp } from "../../timestampFormat";
@@ -670,6 +674,15 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const userAttachments = row.message.attachments ?? [];
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
   const terminalContexts = displayedUserMessage.contexts;
+  const imageAttachments = userAttachments.filter(
+    (attachment) => attachment.type === "image" && attachment.previewUrl,
+  );
+  const fileAttachments = userAttachments.filter(
+    (attachment) => attachment.type === "file" || !attachment.previewUrl,
+  );
+  const hasVisibleUserMessageBody =
+    displayedUserMessage.visibleText.trim().length > 0 || terminalContexts.length > 0;
+  const hasUserMessageBubble = imageAttachments.length > 0 || hasVisibleUserMessageBody;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
   const isSteerMessage = row.message.turnId !== undefined && row.message.turnId !== null;
   const editableText = displayedUserMessage.copyText || row.message.text;
@@ -775,20 +788,33 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               </div>
             </div>
           ) : (
-            <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
-              {userAttachments.length > 0 && (
-                <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
-                  {userAttachments.map(
-                    (attachment: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                      <div
-                        key={attachment.id}
-                        className="overflow-hidden rounded-lg border border-border bg-background"
-                      >
-                        {attachment.type === "image" && attachment.previewUrl ? (
+            <>
+              {fileAttachments.length > 0 ? (
+                <div className="mb-1.5 flex max-w-full flex-wrap justify-end gap-1.5">
+                  {fileAttachments.map((attachment) => (
+                    <UserFileAttachmentChip key={attachment.id} attachment={attachment} />
+                  ))}
+                </div>
+              ) : null}
+              {hasUserMessageBubble ? (
+                <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
+                  {imageAttachments.length > 0 ? (
+                    <div
+                      className={cn(
+                        "grid max-w-[548px] gap-3",
+                        imageAttachments.length === 1 ? "grid-cols-1" : "grid-cols-2",
+                        hasVisibleUserMessageBody && "mb-2",
+                      )}
+                    >
+                      {imageAttachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className="overflow-hidden rounded-lg border border-border bg-background"
+                        >
                           <button
                             type="button"
                             className="h-full w-full cursor-zoom-in"
-                            aria-label={`Preview ${attachment.name}`}
+                            aria-label={`预览 ${attachment.name}`}
                             onClick={() => {
                               const preview = buildExpandedImagePreview(
                                 userAttachments,
@@ -804,38 +830,20 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                               className="block h-auto max-h-[396px] w-full object-cover"
                             />
                           </button>
-                        ) : attachment.type === "file" ? (
-                          <a
-                            href={attachment.previewUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex min-h-[96px] w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center"
-                            aria-label={`Open ${attachment.name}`}
-                          >
-                            <FileIcon className="size-5 text-muted-foreground/70" />
-                            <span className="line-clamp-2 break-all text-xs text-foreground">
-                              {attachment.name}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground/60">
-                              {attachment.mimeType || "file"}
-                            </span>
-                          </a>
-                        ) : (
-                          <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                            {attachment.name}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                  )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {hasVisibleUserMessageBody ? (
+                    <CollapsibleUserMessageBody
+                      text={displayedUserMessage.visibleText}
+                      terminalContexts={terminalContexts}
+                      skills={ctx.skills}
+                    />
+                  ) : null}
                 </div>
-              )}
-              <CollapsibleUserMessageBody
-                text={displayedUserMessage.visibleText}
-                terminalContexts={terminalContexts}
-                skills={ctx.skills}
-              />
-            </div>
+              ) : null}
+            </>
           )}
           {isSteerMessage ? (
             <div className="mt-2 self-start text-[13px] leading-5 text-muted-foreground/55">
@@ -869,6 +877,63 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       </div>
       {row.showCompletionDivider && <AssistantCompletionDivider />}
     </>
+  );
+}
+
+function UserFileAttachmentChip({
+  attachment,
+}: {
+  attachment: NonNullable<TimelineMessage["attachments"]>[number];
+}) {
+  const ctx = use(TimelineRowCtx);
+  const className =
+    "inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-background px-2.5 text-[12px] font-medium leading-none text-foreground shadow-sm transition-colors hover:border-border hover:bg-muted/45";
+  const content = (
+    <>
+      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground/75" />
+      <span className="min-w-0 truncate">{attachment.name}</span>
+    </>
+  );
+
+  const openAttachmentFolder = async () => {
+    const environmentApi = readEnvironmentApi(ctx.activeThreadEnvironmentId);
+    const localApi = readLocalApi();
+    if (!environmentApi || !localApi) {
+      toastManager.add({
+        type: "error",
+        title: "无法打开文件夹",
+        description: "本地或当前环境连接不可用。",
+      });
+      return;
+    }
+
+    try {
+      const result = await environmentApi.server.resolveAttachmentPath({
+        attachmentId: attachment.id,
+      });
+      if (!result.path) {
+        throw new Error("未能定位该附件的本地保存路径。");
+      }
+      await revealFileInFolder(localApi, result.path);
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "无法打开文件夹",
+        description: error instanceof Error ? error.message : "打开文件夹失败。",
+      });
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={cn(className, "cursor-pointer")}
+      title={attachment.name}
+      aria-label={`打开 ${attachment.name} 所在文件夹`}
+      onClick={() => void openAttachmentFolder()}
+    >
+      {content}
+    </button>
   );
 }
 

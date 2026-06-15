@@ -12,6 +12,7 @@ import {
   reorderProjects,
   setDefaultAdvertisedEndpointKey,
   setProjectExpanded,
+  setThreadPinned,
   setThreadChangedFilesExpanded,
   syncProjects,
   syncThreads,
@@ -22,6 +23,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
     projectOrder: [],
+    pinnedThreadKeys: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -341,6 +343,7 @@ describe("uiStateStore pure functions", () => {
     const thread1 = ThreadId.make("thread-1");
     const thread2 = ThreadId.make("thread-2");
     const initialState = makeUiState({
+      pinnedThreadKeys: [thread1, thread2],
       threadLastVisitedAtById: {
         [thread1]: "2026-02-25T12:35:00.000Z",
         [thread2]: "2026-02-25T12:36:00.000Z",
@@ -360,6 +363,7 @@ describe("uiStateStore pure functions", () => {
     expect(next.threadLastVisitedAtById).toEqual({
       [thread1]: "2026-02-25T12:35:00.000Z",
     });
+    expect(next.pinnedThreadKeys).toEqual([thread1]);
     expect(next.threadChangedFilesExpandedById).toEqual({
       [thread1]: {
         "turn-1": false,
@@ -401,6 +405,7 @@ describe("uiStateStore pure functions", () => {
   it("clearThreadUi removes visit state for deleted threads", () => {
     const thread1 = ThreadId.make("thread-1");
     const initialState = makeUiState({
+      pinnedThreadKeys: [thread1],
       threadLastVisitedAtById: {
         [thread1]: "2026-02-25T12:35:00.000Z",
       },
@@ -413,8 +418,21 @@ describe("uiStateStore pure functions", () => {
 
     const next = clearThreadUi(initialState, thread1);
 
+    expect(next.pinnedThreadKeys).toEqual([]);
     expect(next.threadLastVisitedAtById).toEqual({});
     expect(next.threadChangedFilesExpandedById).toEqual({});
+  });
+
+  it("setThreadPinned places newly pinned threads at the top and removes them on unpin", () => {
+    const thread1 = ThreadId.make("thread-1");
+    const thread2 = ThreadId.make("thread-2");
+    const initialState = makeUiState({ pinnedThreadKeys: [thread1] });
+
+    const pinned = setThreadPinned(initialState, thread2, true);
+    const unpinned = setThreadPinned(pinned, thread1, false);
+
+    expect(pinned.pinnedThreadKeys).toEqual([thread2, thread1]);
+    expect(unpinned.pinnedThreadKeys).toEqual([thread2]);
   });
 
   it("setThreadChangedFilesExpanded stores collapsed turns per thread", () => {
@@ -578,6 +596,19 @@ describe("uiStateStore persistence round-trip", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted.defaultAdvertisedEndpointKey).toBe("desktop-core:lan:http");
+  });
+
+  it("persists pinned thread order", () => {
+    const thread1 = ThreadId.make("thread-1");
+    const thread2 = ThreadId.make("thread-2");
+    const state = makeUiState({ pinnedThreadKeys: [thread2, thread1] });
+
+    persistState(state);
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    expect(persisted.pinnedThreadKeys).toEqual([thread2, thread1]);
   });
 
   it("preserves expand state across restart when project's logical key changes", () => {

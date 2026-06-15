@@ -71,6 +71,33 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
           throw new Error("Unable to open path.");
         }
       },
+      revealPath: async (path) => {
+        if (!window.desktopBridge) {
+          throw unavailableLocalBackendError();
+        }
+        if (window.desktopBridge.revealPath) {
+          const revealed = await window.desktopBridge.revealPath(path);
+          if (revealed) {
+            return;
+          }
+        }
+        const lastSlashIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+        const directoryPath =
+          lastSlashIndex === 2 && /^[A-Za-z]:[\\/]/u.test(path)
+            ? path.slice(0, 3)
+            : lastSlashIndex > 0
+            ? path.slice(0, lastSlashIndex)
+            : lastSlashIndex === 0 && path.startsWith("/")
+              ? "/"
+              : null;
+        if (!directoryPath) {
+          throw new Error("Unable to resolve containing folder.");
+        }
+        const opened = await window.desktopBridge.openPath(directoryPath);
+        if (!opened) {
+          throw new Error(`Unable to reveal path: ${path}`);
+        }
+      },
     },
     contextMenu: {
       show: async <T extends string>(

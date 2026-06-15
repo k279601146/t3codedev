@@ -47,6 +47,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery.ts";
 import { ServerConfig } from "./config.ts";
+import { resolveAttachmentPathById } from "./attachmentStore.ts";
 import { Keybindings } from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
@@ -1172,6 +1173,17 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverResolveAttachmentPath]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverResolveAttachmentPath,
+            Effect.succeed({
+              path: resolveAttachmentPathById({
+                attachmentsDir: config.attachmentsDir,
+                attachmentId: input.attachmentId,
+              }),
+            }),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.providerWindowsSandboxReadiness]: (input) =>
           observeRpcEffect(
             WS_METHODS.providerWindowsSandboxReadiness,

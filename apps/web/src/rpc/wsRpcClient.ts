@@ -154,6 +154,7 @@ export interface WsRpcClient {
       typeof WS_METHODS.serverGetProcessResourceHistory
     >;
     readonly signalProcess: RpcUnaryMethod<typeof WS_METHODS.serverSignalProcess>;
+    readonly resolveAttachmentPath: RpcUnaryMethod<typeof WS_METHODS.serverResolveAttachmentPath>;
     readonly windowsSandboxReadiness: RpcUnaryMethod<
       typeof WS_METHODS.providerWindowsSandboxReadiness
     >;
@@ -353,6 +354,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) =>
           client[WS_METHODS.serverSignalProcess](input).pipe(Effect.withTracerEnabled(false)),
         ),
+      resolveAttachmentPath: (input) =>
+        transport.request((client) => client[WS_METHODS.serverResolveAttachmentPath](input)),
       windowsSandboxReadiness: (input) =>
         transport.request((client) => client[WS_METHODS.providerWindowsSandboxReadiness](input)),
       windowsSandboxSetupStart: (input) =>

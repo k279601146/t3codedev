@@ -189,6 +189,8 @@ export function buildCodexProcessEnv(input: {
   const patchedPath =
     engineBinDir && basePathValue
       ? `${engineBinDir}${process.platform === "win32" ? ";" : ":"}${basePathValue}`
+      : engineBinDir
+        ? engineBinDir
       : undefined;
   const patch = {
     ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),

@@ -9,6 +9,7 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
   return {
     server: {
       updateThreadSettings: rpcClient.server.updateThreadSettings,
+      resolveAttachmentPath: rpcClient.server.resolveAttachmentPath,
     },
     terminal: {
       open: (input) => rpcClient.terminal.open(input as never),

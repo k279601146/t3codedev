@@ -4,6 +4,7 @@ import {
   formatElapsedDurationLabel,
   formatExpiresInLabel,
   formatRelativeTimeUntilLabel,
+  formatSidebarThreadTimeLabel,
   getTimestampFormatOptions,
 } from "./timestampFormat";
 
@@ -58,6 +59,34 @@ describe("formatRelativeTimeUntilLabel", () => {
 
   it("formats hours remaining", () => {
     expect(formatRelativeTimeUntilLabel("2026-04-07T18:00:00.000Z")).toBe("6h left");
+  });
+});
+
+describe("formatSidebarThreadTimeLabel", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-07T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("uses minute labels for threads updated within one hour", () => {
+    expect(formatSidebarThreadTimeLabel("2026-04-07T11:59:30.000Z")).toBe("1 分");
+    expect(formatSidebarThreadTimeLabel("2026-04-07T11:42:00.000Z")).toBe("18 分");
+    expect(formatSidebarThreadTimeLabel("2026-04-07T11:01:00.000Z")).toBe("59 分");
+  });
+
+  it("uses hour labels from one hour up to twenty-three hours", () => {
+    expect(formatSidebarThreadTimeLabel("2026-04-07T11:00:00.000Z")).toBe("1 小时");
+    expect(formatSidebarThreadTimeLabel("2026-04-07T09:00:00.000Z")).toBe("3 小时");
+    expect(formatSidebarThreadTimeLabel("2026-04-06T13:00:00.000Z")).toBe("23 小时");
+  });
+
+  it("uses day labels from twenty-four hours onward", () => {
+    expect(formatSidebarThreadTimeLabel("2026-04-06T12:00:00.000Z")).toBe("1 天");
+    expect(formatSidebarThreadTimeLabel("2026-04-04T12:00:00.000Z")).toBe("3 天");
   });
 });
 

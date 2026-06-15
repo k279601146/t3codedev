@@ -2225,19 +2225,18 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeLatestTurn?.startedAt) return null;
     if (!activeLatestTurn.completedAt) return null;
     const isInterruptedTurn = activeLatestTurn.state === "interrupted";
-    if (!latestTurnHasToolActivity && !isInterruptedTurn) return null;
+    if (!isInterruptedTurn) return null;
 
     const elapsed = formatElapsed(
       activeLatestTurn.startedAt,
       activeLatestTurn.completedAt,
     )?.replace(/\.0s$/, "s");
     if (!elapsed) return null;
-    return isInterruptedTurn ? `你在 ${elapsed} 后停止了` : `工作了 ${elapsed}`;
+    return `你在 ${elapsed} 后停止了`;
   }, [
     activeLatestTurn?.completedAt,
     activeLatestTurn?.startedAt,
     activeLatestTurn?.state,
-    latestTurnHasToolActivity,
     latestTurnSettled,
   ]);
   const completionDividerBeforeEntryId = useMemo(() => {

@@ -10,6 +10,7 @@ export const CLEAR_CLOUD_AUTH_TOKEN_CHANNEL = "desktop:clear-cloud-auth-token";
 export const FETCH_CLOUD_AUTH_CHANNEL = "desktop:fetch-cloud-auth";
 export const CLOUD_AUTH_CALLBACK_CHANNEL = "desktop:cloud-auth-callback";
 export const OPEN_PATH_CHANNEL = "desktop:open-path";
+export const REVEAL_PATH_CHANNEL = "desktop:reveal-path";
 export const MENU_ACTION_CHANNEL = "desktop:menu-action";
 export const BROWSER_AUTOMATION_GET_STATE_CHANNEL = "desktop:browser-automation-get-state";
 export const BROWSER_AUTOMATION_STATE_CHANNEL = "desktop:browser-automation-state";

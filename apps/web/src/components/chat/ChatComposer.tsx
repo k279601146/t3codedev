@@ -103,11 +103,14 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { toastManager } from "../ui/toast";
+import { readLocalApi } from "../../localApi";
+import { revealFileInFolder } from "../../lib/openContainingFolder";
 import {
   ChevronDownIcon,
   CircleAlertIcon,
   BookOpenIcon,
   CheckIcon,
+  FileTextIcon,
   FileIcon,
   GoalIcon,
   GlobeIcon,
@@ -160,6 +163,17 @@ import { useBrowserExternalPluginState } from "../../browserExternalPluginState"
 const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
 )}MB`;
+
+function formatComposerAttachmentTypeLabel(name: string, mimeType: string): string {
+  const basename = basenameOfPath(name);
+  const extension = /\.([A-Za-z0-9][A-Za-z0-9-]{0,9})$/u.exec(basename)?.[1];
+  if (extension) {
+    return extension.toUpperCase();
+  }
+
+  const subtype = mimeType.split("/")[1]?.split(/[+;]/u)[0]?.trim();
+  return subtype ? subtype.toUpperCase() : "FILE";
+}
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -1304,6 +1318,7 @@ export const ChatComposer = memo(
       onExpandImage,
     } = props;
     const navigate = useNavigate();
+    const { t } = useI18n();
     const browserExternalPlugin = useBrowserExternalPluginState();
     const composerSurface: ComposerSurface = newThreadMode ? "new-thread" : "reply";
     const visiblePluginMentions = useMemo(
@@ -2706,6 +2721,41 @@ export const ChatComposer = memo(
       removeComposerImageFromDraft(imageId);
     };
 
+    const openComposerAttachmentFolder = useCallback(async (attachment: ComposerImageAttachment) => {
+      const filePath =
+        typeof window !== "undefined"
+          ? window.desktopBridge?.getPathForFile?.(attachment.file)
+          : null;
+      if (!filePath) {
+        toastManager.add({
+          type: "error",
+          title: "无法打开文件夹",
+          description: "未能定位该附件的原始本地文件路径。",
+        });
+        return;
+      }
+
+      const api = readLocalApi();
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "无法打开文件夹",
+          description: "本地桌面能力不可用。",
+        });
+        return;
+      }
+
+      try {
+        await revealFileInFolder(api, filePath);
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "无法打开文件夹",
+          description: error instanceof Error ? error.message : "打开文件夹失败。",
+        });
+      }
+    }, []);
+
     // ------------------------------------------------------------------
     // Callbacks: paste / drag
     // ------------------------------------------------------------------
@@ -3180,7 +3230,10 @@ export const ChatComposer = memo(
                   {activePendingProgress
                     ? activePendingProgress.customAnswer ||
                       "Type your own answer, or leave this blank to use the selected option"
-                    : prompt.trim() || "Ask anything..."}
+                    : prompt.trim() ||
+                      (newThreadMode
+                        ? (newThreadPlaceholder ?? "随心输入")
+                        : t("composer.placeholder.reply"))}
                 </button>
                 <button
                   type="button"
@@ -3266,7 +3319,12 @@ export const ChatComposer = memo(
                     {composerImages.map((image) => (
                       <div
                         key={image.id}
-                        className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
+                        className={cn(
+                          "relative border border-border/80 bg-background",
+                          image.type === "file"
+                            ? "h-14 w-[14rem] max-w-full overflow-visible rounded-lg"
+                            : "h-16 w-16 overflow-hidden rounded-lg",
+                        )}
                       >
                         {image.type === "image" && image.previewUrl ? (
                           <button
@@ -3286,10 +3344,25 @@ export const ChatComposer = memo(
                             />
                           </button>
                         ) : image.type === "file" ? (
-                          <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-muted-foreground/70">
-                            <FileIcon className="size-4 text-muted-foreground/70" />
-                            <span className="line-clamp-2 break-all">{image.name}</span>
-                          </div>
+                          <button
+                            type="button"
+                            className="flex h-full w-full items-center gap-2 px-2 pr-3 text-left"
+                            title="打开文件所在文件夹"
+                            aria-label={`打开 ${image.name} 所在文件夹`}
+                            onClick={() => void openComposerAttachmentFolder(image)}
+                          >
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground/85">
+                              <FileTextIcon className="size-4.5" />
+                            </span>
+                            <span className="grid min-w-0 flex-1 gap-1 text-left">
+                              <span className="truncate text-[13px] font-semibold leading-4 text-foreground">
+                                {image.name}
+                              </span>
+                              <span className="text-[11px] font-medium uppercase leading-3 text-muted-foreground/70">
+                                {formatComposerAttachmentTypeLabel(image.name, image.mimeType)}
+                              </span>
+                            </span>
+                          </button>
                         ) : (
                           <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
                             {image.name}
@@ -3320,11 +3393,16 @@ export const ChatComposer = memo(
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          className="absolute right-1 top-1 bg-background/80 hover:bg-background/90"
+                          className={cn(
+                            "absolute",
+                            image.type === "file"
+                              ? "-right-1.5 -top-1.5 size-4 rounded-full bg-foreground p-0 text-background shadow-sm hover:bg-foreground/85 hover:text-background"
+                              : "right-1 top-1 bg-background/80 hover:bg-background/90",
+                          )}
                           onClick={() => removeComposerImage(image.id)}
                           aria-label={`Remove ${image.name}`}
                         >
-                          <XIcon />
+                          <XIcon className={image.type === "file" ? "size-3" : undefined} />
                         </Button>
                       </div>
                     ))}
@@ -3378,8 +3456,8 @@ export const ChatComposer = memo(
                             : newThreadMode
                               ? (newThreadPlaceholder ?? "随心输入")
                               : phase === "disconnected"
-                                ? "Ask for follow-up changes or attach files"
-                                : "Type / for skills"
+                                ? t("composer.placeholder.disconnectedReply")
+                                : t("composer.placeholder.reply")
                   }
                   disabled={
                     isConnecting ||

@@ -51,6 +51,8 @@ import type {
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
   ServerProcessResourceHistoryResult,
+  ServerResolveAttachmentPathInput,
+  ServerResolveAttachmentPathResult,
   ProviderWindowsSandboxReadinessInput,
   ProviderWindowsSandboxReadinessResult,
   ProviderWindowsSandboxSetupStartInput,
@@ -652,6 +654,7 @@ export interface DesktopBridge {
   fetchCloudAuth: (input: DesktopCloudAuthFetchInput) => Promise<DesktopCloudAuthFetchResult>;
   onCloudAuthCallback: (listener: (rawUrl: string) => void) => () => void;
   openPath: (path: string) => Promise<boolean>;
+  revealPath?: (path: string) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getBrowserAutomationState?: () => Promise<DesktopBrowserAutomationState>;
   navigateBrowserAutomation?: (url: string) => Promise<DesktopBrowserAutomationState>;
@@ -703,6 +706,7 @@ export interface LocalApi {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
     openExternal: (url: string) => Promise<void>;
     openPath: (path: string) => Promise<void>;
+    revealPath: (path: string) => Promise<void>;
   };
   contextMenu: {
     show: <T extends string>(
@@ -773,6 +777,9 @@ export interface EnvironmentApi {
     updateThreadSettings: (
       input: ProviderThreadSettingsUpdateInput,
     ) => Promise<ProviderThreadSettingsUpdateResult>;
+    resolveAttachmentPath: (
+      input: ServerResolveAttachmentPathInput,
+    ) => Promise<ServerResolveAttachmentPathResult>;
   };
   terminal: {
     open: (input: typeof TerminalOpenInput.Encoded) => Promise<TerminalSessionSnapshot>;

@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { COMMERCIAL_ENGINE_IDE_JWT_ENV } from "@t3tools/shared/commercialEngine";
 import { describe, it } from "vitest";
 
-import { generateBundledTomlConfig, resolveBundledEngineConfig } from "./BundledEngineConfig.ts";
+import {
+  buildCodexProcessEnv,
+  generateBundledTomlConfig,
+  resolveBundledEngineConfig,
+} from "./BundledEngineConfig.ts";
 
 describe("BundledEngineConfig", () => {
   it("does not enter bundled mode for command names from PATH", () => {
@@ -48,5 +52,43 @@ describe("BundledEngineConfig", () => {
     assert.match(toml, /plugins = true/);
     assert.match(toml, /apps = true/);
     assert.doesNotMatch(toml, /jwt-token/);
+  });
+
+  it("将捆绑引擎目录前置到 Codex 子进程 PATH", () => {
+    const env = buildCodexProcessEnv({
+      baseEnv: {
+        PATH: "C:\\Windows\\System32",
+        PATHEXT: ".COM;.EXE;.BAT;.CMD",
+      },
+      resolvedHomePath: undefined,
+      bundledConfig: {
+        binaryPath: "D:\\T3 Code\\resources\\ai-engine.exe",
+        spawnArgs: [],
+        spawnEnvPatch: {},
+        engineHome: "C:\\Users\\alice\\.bahew\\agent-data",
+      },
+    });
+
+    assert.equal(
+      env.PATH,
+      `D:\\T3 Code\\resources${process.platform === "win32" ? ";" : ":"}C:\\Windows\\System32`,
+    );
+    assert.equal(env.Path, env.PATH);
+  });
+
+  it("原环境没有 PATH 时仍提供捆绑引擎目录", () => {
+    const env = buildCodexProcessEnv({
+      baseEnv: {},
+      resolvedHomePath: undefined,
+      bundledConfig: {
+        binaryPath: "D:\\T3 Code\\resources\\ai-engine.exe",
+        spawnArgs: [],
+        spawnEnvPatch: {},
+        engineHome: "C:\\Users\\alice\\.bahew\\agent-data",
+      },
+    });
+
+    assert.equal(env.PATH, "D:\\T3 Code\\resources");
+    assert.equal(env.Path, "D:\\T3 Code\\resources");
   });
 });

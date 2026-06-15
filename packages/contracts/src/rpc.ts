@@ -107,6 +107,8 @@ import {
   ServerProcessResourceHistoryResult,
   ServerSignalProcessInput,
   ServerSignalProcessResult,
+  ServerResolveAttachmentPathInput,
+  ServerResolveAttachmentPathResult,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
   ProviderWindowsSandboxReadinessInput,
@@ -230,6 +232,7 @@ export const WS_METHODS = {
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverSignalProcess: "server.signalProcess",
+  serverResolveAttachmentPath: "server.resolveAttachmentPath",
   providerWindowsSandboxReadiness: "provider.windowsSandbox.readiness",
   providerWindowsSandboxSetupStart: "provider.windowsSandbox.setupStart",
   providerThreadSettingsUpdate: "provider.threadSettings.update",
@@ -364,6 +367,14 @@ export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess,
   payload: ServerSignalProcessInput,
   success: ServerSignalProcessResult,
 });
+
+export const WsServerResolveAttachmentPathRpc = Rpc.make(
+  WS_METHODS.serverResolveAttachmentPath,
+  {
+    payload: ServerResolveAttachmentPathInput,
+    success: ServerResolveAttachmentPathResult,
+  },
+);
 
 export const WsProviderWindowsSandboxReadinessRpc = Rpc.make(
   WS_METHODS.providerWindowsSandboxReadiness,
@@ -828,6 +839,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerSignalProcessRpc,
+  WsServerResolveAttachmentPathRpc,
   WsProviderWindowsSandboxReadinessRpc,
   WsProviderWindowsSandboxSetupStartRpc,
   WsProviderThreadSettingsUpdateRpc,

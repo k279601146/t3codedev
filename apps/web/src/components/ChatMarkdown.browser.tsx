@@ -192,6 +192,25 @@ describe("ChatMarkdown", () => {
     }
   });
 
+  it("renders plain URLs as compact readable links", async () => {
+    const url = "https://www.cosmicjs.com/blog/claude-code-vs-github-copilot-vs-cursor";
+    const screen = await render(<ChatMarkdown text={url} cwd="/repo/project" />);
+
+    try {
+      const link = page.getByRole("link", { name: url });
+      await expect.element(link).toBeInTheDocument();
+      await expect.element(link).toHaveAttribute("href", url);
+      await expect.element(link).toHaveAttribute("title", url);
+      await expect.element(link).toHaveClass("chat-markdown-url-link");
+      await expect.element(page.getByText("cosmicjs.com")).toBeInTheDocument();
+      await expect
+        .element(page.getByText("/blog/claude-code-vs-github-copilot-vs-cursor"))
+        .toBeInTheDocument();
+    } finally {
+      await screen.unmount();
+    }
+  });
+
   it("adds table header labels for narrow readable table cards", async () => {
     const screen = await render(
       <ChatMarkdown

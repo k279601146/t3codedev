@@ -668,6 +668,9 @@ const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(f
 const ENGINE_RUNTIME_FILES = new Set([
   "ai-engine.exe",
   "engine-manifest.json",
+  "rg.exe",
+  "ripgrep-LICENSE-MIT",
+  "ripgrep-UNLICENSE",
   "codex-command-runner-x86_64-pc-windows-msvc.exe",
   "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
   "codex-command-runner.exe",
@@ -692,9 +695,10 @@ const stageEngineRuntimeFiles = Effect.fn("stageEngineRuntimeFiles")(function* (
 ) {
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
+  const copied = new Set<string>();
 
   if (!(yield* fs.exists(desktopBinDir))) {
-    return;
+    return copied;
   }
 
   const binEntries = yield* fs.readDirectory(desktopBinDir);
@@ -705,6 +709,7 @@ const stageEngineRuntimeFiles = Effect.fn("stageEngineRuntimeFiles")(function* (
     const sourcePath = path.join(desktopBinDir, entry);
     const targetPath = path.join(stageEngineBinDir, entry);
     yield* fs.copyFile(sourcePath, targetPath);
+    copied.add(entry);
   }
 
   for (const helper of ENGINE_HELPER_ALIASES) {
@@ -714,8 +719,11 @@ const stageEngineRuntimeFiles = Effect.fn("stageEngineRuntimeFiles")(function* (
     }
     for (const alias of helper.aliases) {
       yield* fs.copyFile(sourcePath, path.join(stageEngineBinDir, alias));
+      copied.add(alias);
     }
   }
+
+  return copied;
 });
 
 const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
@@ -839,7 +847,16 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const stageEngineBinDir = path.join(stageAppDir, "engine-bin");
   yield* fs.makeDirectory(stageEngineBinDir, { recursive: true });
   const desktopBinDir = path.join(repoRoot, "apps/desktop/bin");
-  yield* stageEngineRuntimeFiles(desktopBinDir, stageEngineBinDir);
+  const stagedEngineFiles = yield* stageEngineRuntimeFiles(desktopBinDir, stageEngineBinDir);
+  if (options.platform === "win") {
+    for (const requiredFile of ["ai-engine.exe", "rg.exe"]) {
+      if (!stagedEngineFiles.has(requiredFile)) {
+        return yield* new BuildScriptError({
+          message: `Missing required Windows runtime file '${requiredFile}' at ${desktopBinDir}.`,
+        });
+      }
+    }
+  }
 
   yield* assertPlatformBuildResources(
     options.platform,

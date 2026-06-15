@@ -71,6 +71,20 @@ export function formatRelativeTimeLabel(isoDate: string) {
   return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
 }
 
+export function formatSidebarThreadTimeLabel(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const elapsedMs = Math.max(0, diffMs);
+  const minutes = Math.max(1, Math.floor(elapsedMs / 60_000));
+
+  if (minutes < 60) return `${minutes} 分`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时`;
+
+  const days = Math.floor(hours / 24);
+  return `${days} 天`;
+}
+
 /**
  * Relative elapsed duration since an ISO instant, without an "ago" suffix.
  * Useful for labels like "Connected for 3m".

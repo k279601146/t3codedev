@@ -179,3 +179,13 @@ export const openPath = makeIpcMethod({
     return yield* shell.openPath(targetPath);
   }),
 });
+
+export const revealPath = makeIpcMethod({
+  channel: IpcChannels.REVEAL_PATH_CHANNEL,
+  payload: Schema.String,
+  result: Schema.Boolean,
+  handler: Effect.fn("desktop.ipc.window.revealPath")(function* (targetPath) {
+    const shell = yield* ElectronShell.ElectronShell;
+    return yield* shell.revealPath(targetPath);
+  }),
+});

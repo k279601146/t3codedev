@@ -3,7 +3,18 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineWebAuthBaseUrl,
 } from "@t3tools/shared/commercialEngine";
-import { CheckIcon, ExternalLinkIcon, LoaderIcon, LogInIcon, XIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  CircleUserRoundIcon,
+  Code2Icon,
+  GitBranchIcon,
+  LoaderIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  TerminalSquareIcon,
+  XIcon,
+} from "lucide-react";
 import type React from "react";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
@@ -14,9 +25,7 @@ import {
   subscribeDesktopCommercialAuthState,
 } from "../../commercialAuthState";
 import { useI18n } from "../../i18n";
-import { OpenAI } from "../Icons";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 
 type CommercialAuthGateState =
   | { status: "unavailable" }
@@ -113,23 +122,18 @@ export function CommercialGatewayLoginGate({
 }) {
   const { t } = useI18n();
   const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
-  const [webAccessToken, setWebAccessToken] = useState("");
   const [isBrowserSignIn, setIsBrowserSignIn] = useState(false);
-  const [isTokenSignIn, setIsTokenSignIn] = useState(false);
-  const [showTokenFallback, setShowTokenFallback] = useState(false);
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
   const browserSignInRequestIdRef = useRef<string | null>(null);
   const gatewayBaseUrl = authState?.gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
   const webAuthBaseUrl = authState?.webAuthBaseUrl || resolveCommercialEngineWebAuthBaseUrl();
-  const registerGatewayBaseUrl = gatewayBaseUrl;
+  const registerWebAuthBaseUrl = webAuthBaseUrl;
 
   useEffect(() => {
     setCurrentErrorMessage(errorMessage ?? "");
   }, [errorMessage]);
 
   const canBrowserSignIn = Boolean(bridge?.signInCommercialAuthWithBrowser);
-  const canTokenSignIn = Boolean(bridge?.signInCommercialAuth) && webAccessToken.trim().length > 0;
-  const isWorking = isBrowserSignIn || isTokenSignIn;
 
   const handleBrowserSignIn = useCallback(() => {
     if (!bridge?.signInCommercialAuthWithBrowser) return;
@@ -166,113 +170,109 @@ export function CommercialGatewayLoginGate({
       });
   }, [bridge, gatewayBaseUrl, isBrowserSignIn, onAuthenticated, webAuthBaseUrl]);
 
-  const handleTokenSignIn = useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!bridge?.signInCommercialAuth) return;
-      setIsTokenSignIn(true);
-      setCurrentErrorMessage("");
-      void bridge
-        .signInCommercialAuth({
-          gatewayBaseUrl,
-          webAuthBaseUrl,
-          webAccessToken,
-        })
-        .then((nextState) => {
-          setWebAccessToken("");
-          publishDesktopCommercialAuthState(nextState);
-          startTransition(() => onAuthenticated(nextState));
-        })
-        .catch((error: unknown) => {
-          setCurrentErrorMessage(errorMessageFromUnknown(error));
-        })
-        .finally(() => {
-          setIsTokenSignIn(false);
-        });
-    },
-    [bridge, gatewayBaseUrl, onAuthenticated, webAccessToken, webAuthBaseUrl],
-  );
-
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white px-5 py-12 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
-      <section className="flex w-full max-w-[360px] flex-col items-center text-center">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#6f7cff,#2548ff)] text-white shadow-[0_14px_32px_rgba(37,72,255,0.22)]">
-          <span className="text-lg font-semibold leading-none">{APP_BASE_NAME.slice(0, 1)}</span>
+    <main className="drag-region flex min-h-screen items-center justify-center bg-background px-5 py-10 text-foreground">
+      <section className="grid w-full max-w-[820px] overflow-visible md:grid-cols-[0.9fr_1.1fr]">
+        <div className="relative hidden min-h-[384px] p-8 text-foreground md:flex md:flex-col">
+          <div className="absolute inset-0 rounded-[8px] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--muted)_36%,transparent)_0%,transparent_50%),linear-gradient(90deg,color-mix(in_srgb,var(--border)_36%,transparent)_1px,transparent_1px),linear-gradient(180deg,color-mix(in_srgb,var(--border)_30%,transparent)_1px,transparent_1px)] bg-[auto,28px_28px,28px_28px]" />
+          <div className="relative flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-[8px] border border-border bg-card text-muted-foreground shadow-sm">
+              <Code2Icon className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">{APP_BASE_NAME}</p>
+              <p className="text-xs text-muted-foreground">{t("auth.productTagline")}</p>
+            </div>
+          </div>
+
+          <div className="relative mt-auto max-w-[330px]">
+            <p className="text-[11px] font-semibold text-info uppercase">
+              {t("auth.ideAssistant")}
+            </p>
+            <h1 className="mt-3 max-w-[300px] text-[22px] font-semibold leading-snug tracking-normal text-foreground/88">
+              {t("auth.heroTitle")}
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              {t("auth.heroDescription")}
+            </p>
+          </div>
+
+          <div className="relative mt-8 border-y border-border/80 py-2">
+            <AuthFeature icon={TerminalSquareIcon} label={t("auth.featureLocalRuntime")} />
+            <AuthFeature icon={GitBranchIcon} label={t("auth.featureGitAware")} />
+            <AuthFeature icon={ShieldCheckIcon} label={t("auth.featurePrivateToken")} />
+          </div>
         </div>
 
-        <h1 className="mt-8 text-3xl font-semibold tracking-normal">
-          {t("auth.welcome", { appName: APP_BASE_NAME })}
-        </h1>
+        <div className="flex min-h-[384px] flex-col justify-center border-border/80 px-6 py-8 sm:px-10 md:border-l">
+          <div className="mx-auto flex w-full max-w-[360px] flex-col">
+            <div className="flex items-center gap-3 md:hidden">
+              <div className="flex size-11 items-center justify-center rounded-[8px] border border-border bg-muted text-muted-foreground">
+                <Code2Icon className="size-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{APP_BASE_NAME}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {t("auth.productTagline")}
+                </p>
+              </div>
+            </div>
 
-        <div className="mt-4 inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-[#eef2ff] px-3 text-sm font-medium text-[#3154ff] dark:bg-white/10 dark:text-[#9facff]">
-          <CheckIcon className="size-4 shrink-0" />
-          <span className="truncate">{t("auth.planIncluded")}</span>
-        </div>
+            <div className="mt-8 flex size-12 items-center justify-center rounded-[8px] border border-border bg-muted/70 text-info shadow-sm md:mt-0">
+              <SparklesIcon className="size-5" />
+            </div>
 
-        <div className="mt-8 flex w-full flex-col gap-3">
-          <Button
-            className="h-12 w-full rounded-full border-neutral-900 bg-neutral-900 text-[15px] text-white shadow-none hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
-            disabled={isTokenSignIn || !canBrowserSignIn}
-            onClick={handleBrowserSignIn}
-            size="lg"
-          >
-            {isBrowserSignIn ? <XIcon className="size-4" /> : <OpenAI className="size-4" />}
-            <span>{isBrowserSignIn ? t("auth.cancelLogin") : t("auth.continueWithAccount")}</span>
-            {!isBrowserSignIn ? <ExternalLinkIcon className="size-4 opacity-70" /> : null}
-          </Button>
+            <h2 className="mt-6 text-[28px] font-semibold leading-tight tracking-normal">
+              {t("auth.welcome", { appName: APP_BASE_NAME })}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
+              {t("auth.signInDescription")}
+            </p>
 
-          <Button
-            className="h-12 w-full rounded-full border-neutral-200 bg-white text-[15px] text-neutral-950 shadow-none hover:bg-neutral-50 dark:border-white/12 dark:bg-neutral-950 dark:text-neutral-50 dark:hover:bg-white/6"
-            disabled={isWorking}
-            onClick={() => setShowTokenFallback((value) => !value)}
-            size="lg"
-            variant="outline"
-          >
-            <LogInIcon className="size-4" />
-            <span>{t("auth.otherLogin")}</span>
-          </Button>
-        </div>
+            <div className="mt-5 inline-flex h-8 w-fit max-w-full items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200">
+              <CheckIcon className="size-4 shrink-0" />
+              <span className="truncate">{t("auth.planIncluded")}</span>
+            </div>
 
-        {showTokenFallback ? (
-          <form className="mt-4 w-full space-y-3" onSubmit={handleTokenSignIn}>
-            <Input
-              className="rounded-full border-neutral-200 bg-white text-left dark:border-white/12 dark:bg-neutral-950"
-              nativeInput
-              onChange={(event) => setWebAccessToken(event.currentTarget.value)}
-              placeholder={t("auth.webAccessToken")}
-              spellCheck={false}
-              type="password"
-              value={webAccessToken}
-            />
             <Button
-              className="h-10 w-full rounded-full"
-              disabled={isWorking || !canTokenSignIn}
-              type="submit"
+              className="mt-8 h-12 w-full rounded-[8px] border-[#2f6fed] bg-[#2f6fed] px-4 text-[15px] font-medium text-white shadow-[0_10px_22px_rgba(47,111,237,0.20)] hover:border-[#285fd0] hover:bg-[#285fd0] [:hover,[data-pressed]]:!border-[#285fd0] [:hover,[data-pressed]]:!bg-[#285fd0] dark:border-[#77a4ff] dark:bg-[#77a4ff] dark:text-neutral-950 dark:shadow-[0_10px_22px_rgba(119,164,255,0.16)] dark:hover:border-[#8db3ff] dark:hover:bg-[#8db3ff] dark:[:hover,[data-pressed]]:!border-[#8db3ff] dark:[:hover,[data-pressed]]:!bg-[#8db3ff]"
+              disabled={!canBrowserSignIn}
+              onClick={handleBrowserSignIn}
+              size="lg"
             >
-              {isTokenSignIn ? <LoaderIcon className="size-4 animate-spin" /> : null}
-              <span>{isTokenSignIn ? t("auth.connecting") : t("auth.connect")}</span>
+              {isBrowserSignIn ? (
+                <XIcon className="size-4" />
+              ) : (
+                <CircleUserRoundIcon className="size-4" />
+              )}
+              <span>{isBrowserSignIn ? t("auth.cancelLogin") : t("auth.continueWithAccount")}</span>
+              {!isBrowserSignIn ? <ArrowRightIcon className="ml-auto size-4 opacity-80" /> : null}
             </Button>
-          </form>
-        ) : null}
 
-        {currentErrorMessage ? (
-          <p className="mt-4 w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-sm leading-5 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            {currentErrorMessage}
-          </p>
-        ) : null}
+            {currentErrorMessage ? (
+              <p className="mt-4 w-full rounded-[8px] border border-red-200 bg-red-50 px-3 py-2 text-left text-sm leading-5 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                {currentErrorMessage}
+              </p>
+            ) : null}
 
-        {registerGatewayBaseUrl ? (
-          <button
-            className="mt-5 cursor-pointer text-sm text-neutral-500 underline-offset-4 hover:text-neutral-800 hover:underline dark:text-neutral-400 dark:hover:text-neutral-100"
-            onClick={() => {
-              const registerUrl = resolveRegisterUrl(registerGatewayBaseUrl);
-              void window.desktopBridge?.openExternal(registerUrl);
-            }}
-            type="button"
-          >
-            {t("auth.register")}
-          </button>
-        ) : null}
+            {registerWebAuthBaseUrl ? (
+              <p className="mt-5 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                {t("auth.noAccount")}{" "}
+                <button
+                  className="cursor-pointer font-medium text-neutral-900 underline-offset-4 hover:underline dark:text-neutral-100"
+                  onClick={() => {
+                    const registerUrl = resolveRegisterUrl(registerWebAuthBaseUrl);
+                    if (!registerUrl) return;
+                    void window.desktopBridge?.openExternal(registerUrl);
+                  }}
+                  type="button"
+                >
+                  {t("auth.register")}
+                </button>
+              </p>
+            ) : null}
+          </div>
+        </div>
       </section>
     </main>
   );
@@ -281,14 +281,29 @@ export function CommercialGatewayLoginGate({
 export function CommercialGatewayLoginPending() {
   const { t } = useI18n();
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white px-5 py-12 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
+    <main className="drag-region flex min-h-screen items-center justify-center bg-background px-5 py-12 text-foreground">
       <section className="flex w-full max-w-[360px] flex-col items-center text-center">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#6f7cff,#2548ff)] text-white shadow-[0_14px_32px_rgba(37,72,255,0.22)]">
+        <div className="flex size-12 items-center justify-center rounded-[8px] border border-border bg-muted text-info shadow-sm">
           <LoaderIcon className="size-5 animate-spin" />
         </div>
-        <h1 className="mt-8 text-3xl font-semibold tracking-normal">{t("auth.checking")}</h1>
+        <h1 className="mt-8 text-[28px] font-semibold tracking-normal">{t("auth.checking")}</h1>
       </section>
     </main>
+  );
+}
+
+function AuthFeature({
+  icon: Icon,
+  label,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-border/55 py-2 text-sm text-muted-foreground last:border-b-0">
+      <Icon className="size-4 text-info/85" />
+      <span>{label}</span>
+    </div>
   );
 }
 
@@ -302,11 +317,12 @@ function errorMessageFromUnknown(error: unknown): string {
   return "Sign-in failed. Please try again.";
 }
 
-function resolveRegisterUrl(gatewayBaseUrl: string): string {
+function resolveRegisterUrl(webAuthBaseUrl: string): string {
   try {
-    const url = new URL(gatewayBaseUrl);
-    url.pathname = "/register";
+    const url = new URL("/", webAuthBaseUrl);
+    url.pathname = "/";
     url.search = "";
+    url.searchParams.set("auth", "register");
     url.hash = "";
     return url.toString();
   } catch {

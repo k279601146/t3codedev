@@ -543,6 +543,19 @@ export const ServerSignalProcessResult = Schema.Struct({
 });
 export type ServerSignalProcessResult = typeof ServerSignalProcessResult.Type;
 
+export const ServerResolveAttachmentPathInput = Schema.Struct({
+  attachmentId: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(128),
+    Schema.isPattern(/^[a-z0-9_-]+$/i),
+  ),
+});
+export type ServerResolveAttachmentPathInput = typeof ServerResolveAttachmentPathInput.Type;
+
+export const ServerResolveAttachmentPathResult = Schema.Struct({
+  path: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ServerResolveAttachmentPathResult = typeof ServerResolveAttachmentPathResult.Type;
+
 export const ServerConfig = Schema.Struct({
   environment: ExecutionEnvironmentDescriptor,
   auth: ServerAuthDescriptor,

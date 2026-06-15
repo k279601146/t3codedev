@@ -7,6 +7,8 @@
   HelpCircleIcon,
   CloudIcon,
   ExternalLinkIcon,
+  FolderGit2Icon,
+  FolderIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   GitPullRequestIcon,
@@ -23,6 +25,8 @@
   TerminalIcon,
   XIcon,
   ArrowUpRight,
+  ChevronDownIcon,
+  ChevronRightIcon,
   TriangleAlertIcon,
   Share2Icon,
 } from "lucide-react";
@@ -33,7 +37,6 @@ import {
   terminalStatusFromRunningIds,
   ThreadStatusLabel,
 } from "./ThreadStatusIndicators";
-import { ProjectFavicon } from "./ProjectFavicon";
 import { autoAnimate } from "@formkit/auto-animate";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -54,6 +57,7 @@ import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import {
   type CommercialAccountUsageSchema,
+  type ContextMenuItem,
   type DesktopUpdateState,
   ProjectId,
   type ServerProvider,
@@ -114,7 +118,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { formatRelativeTimeLabel } from "../timestampFormat";
+import { formatSidebarThreadTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import {
   getArm64IntelBuildWarningDescription,
@@ -699,7 +703,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       isHighlighted ? "text-muted-foreground/70" : "text-muted-foreground/58"
                     }`}
                   >
-                    {formatRelativeTimeLabel(
+                    {formatSidebarThreadTimeLabel(
                       thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
                     )}
                   </span>
@@ -771,6 +775,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
   props: SidebarThreadListToggleProps,
 ) {
   const { expanded, hiddenThreadStatus, onExpand, onCollapse } = props;
+  const { t } = useI18n();
   const buttonRender = useMemo(() => <button type="button" />, []);
 
   return (
@@ -786,7 +791,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
           {!expanded && hiddenThreadStatus ? (
             <ThreadStatusLabel status={hiddenThreadStatus} compact />
           ) : null}
-          <span>{expanded ? "收起显示" : "展开显示"}</span>
+          <span>{expanded ? t("sidebar.collapseList") : t("sidebar.expandList")}</span>
         </span>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
@@ -831,6 +836,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     expandThreadListForProject,
     collapseThreadListForProject,
   } = props;
+  const { t } = useI18n();
   return (
     <SidebarMenuSub
       ref={attachThreadListAutoAnimateRef}
@@ -842,7 +848,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             data-thread-selection-safe
             className="flex h-8.5 w-full translate-x-0 items-center px-2 text-left text-[14px] text-muted-foreground/55"
           >
-            <span>No threads yet</span>
+            <span>{t("sidebar.noThreads")}</span>
           </div>
         </SidebarMenuSubItem>
       ) : null}
@@ -911,6 +917,7 @@ interface SidebarProjectItemProps {
   project: SidebarProjectSnapshot;
   isThreadListExpanded: boolean;
   activeRouteThreadKey: string | null;
+  pinnedThreadKeySet: ReadonlySet<string>;
   newThreadShortcutLabel: string | null;
   handleNewThread: ReturnType<typeof useNewThreadHandler>["handleNewThread"];
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
@@ -1020,11 +1027,28 @@ function ProjectContextMenu({
   );
 }
 
+function SidebarProjectIcon({ project }: { project: SidebarProjectSnapshot }) {
+  const DefaultIcon = project.repositoryIdentity ? FolderGit2Icon : FolderIcon;
+  return (
+    <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/72">
+      <DefaultIcon
+        className="absolute inset-0 size-3.5 transition-[opacity,transform] duration-150 ease-out group-hover/project-header:scale-95 group-hover/project-header:opacity-0 group-focus-within/project-header:scale-95 group-focus-within/project-header:opacity-0"
+        strokeWidth={1.8}
+      />
+      <FolderOpenIcon
+        className="absolute inset-0 size-3.5 scale-95 opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover/project-header:scale-100 group-hover/project-header:opacity-100 group-focus-within/project-header:scale-100 group-focus-within/project-header:opacity-100"
+        strokeWidth={1.8}
+      />
+    </span>
+  );
+}
+
 const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
   const {
     project,
     isThreadListExpanded,
     activeRouteThreadKey,
+    pinnedThreadKeySet,
     newThreadShortcutLabel,
     handleNewThread,
     archiveThread,
@@ -1056,10 +1080,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const sidebarThreadPreviewCount = useSettings<SidebarThreadPreviewCount>(
     (settings) => settings.sidebarThreadPreviewCount,
   );
+  const { t } = useI18n();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
+  const setThreadPinned = useUiStateStore((state) => state.setThreadPinned);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
@@ -1072,7 +1098,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     onCopy: (ctx) => {
       toastManager.add({
         type: "success",
-        title: "Thread ID copied",
+        title: t("sidebar.thread.idCopied"),
         description: ctx.threadId,
       });
     },
@@ -1080,7 +1106,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Failed to copy thread ID",
+          title: t("sidebar.thread.idCopyFailed"),
           description: error instanceof Error ? error.message : "An error occurred.",
         }),
       );
@@ -1092,7 +1118,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     onCopy: (ctx) => {
       toastManager.add({
         type: "success",
-        title: "Path copied",
+        title: t("sidebar.thread.pathCopied"),
         description: ctx.path,
       });
     },
@@ -1100,7 +1126,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Failed to copy path",
+          title: t("sidebar.thread.pathCopyFailed"),
           description: error instanceof Error ? error.message : "An error occurred.",
         }),
       );
@@ -1210,7 +1236,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
   const { visibleProjectThreads, orderedProjectThreadKeys } = useMemo(() => {
     const visibleProjectThreads = sortThreads(
-      projectThreads.filter((thread) => thread.archivedAt === null),
+      projectThreads.filter(
+        (thread) =>
+          thread.archivedAt === null &&
+          !pinnedThreadKeySet.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+      ),
       threadSortOrder,
     );
     return {
@@ -1219,7 +1249,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       ),
       visibleProjectThreads,
     };
-  }, [projectThreads, threadSortOrder]);
+  }, [pinnedThreadKeySet, projectThreads, threadSortOrder]);
 
   const pinnedCollapsedThread = useMemo(() => {
     const activeThreadKey = activeRouteThreadKey ?? undefined;
@@ -1297,7 +1327,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   ]);
   const projectOrder = useUiStateStore((state) => state.projectOrder);
   const setProjectOrder = useUiStateStore((state) => state.setProjectOrder);
-  const { t } = useI18n();
   const [projectContextMenuPosition, setProjectContextMenuPosition] =
     useState<ProjectContextMenuPosition | null>(null);
 
@@ -1851,7 +1880,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (trimmed.length === 0) {
         toastManager.add({
           type: "warning",
-          title: "Thread title cannot be empty",
+          title: t("sidebar.thread.titleEmpty"),
         });
         finishRename();
         return;
@@ -1876,14 +1905,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to rename thread",
+            title: t("sidebar.thread.renameFailed"),
             description: error instanceof Error ? error.message : "An error occurred.",
           }),
         );
       }
       finishRename();
     },
-    [],
+    [t],
   );
 
   const closeProjectRenameDialog = useCallback(() => {
@@ -1983,16 +2012,46 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
       );
       const threadWorkspacePath = thread.worktreePath ?? threadProject?.cwd ?? project.cwd ?? null;
+      const isPinned = pinnedThreadKeySet.has(threadKey);
       const clicked = await api.contextMenu.show(
         [
-          { id: "rename", label: "Rename thread" },
-          { id: "mark-unread", label: "Mark unread" },
-          { id: "copy-path", label: "Copy Path" },
-          { id: "copy-thread-id", label: "Copy Thread ID" },
-          { id: "delete", label: "Delete", destructive: true },
-        ],
+          {
+            id: "pin",
+            label: isPinned ? t("sidebar.thread.unpin") : t("sidebar.thread.pin"),
+            icon: "pin",
+          },
+          { id: "rename", label: t("sidebar.thread.rename"), icon: "edit" },
+          { id: "archive", label: t("sidebar.thread.archive"), icon: "archive" },
+          { id: "mark-unread", label: t("sidebar.thread.markUnread") },
+          {
+            id: "open-path",
+            label: t("sidebar.thread.openInExplorer"),
+            icon: "folder-open",
+            disabled: threadWorkspacePath === null,
+          },
+          {
+            id: "copy-path",
+            label: t("sidebar.thread.copyWorkspace"),
+            icon: "copy",
+            disabled: threadWorkspacePath === null,
+          },
+          { id: "copy-thread-id", label: t("sidebar.thread.copySessionId"), icon: "copy" },
+        ] satisfies readonly ContextMenuItem<
+          | "pin"
+          | "rename"
+          | "archive"
+          | "mark-unread"
+          | "open-path"
+          | "copy-path"
+          | "copy-thread-id"
+        >[],
         position,
       );
+
+      if (clicked === "pin") {
+        setThreadPinned(threadKey, !isPinned);
+        return;
+      }
 
       if (clicked === "rename") {
         setRenamingThreadKey(threadKey);
@@ -2005,15 +2064,27 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         markThreadUnread(threadKey, thread.latestTurn?.completedAt);
         return;
       }
-      if (clicked === "copy-path") {
+      if (clicked === "open-path" || clicked === "copy-path") {
         if (!threadWorkspacePath) {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Path unavailable",
-              description: "This thread does not have a workspace path to copy.",
+              title: t("sidebar.thread.pathUnavailable"),
+              description: t("sidebar.thread.pathUnavailableDescription"),
             }),
           );
+          return;
+        }
+        if (clicked === "open-path") {
+          await api.shell.openPath(threadWorkspacePath).catch((error: unknown) => {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: t("sidebar.thread.pathOpenFailed"),
+                description: error instanceof Error ? error.message : threadWorkspacePath,
+              }),
+            );
+          });
           return;
         }
         copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
@@ -2023,28 +2094,41 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         copyThreadIdToClipboard(thread.id, { threadId: thread.id });
         return;
       }
-      if (clicked !== "delete") return;
-      if (appSettingsConfirmThreadDelete) {
+      if (clicked !== "archive") return;
+      if (appSettingsConfirmThreadArchive) {
         const confirmed = await api.dialogs.confirm(
           [
-            `Delete thread "${thread.title}"?`,
-            "This permanently clears conversation history for this thread.",
+            t("sidebar.thread.confirmArchiveTitle", { title: thread.title }),
+            t("sidebar.thread.confirmArchiveDescription"),
           ].join("\n"),
         );
         if (!confirmed) {
           return;
         }
       }
-      await deleteThread(threadRef);
+      try {
+        await archiveThread(threadRef);
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: t("sidebar.thread.archiveFailed"),
+            description: error instanceof Error ? error.message : "归档对话时发生错误。",
+          }),
+        );
+      }
     },
     [
-      appSettingsConfirmThreadDelete,
+      appSettingsConfirmThreadArchive,
+      archiveThread,
       copyPathToClipboard,
       copyThreadIdToClipboard,
-      deleteThread,
       markThreadUnread,
       memberProjectByScopedKey,
+      pinnedThreadKeySet,
       project.cwd,
+      setThreadPinned,
+      t,
     ],
   );
 
@@ -2054,9 +2138,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className={`h-6 gap-1.5 rounded-md px-2 py-0 pr-7 text-left text-[14px] font-normal leading-5 text-foreground/82 hover:bg-accent/45 hover:text-foreground group-hover/project-header:bg-accent/45 group-hover/project-header:text-foreground max-sm:pr-14 ${
-            isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-          }`}
+          className="h-7 cursor-default gap-2 rounded-none px-0 py-0 pr-7 text-left text-[14px] font-normal leading-5 text-foreground/72 hover:bg-transparent hover:text-foreground/82 group-hover/project-header:bg-transparent group-hover/project-header:text-foreground/82 max-sm:pr-14"
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
           onPointerDownCapture={handleProjectButtonPointerDownCapture}
@@ -2064,13 +2146,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           onKeyDown={handleProjectButtonKeyDown}
           onContextMenu={handleProjectButtonContextMenu}
         >
-          <ProjectFavicon
-            environmentId={project.environmentId}
-            cwd={project.cwd}
-            className="text-muted-foreground/70"
-          />
+          <SidebarProjectIcon project={project} />
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-[13px] font-normal leading-5 text-foreground/82">
+            <span className="truncate text-[14px] font-normal leading-5 text-foreground/72 group-hover/project-header:text-foreground/82">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -2303,7 +2381,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
 const SidebarProjectListRow = memo(function SidebarProjectListRow(props: SidebarProjectItemProps) {
   return (
-    <SidebarMenuItem className="rounded-md pb-1.5 last:pb-0">
+    <SidebarMenuItem className="rounded-md">
       <SidebarProjectItem {...props} />
     </SidebarMenuItem>
   );
@@ -2973,13 +3051,23 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
+  pinnedThreads: readonly SidebarThreadSummary[];
+  pinnedThreadKeySet: ReadonlySet<string>;
   globalThreads: readonly SidebarThreadSummary[];
+  isProjectsSectionExpanded: boolean;
+  isPinnedSectionExpanded: boolean;
+  isConversationsSectionExpanded: boolean;
+  setProjectsSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  setPinnedSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  setConversationsSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 function SidebarSectionTitle({
   action,
   children,
   draggable = false,
+  expanded,
+  onToggle,
   onDragStart,
   onDragOver,
   onDrop,
@@ -2987,23 +3075,39 @@ function SidebarSectionTitle({
   action?: React.ReactNode;
   children: React.ReactNode;
   draggable?: boolean;
+  expanded: boolean;
+  onToggle: () => void;
   onDragStart?: React.DragEventHandler<HTMLDivElement>;
   onDragOver?: React.DragEventHandler<HTMLDivElement>;
   onDrop?: React.DragEventHandler<HTMLDivElement>;
 }) {
+  const ExpandIcon = expanded ? ChevronDownIcon : ChevronRightIcon;
+
   return (
     <div
       className={cn(
-        "mb-1 flex h-6 items-center justify-between px-2",
-        draggable ? "cursor-grab active:cursor-grabbing" : "",
+        "group/section-title mb-1 flex h-6 items-center justify-between px-0",
+        draggable ? "cursor-default" : "",
       )}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <span className="text-[13px] font-normal text-muted-foreground/72">{children}</span>
-      {action ? <div className="flex items-center gap-1">{action}</div> : null}
+      <button
+        type="button"
+        aria-expanded={expanded}
+        className="inline-flex min-w-0 cursor-default items-center gap-1 rounded-md text-[13px] font-normal text-muted-foreground/72 outline-hidden transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+        onClick={onToggle}
+      >
+        <span className="truncate">{children}</span>
+        <ExpandIcon className="size-3 shrink-0 opacity-0 transition-opacity duration-150 group-hover/section-title:opacity-100 group-focus-within/section-title:opacity-100" />
+      </button>
+      {action ? (
+        <div className="pointer-events-none flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/section-title:pointer-events-auto group-hover/section-title:opacity-100 group-focus-within/section-title:pointer-events-auto group-focus-within/section-title:opacity-100">
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3085,7 +3189,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
+    pinnedThreads,
+    pinnedThreadKeySet,
     globalThreads,
+    isProjectsSectionExpanded,
+    isPinnedSectionExpanded,
+    isConversationsSectionExpanded,
+    setProjectsSectionExpanded,
+    setPinnedSectionExpanded,
+    setConversationsSectionExpanded,
   } = props;
   const defaultSidebarSectionOrderIndex = useMemo(
     () =>
@@ -3137,8 +3249,46 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const setSelectionAnchor = useThreadSelectionStore((state) => state.setAnchor);
   const confirmThreadArchive = useSettings((s) => s.confirmThreadArchive);
   const [isGlobalThreadListExpanded, setIsGlobalThreadListExpanded] = useState(false);
+  const [isPinnedThreadListExpanded, setIsPinnedThreadListExpanded] = useState(false);
   const sidebarThreadPreviewCount = useSettings((s) => s.sidebarThreadPreviewCount);
   const threadLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const setThreadPinned = useUiStateStore((state) => state.setThreadPinned);
+
+  const pinnedThreadKeys = useMemo(
+    () => pinnedThreads.map((t) => scopedThreadKey(scopeThreadRef(t.environmentId, t.id))),
+    [pinnedThreads],
+  );
+  const pinnedThreadVisibility = useMemo(() => {
+    const activeThreadId =
+      routeThreadKey === null
+        ? undefined
+        : (pinnedThreads.find(
+            (thread) =>
+              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+          )?.id ?? undefined);
+    return getVisibleThreadsForProject({
+      threads: pinnedThreads,
+      activeThreadId,
+      isThreadListExpanded: isPinnedThreadListExpanded,
+      previewLimit: sidebarThreadPreviewCount,
+    });
+  }, [isPinnedThreadListExpanded, pinnedThreads, routeThreadKey, sidebarThreadPreviewCount]);
+  const hiddenPinnedThreadStatus = useMemo(
+    () =>
+      resolveProjectStatusIndicator(
+        pinnedThreadVisibility.hiddenThreads.map((thread) => {
+          const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+          const lastVisitedAt = threadLastVisitedAtById[threadKey];
+          return resolveThreadStatusPill({
+            thread: {
+              ...thread,
+              ...(lastVisitedAt ? { lastVisitedAt } : {}),
+            },
+          });
+        }),
+      ),
+    [pinnedThreadVisibility.hiddenThreads, threadLastVisitedAtById],
+  );
 
   const globalThreadKeys = useMemo(
     () => globalThreads.map((t) => scopedThreadKey(scopeThreadRef(t.environmentId, t.id))),
@@ -3216,7 +3366,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     onCopy: (ctx) => {
       toastManager.add({
         type: "success",
-        title: "Thread ID copied",
+        title: t("sidebar.thread.idCopied"),
         description: ctx.threadId,
       });
     },
@@ -3224,7 +3374,27 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Failed to copy thread ID",
+          title: t("sidebar.thread.idCopyFailed"),
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    },
+  });
+  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{
+    path: string;
+  }>({
+    onCopy: (ctx) => {
+      toastManager.add({
+        type: "success",
+        title: t("sidebar.thread.pathCopied"),
+        description: ctx.path,
+      });
+    },
+    onError: (error) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: t("sidebar.thread.pathCopyFailed"),
           description: error instanceof Error ? error.message : "An error occurred.",
         }),
       );
@@ -3232,27 +3402,104 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   });
 
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
-  const appSettingsConfirmThreadDelete = useSettings((s) => s.confirmThreadDelete);
+  const projectCwdByScopedProjectKey = useMemo(
+    () =>
+      new Map(
+        projects.map((project) => [
+          scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
+          project.cwd,
+        ]),
+      ),
+    [projects],
+  );
+  const conversationThreadByKey = useMemo(
+    () =>
+      new Map(
+        [...pinnedThreads, ...globalThreads].map(
+          (thread) =>
+            [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread] as const,
+        ),
+      ),
+    [globalThreads, pinnedThreads],
+  );
+  const openThreadPrLink = useCallback((event: React.MouseEvent<HTMLElement>, prUrl: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const api = readLocalApi();
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Link opening is unavailable.",
+      });
+      return;
+    }
+
+    void api.shell.openExternal(prUrl).catch((error) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Unable to open pull request link",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    });
+  }, []);
 
   const handleGlobalThreadContextMenu = useCallback(
     async (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       const api = readLocalApi();
       if (!api) return;
       const threadKey = scopedThreadKey(threadRef);
-      const thread = globalThreads.find(
-        (t) => scopedThreadKey(scopeThreadRef(t.environmentId, t.id)) === threadKey,
-      );
+      const thread = conversationThreadByKey.get(threadKey);
       if (!thread) return;
+      const threadWorkspacePath =
+        thread.worktreePath ??
+        projectCwdByScopedProjectKey.get(
+          scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
+        ) ??
+        null;
+      const isPinned = pinnedThreadKeySet.has(threadKey);
 
       const clicked = await api.contextMenu.show(
         [
-          { id: "rename", label: "Rename thread" },
-          { id: "mark-unread", label: "Mark unread" },
-          { id: "copy-thread-id", label: "Copy Thread ID" },
-          { id: "delete", label: "Delete", destructive: true },
-        ],
+          {
+            id: "pin",
+            label: isPinned ? t("sidebar.thread.unpin") : t("sidebar.thread.pin"),
+            icon: "pin",
+          },
+          { id: "rename", label: t("sidebar.thread.rename"), icon: "edit" },
+          { id: "archive", label: t("sidebar.thread.archive"), icon: "archive" },
+          { id: "mark-unread", label: t("sidebar.thread.markUnread") },
+          {
+            id: "open-path",
+            label: t("sidebar.thread.openInExplorer"),
+            icon: "folder-open",
+            disabled: threadWorkspacePath === null,
+          },
+          {
+            id: "copy-path",
+            label: t("sidebar.thread.copyWorkspace"),
+            icon: "copy",
+            disabled: threadWorkspacePath === null,
+          },
+          { id: "copy-thread-id", label: t("sidebar.thread.copySessionId"), icon: "copy" },
+        ] satisfies readonly ContextMenuItem<
+          | "pin"
+          | "rename"
+          | "archive"
+          | "mark-unread"
+          | "open-path"
+          | "copy-path"
+          | "copy-thread-id"
+        >[],
         position,
       );
+
+      if (clicked === "pin") {
+        setThreadPinned(threadKey, !isPinned);
+        return;
+      }
 
       if (clicked === "rename") {
         setRenamingThreadKey(threadKey);
@@ -3265,30 +3512,71 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         markThreadUnread(threadKey, thread.latestTurn?.completedAt);
         return;
       }
+      if (clicked === "open-path" || clicked === "copy-path") {
+        if (!threadWorkspacePath) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: t("sidebar.thread.pathUnavailable"),
+              description: t("sidebar.thread.pathUnavailableDescription"),
+            }),
+          );
+          return;
+        }
+        if (clicked === "open-path") {
+          await api.shell.openPath(threadWorkspacePath).catch((error: unknown) => {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: t("sidebar.thread.pathOpenFailed"),
+                description: error instanceof Error ? error.message : threadWorkspacePath,
+              }),
+            );
+          });
+          return;
+        }
+        copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
+        return;
+      }
       if (clicked === "copy-thread-id") {
         copyThreadIdToClipboard(thread.id, { threadId: thread.id });
         return;
       }
-      if (clicked !== "delete") return;
-      if (appSettingsConfirmThreadDelete) {
+      if (clicked !== "archive") return;
+      if (confirmThreadArchive) {
         const confirmed = await api.dialogs.confirm(
           [
-            `Delete thread "${thread.title}"?`,
-            "This permanently clears conversation history for this thread.",
+            t("sidebar.thread.confirmArchiveTitle", { title: thread.title }),
+            t("sidebar.thread.confirmArchiveDescription"),
           ].join("\n"),
         );
         if (!confirmed) {
           return;
         }
       }
-      await deleteThread(threadRef);
+      try {
+        await archiveThread(threadRef);
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: t("sidebar.thread.archiveFailed"),
+            description: error instanceof Error ? error.message : "归档对话时发生错误。",
+          }),
+        );
+      }
     },
     [
-      globalThreads,
-      markThreadUnread,
+      archiveThread,
+      confirmThreadArchive,
+      conversationThreadByKey,
+      copyPathToClipboard,
       copyThreadIdToClipboard,
-      appSettingsConfirmThreadDelete,
-      deleteThread,
+      markThreadUnread,
+      pinnedThreadKeySet,
+      projectCwdByScopedProjectKey,
+      setThreadPinned,
+      t,
     ],
   );
 
@@ -3304,7 +3592,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       if (trimmed.length === 0) {
         toastManager.add({
           type: "warning",
-          title: "Thread title cannot be empty",
+          title: t("sidebar.thread.titleEmpty"),
         });
         finishRename();
         return;
@@ -3330,14 +3618,14 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to rename thread",
+            title: t("sidebar.thread.renameFailed"),
             description: error instanceof Error ? error.message : "An error occurred.",
           }),
         );
       }
       finishRename();
     },
-    [],
+    [t],
   );
 
   const cancelRename = useCallback(() => {
@@ -3404,7 +3692,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         <SidebarMenu className="gap-0.5">
           <SidebarNavButton
             icon={MessageCircleIcon}
-            label={"\u5feb\u901f\u5bf9\u8bdd"}
+            label={t("sidebar.quickConversation")}
             onClick={handleCreateGlobalThread}
           />
           <SidebarMenuItem>
@@ -3421,12 +3709,20 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.search")}</span>
             </CommandDialogTrigger>
           </SidebarMenuItem>
-          <SidebarNavButton icon={BlocksIcon} label={"\u63d2\u4ef6"} onClick={handleOpenPlugins} />
-          <SidebarNavButton icon={SparklesIcon} label={"\u6280\u80fd"} onClick={handleOpenSkills} />
-          <SidebarNavButton icon={GitPullRequestIcon} label={"\u62c9\u53d6\u8bf7\u6c42"} />
+          <SidebarNavButton
+            icon={BlocksIcon}
+            label={t("sidebar.plugins")}
+            onClick={handleOpenPlugins}
+          />
+          <SidebarNavButton
+            icon={SparklesIcon}
+            label={t("sidebar.skills")}
+            onClick={handleOpenSkills}
+          />
+          <SidebarNavButton icon={GitPullRequestIcon} label={t("sidebar.pullRequests")} />
           <SidebarNavButton
             icon={Clock3Icon}
-            label={"\u81ea\u52a8\u5316"}
+            label={t("sidebar.automations")}
             onClick={handleOpenAutomation}
           />
         </SidebarMenu>
@@ -3460,6 +3756,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       >
         <SidebarSectionTitle
           draggable
+          expanded={isProjectsSectionExpanded}
+          onToggle={() => setProjectsSectionExpanded((expanded) => !expanded)}
           onDragStart={(event) => handleDefaultSectionDragStart("projects", event)}
           onDragOver={(event) => {
             if (event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")) {
@@ -3495,129 +3793,209 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           {t("sidebar.projects")}
         </SidebarSectionTitle>
 
-        <div
-          className={cn(isProjectDropActive ? "rounded-lg bg-accent/30" : "")}
-          onDragEnter={(event) => {
-            if (hasExternalFolderDrop(event)) {
-              event.preventDefault();
-              setIsProjectDropActive(true);
-            }
-          }}
-          onDragOver={(event) => {
-            if (hasExternalFolderDrop(event)) {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "copy";
-            }
-          }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-              setIsProjectDropActive(false);
-            }
-          }}
-          onDrop={(event) => {
-            if (!hasExternalFolderDrop(event)) {
-              return;
-            }
-            event.preventDefault();
-            setIsProjectDropActive(false);
-            void addExternalProjectsFromDrop(event).catch((error) => {
-              toastManager.add({
-                type: "error",
-                title: "Could not add dropped folder",
-                description:
-                  error instanceof Error ? error.message : "The folder could not be added.",
-              });
-            });
+        {isProjectsSectionExpanded ? (
+          <>
+            <div
+              className={cn(isProjectDropActive ? "rounded-lg bg-accent/30" : "")}
+              onDragEnter={(event) => {
+                if (hasExternalFolderDrop(event)) {
+                  event.preventDefault();
+                  setIsProjectDropActive(true);
+                }
+              }}
+              onDragOver={(event) => {
+                if (hasExternalFolderDrop(event)) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                }
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setIsProjectDropActive(false);
+                }
+              }}
+              onDrop={(event) => {
+                if (!hasExternalFolderDrop(event)) {
+                  return;
+                }
+                event.preventDefault();
+                setIsProjectDropActive(false);
+                void addExternalProjectsFromDrop(event).catch((error) => {
+                  toastManager.add({
+                    type: "error",
+                    title: "Could not add dropped folder",
+                    description:
+                      error instanceof Error ? error.message : "The folder could not be added.",
+                  });
+                });
+              }}
+            >
+              {isManualProjectSorting ? (
+                <DndContext
+                  sensors={projectDnDSensors}
+                  collisionDetection={projectCollisionDetection}
+                  modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+                  onDragStart={handleProjectDragStart}
+                  onDragEnd={handleProjectDragEnd}
+                  onDragCancel={handleProjectDragCancel}
+                >
+                  <SidebarMenu className="gap-0.5">
+                    <SortableContext
+                      items={sortedProjects.map((project) => project.projectKey)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {sortedProjects.map((project) => (
+                        <SortableProjectItem
+                          key={project.projectKey}
+                          projectId={project.projectKey}
+                        >
+                          {(dragHandleProps) => (
+                            <SidebarProjectItem
+                              project={project}
+                              isThreadListExpanded={expandedThreadListsByProject.has(
+                                project.projectKey,
+                              )}
+                              activeRouteThreadKey={
+                                activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                              }
+                              pinnedThreadKeySet={pinnedThreadKeySet}
+                              newThreadShortcutLabel={newThreadShortcutLabel}
+                              handleNewThread={handleNewThread}
+                              archiveThread={archiveThread}
+                              deleteThread={deleteThread}
+                              threadJumpLabelByKey={threadJumpLabelByKey}
+                              attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                              expandThreadListForProject={expandThreadListForProject}
+                              collapseThreadListForProject={collapseThreadListForProject}
+                              dragInProgressRef={dragInProgressRef}
+                              suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                              suppressProjectClickForContextMenuRef={
+                                suppressProjectClickForContextMenuRef
+                              }
+                              isManualProjectSorting={isManualProjectSorting}
+                              dragHandleProps={dragHandleProps}
+                            />
+                          )}
+                        </SortableProjectItem>
+                      ))}
+                    </SortableContext>
+                  </SidebarMenu>
+                </DndContext>
+              ) : (
+                <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-0.5">
+                  {sortedProjects.map((project) => (
+                    <SidebarProjectListRow
+                      key={project.projectKey}
+                      project={project}
+                      isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
+                      activeRouteThreadKey={
+                        activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                      }
+                      pinnedThreadKeySet={pinnedThreadKeySet}
+                      newThreadShortcutLabel={newThreadShortcutLabel}
+                      handleNewThread={handleNewThread}
+                      archiveThread={archiveThread}
+                      deleteThread={deleteThread}
+                      threadJumpLabelByKey={threadJumpLabelByKey}
+                      attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                      expandThreadListForProject={expandThreadListForProject}
+                      collapseThreadListForProject={collapseThreadListForProject}
+                      dragInProgressRef={dragInProgressRef}
+                      suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                      suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+                      isManualProjectSorting={isManualProjectSorting}
+                      dragHandleProps={null}
+                    />
+                  ))}
+                </SidebarMenu>
+              )}
+            </div>
+
+            {projectsLength === 0 && (
+              <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
+                {t("sidebar.noProjects")}
+              </div>
+            )}
+          </>
+        ) : null}
+      </SidebarGroup>
+      {pinnedThreads.length > 0 ? (
+        <SidebarGroup
+          className="mt-2 px-2 py-1"
+          style={{
+            order: 20 + (defaultSidebarSectionOrderIndex.get("conversations") ?? 1) - 0.25,
           }}
         >
-          {isManualProjectSorting ? (
-            <DndContext
-              sensors={projectDnDSensors}
-              collisionDetection={projectCollisionDetection}
-              modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-              onDragStart={handleProjectDragStart}
-              onDragEnd={handleProjectDragEnd}
-              onDragCancel={handleProjectDragCancel}
-            >
-              <SidebarMenu className="gap-0.5">
-                <SortableContext
-                  items={sortedProjects.map((project) => project.projectKey)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {sortedProjects.map((project) => (
-                    <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
-                      {(dragHandleProps) => (
-                        <SidebarProjectItem
-                          project={project}
-                          isThreadListExpanded={expandedThreadListsByProject.has(
-                            project.projectKey,
-                          )}
-                          activeRouteThreadKey={
-                            activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                          }
-                          newThreadShortcutLabel={newThreadShortcutLabel}
-                          handleNewThread={handleNewThread}
-                          archiveThread={archiveThread}
-                          deleteThread={deleteThread}
-                          threadJumpLabelByKey={threadJumpLabelByKey}
-                          attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                          expandThreadListForProject={expandThreadListForProject}
-                          collapseThreadListForProject={collapseThreadListForProject}
-                          dragInProgressRef={dragInProgressRef}
-                          suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                          suppressProjectClickForContextMenuRef={
-                            suppressProjectClickForContextMenuRef
-                          }
-                          isManualProjectSorting={isManualProjectSorting}
-                          dragHandleProps={dragHandleProps}
-                        />
-                      )}
-                    </SortableProjectItem>
-                  ))}
-                </SortableContext>
-              </SidebarMenu>
-            </DndContext>
-          ) : (
-            <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-0.5">
-              {sortedProjects.map((project) => (
-                <SidebarProjectListRow
-                  key={project.projectKey}
-                  project={project}
-                  isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                  activeRouteThreadKey={
-                    activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                  }
-                  newThreadShortcutLabel={newThreadShortcutLabel}
-                  handleNewThread={handleNewThread}
-                  archiveThread={archiveThread}
-                  deleteThread={deleteThread}
-                  threadJumpLabelByKey={threadJumpLabelByKey}
-                  attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                  expandThreadListForProject={expandThreadListForProject}
-                  collapseThreadListForProject={collapseThreadListForProject}
-                  dragInProgressRef={dragInProgressRef}
-                  suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                  suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-                  isManualProjectSorting={isManualProjectSorting}
-                  dragHandleProps={null}
+          <SidebarSectionTitle
+            expanded={isPinnedSectionExpanded}
+            onToggle={() => setPinnedSectionExpanded((expanded) => !expanded)}
+          >
+            {t("sidebar.pinned")}
+          </SidebarSectionTitle>
+          {isPinnedSectionExpanded ? (
+            <SidebarMenu ref={attachThreadListAutoAnimateRef}>
+              {pinnedThreadVisibility.visibleThreads.map((thread) => {
+                const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+                return (
+                  <SidebarThreadRow
+                    key={threadKey}
+                    thread={thread}
+                    projectCwd={null}
+                    orderedProjectThreadKeys={pinnedThreadKeys}
+                    isActive={routeThreadKey === threadKey}
+                    jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
+                    appSettingsConfirmThreadArchive={confirmThreadArchive}
+                    renamingThreadKey={renamingThreadKey}
+                    renamingTitle={renamingTitle}
+                    setRenamingTitle={setRenamingTitle}
+                    renamingInputRef={renamingInputRef}
+                    renamingCommittedRef={renamingCommittedRef}
+                    confirmingArchiveThreadKey={null}
+                    setConfirmingArchiveThreadKey={() => {}}
+                    confirmArchiveButtonRefs={{ current: new Map() }}
+                    handleThreadClick={handleGlobalThreadClick}
+                    navigateToThread={(ref) => {
+                      clearSelection();
+                      setSelectionAnchor(scopedThreadKey(ref));
+                      void navigate({
+                        to: "/$environmentId/$threadId",
+                        params: buildThreadRouteParams(ref),
+                      });
+                    }}
+                    handleMultiSelectContextMenu={async () => {}}
+                    handleThreadContextMenu={handleGlobalThreadContextMenu}
+                    clearSelection={clearSelection}
+                    commitRename={commitRename}
+                    cancelRename={cancelRename}
+                    attemptArchiveThread={archiveThread}
+                    openPrLink={openThreadPrLink}
+                  />
+                );
+              })}
+              {pinnedThreadVisibility.hasHiddenThreads ? (
+                <SidebarThreadListToggle
+                  expanded={isPinnedThreadListExpanded}
+                  hiddenThreadStatus={hiddenPinnedThreadStatus}
+                  onExpand={() => {
+                    setIsPinnedThreadListExpanded(true);
+                  }}
+                  onCollapse={() => {
+                    setIsPinnedThreadListExpanded(false);
+                  }}
                 />
-              ))}
+              ) : null}
             </SidebarMenu>
-          )}
-        </div>
-
-        {projectsLength === 0 && (
-          <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
-            {t("sidebar.noProjects")}
-          </div>
-        )}
-      </SidebarGroup>
+          ) : null}
+        </SidebarGroup>
+      ) : null}
       <SidebarGroup
         className="mt-2 px-2 py-1"
         style={{ order: 20 + (defaultSidebarSectionOrderIndex.get("conversations") ?? 1) }}
       >
         <SidebarSectionTitle
           draggable
+          expanded={isConversationsSectionExpanded}
+          onToggle={() => setConversationsSectionExpanded((expanded) => !expanded)}
           onDragStart={(event) => handleDefaultSectionDragStart("conversations", event)}
           onDragOver={(event) => {
             if (event.dataTransfer.types.includes("application/x-t3code-default-sidebar-section")) {
@@ -3632,7 +4010,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 render={
                   <button
                     type="button"
-                    aria-label="新建对话"
+                    aria-label={t("sidebar.newConversation")}
                     className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={handleCreateConversationThread}
                   />
@@ -3640,64 +4018,66 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               >
                 <SquarePenIcon className="size-3.5" />
               </TooltipTrigger>
-              <TooltipPopup side="right">新建对话</TooltipPopup>
+              <TooltipPopup side="right">{t("sidebar.newConversation")}</TooltipPopup>
             </Tooltip>
           }
         >
-          对话
+          {t("sidebar.conversations")}
         </SidebarSectionTitle>
-        <SidebarMenu ref={attachThreadListAutoAnimateRef}>
-          {globalThreadVisibility.visibleThreads.map((thread) => {
-            const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-            return (
-              <SidebarThreadRow
-                key={threadKey}
-                thread={thread}
-                projectCwd={null}
-                orderedProjectThreadKeys={globalThreadKeys}
-                isActive={routeThreadKey === threadKey}
-                jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
-                appSettingsConfirmThreadArchive={confirmThreadArchive}
-                renamingThreadKey={renamingThreadKey}
-                renamingTitle={renamingTitle}
-                setRenamingTitle={setRenamingTitle}
-                renamingInputRef={renamingInputRef}
-                renamingCommittedRef={renamingCommittedRef}
-                confirmingArchiveThreadKey={null}
-                setConfirmingArchiveThreadKey={() => {}}
-                confirmArchiveButtonRefs={{ current: new Map() }}
-                handleThreadClick={handleGlobalThreadClick}
-                navigateToThread={(ref) => {
-                  clearSelection();
-                  setSelectionAnchor(scopedThreadKey(ref));
-                  void navigate({
-                    to: "/$environmentId/$threadId",
-                    params: buildThreadRouteParams(ref),
-                  });
+        {isConversationsSectionExpanded ? (
+          <SidebarMenu ref={attachThreadListAutoAnimateRef}>
+            {globalThreadVisibility.visibleThreads.map((thread) => {
+              const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+              return (
+                <SidebarThreadRow
+                  key={threadKey}
+                  thread={thread}
+                  projectCwd={null}
+                  orderedProjectThreadKeys={globalThreadKeys}
+                  isActive={routeThreadKey === threadKey}
+                  jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
+                  appSettingsConfirmThreadArchive={confirmThreadArchive}
+                  renamingThreadKey={renamingThreadKey}
+                  renamingTitle={renamingTitle}
+                  setRenamingTitle={setRenamingTitle}
+                  renamingInputRef={renamingInputRef}
+                  renamingCommittedRef={renamingCommittedRef}
+                  confirmingArchiveThreadKey={null}
+                  setConfirmingArchiveThreadKey={() => {}}
+                  confirmArchiveButtonRefs={{ current: new Map() }}
+                  handleThreadClick={handleGlobalThreadClick}
+                  navigateToThread={(ref) => {
+                    clearSelection();
+                    setSelectionAnchor(scopedThreadKey(ref));
+                    void navigate({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(ref),
+                    });
+                  }}
+                  handleMultiSelectContextMenu={async () => {}}
+                  handleThreadContextMenu={handleGlobalThreadContextMenu}
+                  clearSelection={clearSelection}
+                  commitRename={commitRename}
+                  cancelRename={cancelRename}
+                  attemptArchiveThread={archiveThread}
+                  openPrLink={openThreadPrLink}
+                />
+              );
+            })}
+            {globalThreadVisibility.hasHiddenThreads ? (
+              <SidebarThreadListToggle
+                expanded={isGlobalThreadListExpanded}
+                hiddenThreadStatus={hiddenGlobalThreadStatus}
+                onExpand={() => {
+                  setIsGlobalThreadListExpanded(true);
                 }}
-                handleMultiSelectContextMenu={async () => {}}
-                handleThreadContextMenu={handleGlobalThreadContextMenu}
-                clearSelection={clearSelection}
-                commitRename={commitRename}
-                cancelRename={cancelRename}
-                attemptArchiveThread={archiveThread}
-                openPrLink={openConversationThread}
+                onCollapse={() => {
+                  setIsGlobalThreadListExpanded(false);
+                }}
               />
-            );
-          })}
-          {globalThreadVisibility.hasHiddenThreads ? (
-            <SidebarThreadListToggle
-              expanded={isGlobalThreadListExpanded}
-              hiddenThreadStatus={hiddenGlobalThreadStatus}
-              onExpand={() => {
-                setIsGlobalThreadListExpanded(true);
-              }}
-              onCollapse={() => {
-                setIsGlobalThreadListExpanded(false);
-              }}
-            />
-          ) : null}
-        </SidebarMenu>
+            ) : null}
+          </SidebarMenu>
+        ) : null}
       </SidebarGroup>
     </SidebarContent>
   );
@@ -3707,6 +4087,7 @@ export default function Sidebar() {
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
   const sidebarThreads = useStore(useShallow(selectSidebarThreadsAcrossEnvironments));
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
+  const pinnedThreadKeys = useUiStateStore((store) => store.pinnedThreadKeys);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
   const navigate = useNavigate();
@@ -3730,6 +4111,9 @@ export default function Sidebar() {
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [isProjectsSectionExpanded, setProjectsSectionExpanded] = useState(true);
+  const [isPinnedSectionExpanded, setPinnedSectionExpanded] = useState(true);
+  const [isConversationsSectionExpanded, setConversationsSectionExpanded] = useState(true);
   const { showThreadJumpHints, updateThreadJumpHintsVisibility } = useThreadJumpHintVisibility();
   const dragInProgressRef = useRef(false);
   const suppressProjectClickAfterDragRef = useRef(false);
@@ -3954,21 +4338,38 @@ export default function Sidebar() {
     () => sidebarThreads.filter((thread) => thread.archivedAt === null),
     [sidebarThreads],
   );
+  const pinnedThreadKeySet = useMemo(() => new Set(pinnedThreadKeys), [pinnedThreadKeys]);
+  const pinnedThreads = useMemo(
+    () =>
+      orderItemsByPreferredIds({
+        items: visibleThreads.filter((thread) =>
+          pinnedThreadKeySet.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+        ),
+        preferredIds: pinnedThreadKeys,
+        getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      }),
+    [pinnedThreadKeySet, pinnedThreadKeys, visibleThreads],
+  );
   const sortedProjects = useMemo(() => {
     const sortableProjects = sidebarProjects.map((project) => ({
       ...project,
       id: project.projectKey,
     }));
-    const sortableThreads = visibleThreads.map((thread) => {
-      const physicalKey =
-        projectPhysicalKeyByScopedRef.get(
-          scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
-        ) ?? scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId));
-      return {
-        ...thread,
-        projectId: (physicalToLogicalKey.get(physicalKey) ?? physicalKey) as ProjectId,
-      };
-    });
+    const sortableThreads = visibleThreads
+      .filter(
+        (thread) =>
+          !pinnedThreadKeySet.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+      )
+      .map((thread) => {
+        const physicalKey =
+          projectPhysicalKeyByScopedRef.get(
+            scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
+          ) ?? scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId));
+        return {
+          ...thread,
+          projectId: (physicalToLogicalKey.get(physicalKey) ?? physicalKey) as ProjectId,
+        };
+      });
     return sortProjectsForSidebar(
       sortableProjects,
       sortableThreads,
@@ -3983,69 +4384,94 @@ export default function Sidebar() {
     projectPhysicalKeyByScopedRef,
     sidebarProjectByKey,
     sidebarProjects,
+    pinnedThreadKeySet,
     visibleThreads,
   ]);
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
-  const visibleProjectSidebarThreadKeys = useMemo(
-    () =>
-      sortedProjects.flatMap((project) => {
-        const projectThreads = sortThreads(
-          (threadsByProjectKey.get(project.projectKey) ?? []).filter(
-            (thread) => thread.archivedAt === null,
-          ),
-          sidebarThreadSortOrder,
-        );
-        const projectExpanded = projectExpandedById[project.projectKey] ?? true;
-        const activeThreadKey = routeThreadKey ?? undefined;
-        const pinnedCollapsedThread =
-          !projectExpanded && activeThreadKey
-            ? (projectThreads.find(
-                (thread) =>
-                  scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
-                  activeThreadKey,
-              ) ?? null)
-            : null;
-        const shouldShowThreadPanel = projectExpanded || pinnedCollapsedThread !== null;
-        if (!shouldShowThreadPanel) {
-          return [];
-        }
-        const isThreadListExpanded = expandedThreadListsByProject.has(project.projectKey);
-        const hasOverflowingThreads = projectThreads.length > sidebarThreadPreviewCount;
-        const previewThreads =
-          isThreadListExpanded || !hasOverflowingThreads
-            ? projectThreads
-            : projectThreads.slice(0, sidebarThreadPreviewCount);
-        const renderedThreads = pinnedCollapsedThread ? [pinnedCollapsedThread] : previewThreads;
-        return renderedThreads.map((thread) =>
-          scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-        );
-      }),
-    [
-      sidebarThreadSortOrder,
-      sidebarThreadPreviewCount,
-      expandedThreadListsByProject,
-      projectExpandedById,
-      routeThreadKey,
-      sortedProjects,
-      threadsByProjectKey,
-    ],
-  );
+  const visibleProjectSidebarThreadKeys = useMemo(() => {
+    if (!isProjectsSectionExpanded) {
+      return [];
+    }
+    return sortedProjects.flatMap((project) => {
+      const projectThreads = sortThreads(
+        (threadsByProjectKey.get(project.projectKey) ?? []).filter(
+          (thread) =>
+            thread.archivedAt === null &&
+            !pinnedThreadKeySet.has(
+              scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+            ),
+        ),
+        sidebarThreadSortOrder,
+      );
+      const projectExpanded = projectExpandedById[project.projectKey] ?? true;
+      const activeThreadKey = routeThreadKey ?? undefined;
+      const pinnedCollapsedThread =
+        !projectExpanded && activeThreadKey
+          ? (projectThreads.find(
+              (thread) =>
+                scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
+                activeThreadKey,
+            ) ?? null)
+          : null;
+      const shouldShowThreadPanel = projectExpanded || pinnedCollapsedThread !== null;
+      if (!shouldShowThreadPanel) {
+        return [];
+      }
+      const isThreadListExpanded = expandedThreadListsByProject.has(project.projectKey);
+      const hasOverflowingThreads = projectThreads.length > sidebarThreadPreviewCount;
+      const previewThreads =
+        isThreadListExpanded || !hasOverflowingThreads
+          ? projectThreads
+          : projectThreads.slice(0, sidebarThreadPreviewCount);
+      const renderedThreads = pinnedCollapsedThread ? [pinnedCollapsedThread] : previewThreads;
+      return renderedThreads.map((thread) =>
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      );
+    });
+  }, [
+    isProjectsSectionExpanded,
+    sidebarThreadSortOrder,
+    sidebarThreadPreviewCount,
+    expandedThreadListsByProject,
+    projectExpandedById,
+    pinnedThreadKeySet,
+    routeThreadKey,
+    sortedProjects,
+    threadsByProjectKey,
+  ]);
   const globalThreads = useMemo(() => {
     const projectIds = new Set(projects.map((p) => p.id));
     return sortThreads(
-      visibleThreads.filter((t) => !t.projectId || !projectIds.has(t.projectId)),
+      visibleThreads.filter(
+        (t) =>
+          (!t.projectId || !projectIds.has(t.projectId)) &&
+          !pinnedThreadKeySet.has(scopedThreadKey(scopeThreadRef(t.environmentId, t.id))),
+      ),
       sidebarThreadSortOrder,
     );
-  }, [projects, visibleThreads, sidebarThreadSortOrder]);
+  }, [pinnedThreadKeySet, projects, visibleThreads, sidebarThreadSortOrder]);
 
   const visibleSidebarThreadKeys = useMemo(
     () => [
+      ...(isPinnedSectionExpanded
+        ? pinnedThreads.map((thread) =>
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+          )
+        : []),
       ...visibleProjectSidebarThreadKeys,
-      ...globalThreads.map((thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-      ),
+      ...(isConversationsSectionExpanded
+        ? globalThreads.map((thread) =>
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+          )
+        : []),
     ],
-    [visibleProjectSidebarThreadKeys, globalThreads],
+    [
+      globalThreads,
+      isConversationsSectionExpanded,
+      isPinnedSectionExpanded,
+      pinnedThreads,
+      visibleProjectSidebarThreadKeys,
+    ],
   );
   const threadJumpCommandByKey = useMemo(() => {
     const mapping = new Map<string, NonNullable<ReturnType<typeof threadJumpCommandForIndex>>>();
@@ -4384,7 +4810,15 @@ export default function Sidebar() {
             suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
             attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
             projectsLength={projects.length}
+            pinnedThreads={pinnedThreads}
+            pinnedThreadKeySet={pinnedThreadKeySet}
             globalThreads={globalThreads}
+            isProjectsSectionExpanded={isProjectsSectionExpanded}
+            isPinnedSectionExpanded={isPinnedSectionExpanded}
+            isConversationsSectionExpanded={isConversationsSectionExpanded}
+            setProjectsSectionExpanded={setProjectsSectionExpanded}
+            setPinnedSectionExpanded={setPinnedSectionExpanded}
+            setConversationsSectionExpanded={setConversationsSectionExpanded}
           />
 
           <SidebarSeparator />

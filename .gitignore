@@ -26,5 +26,9 @@ squashfs-root/
 .gstack/
 dist-electron/
 .electron-runtime/
-apps/desktop/bin/
+apps/desktop/bin/*
+!apps/desktop/bin/
+!apps/desktop/bin/rg.exe
+!apps/desktop/bin/ripgrep-LICENSE-MIT
+!apps/desktop/bin/ripgrep-UNLICENSE
 logs/
