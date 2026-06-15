@@ -2224,13 +2224,19 @@ export default function ChatView(props: ChatViewProps) {
     if (!latestTurnSettled) return null;
     if (!activeLatestTurn?.startedAt) return null;
     if (!activeLatestTurn.completedAt) return null;
-    if (!latestTurnHasToolActivity) return null;
+    const isInterruptedTurn = activeLatestTurn.state === "interrupted";
+    if (!latestTurnHasToolActivity && !isInterruptedTurn) return null;
 
-    const elapsed = formatElapsed(activeLatestTurn.startedAt, activeLatestTurn.completedAt);
-    return elapsed ? `Worked for ${elapsed}` : null;
+    const elapsed = formatElapsed(
+      activeLatestTurn.startedAt,
+      activeLatestTurn.completedAt,
+    )?.replace(/\.0s$/, "s");
+    if (!elapsed) return null;
+    return isInterruptedTurn ? `你在 ${elapsed} 后停止了` : `工作了 ${elapsed}`;
   }, [
     activeLatestTurn?.completedAt,
     activeLatestTurn?.startedAt,
+    activeLatestTurn?.state,
     latestTurnHasToolActivity,
     latestTurnSettled,
   ]);
@@ -3953,6 +3959,9 @@ export default function ChatView(props: ChatViewProps) {
         type: "thread.turn.interrupt",
         commandId: newCommandId(),
         threadId: activeThread.id,
+        ...(activeThread.session?.activeTurnId
+          ? { turnId: activeThread.session.activeTurnId }
+          : {}),
         createdAt: new Date().toISOString(),
       });
     } catch (err) {

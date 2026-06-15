@@ -1685,7 +1685,7 @@ export function deriveCompletionDividerBeforeEntryId(
   timelineEntries: ReadonlyArray<TimelineEntry>,
   latestTurn: Pick<
     OrchestrationLatestTurn,
-    "assistantMessageId" | "startedAt" | "completedAt"
+    "assistantMessageId" | "startedAt" | "completedAt" | "state"
   > | null,
 ): string | null {
   if (!latestTurn?.startedAt || !latestTurn.completedAt) {
@@ -1712,12 +1712,20 @@ export function deriveCompletionDividerBeforeEntryId(
 
   let inRangeMatch: string | null = null;
   let fallbackMatch: string | null = null;
+  let interruptedUserFallbackMatch: string | null = null;
   for (const timelineEntry of timelineEntries) {
-    if (timelineEntry.kind !== "message" || timelineEntry.message.role !== "assistant") {
+    if (timelineEntry.kind !== "message") {
       continue;
     }
     const messageAt = Date.parse(timelineEntry.message.createdAt);
     if (Number.isNaN(messageAt) || messageAt < turnStartedAt) {
+      continue;
+    }
+    if (latestTurn.state === "interrupted" && timelineEntry.message.role === "user") {
+      interruptedUserFallbackMatch = timelineEntry.id;
+      continue;
+    }
+    if (timelineEntry.message.role !== "assistant") {
       continue;
     }
     fallbackMatch = timelineEntry.id;
@@ -1725,7 +1733,7 @@ export function deriveCompletionDividerBeforeEntryId(
       inRangeMatch = timelineEntry.id;
     }
   }
-  return inRangeMatch ?? fallbackMatch;
+  return inRangeMatch ?? fallbackMatch ?? interruptedUserFallbackMatch;
 }
 
 export function inferCheckpointTurnCountByTurnId(

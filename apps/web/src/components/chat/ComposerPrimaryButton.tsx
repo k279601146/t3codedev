@@ -25,7 +25,7 @@ export function ComposerSendArrowIcon({ size = 16 }: { size?: 14 | 16 }) {
 export function ComposerStopSquareIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <rect x="5" y="5" width="6" height="6" rx="1.4" />
+      <rect x="4.25" y="4.25" width="7.5" height="7.5" rx="1.6" />
     </svg>
   );
 }

@@ -1470,7 +1470,6 @@ const make = Effect.gen(function* () {
               : event.type === "session.state.changed" &&
                   (event.payload.state === "ready" ||
                     event.payload.state === "stopped" ||
-                    event.payload.state === "interrupted" ||
                     event.payload.state === "error")
                 ? null
                 : activeTurnId;

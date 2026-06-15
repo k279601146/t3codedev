@@ -26,6 +26,7 @@ import {
   ThreadUnarchivedPayload,
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
+  ThreadTurnInterruptRequestedPayload,
   ThreadTurnDiffCompletedPayload,
 } from "./Schemas.ts";
 
@@ -471,6 +472,45 @@ export function projectEvent(
                         : null,
                   }
                 : thread.latestTurn,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+
+    case "thread.turn-interrupt-requested":
+      return Effect.gen(function* () {
+        const payload = yield* decodeForEvent(
+          ThreadTurnInterruptRequestedPayload,
+          event.payload,
+          event.type,
+          "payload",
+        );
+        if (payload.turnId === undefined) {
+          return nextBase;
+        }
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread || thread.latestTurn?.turnId !== payload.turnId) {
+          return nextBase;
+        }
+
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            session: thread.session
+              ? {
+                  ...thread.session,
+                  status:
+                    thread.session.status === "running" ? "interrupted" : thread.session.status,
+                  activeTurnId: null,
+                  updatedAt: payload.createdAt,
+                }
+              : thread.session,
+            latestTurn: {
+              ...thread.latestTurn,
+              state: "interrupted",
+              startedAt: thread.latestTurn.startedAt ?? payload.createdAt,
+              completedAt: thread.latestTurn.completedAt ?? payload.createdAt,
+            },
             updatedAt: event.occurredAt,
           }),
         };

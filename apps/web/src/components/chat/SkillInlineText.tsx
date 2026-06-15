@@ -13,7 +13,11 @@ const SKILL_TOKEN_REGEX = /(^|\s)\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s|$)/g;
 
 type InlineSkill = Pick<ServerProviderSkill, "name" | "displayName">;
 
-export function SkillInlineText(props: { text: string; skills: ReadonlyArray<InlineSkill> }) {
+export function SkillInlineText(props: {
+  text: string;
+  skills: ReadonlyArray<InlineSkill>;
+  renderUnknownSkills?: boolean;
+}) {
   const nodes: ReactNode[] = [];
   let cursor = 0;
 
@@ -22,7 +26,9 @@ export function SkillInlineText(props: { text: string; skills: ReadonlyArray<Inl
     const name = match[2] ?? "";
     const start = (match.index ?? 0) + prefix.length;
     const rawText = `$${name}`;
-    const skill = props.skills.find((candidate) => candidate.name === name);
+    const skill =
+      props.skills.find((candidate) => candidate.name === name) ??
+      (props.renderUnknownSkills ? { name } : null);
     if (!skill) {
       continue;
     }

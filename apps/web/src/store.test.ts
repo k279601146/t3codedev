@@ -6,6 +6,7 @@ import {
   EventId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   TurnId,
@@ -812,6 +813,47 @@ describe("incremental orchestration updates", () => {
 
     expect(threadsOf(next)[0]?.turnDiffSummaries).toHaveLength(1);
     expect(threadsOf(next)[0]?.latestTurn).toEqual(threadsOf(state)[0]?.latestTurn);
+  });
+
+  it("marks the active turn interrupted and clears the running session when interrupt is requested", () => {
+    const turnId = TurnId.make("turn-1");
+    const thread = makeThread({
+      session: {
+        provider: ProviderDriverKind.make("codex"),
+        status: "running",
+        activeTurnId: turnId,
+        createdAt: "2026-02-27T00:00:00.000Z",
+        updatedAt: "2026-02-27T00:00:00.000Z",
+        orchestrationStatus: "running",
+      },
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: "2026-02-27T00:00:00.000Z",
+        startedAt: "2026-02-27T00:00:00.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const next = applyOrchestrationEvent(
+      makeState(thread),
+      makeEvent("thread.turn-interrupt-requested", {
+        threadId: thread.id,
+        turnId,
+        createdAt: "2026-02-27T00:00:05.000Z",
+      }),
+      localEnvironmentId,
+    );
+
+    const nextThread = threadsOf(next)[0];
+    expect(nextThread?.session?.status).toBe("ready");
+    expect(nextThread?.session?.orchestrationStatus).toBe("interrupted");
+    expect(nextThread?.session?.activeTurnId).toBeUndefined();
+    expect(nextThread?.latestTurn).toMatchObject({
+      turnId,
+      state: "interrupted",
+      completedAt: "2026-02-27T00:00:05.000Z",
+    });
   });
 
   it("rebinds live turn diffs to the authoritative assistant message when it arrives later", () => {

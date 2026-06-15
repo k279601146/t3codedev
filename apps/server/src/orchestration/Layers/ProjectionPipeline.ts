@@ -978,19 +978,37 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const applyThreadSessionsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyThreadSessionsProjection",
     )(function* (event, _attachmentSideEffects) {
-      if (event.type !== "thread.session-set") {
+      if (event.type === "thread.session-set") {
+        yield* projectionThreadSessionRepository.upsert({
+          threadId: event.payload.threadId,
+          status: event.payload.session.status,
+          providerName: event.payload.session.providerName,
+          providerInstanceId: event.payload.session.providerInstanceId ?? null,
+          runtimeMode: event.payload.session.runtimeMode,
+          activeTurnId: event.payload.session.activeTurnId,
+          lastError: event.payload.session.lastError,
+          updatedAt: event.payload.session.updatedAt,
+        });
         return;
       }
-      yield* projectionThreadSessionRepository.upsert({
-        threadId: event.payload.threadId,
-        status: event.payload.session.status,
-        providerName: event.payload.session.providerName,
-        providerInstanceId: event.payload.session.providerInstanceId ?? null,
-        runtimeMode: event.payload.session.runtimeMode,
-        activeTurnId: event.payload.session.activeTurnId,
-        lastError: event.payload.session.lastError,
-        updatedAt: event.payload.session.updatedAt,
-      });
+
+      if (event.type === "thread.turn-interrupt-requested" && event.payload.turnId !== undefined) {
+        const existingSession = yield* projectionThreadSessionRepository.getByThreadId({
+          threadId: event.payload.threadId,
+        });
+        if (Option.isNone(existingSession)) {
+          return;
+        }
+        yield* projectionThreadSessionRepository.upsert({
+          ...existingSession.value,
+          status:
+            existingSession.value.status === "running"
+              ? "interrupted"
+              : existingSession.value.status,
+          activeTurnId: null,
+          updatedAt: event.payload.createdAt,
+        });
+      }
     });
 
     const applyThreadTurnsProjection: ProjectorDefinition["apply"] = Effect.fn(

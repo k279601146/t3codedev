@@ -84,6 +84,11 @@ function extractFenceLanguage(className: string | undefined): string {
   return raw === "gitignore" ? "ini" : raw;
 }
 
+function extractFenceLanguageLabel(className: string | undefined): string | null {
+  const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
+  return match?.[1] ?? null;
+}
+
 function nodeToPlainText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
     return String(node);
@@ -95,6 +100,75 @@ function nodeToPlainText(node: ReactNode): string {
     return nodeToPlainText(node.props.children);
   }
   return "";
+}
+
+type ReactElementWithChildren = React.ReactElement<{ children?: ReactNode }>;
+
+function isElementType(node: ReactNode, type: string): node is ReactElementWithChildren {
+  return isValidElement<{ children?: ReactNode }>(node) && node.type === type;
+}
+
+function firstChildElementOfType(
+  children: ReactNode,
+  type: string,
+): ReactElementWithChildren | null {
+  for (const child of Children.toArray(children)) {
+    if (isElementType(child, type)) return child;
+  }
+  return null;
+}
+
+function extractMarkdownTableHeaderLabels(children: ReactNode): string[] {
+  const thead = firstChildElementOfType(children, "thead");
+  const headerRow = thead
+    ? firstChildElementOfType(thead.props.children, "tr")
+    : firstChildElementOfType(children, "tr");
+  if (!headerRow) return [];
+
+  return Children.toArray(headerRow.props.children)
+    .filter((child): child is ReactElementWithChildren => isElementType(child, "th"))
+    .map((child) => nodeToPlainText(child.props.children).trim())
+    .filter((label) => label.length > 0);
+}
+
+function enhanceMarkdownTableRowCells(
+  children: ReactNode,
+  headerLabels: ReadonlyArray<string>,
+): ReactNode {
+  let columnIndex = 0;
+  return Children.map(children, (child) => {
+    if (!isElementType(child, "td")) return child;
+
+    const label = headerLabels[columnIndex] ?? `第 ${columnIndex + 1} 列`;
+    columnIndex += 1;
+    return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
+      "data-label": label,
+    });
+  });
+}
+
+function enhanceMarkdownTableChildren(
+  children: ReactNode,
+  headerLabels: ReadonlyArray<string>,
+): ReactNode {
+  return Children.map(children, (child) => {
+    if (!isValidElement<{ children?: ReactNode }>(child)) return child;
+
+    if (child.type === "tr") {
+      return React.cloneElement(
+        child,
+        undefined,
+        enhanceMarkdownTableRowCells(child.props.children, headerLabels),
+      );
+    }
+
+    if (child.props.children === undefined) return child;
+    return React.cloneElement(
+      child,
+      undefined,
+      enhanceMarkdownTableChildren(child.props.children, headerLabels),
+    );
+  });
 }
 
 function extractCodeBlock(
@@ -148,7 +222,15 @@ function getHighlighterPromise(language: string): Promise<DiffsHighlighter> {
   return promise;
 }
 
-function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNode }) {
+function MarkdownCodeBlock({
+  code,
+  languageLabel,
+  children,
+}: {
+  code: string;
+  languageLabel: string | null;
+  children: ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleCopy = useCallback(() => {
@@ -181,7 +263,10 @@ function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNo
   );
 
   return (
-    <div className="chat-markdown-codeblock leading-snug">
+    <div className={cn("chat-markdown-codeblock leading-snug", languageLabel && "has-language")}>
+      {languageLabel ? (
+        <div className="chat-markdown-codeblock-language">{languageLabel}</div>
+      ) : null}
       <button
         type="button"
         className="chat-markdown-copy-button"
@@ -439,7 +524,10 @@ function markdownFileLink(value: string): string {
   return `[${escapeMarkdownLinkLabel(value)}](<${escapeMarkdownLinkDestination(value)}>)`;
 }
 
-function addLineSuffixToTarget(target: string, textAfterMatch: string): {
+function addLineSuffixToTarget(
+  target: string,
+  textAfterMatch: string,
+): {
   target: string;
   consumedSuffix: string;
 } {
@@ -796,11 +884,35 @@ function ChatMarkdown({
       li({ node: _node, children, ...props }) {
         return <li {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</li>;
       },
+      table({ node: _node, children, ...props }) {
+        const headerLabels = extractMarkdownTableHeaderLabels(children);
+        const tableChildren =
+          headerLabels.length > 0 ? enhanceMarkdownTableChildren(children, headerLabels) : children;
+        return (
+          <div
+            className="chat-markdown-table-scroll"
+            tabIndex={0}
+            aria-label="横向滚动表格"
+            data-column-count={headerLabels.length || undefined}
+          >
+            <table {...props}>{tableChildren}</table>
+          </div>
+        );
+      },
       a({ node: _node, href, ...props }) {
         const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
         const fileLinkMeta = normalizedHref ? markdownFileLinkMetaByHref.get(normalizedHref) : null;
         if (!fileLinkMeta) {
-          return <a {...props} href={href} target="_blank" rel="noopener noreferrer" />;
+          return (
+            <a
+              {...props}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={href}
+              className={cn("chat-markdown-web-link", props.className)}
+            />
+          );
         }
 
         const parentSuffix = fileLinkParentSuffixByPath.get(fileLinkMeta.filePath);
@@ -837,14 +949,20 @@ function ChatMarkdown({
 
         if (isStreaming) {
           return (
-            <MarkdownCodeBlock code={codeBlock.code}>
+            <MarkdownCodeBlock
+              code={codeBlock.code}
+              languageLabel={extractFenceLanguageLabel(codeBlock.className)}
+            >
               <pre {...props}>{children}</pre>
             </MarkdownCodeBlock>
           );
         }
 
         return (
-          <MarkdownCodeBlock code={codeBlock.code}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            languageLabel={extractFenceLanguageLabel(codeBlock.className)}
+          >
             <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
               <Suspense fallback={<pre {...props}>{children}</pre>}>
                 <SuspenseShikiCodeBlock

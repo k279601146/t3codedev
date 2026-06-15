@@ -727,145 +727,148 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   }, [ctx, draftText, isSubmittingEdit, row.message.id]);
 
   return (
-    <div className="flex justify-end">
-      <div className="group flex max-w-[82%] flex-col items-end">
-        {isEditing ? (
-          <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-[18px] border border-border/55 bg-secondary px-3 py-3 shadow-sm">
-            <textarea
-              ref={editTextAreaRef}
-              value={draftText}
-              disabled={isSubmittingEdit}
-              rows={Math.max(2, Math.min(8, draftText.split("\n").length))}
-              onChange={(event) => setDraftText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancelEdit();
-                }
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                  event.preventDefault();
-                  void submitEdit();
-                }
-              }}
-              className="block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[15px] leading-[1.78] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
-              style={USER_MESSAGE_FONT_STYLE}
-              aria-label="编辑用户消息"
-            />
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
+    <>
+      <div className="flex justify-end">
+        <div className="group flex max-w-[82%] flex-col items-end">
+          {isEditing ? (
+            <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-[18px] border border-border/55 bg-secondary px-3 py-3 shadow-sm">
+              <textarea
+                ref={editTextAreaRef}
+                value={draftText}
                 disabled={isSubmittingEdit}
-                onClick={cancelEdit}
-                className="rounded-full border-border/60 bg-background/80 px-3 text-foreground/80 shadow-none hover:bg-background"
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                disabled={draftText.trim().length === 0 || isSubmittingEdit}
-                onClick={() => void submitEdit()}
-                className="rounded-full px-3"
-              >
-                发送
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
-            {userAttachments.length > 0 && (
-              <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
-                {userAttachments.map(
-                  (attachment: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                    <div
-                      key={attachment.id}
-                      className="overflow-hidden rounded-lg border border-border bg-background"
-                    >
-                      {attachment.type === "image" && attachment.previewUrl ? (
-                        <button
-                          type="button"
-                          className="h-full w-full cursor-zoom-in"
-                          aria-label={`Preview ${attachment.name}`}
-                          onClick={() => {
-                            const preview = buildExpandedImagePreview(
-                              userAttachments,
-                              attachment.id,
-                            );
-                            if (!preview) return;
-                            ctx.onImageExpand(preview);
-                          }}
-                        >
-                          <img
-                            src={attachment.previewUrl}
-                            alt={attachment.name}
-                            className="block h-auto max-h-[396px] w-full object-cover"
-                          />
-                        </button>
-                      ) : attachment.type === "file" ? (
-                        <a
-                          href={attachment.previewUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex min-h-[96px] w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center"
-                          aria-label={`Open ${attachment.name}`}
-                        >
-                          <FileIcon className="size-5 text-muted-foreground/70" />
-                          <span className="line-clamp-2 break-all text-xs text-foreground">
-                            {attachment.name}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground/60">
-                            {attachment.mimeType || "file"}
-                          </span>
-                        </a>
-                      ) : (
-                        <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
-                          {attachment.name}
-                        </div>
-                      )}
-                    </div>
-                  ),
-                )}
+                rows={Math.max(2, Math.min(8, draftText.split("\n").length))}
+                onChange={(event) => setDraftText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelEdit();
+                  }
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void submitEdit();
+                  }
+                }}
+                className="block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[15px] leading-[1.78] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
+                style={USER_MESSAGE_FONT_STYLE}
+                aria-label="编辑用户消息"
+              />
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  disabled={isSubmittingEdit}
+                  onClick={cancelEdit}
+                  className="rounded-full border-border/60 bg-background/80 px-3 text-foreground/80 shadow-none hover:bg-background"
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  disabled={draftText.trim().length === 0 || isSubmittingEdit}
+                  onClick={() => void submitEdit()}
+                  className="rounded-full px-3"
+                >
+                  发送
+                </Button>
               </div>
-            )}
-            <CollapsibleUserMessageBody
-              text={displayedUserMessage.visibleText}
-              terminalContexts={terminalContexts}
-              skills={ctx.skills}
-            />
-          </div>
-        )}
-        {isSteerMessage ? (
-          <div className="mt-2 self-start text-[13px] leading-5 text-muted-foreground/55">
-            已引导对话
-          </div>
-        ) : null}
-        <div
-          className="mt-1 flex min-h-6 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
-          data-user-message-actions="true"
-        >
-          <span className="px-0.5 text-[11px] text-muted-foreground/50">
-            {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
-          </span>
-          {displayedUserMessage.copyText && (
-            <MessageCopyButton
-              text={displayedUserMessage.copyText}
-              size="icon-xs"
-              className="border-border/55 bg-background/80 text-muted-foreground/70 shadow-none hover:border-border/75 hover:bg-background hover:text-foreground"
-            />
+            </div>
+          ) : (
+            <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
+              {userAttachments.length > 0 && (
+                <div className="mb-2 grid max-w-[548px] grid-cols-2 gap-3">
+                  {userAttachments.map(
+                    (attachment: NonNullable<TimelineMessage["attachments"]>[number]) => (
+                      <div
+                        key={attachment.id}
+                        className="overflow-hidden rounded-lg border border-border bg-background"
+                      >
+                        {attachment.type === "image" && attachment.previewUrl ? (
+                          <button
+                            type="button"
+                            className="h-full w-full cursor-zoom-in"
+                            aria-label={`Preview ${attachment.name}`}
+                            onClick={() => {
+                              const preview = buildExpandedImagePreview(
+                                userAttachments,
+                                attachment.id,
+                              );
+                              if (!preview) return;
+                              ctx.onImageExpand(preview);
+                            }}
+                          >
+                            <img
+                              src={attachment.previewUrl}
+                              alt={attachment.name}
+                              className="block h-auto max-h-[396px] w-full object-cover"
+                            />
+                          </button>
+                        ) : attachment.type === "file" ? (
+                          <a
+                            href={attachment.previewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex min-h-[96px] w-full flex-col items-center justify-center gap-1 px-3 py-4 text-center"
+                            aria-label={`Open ${attachment.name}`}
+                          >
+                            <FileIcon className="size-5 text-muted-foreground/70" />
+                            <span className="line-clamp-2 break-all text-xs text-foreground">
+                              {attachment.name}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/60">
+                              {attachment.mimeType || "file"}
+                            </span>
+                          </a>
+                        ) : (
+                          <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                            {attachment.name}
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+              <CollapsibleUserMessageBody
+                text={displayedUserMessage.visibleText}
+                terminalContexts={terminalContexts}
+                skills={ctx.skills}
+              />
+            </div>
           )}
-          {ctx.goalMessageIds.has(row.message.id) ? <GoalMessageMarker /> : null}
-          {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
-          {canEditUserMessage ? (
-            <EditUserMessageButton
-              disabled={isEditing || isSubmittingEdit}
-              onClick={() => setIsEditing(true)}
-            />
+          {isSteerMessage ? (
+            <div className="mt-2 self-start text-[13px] leading-5 text-muted-foreground/55">
+              已引导对话
+            </div>
           ) : null}
+          <div
+            className="mt-1 flex min-h-6 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
+            data-user-message-actions="true"
+          >
+            <span className="px-0.5 text-[11px] text-muted-foreground/50">
+              {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
+            </span>
+            {displayedUserMessage.copyText && (
+              <MessageCopyButton
+                text={displayedUserMessage.copyText}
+                size="icon-xs"
+                className="border-border/55 bg-background/80 text-muted-foreground/70 shadow-none hover:border-border/75 hover:bg-background hover:text-foreground"
+              />
+            )}
+            {ctx.goalMessageIds.has(row.message.id) ? <GoalMessageMarker /> : null}
+            {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
+            {canEditUserMessage ? (
+              <EditUserMessageButton
+                disabled={isEditing || isSubmittingEdit}
+                onClick={() => setIsEditing(true)}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+      {row.showCompletionDivider && <AssistantCompletionDivider />}
+    </>
   );
 }
 
@@ -1026,7 +1029,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
 
   return (
     <>
-      {row.showCompletionDivider && <AssistantCompletionDivider />}
       <div className="min-w-0 px-1 py-0.5">
         <ChatMarkdown
           text={messageText}
@@ -1062,6 +1064,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           </div>
         ) : null}
       </div>
+      {row.showCompletionDivider && <AssistantCompletionDivider />}
     </>
   );
 }
@@ -1098,12 +1101,11 @@ function AssistantCompletionDivider() {
   const activity = use(TimelineRowActivityCtx);
 
   return (
-    <div className="my-3 flex items-center gap-3">
-      <span className="h-px flex-1 bg-border" />
-      <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground/80">
-        {activity.completionSummary ? `Response • ${activity.completionSummary}` : "Response"}
+    <div className="my-3 flex flex-col gap-2">
+      <span className="self-end text-[13px] leading-5 text-muted-foreground/70">
+        {activity.completionSummary ?? "已结束"}
       </span>
-      <span className="h-px flex-1 bg-border" />
+      <span className="h-px bg-border" />
     </div>
   );
 }
@@ -1696,7 +1698,9 @@ function AssistantChangedFilesSectionInner({
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-[14px] font-semibold leading-5 text-foreground">
-                {isSingleFile ? `已编辑 ${singleFileTitle}` : `已编辑 ${checkpointFiles.length} 个文件`}
+                {isSingleFile
+                  ? `已编辑 ${singleFileTitle}`
+                  : `已编辑 ${checkpointFiles.length} 个文件`}
               </div>
               {hasNonZeroStat(summaryStat) ? (
                 <div className="mt-0.5 font-mono text-[13px] leading-5 tabular-nums">
@@ -1777,7 +1781,11 @@ function basenameOfChangedFile(filePath: string): string {
 function formatChangedFilePath(filePath: string, workspaceRoot: string | undefined): string {
   const displayedPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
   if (!workspaceRoot) return displayedPath;
-  const normalizedWorkspaceName = workspaceRoot.replaceAll("\\", "/").split("/").filter(Boolean).at(-1);
+  const normalizedWorkspaceName = workspaceRoot
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean)
+    .at(-1);
   if (normalizedWorkspaceName && displayedPath.startsWith(`${normalizedWorkspaceName}/`)) {
     return displayedPath.slice(normalizedWorkspaceName.length + 1);
   }
@@ -2060,7 +2068,11 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         if (matchIndex > cursor) {
           inlineNodes.push(
             <span key={`user-terminal-context-inline-before:${context.header}:${cursor}`}>
-              <SkillInlineText text={props.text.slice(cursor, matchIndex)} skills={props.skills} />
+              <SkillInlineText
+                text={props.text.slice(cursor, matchIndex)}
+                skills={props.skills}
+                renderUnknownSkills
+              />
             </span>,
           );
         }
@@ -2077,7 +2089,11 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         if (cursor < props.text.length) {
           inlineNodes.push(
             <span key={`user-message-terminal-context-inline-rest:${cursor}`}>
-              <SkillInlineText text={props.text.slice(cursor)} skills={props.skills} />
+              <SkillInlineText
+                text={props.text.slice(cursor)}
+                skills={props.skills}
+                renderUnknownSkills
+              />
             </span>,
           );
         }
@@ -2110,7 +2126,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     if (props.text.length > 0) {
       inlineNodes.push(
         <span key="user-message-terminal-context-inline-text">
-          <SkillInlineText text={props.text} skills={props.skills} />
+          <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
         </span>,
       );
     } else if (inlinePrefix.length === 0) {
@@ -2136,7 +2152,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
       style={USER_MESSAGE_FONT_STYLE}
     >
-      <SkillInlineText text={props.text} skills={props.skills} />
+      <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
     </div>
   );
 });

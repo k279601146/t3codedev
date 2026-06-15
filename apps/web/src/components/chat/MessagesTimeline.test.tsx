@@ -214,6 +214,20 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("border-fuchsia-500");
   });
 
+  it("renders unknown skill tokens in user messages with the inline skill chip UI", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("$agent-reach 请整理客户触达计划。")]}
+      />,
+    );
+
+    expect(markup).toContain("Agent Reach");
+    expect(markup).toContain("$agent-reach");
+    expect(markup).toContain("border-fuchsia-500");
+  });
+
   it("only renders assistant time metadata for the terminal assistant message in a turn", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const turnId = TurnId.make("turn-1");

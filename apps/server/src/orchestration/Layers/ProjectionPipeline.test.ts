@@ -295,6 +295,137 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-late
   },
 );
 
+it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-interrupt-session-")))(
+  "OrchestrationProjectionPipeline",
+  (it) => {
+    it.effect("settles projected running sessions when a turn interrupt is requested", () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const projectId = ProjectId.make("project-interrupt-session");
+        const threadId = ThreadId.make("thread-interrupt-session");
+        const turnId = TurnId.make("turn-interrupt-session");
+        const now = "2026-02-27T00:00:00.000Z";
+        const interruptedAt = "2026-02-27T00:00:05.000Z";
+
+        yield* eventStore.append({
+          type: "project.created",
+          eventId: EventId.make("evt-interrupt-session-project"),
+          aggregateKind: "project",
+          aggregateId: projectId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-interrupt-session-project"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-interrupt-session-project"),
+          metadata: {},
+          payload: {
+            projectId,
+            title: "Project Interrupt Session",
+            workspaceRoot: "/tmp/project-interrupt-session",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        yield* eventStore.append({
+          type: "thread.created",
+          eventId: EventId.make("evt-interrupt-session-thread"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-interrupt-session-thread"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-interrupt-session-thread"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId,
+            title: "Thread Interrupt Session",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "approval-required",
+            branch: null,
+            worktreePath: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-interrupt-session-running"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: now,
+          commandId: CommandId.make("cmd-interrupt-session-running"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-interrupt-session-running"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "approval-required",
+              activeTurnId: turnId,
+              lastError: null,
+              updatedAt: now,
+            },
+          },
+        });
+        yield* eventStore.append({
+          type: "thread.turn-interrupt-requested",
+          eventId: EventId.make("evt-interrupt-session-requested"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: interruptedAt,
+          commandId: CommandId.make("cmd-interrupt-session-requested"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-interrupt-session-requested"),
+          metadata: {},
+          payload: {
+            threadId,
+            turnId,
+            createdAt: interruptedAt,
+          },
+        });
+
+        yield* projectionPipeline.bootstrap;
+
+        const sessionRows = yield* sql<{
+          readonly status: string;
+          readonly activeTurnId: string | null;
+        }>`
+          SELECT status, active_turn_id AS "activeTurnId"
+          FROM projection_thread_sessions
+          WHERE thread_id = ${threadId}
+        `;
+        assert.deepEqual(sessionRows, [{ status: "interrupted", activeTurnId: null }]);
+
+        const turnRows = yield* sql<{
+          readonly turnId: string;
+          readonly status: string;
+          readonly completedAt: string | null;
+        }>`
+          SELECT
+            turn_id AS "turnId",
+            state AS "status",
+            completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = ${threadId}
+        `;
+        assert.deepEqual(turnRows, [
+          { turnId: "turn-interrupt-session", status: "interrupted", completedAt: interruptedAt },
+        ]);
+      }),
+    );
+  },
+);
+
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-base-")))(
   "OrchestrationProjectionPipeline",
   (it) => {

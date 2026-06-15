@@ -339,39 +339,158 @@ const SLIDE_TEMPLATES: SlidePromptCard[] = [
 
 const RESEARCH_PROMPTS: SlidePromptCard[] = [
   {
-    title: "全网主题调研",
-    desc: "围绕一个问题梳理公开资料、关键观点、证据链接和待确认信息。",
+    title: "渠道体检",
+    desc: "先检查 Agent Reach 当前可用后端，再决定走网页、搜索、视频或平台路由。",
+    icon: CheckIcon,
+    prompt:
+      "$agent-reach 请先运行 agent-reach doctor --json，检查当前 Agent Reach 可用渠道和 active_backend。请按平台列出可直接使用、需要用户本机配置、暂不可用的能力，并基于可用渠道给出本次调研路线。调研目标：",
+  },
+  {
+    title: "全网语义搜索",
+    desc: "用 Exa / web search 收集高质量公开资料、来源链接和不同观点。",
     icon: SearchIcon,
     prompt:
-      "$agent-reach 请围绕这个主题做一次公开资料调研。请先给出调研路径和信息来源类型，再收集关键事实、不同观点、证据链接、不确定点和下一步追问建议。主题：",
+      "$agent-reach 请围绕这个主题做一次全网语义搜索。请优先使用 Agent Reach 当前可用的 search 路由，收集高质量公开来源、关键事实、不同观点、证据链接、不确定点和下一步追问建议。主题：",
   },
   {
-    title: "URL / 文章阅读",
-    desc: "读取网页链接，提取核心观点、数据、引用和可复用摘要。",
+    title: "网页 / URL 阅读",
+    desc: "读取网页、文章和公开链接，提取观点、数据、引用和可复用摘要。",
     icon: FileTextIcon,
     prompt:
-      "$agent-reach 我会提供一个或多个 URL。请读取公开页面内容，提取核心观点、关键数据、重要引用、来源链接、潜在偏见和适合继续追问的问题。",
+      "$agent-reach 我会提供一个或多个 URL。请使用 Agent Reach 的 web 路由读取公开页面内容，提取核心观点、关键数据、重要引用、来源链接、潜在偏见和适合继续追问的问题。",
   },
   {
-    title: "GitHub 项目调研",
-    desc: "比较仓库定位、活跃度、生态、文档质量、风险和适用场景。",
+    title: "GitHub / 代码调研",
+    desc: "搜索仓库、代码上下文、Issue、PR 线索，比较活跃度和生态。",
     icon: Grid3X3Icon,
     prompt:
-      "$agent-reach 请调研并对比这些 GitHub 项目或技术方案。请关注仓库定位、活跃度、维护状态、文档质量、生态依赖、典型使用场景、风险和推荐结论。对象：",
+      "$agent-reach 请使用 Agent Reach 的 dev / GitHub 路由调研这些项目或技术方案。请关注仓库定位、代码/Issue/PR 线索、活跃度、维护状态、文档质量、生态依赖、典型使用场景、风险和推荐结论。对象：",
   },
   {
-    title: "视频资料整理",
-    desc: "整理 YouTube、B站等公开视频资料的主题、结构和关键信息。",
+    title: "视频 / 播客资料",
+    desc: "整理 YouTube、B站、小宇宙等公开音视频的字幕、结构和关键观点。",
     icon: VideoIcon,
     prompt:
-      "$agent-reach 请整理我提供的公开视频链接或视频主题。请提取标题、来源、发布时间、内容结构、关键观点、可引用片段、相关链接和后续资料线索。",
+      "$agent-reach 请使用 Agent Reach 的 video 路由整理我提供的公开视频/播客链接或主题。请提取标题、来源、发布时间、字幕或转录状态、内容结构、关键观点、可引用片段、相关链接和后续资料线索。",
+  },
+  {
+    title: "社媒 / 社区观察",
+    desc: "按当前已配置渠道观察 Twitter/X、Reddit、小红书、V2EX、B站讨论。",
+    icon: SparklesIcon,
+    prompt:
+      "$agent-reach 请先检查 social 相关渠道的可用后端。基于当前已配置且可访问的渠道，整理这个主题在 Twitter/X、Reddit、小红书、V2EX、B站等社区中的公开讨论、典型观点、支持/反对理由、代表性链接和需要人工验证的部分。主题：",
+  },
+  {
+    title: "招聘 / 职场调研",
+    desc: "围绕 LinkedIn、公开职位页和公司资料整理岗位、技能与公司线索。",
+    icon: ClipboardListIcon,
+    prompt:
+      "$agent-reach 请使用 Agent Reach 的 career / LinkedIn 路由，以及可公开访问的职位和公司页面，调研这个岗位或公司方向。请整理职位要求、技能关键词、代表公司、公开资料链接、招聘趋势和候选人画像。方向：",
+  },
+  {
+    title: "财经 / 行情信息",
+    desc: "围绕雪球、公开财经页面和新闻线索整理股票、行业和市场观点。",
+    icon: LineChartIcon,
+    prompt:
+      "$agent-reach 请使用 Agent Reach 当前可用的 finance / 雪球与公开财经资料路由，整理这个股票、基金或行业主题的公开信息。请包含行情线索、热门观点、关键风险、信息来源链接和需要进一步核验的数据。主题：",
   },
 ];
 
 const RESEARCH_TEMPLATES: SlidePromptCard[] = [
   {
+    title: "Web Reader 文章精读",
+    desc: "网页、长文、产品文档、报告页面的结构化阅读。",
+    icon: FileTextIcon,
+    prompt:
+      "$agent-reach 请读取我提供的公开网页或文章链接，使用 Jina Reader / web-reader 等可用后端输出结构化精读：摘要、章节结构、关键事实、引用原文位置、来源链接、潜在偏见和可继续追问的问题。",
+  },
+  {
+    title: "Exa 技术搜索",
+    desc: "英文技术资料、代码上下文、方案对比和官方文档优先。",
+    icon: SearchIcon,
+    prompt:
+      "$agent-reach 请使用 Exa / search 路由调研这个技术问题，优先收集官方文档、技术博客、代码上下文和高质量英文资料。请整理结论、证据链接、可选方案、限制条件和推荐路径。问题：",
+  },
+  {
+    title: "RSS / 信息源追踪",
+    desc: "解析 RSS/Atom 源，整理最近更新、主题聚类和后续关注。",
+    icon: RefreshCcwIcon,
+    prompt:
+      "$agent-reach 请读取这些 RSS/Atom 信息源，整理最近更新、主题聚类、重要链接、发布时间线、重复信息和建议持续关注的关键词。信息源：",
+  },
+  {
+    title: "GitHub 开源生态",
+    desc: "仓库搜索、README、Issue、PR、活跃度和许可证线索。",
+    icon: Grid3X3Icon,
+    prompt:
+      "$agent-reach 请围绕这个开源领域做 GitHub 生态地图调研。请找出代表项目、工具链、社区资源、维护活跃度、Issue/PR 信号、许可证线索、技术路线差异、风险和推荐关注列表。领域：",
+  },
+  {
+    title: "YouTube 教程速读",
+    desc: "视频搜索、元数据、字幕和章节观点整理。",
+    icon: VideoIcon,
+    prompt:
+      "$agent-reach 请使用 YouTube 路由调研这个视频主题或读取我提供的视频链接。请整理视频标题、频道、发布时间、字幕可用性、章节结构、关键观点、可引用片段和相关视频线索。主题或链接：",
+  },
+  {
+    title: "B站技术视频",
+    desc: "B站搜索、热门、视频详情、字幕可用性和内容线索。",
+    icon: VideoIcon,
+    prompt:
+      "$agent-reach 请使用 B站 / Bilibili 路由调研这个主题。请优先使用当前可用的 B站搜索、视频详情、热门或字幕后端，整理视频标题、UP 主、播放互动数据、内容摘要、可引用片段和后续观看建议。主题：",
+  },
+  {
+    title: "V2EX 社区讨论",
+    desc: "热门帖、节点帖、主题详情、回复和用户公开信息。",
+    icon: SparklesIcon,
+    prompt:
+      "$agent-reach 请使用 V2EX 公开 API 路由调研这个主题。请检索相关热门帖、节点帖、主题详情和回复，整理社区关注点、典型问题、常见建议、代表链接和可信度判断。主题：",
+  },
+  {
+    title: "Twitter/X 观点观察",
+    desc: "按当前可用后端读取公开推文、用户时间线或搜索结果。",
+    icon: SparklesIcon,
+    prompt:
+      "$agent-reach 请先检查 Twitter/X 当前 active_backend。基于用户本机已配置且可访问的渠道，整理这个主题的公开推文、用户观点、时间线线索、代表链接、争议点和需要人工验证的内容。主题：",
+  },
+  {
+    title: "Reddit 问题排查",
+    desc: "按当前可用后端整理帖子、评论、subreddit 和热门讨论。",
+    icon: ClipboardListIcon,
+    prompt:
+      "$agent-reach 请先检查 Reddit 当前 active_backend。基于用户本机已配置且可访问的渠道，调研这个问题在相关 subreddit 的公开讨论，整理问题场景、解决方案、反复出现的坑、代表帖子/评论链接和可信度。问题：",
+  },
+  {
+    title: "小红书口碑观察",
+    desc: "按当前可用后端整理笔记、搜索结果和用户公开反馈。",
+    icon: SparklesIcon,
+    prompt:
+      "$agent-reach 请先检查小红书当前 active_backend。基于用户本机已配置且可访问的渠道，整理这个产品或话题的公开笔记和反馈，归纳正面评价、负面反馈、典型使用场景、反复出现的问题、代表链接和后续验证建议。对象：",
+  },
+  {
+    title: "LinkedIn 岗位画像",
+    desc: "公开 Profile、公司页、职位搜索和 Jina Reader 兜底。",
+    icon: ClipboardListIcon,
+    prompt:
+      "$agent-reach 请使用 career / LinkedIn 路由调研这个岗位或公司。请在当前可用后端范围内整理岗位要求、技能关键词、代表公司、公开 Profile/公司页/职位链接、经验年限分布和招聘趋势。方向：",
+  },
+  {
+    title: "雪球财经观察",
+    desc: "股票行情、搜索股票、热门帖子和热门股票排行。",
+    icon: LineChartIcon,
+    prompt:
+      "$agent-reach 请使用雪球 / finance 路由调研这个股票、基金或行业主题。请整理公开行情线索、热门观点、关注度变化、关键风险、代表链接和需要进一步核验的数据。主题：",
+  },
+  {
+    title: "小宇宙播客转录",
+    desc: "播客单集转录、分段、关键观点和引用片段整理。",
+    icon: HeadphonesIcon,
+    prompt:
+      "$agent-reach 请使用小宇宙播客 / video 路由处理我提供的播客链接。请检查转录能力是否可用，若可用则整理分段转录、关键观点、可引用片段、嘉宾信息和后续资料线索。链接：",
+  },
+  {
     title: "竞品公开信息调研",
-    desc: "官网、文档、公开发布、仓库和媒体资料，整理定位与差异。",
+    desc: "官网、文档、公开发布、仓库、媒体和社区资料，整理定位与差异。",
     icon: FileBarChartIcon,
     prompt:
       "$agent-reach 请对这些竞品做公开信息调研。请覆盖官网/文档/公开发布/媒体资料/GitHub 等公开来源，整理产品定位、核心功能、定价线索、近期变化、差异点、证据链接和可验证假设。竞品：",
@@ -391,25 +510,11 @@ const RESEARCH_TEMPLATES: SlidePromptCard[] = [
       "$agent-reach 请围绕这个行业主题追踪近期公开资料和 RSS/新闻线索，整理时间线、关键事件、主要参与者、数据点、争议问题、来源链接和对 T3 Code 的启发。主题：",
   },
   {
-    title: "产品口碑公开信息",
-    desc: "整理公开评论、测评、社区讨论和常见正负面反馈。",
-    icon: SparklesIcon,
-    prompt:
-      "$agent-reach 请整理这个产品的公开口碑信息。请只基于可访问的公开资料，归纳正面评价、负面反馈、典型用户场景、反复出现的问题、证据链接和后续验证建议。产品：",
-  },
-  {
     title: "论文 / 报告速读",
     desc: "读取公开论文、白皮书或长报告，提炼结构化摘要。",
     icon: FileTextIcon,
     prompt:
       "$agent-reach 请读取我提供的公开论文、白皮书或长报告链接，整理研究问题、方法、关键结论、数据来源、局限性、可引用观点和适合做成汇报的结构。",
-  },
-  {
-    title: "开源生态地图",
-    desc: "围绕一个领域找到代表项目、工具链、社区和演进方向。",
-    icon: Grid3X3Icon,
-    prompt:
-      "$agent-reach 请围绕这个开源领域做生态地图调研。请找出代表项目、工具链、社区资源、维护活跃度、许可证线索、技术路线差异、风险和推荐关注列表。领域：",
   },
   {
     title: "公开资料事实核对",
@@ -1168,7 +1273,7 @@ function ResearchRecommendations({
     <>
       <section className="mx-auto w-full max-w-[744px]">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <SectionTitle className="mb-0">调研入口</SectionTitle>
+          <SectionTitle className="mb-0">Agent Reach 工作流</SectionTitle>
           <PluginStatusBadge installed={installed} loading={agentReach.loading} />
         </div>
 
@@ -1220,7 +1325,7 @@ function ResearchRecommendations({
         </div>
 
         <div className="mt-8">
-          <SectionTitle className="mb-3">演示模板</SectionTitle>
+          <SectionTitle className="mb-3">平台能力演示</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {RESEARCH_TEMPLATES.map((template, index) => {
               const TemplateIcon = template.icon ?? SearchIcon;

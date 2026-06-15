@@ -578,9 +578,7 @@ export function deriveMessagesTimelineRows(input: {
       input.activeTurnId != null &&
       timelineEntry.message.turnId === input.activeTurnId;
 
-    const showCompletionDivider =
-      timelineEntry.message.role === "assistant" &&
-      input.completionDividerBeforeEntryId === timelineEntry.id;
+    const showCompletionDivider = input.completionDividerBeforeEntryId === timelineEntry.id;
     const isTerminalAssistantMessage =
       timelineEntry.message.role === "assistant" &&
       terminalAssistantMessageIds.has(timelineEntry.message.id);

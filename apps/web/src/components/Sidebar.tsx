@@ -2054,7 +2054,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className={`h-8.5 gap-2 rounded-md px-2 py-1 pr-8 text-left text-[14px] font-normal text-foreground/82 hover:bg-accent/45 hover:text-foreground group-hover/project-header:bg-accent/45 group-hover/project-header:text-foreground max-sm:pr-14 ${
+          className={`h-6 gap-1.5 rounded-md px-2 py-0 pr-7 text-left text-[14px] font-normal leading-5 text-foreground/82 hover:bg-accent/45 hover:text-foreground group-hover/project-header:bg-accent/45 group-hover/project-header:text-foreground max-sm:pr-14 ${
             isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
           }`}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
@@ -2069,8 +2069,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             cwd={project.cwd}
             className="text-muted-foreground/70"
           />
-          <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[14px] font-normal text-foreground/82">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="truncate text-[13px] font-normal leading-5 text-foreground/82">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -3539,7 +3539,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onDragEnd={handleProjectDragEnd}
               onDragCancel={handleProjectDragCancel}
             >
-              <SidebarMenu>
+              <SidebarMenu className="gap-0.5">
                 <SortableContext
                   items={sortedProjects.map((project) => project.projectKey)}
                   strategy={verticalListSortingStrategy}
@@ -3578,7 +3578,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               </SidebarMenu>
             </DndContext>
           ) : (
-            <SidebarMenu ref={attachProjectListAutoAnimateRef}>
+            <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-0.5">
               {sortedProjects.map((project) => (
                 <SidebarProjectListRow
                   key={project.projectKey}

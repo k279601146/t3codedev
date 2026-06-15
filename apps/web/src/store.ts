@@ -943,10 +943,7 @@ function retainThreadMessagesAfterRevert(
   const missingUserCount = Math.max(0, turnCount - retainedUserCount);
   if (missingUserCount > 0) {
     const fallbackUserMessages = messages
-      .filter(
-        (message) =>
-          message.role === "user" && !retainedMessageIds.has(message.id),
-      )
+      .filter((message) => message.role === "user" && !retainedMessageIds.has(message.id))
       .toSorted(
         (left, right) =>
           left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
@@ -963,10 +960,7 @@ function retainThreadMessagesAfterRevert(
   const missingAssistantCount = Math.max(0, turnCount - retainedAssistantCount);
   if (missingAssistantCount > 0) {
     const fallbackAssistantMessages = messages
-      .filter(
-        (message) =>
-          message.role === "assistant" && !retainedMessageIds.has(message.id),
-      )
+      .filter((message) => message.role === "assistant" && !retainedMessageIds.has(message.id))
       .toSorted(
         (left, right) =>
           left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
@@ -1354,6 +1348,18 @@ function applyEnvironmentOrchestrationEvent(
         }
         return {
           ...thread,
+          session: thread.session
+            ? {
+                ...thread.session,
+                status: thread.session.status === "running" ? "ready" : thread.session.status,
+                orchestrationStatus:
+                  thread.session.orchestrationStatus === "running"
+                    ? "interrupted"
+                    : thread.session.orchestrationStatus,
+                activeTurnId: undefined,
+                updatedAt: event.payload.createdAt,
+              }
+            : thread.session,
           latestTurn: buildLatestTurn({
             previous: latestTurn,
             turnId: event.payload.turnId,

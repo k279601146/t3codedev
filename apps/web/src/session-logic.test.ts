@@ -1749,10 +1749,36 @@ describe("deriveTimelineEntries", () => {
     expect(
       deriveCompletionDividerBeforeEntryId(entries, {
         assistantMessageId: MessageId.make("assistant-final"),
+        state: "completed",
         startedAt: "2026-02-23T00:00:00.000Z",
         completedAt: "2026-02-23T00:00:02.000Z",
       }),
     ).toBe("assistant-final");
+  });
+
+  it("falls back to the user message when an interrupted turn has no assistant response", () => {
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.make("user-interrupted"),
+          role: "user",
+          text: "stop this",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          streaming: false,
+        },
+      ],
+      [],
+      [],
+    );
+
+    expect(
+      deriveCompletionDividerBeforeEntryId(entries, {
+        assistantMessageId: null,
+        state: "interrupted",
+        startedAt: "2026-02-23T00:00:00.000Z",
+        completedAt: "2026-02-23T00:00:05.000Z",
+      }),
+    ).toBe("user-interrupted");
   });
 });
 

@@ -90,10 +90,7 @@ describe("ChatMarkdown", () => {
       await expect.element(link).toBeInTheDocument();
       await expect
         .element(link)
-        .toHaveAttribute(
-          "href",
-          "D:\\workspace\\testimg\\output\\pdf\\codex_app_plugin_intro.pdf",
-        );
+        .toHaveAttribute("href", "D:\\workspace\\testimg\\output\\pdf\\codex_app_plugin_intro.pdf");
 
       await link.click();
 
@@ -189,6 +186,31 @@ describe("ChatMarkdown", () => {
       await expect.element(link).toBeInTheDocument();
       await expect.element(link).toHaveAttribute("href", "https://openai.com/docs");
       await expect.element(link).toHaveAttribute("target", "_blank");
+      await expect.element(link).toHaveClass("chat-markdown-web-link");
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("adds table header labels for narrow readable table cards", async () => {
+    const screen = await render(
+      <ChatMarkdown
+        text={[
+          "| 方案 | 定位 |",
+          "| --- | --- |",
+          "| huggingface/ppt-master | AI agent 工作流 |",
+        ].join("\n")}
+        cwd="/repo/project"
+      />,
+    );
+
+    try {
+      const tableScroll = document.querySelector<HTMLElement>(".chat-markdown-table-scroll");
+      expect(tableScroll?.dataset.columnCount).toBe("2");
+
+      const cells = document.querySelectorAll<HTMLTableCellElement>("tbody td");
+      expect(cells[0]?.dataset.label).toBe("方案");
+      expect(cells[1]?.dataset.label).toBe("定位");
     } finally {
       await screen.unmount();
     }
@@ -207,10 +229,9 @@ describe("ChatMarkdown", () => {
     try {
       const link = page.getByRole("link", { name: "ComposerPrimaryActions.tsx · L75" });
       await expect.element(link).toBeInTheDocument();
-      await expect.element(link).toHaveAttribute(
-        "href",
-        "/repo/project/ComposerPrimaryActions.tsx:75",
-      );
+      await expect
+        .element(link)
+        .toHaveAttribute("href", "/repo/project/ComposerPrimaryActions.tsx:75");
 
       await link.click();
 
