@@ -2,7 +2,7 @@ import { type ServerProvider } from "@t3tools/contracts";
 import { memo } from "react";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { CircleAlertIcon } from "lucide-react";
-import { formatProviderDriverKindLabel } from "../../providerModels";
+import { getProviderStatusAlertCopy } from "../../providerStatusCopy";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
@@ -13,20 +13,15 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     return null;
   }
 
-  const providerLabel = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
-  const defaultMessage =
-    status.status === "error"
-      ? `${providerLabel} provider is unavailable.`
-      : `${providerLabel} provider has limited availability.`;
-  const title = `${providerLabel} provider status`;
+  const copy = getProviderStatusAlertCopy(status);
 
   return (
     <div className="pt-3 mx-auto max-w-3xl">
       <Alert variant={status.status === "error" ? "error" : "warning"}>
         <CircleAlertIcon />
-        <AlertTitle>{title}</AlertTitle>
-        <AlertDescription className="line-clamp-3" title={status.message ?? defaultMessage}>
-          {status.message ?? defaultMessage}
+        <AlertTitle>{copy.title}</AlertTitle>
+        <AlertDescription className="line-clamp-3" title={copy.detail}>
+          {copy.detail}
         </AlertDescription>
       </Alert>
     </div>

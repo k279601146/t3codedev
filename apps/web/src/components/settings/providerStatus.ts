@@ -1,5 +1,7 @@
 import type { ServerProvider, ServerProviderVersionAdvisory } from "@t3tools/contracts";
 
+import { getFriendlyProviderStatusMessage } from "../../providerStatusCopy";
+
 /**
  * Visual treatment for each server-reported provider status. Centralized so
  * the default-driver card and per-instance cards share the same language.
@@ -39,44 +41,52 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
     return {
       headline: "Disabled",
       detail:
-        provider.message ?? "This provider is installed but disabled for new sessions in T3 Code.",
+        getFriendlyProviderStatusMessage(
+          provider,
+          "此 provider 已安装，但已在 T3 Code 设置中禁用。",
+        ) ?? "此 provider 已安装，但已在 T3 Code 设置中禁用。",
     };
   }
   if (!provider.installed) {
     return {
       headline: "Not found",
-      detail: provider.message ?? "CLI not detected on PATH.",
+      detail: getFriendlyProviderStatusMessage(provider, "未在 PATH 中检测到 CLI。"),
     };
   }
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
       headline: authLabel ? `Authenticated · ${authLabel}` : "Authenticated",
-      detail: provider.message ?? null,
+      detail: getFriendlyProviderStatusMessage(provider),
     };
   }
   if (provider.auth.status === "unauthenticated") {
     return {
       headline: "Not authenticated",
-      detail: provider.message ?? null,
+      detail: getFriendlyProviderStatusMessage(provider),
     };
   }
   if (provider.status === "warning") {
     return {
       headline: "Needs attention",
       detail:
-        provider.message ?? "The provider is installed, but the server could not fully verify it.",
+        getFriendlyProviderStatusMessage(provider, "Provider 已安装，但服务端无法完整验证。") ??
+        "Provider 已安装，但服务端无法完整验证。",
     };
   }
   if (provider.status === "error") {
     return {
       headline: "Unavailable",
-      detail: provider.message ?? "The provider failed its startup checks.",
+      detail:
+        getFriendlyProviderStatusMessage(provider, "Provider 启动检查失败。") ??
+        "Provider 启动检查失败。",
     };
   }
   return {
     headline: "Available",
-    detail: provider.message ?? "Installed and ready, but authentication could not be verified.",
+    detail:
+      getFriendlyProviderStatusMessage(provider, "已安装并可用，但认证状态暂未确认。") ??
+      "已安装并可用，但认证状态暂未确认。",
   };
 }
 

@@ -70,7 +70,7 @@ export function mapWindowsSandboxReadinessStatus(
   if (lastError) {
     return "error";
   }
-  return status ?? "error";
+  return status ?? "notConfigured";
 }
 
 export function buildWindowsSandboxSnapshot(input: {

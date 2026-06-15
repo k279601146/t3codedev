@@ -3,6 +3,11 @@ import { LoaderIcon, LockKeyholeIcon, RefreshCwIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ensureLocalApi } from "../../localApi";
+import {
+  getFriendlyProviderInfrastructureMessage,
+  getServerProviderLabel,
+  isProviderProbeUnavailableMessage,
+} from "../../providerStatusCopy";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -23,6 +28,9 @@ function deriveWindowsSandboxBannerCopy(
   checkedSandbox: ServerProviderWindowsSandbox | null,
 ): WindowsSandboxBannerCopy | null {
   if (!provider || provider.driver !== "codex") {
+    return null;
+  }
+  if (provider.status === "error" && !checkedSandbox) {
     return null;
   }
 
@@ -54,6 +62,9 @@ function deriveWindowsSandboxBannerCopy(
         detail: "Windows elevated 沙箱需要启动或更新",
       };
     case "error":
+      if (isProviderProbeUnavailableMessage(sandbox.lastError)) {
+        return null;
+      }
       return {
         kind: "error",
         tone: "error",
@@ -271,7 +282,13 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
       ? "正在打开 Windows 管理员授权窗口"
       : checkedSandbox
         ? `检查结果：${readinessDisplayName(checkedSandbox.readiness)}${
-            checkedSandbox.lastError ? `；${checkedSandbox.lastError}` : ""
+            checkedSandbox.lastError
+              ? `；${getFriendlyProviderInfrastructureMessage(
+                  provider ? getServerProviderLabel(provider) : "Provider",
+                  checkedSandbox.lastError,
+                  checkedSandbox.lastError,
+                )}`
+              : ""
           }。请确认管理员授权已完成；如果没有弹窗，请重新启动。`
         : setupStarted
           ? "请完成 Windows 管理员授权；完成后点击检查，ready 后此提示会消失"

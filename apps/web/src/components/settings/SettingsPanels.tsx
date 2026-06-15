@@ -95,6 +95,10 @@ import {
 import { ProjectFavicon } from "../ProjectFavicon";
 import { useServerObservability, useServerProviders } from "../../rpc/serverState";
 import { useI18n } from "../../i18n";
+import {
+  getFriendlyProviderInfrastructureMessage,
+  getServerProviderLabel,
+} from "../../providerStatusCopy";
 
 const THEME_OPTIONS = [
   {
@@ -592,7 +596,13 @@ function SandboxPermissionsSection({
               key={provider.instanceId}
               title={`${provider.displayName ?? provider.instanceId} Agent 沙箱`}
               description={
-                sandbox.lastError ??
+                (sandbox.lastError
+                  ? getFriendlyProviderInfrastructureMessage(
+                      getServerProviderLabel(provider),
+                      sandbox.lastError,
+                      sandbox.lastError,
+                    )
+                  : null) ??
                 (canRestoreElevated
                   ? "当前已降级为 unelevated，用户可以继续使用。修复系统环境后可恢复 elevated。"
                   : needsSetup
