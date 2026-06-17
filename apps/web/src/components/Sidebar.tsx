@@ -11,7 +11,6 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FolderPlusIcon,
-  GitPullRequestIcon,
   LogOutIcon,
   MessageCircleIcon,
   PanelLeftIcon,
@@ -3706,7 +3705,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             label={t("sidebar.extensions")}
             onClick={handleOpenExtensions}
           />
-          <SidebarNavButton icon={GitPullRequestIcon} label={t("sidebar.pullRequests")} />
           <SidebarNavButton
             icon={Clock3Icon}
             label={t("sidebar.automations")}
