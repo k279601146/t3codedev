@@ -2,32 +2,10 @@ import type { ServerProviderWindowsSandbox } from "@t3tools/contracts";
 
 import { ensureLocalApi } from "../localApi";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-
-const FIREWALL_REPAIR_ERROR_PATTERNS = [
-  "helper_firewall_policy_access_failed",
-  "INetFwPolicy2::LocalPolicyModifyState",
-  "HRESULT(0x800706D9)",
-  "0x800706D9",
-] as const;
-
-export function isWindowsSandboxFirewallPolicyError(message: string | null | undefined): boolean {
-  if (!message) {
-    return false;
-  }
-  return FIREWALL_REPAIR_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
-}
-
-export function shouldOfferWindowsSandboxFirewallRepair(
-  sandbox: ServerProviderWindowsSandbox | null | undefined,
-): boolean {
-  if (!sandbox) {
-    return false;
-  }
-  if (isWindowsSandboxFirewallPolicyError(sandbox.lastError)) {
-    return true;
-  }
-  return sandbox.mode === "unelevated" || sandbox.readiness === "updateRequired";
-}
+export {
+  isWindowsSandboxFirewallPolicyError,
+  shouldOfferWindowsSandboxFirewallRepair,
+} from "./windowsSandboxRepair.logic";
 
 export async function repairWindowsSandboxFirewallWithConfirmation(): Promise<boolean> {
   const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;

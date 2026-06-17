@@ -10,80 +10,24 @@ import {
 import {
   getFriendlyProviderInfrastructureMessage,
   getServerProviderLabel,
-  isProviderProbeUnavailableMessage,
 } from "../../providerStatusCopy";
+import { deriveWindowsSandboxBannerCopy } from "./WindowsSandboxSetupBanner.logic";
+import { isTransportConnectionErrorMessage } from "../../rpc/transportError";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-
-type WindowsSandboxBannerKind = "missingSnapshot" | "notConfigured" | "updateRequired" | "error";
 const STARTED_WINDOWS_SANDBOX_SETUP_BY_PROVIDER = new Set<string>();
 const CHECKED_WINDOWS_SANDBOX_BY_PROVIDER = new Map<string, ServerProviderWindowsSandbox>();
 
-interface WindowsSandboxBannerCopy {
-  readonly kind: WindowsSandboxBannerKind;
-  readonly tone: "warning" | "error";
-  readonly title: string;
-  readonly detail: string | null;
-}
-
-function deriveWindowsSandboxBannerCopy(
-  provider: ServerProvider | null,
-  checkedSandbox: ServerProviderWindowsSandbox | null,
-): WindowsSandboxBannerCopy | null {
-  if (!provider || provider.driver !== "codex") {
-    return null;
+function formatWindowsSandboxActionError(
+  error: unknown,
+  fallback: string,
+): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isTransportConnectionErrorMessage(message)) {
+    return "本地服务连接刚刚中断，沙箱请求可能仍在后台处理。请稍后点击检查，或重启本地服务后再试。";
   }
-
-  const sandbox = checkedSandbox ?? provider.windowsSandbox;
-  if (!sandbox) {
-    return {
-      kind: "missingSnapshot",
-      tone: "warning",
-      title: "设置 Agent 沙箱以继续",
-      detail: "尚未收到 Windows 沙箱状态",
-    };
-  }
-
-  switch (sandbox.readiness) {
-    case "ready":
-      return null;
-    case "notConfigured":
-      return {
-        kind: "notConfigured",
-        tone: "warning",
-        title: "设置 Agent 沙箱以继续",
-        detail: "Windows elevated 沙箱尚未初始化",
-      };
-    case "updateRequired":
-      return {
-        kind: "updateRequired",
-        tone: "warning",
-        title: "设置 Agent 沙箱以继续",
-        detail: "Windows elevated 沙箱需要启动或更新",
-      };
-    case "error":
-      if (isProviderProbeUnavailableMessage(sandbox.lastError)) {
-        return {
-          kind: "error",
-          tone: "warning",
-          title: "Agent 沙箱需要确认",
-          detail: getFriendlyProviderInfrastructureMessage(
-            getServerProviderLabel(provider),
-            sandbox.lastError,
-            "本地引擎状态暂时不可用，仍可尝试重新启动 Agent 沙箱或进入设置检查配置。",
-          ),
-        };
-      }
-      return {
-        kind: "error",
-        tone: "error",
-        title: "Agent 沙箱启动失败",
-        detail: sandbox.lastError ?? "Windows elevated 沙箱当前不可用，可以重新启动初始化流程",
-      };
-    default:
-      return null;
-  }
+  return message.trim().length > 0 ? message : fallback;
 }
 
 function readinessDisplayName(readiness: ServerProviderWindowsSandbox["readiness"]): string {
@@ -209,9 +153,7 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
       }
       await api.server.refreshProviders({ instanceId: provider.instanceId }).catch(() => undefined);
     } catch (error) {
-      setLocalError(
-        error instanceof Error ? error.message : "无法检查 Windows elevated 沙箱状态。",
-      );
+      setLocalError(formatWindowsSandboxActionError(error, "无法检查 Windows elevated 沙箱状态。"));
     } finally {
       setIsRefreshing(false);
     }
@@ -270,7 +212,7 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
         );
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "无法启动 Windows elevated 沙箱。";
+      const message = formatWindowsSandboxActionError(error, "无法启动 Windows elevated 沙箱。");
       setLocalError(message);
       toastManager.add(
         stackedThreadToast({

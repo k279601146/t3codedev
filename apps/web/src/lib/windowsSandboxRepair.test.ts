@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   isWindowsSandboxFirewallPolicyError,
   shouldOfferWindowsSandboxFirewallRepair,
-} from "./windowsSandboxRepair";
+} from "./windowsSandboxRepair.logic";
 
 function sandbox(input: Partial<ServerProviderWindowsSandbox> = {}): ServerProviderWindowsSandbox {
   return {
@@ -39,8 +39,8 @@ describe("Windows 沙箱防火墙修复提示", () => {
     ).toBe(true);
   });
 
-  it("启动 elevated 后降级或仍需更新时提示修复", () => {
-    expect(shouldOfferWindowsSandboxFirewallRepair(sandbox({ mode: "unelevated" }))).toBe(true);
+  it("elevated 仍需更新时提示修复，降级后不再反复提示", () => {
+    expect(shouldOfferWindowsSandboxFirewallRepair(sandbox({ mode: "unelevated" }))).toBe(false);
     expect(shouldOfferWindowsSandboxFirewallRepair(sandbox({ readiness: "updateRequired" }))).toBe(
       true,
     );

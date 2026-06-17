@@ -82,9 +82,11 @@ export function buildWindowsSandboxSnapshot(input: {
   readonly updatedAt: string;
 }): ServerProviderWindowsSandbox {
   const lastError = input.lastError ?? null;
+  const mode = input.mode ?? resolveProviderWindowsSandboxMode(input.environment);
+  const readiness = mode === "unelevated" && !lastError ? "ready" : input.readiness;
   return {
-    mode: input.mode ?? resolveProviderWindowsSandboxMode(input.environment),
-    readiness: mapWindowsSandboxReadinessStatus(input.readiness, lastError),
+    mode,
+    readiness: mapWindowsSandboxReadinessStatus(readiness, lastError),
     ...readWindowsSandboxHelperAvailability({
       binaryPath: input.binaryPath,
       ...(input.environment !== undefined ? { environment: input.environment } : {}),
