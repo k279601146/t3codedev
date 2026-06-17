@@ -517,7 +517,7 @@ const devRunnerCli = Command.make("dev-runner", {
     Argument.withDescription("Development mode to run."),
   ),
   t3Home: Flag.string("home-dir").pipe(
-    Flag.withDescription("Base directory for all T3 Code data (equivalent to BAHEW_HOME)."),
+    Flag.withDescription("Base directory for all Bahew data (equivalent to BAHEW_HOME)."),
     Flag.withFallbackConfig(optionalStringConfig("BAHEW_HOME")),
   ),
   noBrowser: Flag.boolean("no-browser").pipe(

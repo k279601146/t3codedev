@@ -386,7 +386,7 @@ function signInSuccessHtml(): string {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Signed in to T3 Code</title>
+    <title>Signed in to Bahew</title>
     <style>
       :root { color-scheme: light dark; }
       body {
@@ -463,7 +463,7 @@ function signInSuccessHtml(): string {
   <body>
     <main>
       <div class="icon" aria-hidden="true"><div class="mark"></div></div>
-      <h1>Signed in to T3 Code</h1>
+      <h1>Signed in to Bahew</h1>
       <p>You may now close this page</p>
     </main>
   </body>

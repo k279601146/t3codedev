@@ -27,6 +27,7 @@ import {
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnInterruptRequestedPayload,
+  ThreadTurnCompletedPayload,
   ThreadTurnDiffCompletedPayload,
 } from "./Schemas.ts";
 
@@ -470,6 +471,40 @@ export function projectEvent(
                       thread.latestTurn?.turnId === session.activeTurnId
                         ? thread.latestTurn.assistantMessageId
                         : null,
+                  }
+                : thread.latestTurn,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+
+    case "thread.turn-completed":
+      return Effect.gen(function* () {
+        const payload = yield* decodeForEvent(
+          ThreadTurnCompletedPayload,
+          event.payload,
+          event.type,
+          "payload",
+        );
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            latestTurn:
+              thread.latestTurn === null || thread.latestTurn.turnId === payload.turnId
+                ? {
+                    turnId: payload.turnId,
+                    state: payload.state,
+                    requestedAt: thread.latestTurn?.requestedAt ?? payload.completedAt,
+                    startedAt: thread.latestTurn?.startedAt ?? payload.completedAt,
+                    completedAt: payload.completedAt,
+                    assistantMessageId: thread.latestTurn?.assistantMessageId ?? null,
+                    ...(thread.latestTurn?.sourceProposedPlan !== undefined
+                      ? { sourceProposedPlan: thread.latestTurn.sourceProposedPlan }
+                      : {}),
                   }
                 : thread.latestTurn,
             updatedAt: event.occurredAt,

@@ -43,8 +43,8 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
       detail:
         getFriendlyProviderStatusMessage(
           provider,
-          "此 provider 已安装，但已在 T3 Code 设置中禁用。",
-        ) ?? "此 provider 已安装，但已在 T3 Code 设置中禁用。",
+          "此 provider 已安装，但已在 Bahew 设置中禁用。",
+        ) ?? "此 provider 已安装，但已在 Bahew 设置中禁用。",
     };
   }
   if (!provider.installed) {

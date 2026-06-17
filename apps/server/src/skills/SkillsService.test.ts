@@ -40,7 +40,7 @@ const catalogLayer = Layer.succeed(
           {
             source: {
               id: BUNDLED_SKILL_SOURCE_ID,
-              displayName: "T3 Code Built-in Skills",
+              displayName: "Bahew Built-in Skills",
               repo: "t3tools/t3code",
               ref: "bundled",
               curatedPath: "skills",

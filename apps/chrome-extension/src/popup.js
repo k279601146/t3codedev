@@ -14,7 +14,7 @@ async function refreshStatus() {
   const status = await sendMessage({ type: "getStatus" });
   endpointInput.value = status.endpoint || "";
   statusText.textContent = status.connected
-    ? "已连接到 T3 Code"
+    ? "已连接到 Bahew"
     : status.hasToken
       ? "未连接，正在重试"
       : "等待配置";

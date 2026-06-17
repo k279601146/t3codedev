@@ -52,6 +52,10 @@ import {
   useDesktopUpdateState,
 } from "../../lib/desktopUpdateReactQuery";
 import {
+  repairWindowsSandboxFirewallWithConfirmation,
+  shouldOfferWindowsSandboxFirewallRepair,
+} from "../../lib/windowsSandboxRepair";
+import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
 } from "../../modelSelection";
@@ -81,10 +85,7 @@ import {
 } from "../ProviderUpdateLaunchNotification.logic";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
-import {
-  buildProviderInstanceUpdatePatch,
-  formatDiagnosticsDescription,
-} from "./SettingsPanels.logic";
+import { buildProviderInstanceUpdatePatch } from "./SettingsPanels.logic";
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -93,7 +94,7 @@ import {
   useRelativeTimeTick,
 } from "./settingsLayout";
 import { ProjectFavicon } from "../ProjectFavicon";
-import { useServerObservability, useServerProviders } from "../../rpc/serverState";
+import { useServerProviders } from "../../rpc/serverState";
 import { useI18n } from "../../i18n";
 import {
   getFriendlyProviderInfrastructureMessage,
@@ -479,10 +480,19 @@ function SandboxPermissionsSection({
     async (providerInstanceId: ProviderInstanceId) => {
       setSettingUpInstanceId(providerInstanceId);
       try {
-        const result = await ensureLocalApi().server.windowsSandboxSetupStart({
-          providerInstanceId,
-          mode: "elevated",
-        });
+        const api = ensureLocalApi();
+        const startSetup = () =>
+          api.server.windowsSandboxSetupStart({
+            providerInstanceId,
+            mode: "elevated",
+          });
+        let result = await startSetup();
+        if (
+          shouldOfferWindowsSandboxFirewallRepair(result.windowsSandbox) &&
+          (await repairWindowsSandboxFirewallWithConfirmation())
+        ) {
+          result = await startSetup();
+        }
         const fellBackToUnelevated =
           result.windowsSandbox.mode === "unelevated" &&
           result.windowsSandbox.readiness === "ready";
@@ -524,7 +534,7 @@ function SandboxPermissionsSection({
     <SettingsSection title="沙箱与权限">
       <SettingsRow
         title="当前有效配置"
-        description="T3 显式传给 ai-engine.exe 的官方 Codex 沙箱默认值。"
+        description="Bahew 显式传给 ai-engine.exe 的官方 Codex 沙箱默认值。"
         status={
           <span className="flex flex-wrap gap-x-3 gap-y-1">
             <code>sandbox_mode=workspace-write</code>
@@ -537,7 +547,7 @@ function SandboxPermissionsSection({
       />
       <SettingsRow
         title="权限 Profile"
-        description="来自官方 permissionProfile/list。T3 当前三档权限仍使用显式 sandboxPolicy，不与 permission profile 混用。"
+        description="来自官方 permissionProfile/list。Bahew 当前三档权限仍使用显式 sandboxPolicy，不与 permission profile 混用。"
         status={
           permissionProfiles.length > 0 ? (
             <span className="flex flex-wrap gap-x-3 gap-y-1">
@@ -1097,15 +1107,7 @@ export function GeneralSettingsPanel() {
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const { t } = useI18n();
-  const observability = useServerObservability();
   const serverProviders = useServerProviders();
-  const diagnosticsDescription = formatDiagnosticsDescription({
-    localTracingEnabled: observability?.localTracingEnabled ?? false,
-    otlpTracesEnabled: observability?.otlpTracesEnabled ?? false,
-    otlpTracesUrl: observability?.otlpTracesUrl,
-    otlpMetricsEnabled: observability?.otlpMetricsEnabled ?? false,
-    otlpMetricsUrl: observability?.otlpMetricsUrl,
-  });
 
   const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
   const textGenInstanceId = textGenerationModelSelection.instanceId;
@@ -1738,8 +1740,24 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <CommercialGatewaySection />
+    </SettingsPageContainer>
+  );
+}
 
+export function AboutSettingsPanel() {
+  const { t } = useI18n();
+
+  return (
+    <SettingsPageContainer>
       <SettingsSection title={t("settings.section.about")}>
+        <SettingsRow
+          title={t("settings.about.coreEngine")}
+          description={t("settings.about.coreEngineDescription")}
+        />
+        <SettingsRow
+          title={t("settings.about.productPositioning")}
+          description={t("settings.about.productPositioningDescription")}
+        />
         {isElectron || HOSTED_APP_CHANNEL ? (
           <AboutVersionSection />
         ) : (
@@ -1747,7 +1765,7 @@ export function GeneralSettingsPanel() {
         )}
         <SettingsRow
           title={t("settings.diagnostics")}
-          description={diagnosticsDescription}
+          description={t("settings.about.diagnosticsDescription")}
           control={
             <Button render={<Link to="/settings/diagnostics" />} size="xs" variant="outline">
               {t("settings.viewDiagnostics")}

@@ -31,6 +31,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, vi } from "@effect/vitest";
 
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -40,6 +41,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
@@ -1306,48 +1308,89 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
-  it.effect("maps windowsSandbox/setupCompleted to session state and warning on failure", () =>
+  it.effect(
+    "maps unelevated windowsSandbox/setupCompleted failures to session state and warning",
+    () =>
+      Effect.gen(function* () {
+        lifecyclePersistedWindowsSandboxModes.length = 0;
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+          Effect.forkChild,
+        );
+
+        const event: ProviderEvent = {
+          id: asEventId("evt-windows-sandbox-failed"),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "windowsSandbox/setupCompleted",
+          message: "Sandbox setup failed",
+          payload: {
+            mode: "unelevated",
+            success: false,
+            error: "unsupported environment",
+          },
+        };
+
+        yield* runtime.emit(event);
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+
+        assert.equal(events.length, 2);
+
+        const firstEvent = events[0];
+        const secondEvent = events[1];
+
+        assert.equal(firstEvent?.type, "session.state.changed");
+        if (firstEvent?.type === "session.state.changed") {
+          assert.equal(firstEvent.payload.state, "error");
+          assert.equal(firstEvent.payload.reason, "Sandbox setup failed");
+        }
+
+        assert.equal(secondEvent?.type, "runtime.warning");
+        if (secondEvent?.type === "runtime.warning") {
+          assert.equal(secondEvent.payload.message, "Sandbox setup failed");
+        }
+        assert.deepEqual(lifecyclePersistedWindowsSandboxModes, []);
+      }),
+  );
+
+  it.effect("does not surface elevated setup failure after falling back to unelevated", () =>
     Effect.gen(function* () {
       lifecyclePersistedWindowsSandboxModes.length = 0;
       const { adapter, runtime } = yield* startLifecycleRuntime();
-      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
+        Effect.timeoutOption(Duration.millis(1_000)),
         Effect.forkChild,
       );
 
-      const event: ProviderEvent = {
-        id: asEventId("evt-windows-sandbox-failed"),
+      yield* runtime.emit({
+        id: asEventId("evt-windows-sandbox-elevated-failed"),
         kind: "notification",
         provider: ProviderDriverKind.make("codex"),
         threadId: asThreadId("thread-1"),
         createdAt: "2026-01-01T00:00:00.000Z",
         method: "windowsSandbox/setupCompleted",
-        message: "Sandbox setup failed",
+        message: "Elevated sandbox setup failed",
         payload: {
-          mode: "unelevated",
+          mode: "elevated",
           success: false,
-          error: "unsupported environment",
+          error: "helper setup failed",
         },
-      };
+      });
 
-      yield* runtime.emit(event);
-      const events = Array.from(yield* Fiber.join(eventsFiber));
+      yield* TestClock.adjust(Duration.seconds(1));
+      yield* Effect.yieldNow;
 
-      assert.equal(events.length, 2);
-
-      const firstEvent = events[0];
-      const secondEvent = events[1];
-
-      assert.equal(firstEvent?.type, "session.state.changed");
-      if (firstEvent?.type === "session.state.changed") {
-        assert.equal(firstEvent.payload.state, "error");
-        assert.equal(firstEvent.payload.reason, "Sandbox setup failed");
-      }
-
-      assert.equal(secondEvent?.type, "runtime.warning");
-      if (secondEvent?.type === "runtime.warning") {
-        assert.equal(secondEvent.payload.message, "Sandbox setup failed");
-      }
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      assert.equal(firstEvent._tag, "None");
       assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["unelevated"]);
+
+      const readinessAfterFallback = yield* adapter.windowsSandboxReadiness!({
+        mode: "elevated",
+      });
+      assert.equal(readinessAfterFallback.mode, "unelevated");
+      assert.equal(readinessAfterFallback.readiness, "ready");
     }),
   );
 

@@ -193,8 +193,8 @@ export function SidebarAppUpdateButton() {
           <DialogTitle>发现新版本</DialogTitle>
           <DialogDescription>
             {targetVersion
-              ? `T3 Code ${targetVersion} 已发布，当前版本为 ${state?.currentVersion ?? "未知"}。`
-              : "T3 Code 有新版本可用。"}
+              ? `Bahew ${targetVersion} 已发布，当前版本为 ${state?.currentVersion ?? "未知"}。`
+              : "Bahew 有新版本可用。"}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>

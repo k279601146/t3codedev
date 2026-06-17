@@ -589,6 +589,20 @@ export interface DesktopComputerAutomationState {
   updatedAt: string;
 }
 
+export interface DesktopWindowsSandboxFirewallRepairResult {
+  readonly success: boolean;
+  readonly repaired: boolean;
+  readonly message: string;
+  readonly exitCode?: number | null;
+}
+
+export const DesktopWindowsSandboxFirewallRepairResultSchema = Schema.Struct({
+  success: Schema.Boolean,
+  repaired: Schema.Boolean,
+  message: Schema.String,
+  exitCode: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+});
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -638,6 +652,7 @@ export interface DesktopBridge {
     readonly port?: number;
   }) => Promise<DesktopServerExposureState>;
   getAdvertisedEndpoints: () => Promise<readonly AdvertisedEndpoint[]>;
+  repairWindowsSandboxFirewall?: () => Promise<DesktopWindowsSandboxFirewallRepairResult>;
   pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;

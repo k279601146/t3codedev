@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   BotIcon,
   GitBranchIcon,
+  InfoIcon,
   KeyboardIcon,
   Link2Icon,
   SearchIcon,
@@ -31,6 +32,7 @@ export type SettingsSectionPath =
   | "/settings/keybindings"
   | "/settings/connections"
   | "/settings/source-control"
+  | "/settings/about"
   | "/settings/diagnostics"
   | "/settings/archived";
 
@@ -64,6 +66,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
   {
     labelKey: "settings.nav.group.maintenance",
     items: [
+      { labelKey: "settings.nav.about", to: "/settings/about", icon: InfoIcon },
       { labelKey: "settings.diagnostics", to: "/settings/diagnostics", icon: ActivityIcon },
       { labelKey: "settings.nav.archivedThreads", to: "/settings/archived", icon: ArchiveIcon },
     ],

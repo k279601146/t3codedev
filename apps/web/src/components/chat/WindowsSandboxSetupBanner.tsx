@@ -4,6 +4,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ensureLocalApi } from "../../localApi";
 import {
+  repairWindowsSandboxFirewallWithConfirmation,
+  shouldOfferWindowsSandboxFirewallRepair,
+} from "../../lib/windowsSandboxRepair";
+import {
   getFriendlyProviderInfrastructureMessage,
   getServerProviderLabel,
   isProviderProbeUnavailableMessage,
@@ -219,10 +223,18 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
     setLocalError(null);
     try {
       const api = ensureLocalApi();
-      const result = await api.server.windowsSandboxSetupStart({
-        providerInstanceId: provider.instanceId,
-        mode: "elevated",
-      });
+      const startSetup = () =>
+        api.server.windowsSandboxSetupStart({
+          providerInstanceId: provider.instanceId,
+          mode: "elevated",
+        });
+      let result = await startSetup();
+      if (
+        shouldOfferWindowsSandboxFirewallRepair(result.windowsSandbox) &&
+        (await repairWindowsSandboxFirewallWithConfirmation())
+      ) {
+        result = await startSetup();
+      }
       if (result.started || result.windowsSandbox.readiness === "ready") {
         const latest =
           result.windowsSandbox.readiness === "ready"

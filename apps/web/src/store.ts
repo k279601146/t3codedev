@@ -1530,6 +1530,25 @@ function applyEnvironmentOrchestrationEvent(
         };
       });
 
+    case "thread.turn-completed":
+      return updateThreadState(state, event.payload.threadId, (thread) => ({
+        ...thread,
+        latestTurn:
+          thread.latestTurn === null || thread.latestTurn.turnId === event.payload.turnId
+            ? buildLatestTurn({
+                previous: thread.latestTurn,
+                turnId: event.payload.turnId,
+                state: event.payload.state,
+                requestedAt: thread.latestTurn?.requestedAt ?? event.payload.completedAt,
+                startedAt: thread.latestTurn?.startedAt ?? event.payload.completedAt,
+                completedAt: event.payload.completedAt,
+                assistantMessageId: thread.latestTurn?.assistantMessageId ?? null,
+                sourceProposedPlan: thread.pendingSourceProposedPlan,
+              })
+            : thread.latestTurn,
+        updatedAt: event.occurredAt,
+      }));
+
     case "thread.turn-diff-completed":
       return updateThreadState(state, event.payload.threadId, (thread) => {
         const checkpoint = mapTurnDiffSummary({

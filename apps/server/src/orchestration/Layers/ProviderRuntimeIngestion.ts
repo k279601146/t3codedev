@@ -1544,6 +1544,29 @@ const make = Effect.gen(function* () {
         }
       }
 
+      if (event.type === "turn.completed" && shouldApplyThreadLifecycle && eventTurnId !== undefined) {
+        const turnState = (() => {
+          switch (normalizeRuntimeTurnState(event.payload.state)) {
+            case "failed":
+              return "error" as const;
+            case "interrupted":
+            case "cancelled":
+              return "interrupted" as const;
+            case "completed":
+              return "completed" as const;
+          }
+        })();
+        yield* orchestrationEngine.dispatch({
+          type: "thread.turn.complete",
+          commandId: providerCommandId(event, "turn-complete"),
+          threadId: thread.id,
+          turnId: eventTurnId,
+          state: turnState,
+          completedAt: now,
+          createdAt: now,
+        });
+      }
+
       const assistantDelta =
         event.type === "content.delta" && event.payload.streamKind === "assistant_text"
           ? event.payload.delta

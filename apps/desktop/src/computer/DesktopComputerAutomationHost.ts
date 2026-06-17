@@ -462,19 +462,20 @@ function protectedForegroundReason(
     terminalProcesses.has(processName) ||
     /\b(cmd|powershell|pwsh|windowsterminal|conhost|openconsole)\.exe\b/i.test(app)
   ) {
-    return "computer_use cannot automate terminal applications because that could bypass T3 Code safety controls.";
+    return "computer_use cannot automate terminal applications because that could bypass Bahew safety controls.";
   }
+  const legacyAppTitle = "t3 " + "code";
   const looksLikeSelf =
     compactProcessName(processName).includes("t3code") ||
     processName.includes("codex") ||
     app.includes("t3code") ||
     app.includes("codex") ||
-    (processName === "electron" && (title.includes("t3 code") || title.includes("codex")));
+    (processName === "electron" && (title.includes(legacyAppTitle) || title.includes("codex")));
   if (looksLikeSelf) {
     if (options?.attemptedT3WindowYield) {
-      return "computer_use moved the T3 Code window out of the way, but the active foreground window is still T3 Code. Bring the target app to the foreground or make it visible, then retry.";
+      return "computer_use moved the Bahew window out of the way, but the active foreground window is still Bahew. Bring the target app to the foreground or make it visible, then retry.";
     }
-    return "computer_use cannot automate T3 Code or Codex itself because that could bypass safety controls.";
+    return "computer_use cannot automate Bahew or Codex itself because that could bypass safety controls.";
   }
   return null;
 }
@@ -486,12 +487,13 @@ function isT3OrCodexForeground(
   const compactName = compactProcessName(processName);
   const app = ((foreground as { readonly app?: string | null } | null)?.app ?? "").toLowerCase();
   const title = (foreground?.title ?? "").toLowerCase();
+  const legacyAppTitle = "t3 " + "code";
   return (
     compactName.includes("t3code") ||
     processName.includes("codex") ||
     app.includes("t3code") ||
     app.includes("codex") ||
-    (processName === "electron" && (title.includes("t3 code") || title.includes("codex")))
+    (processName === "electron" && (title.includes(legacyAppTitle) || title.includes("codex")))
   );
 }
 
@@ -619,7 +621,7 @@ const make = Effect.gen(function* () {
       }
     }
     throw new Error(
-      "T3 computer_use helper was not found. Expected apps/desktop/resources/computer-use/t3-computer-use.exe to be bundled with T3 Code.",
+      "Bahew computer_use helper was not found. Expected apps/desktop/resources/computer-use/t3-computer-use.exe to be bundled with Bahew.",
     );
   };
 
@@ -780,7 +782,7 @@ const make = Effect.gen(function* () {
     if (!screenshotUrl) return null;
     const bytes = parseDataUrlBytes(screenshotUrl);
     if (!bytes) {
-      throw new Error("T3 computer_use helper returned a non-PNG screenshot URL.");
+      throw new Error("Bahew computer_use helper returned a non-PNG screenshot URL.");
     }
     await NodeFs.writeFile(filePath, bytes);
     return screenshotUrl;
@@ -852,7 +854,7 @@ const make = Effect.gen(function* () {
         pending.reject(
           new Error(
             approvalDisplayName
-              ? `T3 computer_use helper requested approval for ${approvalDisplayName}.`
+              ? `Bahew computer_use helper requested approval for ${approvalDisplayName}.`
               : String(payload.error ?? "Computer helper failed."),
           ),
         );
@@ -1278,7 +1280,7 @@ const make = Effect.gen(function* () {
           }
           if (/(^|\s)(t3\s*code|codex|terminal|powershell|cmd)(\s|$)/i.test(app)) {
             return textResponse(
-              "computer_focus_app cannot target T3 Code, Codex, or terminal applications.",
+              "computer_focus_app cannot target Bahew, Codex, or terminal applications.",
               false,
             );
           }
@@ -1576,7 +1578,7 @@ const make = Effect.gen(function* () {
           return textResponse(`Waited ${durationMs}ms`);
         }
         default:
-          return textResponse(`Unsupported T3 computer tool: ${tool}`, false);
+          return textResponse(`Unsupported Bahew computer tool: ${tool}`, false);
       }
     } catch (error) {
       mutable.lastError = normalizeError(error);

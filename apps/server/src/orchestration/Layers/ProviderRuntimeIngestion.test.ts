@@ -382,6 +382,67 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBe("turn failed");
   });
 
+  it("marks a turn completed even when the provider emits no assistant message", async () => {
+    const harness = await createHarness();
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const completedAt = "2026-01-01T00:00:05.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-no-assistant-message"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: startedAt,
+      turnId: asTurnId("turn-no-assistant-message"),
+    });
+
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" &&
+        thread.latestTurn?.turnId === "turn-no-assistant-message" &&
+        thread.latestTurn.state === "running",
+    );
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-reasoning-completed-no-assistant-message"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: completedAt,
+      turnId: asTurnId("turn-no-assistant-message"),
+      itemId: asItemId("reasoning-no-assistant-message"),
+      payload: {
+        itemType: "reasoning",
+        status: "completed",
+      },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-no-assistant-message"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: completedAt,
+      turnId: asTurnId("turn-no-assistant-message"),
+      payload: {
+        state: "completed",
+      },
+    });
+    await harness.drain();
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.session?.status === "ready" &&
+        entry.session.activeTurnId === null &&
+        entry.latestTurn?.turnId === "turn-no-assistant-message" &&
+        entry.latestTurn.state === "completed" &&
+        entry.latestTurn.completedAt === completedAt,
+    );
+
+    expect(thread.messages.some((message) => message.role === "assistant")).toBe(false);
+  });
+
   it("recovers when a ready session still carries a stale active turn id", async () => {
     const harness = await createHarness();
     const staleAt = "2026-01-01T00:00:00.000Z";

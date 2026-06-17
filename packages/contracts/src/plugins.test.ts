@@ -34,7 +34,7 @@ const builtinSummary = {
   source: { type: "builtin", builtinId: "browser_use" },
   location: {
     pluginName: "browser_use",
-    marketplaceName: "T3 Builtins",
+    marketplaceName: "Bahew Builtins",
     marketplacePath: null,
     remoteMarketplaceName: null,
   },
@@ -101,7 +101,7 @@ describe("PluginListResponse", () => {
     const parsed = decodePluginListResponse({
       marketplaces: [
         {
-          name: "T3 Builtins",
+          name: "Bahew Builtins",
           path: null,
           plugins: [builtinSummary],
         },

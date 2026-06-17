@@ -561,7 +561,7 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {
     clientInfo: {
       name: "t3code_desktop",
-      title: "T3 Code Desktop",
+      title: "Bahew Desktop",
       version: packageJson.version,
     },
     capabilities: {
@@ -751,7 +751,7 @@ const makePendingCodexProvider = (
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Codex is disabled in T3 Code settings.",
+          message: "Codex is disabled in Bahew settings.",
         },
       });
     }
@@ -796,7 +796,7 @@ function accountProbeStatus(
         status: "ready",
         auth: {
           status: "authenticated",
-          label: "T3 Code account",
+          label: "Bahew account",
           ...(rateLimits ? { rateLimits } : {}),
         },
       };
@@ -804,7 +804,7 @@ function accountProbeStatus(
     return {
       status: "error",
       auth: { status: "unauthenticated" },
-      message: "T3 Code is not signed in. Sign in to your account and try again.",
+      message: "Bahew is not signed in. Sign in to your account and try again.",
     };
   }
 
@@ -873,7 +873,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Codex is disabled in T3 Code settings.",
+        message: "Codex is disabled in Bahew settings.",
       },
     });
   }

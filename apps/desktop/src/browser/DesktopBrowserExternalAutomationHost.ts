@@ -303,7 +303,7 @@ const make = Effect.gen(function* () {
       if (!mutable.connected) {
         resolve(
           textResponse(
-            "T3 Code Chrome Extension is not connected. Open T3 Code Plugins > Browser Use External, copy the current Endpoint and Token into the extension popup, then keep Chrome open. Re-pair after restarting T3 Code.",
+            "Bahew Chrome Extension is not connected. Open Bahew Plugins > Browser Use External, copy the current Endpoint and Token into the extension popup, then keep Chrome open. Re-pair after restarting Bahew.",
             false,
           ),
         );

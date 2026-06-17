@@ -1,5 +1,6 @@
 import {
   CheckpointRef,
+  type EnvironmentId,
   EventId,
   MessageId,
   ProjectId,
@@ -8,9 +9,15 @@ import {
   TurnId,
   type OrchestrationEvent,
 } from "@t3tools/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { deriveOrchestrationBatchEffects } from "./orchestrationEventEffects";
+import type { Thread } from "./types";
+import {
+  deriveOrchestrationBatchEffects,
+  deriveThreadCompletionNotificationCandidates,
+  shouldShowBrowserThreadCompletionNotification,
+  showThreadCompletionNotifications,
+} from "./orchestrationEventEffects";
 
 function makeEvent<T extends OrchestrationEvent["type"]>(
   type: T,
@@ -133,3 +140,202 @@ describe("deriveOrchestrationBatchEffects", () => {
     expect(effects.removeTerminalStateThreadIds).toEqual([]);
   });
 });
+
+describe("deriveThreadCompletionNotificationCandidates", () => {
+  it("生成后台完成通知候选，并使用助手回复作为摘要", () => {
+    const threadId = ThreadId.make("thread-1");
+    const turnId = TurnId.make("turn-1");
+    const event = makeEvent("thread.turn-diff-completed", {
+      threadId,
+      turnId,
+      checkpointTurnCount: 1,
+      checkpointRef: CheckpointRef.make("checkpoint-1"),
+      status: "ready",
+      files: [],
+      assistantMessageId: MessageId.make("assistant-1"),
+      completedAt: "2026-02-27T00:00:03.000Z",
+    });
+
+    const candidates = deriveThreadCompletionNotificationCandidates({
+      events: [event],
+      resolveThread: () =>
+        makeThread({
+          id: threadId,
+          title: "修复通知",
+          messages: [
+            {
+              id: MessageId.make("assistant-1"),
+              role: "assistant",
+              text: "已经修复后台完成提示。",
+              turnId,
+              createdAt: "2026-02-27T00:00:02.000Z",
+              streaming: false,
+            },
+          ],
+        }),
+    });
+
+    expect(candidates).toEqual([
+      {
+        threadId,
+        turnId,
+        title: "修复通知",
+        body: "已经修复后台完成提示。",
+      },
+    ]);
+  });
+
+  it("忽略未完成、缺失或已归档线程，并在同批次内按回合去重", () => {
+    const threadId = ThreadId.make("thread-1");
+    const turnId = TurnId.make("turn-1");
+    const readyEvent = makeEvent("thread.turn-diff-completed", {
+      threadId,
+      turnId,
+      checkpointTurnCount: 1,
+      checkpointRef: CheckpointRef.make("checkpoint-1"),
+      status: "ready",
+      files: [],
+      assistantMessageId: null,
+      completedAt: "2026-02-27T00:00:03.000Z",
+    });
+    const missingEvent = makeEvent("thread.turn-diff-completed", {
+      threadId: ThreadId.make("thread-2"),
+      turnId: TurnId.make("turn-2"),
+      checkpointTurnCount: 2,
+      checkpointRef: CheckpointRef.make("checkpoint-2"),
+      status: "missing",
+      files: [],
+      assistantMessageId: null,
+      completedAt: "2026-02-27T00:00:04.000Z",
+    });
+
+    const candidates = deriveThreadCompletionNotificationCandidates({
+      events: [readyEvent, missingEvent, readyEvent],
+      resolveThread: (id) =>
+        id === threadId
+          ? makeThread({
+              id: threadId,
+              title: "完成回合",
+              messages: [],
+            })
+          : makeThread({
+              id,
+              title: "缺失回合",
+              archivedAt: "2026-02-27T00:00:05.000Z",
+              messages: [],
+            }),
+    });
+
+    expect(candidates).toEqual([
+      {
+        threadId,
+        turnId,
+        title: "完成回合",
+        body: "对话已完成。",
+      },
+    ]);
+  });
+});
+
+describe("shouldShowBrowserThreadCompletionNotification", () => {
+  it("只有已授权且页面不在前台时才显示通知", () => {
+    expect(
+      shouldShowBrowserThreadCompletionNotification({
+        documentVisibilityState: "hidden",
+        documentHasFocus: false,
+        notificationPermission: "granted",
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowBrowserThreadCompletionNotification({
+        documentVisibilityState: "visible",
+        documentHasFocus: true,
+        notificationPermission: "granted",
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowBrowserThreadCompletionNotification({
+        documentVisibilityState: "hidden",
+        documentHasFocus: false,
+        notificationPermission: "default",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("showThreadCompletionNotifications", () => {
+  it("用浏览器 Notification API 展示后台完成通知", () => {
+    const created: Array<{ title: string; options: NotificationOptions | undefined }> = [];
+    const NotificationMock = vi.fn(function Notification(
+      this: Notification,
+      title: string,
+      options?: NotificationOptions,
+    ) {
+      created.push({ title, options });
+      return { onclick: null };
+    }) as unknown as typeof Notification;
+    Object.defineProperty(NotificationMock, "permission", {
+      value: "granted",
+    });
+    const browserWindow = {
+      Notification: NotificationMock,
+      document: {
+        visibilityState: "hidden",
+        hasFocus: () => false,
+      },
+      focus: vi.fn(),
+    } as unknown as Window & typeof globalThis;
+
+    showThreadCompletionNotifications(
+      [
+        {
+          threadId: ThreadId.make("thread-1"),
+          turnId: "turn-1",
+          title: "后台任务",
+          body: "任务已完成。",
+        },
+      ],
+      browserWindow,
+    );
+
+    expect(NotificationMock).toHaveBeenCalledTimes(1);
+    expect(created).toEqual([
+      {
+        title: "后台任务",
+        options: {
+          body: "任务已完成。",
+          tag: "thread-completed:thread-1:turn-1",
+          silent: false,
+        },
+      },
+    ]);
+  });
+});
+
+function makeThread(
+  input: Pick<Thread, "id" | "title" | "messages"> & Partial<Thread>,
+): Thread {
+  return {
+    ...input,
+    id: input.id,
+    environmentId: "env-primary" as EnvironmentId,
+    codexThreadId: null,
+    projectId: ProjectId.make("project-1"),
+    title: input.title,
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    session: null,
+    messages: input.messages,
+    proposedPlans: [],
+    error: null,
+    createdAt: "2026-02-27T00:00:00.000Z",
+    archivedAt: input.archivedAt ?? null,
+    updatedAt: "2026-02-27T00:00:00.000Z",
+    latestTurn: null,
+    branch: null,
+    worktreePath: null,
+    turnDiffSummaries: [],
+    activities: [],
+  };
+}

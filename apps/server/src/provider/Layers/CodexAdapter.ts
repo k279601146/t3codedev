@@ -2080,15 +2080,17 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
           Effect.gen(function* () {
             yield* writeNativeEvent(event);
+            let suppressRuntimeEvents = false;
             if (event.method === "windowsSandbox/setupCompleted") {
               const payload = readPayload(
                 EffectCodexSchema.V2WindowsSandboxSetupCompletedNotification,
                 event.payload,
               );
-              if (payload?.success === false) {
+              if (payload?.success === false && payload.mode === "elevated") {
                 yield* fallBackToUnelevatedWindowsSandbox(
                   payload.error ?? "Windows sandbox setup failed.",
                 );
+                suppressRuntimeEvents = true;
               } else if (payload?.success === true) {
                 yield* Ref.set(windowsSandboxSetupErrorRef, null);
                 yield* Ref.set(windowsSandboxModeOverrideRef, null);
@@ -2096,6 +2098,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             }
             if (shouldCleanupWindowsSandboxArtifacts(event)) {
               yield* cleanupWindowsSandboxWorkspaceArtifacts(runtimeInput.cwd);
+            }
+            if (suppressRuntimeEvents) {
+              return;
             }
             const runtimeEvents = mapToRuntimeEvents(event, event.threadId);
             if (runtimeEvents.length === 0) {

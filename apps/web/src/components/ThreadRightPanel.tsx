@@ -813,7 +813,7 @@ function ComputerPanel() {
             <EmptyState
               icon={<MonitorIcon className="size-7" />}
               title="等待桌面截图"
-              description="模型调用 computer_screenshot 后，最新截图会显示在这里；执行桌面控制时 T3 会让出前台。"
+              description="模型调用 computer_screenshot 后，最新截图会显示在这里；执行桌面控制时 Bahew 会让出前台。"
             />
           )}
         </div>

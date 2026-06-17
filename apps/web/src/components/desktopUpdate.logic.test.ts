@@ -167,7 +167,7 @@ describe("desktop update UI helpers", () => {
     ).toEqual({
       type: "success",
       title: "已是最新版本",
-      description: "T3 Code 1.0.0 已是最新版本。",
+      description: "Bahew 1.0.0 已是最新版本。",
     });
   });
 
@@ -185,7 +185,7 @@ describe("desktop update UI helpers", () => {
     ).toEqual({
       type: "success",
       title: "已是最新版本",
-      description: "T3 Code 1.0.0 已是最新版本。",
+      description: "Bahew 1.0.0 已是最新版本。",
     });
   });
 
@@ -263,7 +263,7 @@ describe("desktop update UI helpers", () => {
         availableVersion: "1.1.0",
         downloadedVersion: "1.1.1",
       }),
-    ).toContain("Install update 1.1.1 and restart T3 Code?");
+    ).toContain("Install update 1.1.1 and restart Bahew?");
   });
 
   it("falls back to generic install confirmation copy when no version is available", () => {
@@ -272,7 +272,7 @@ describe("desktop update UI helpers", () => {
         availableVersion: null,
         downloadedVersion: null,
       }),
-    ).toContain("Install update and restart T3 Code?");
+    ).toContain("Install update and restart Bahew?");
   });
 });
 

@@ -72,7 +72,7 @@ const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
   {
     id: "browser_use_external",
     title: "Browser Use External",
-    subtitle: "通过 T3 Code Chrome Extension 控制用户 Chrome。",
+    subtitle: "通过 Bahew Chrome Extension 控制用户 Chrome。",
     icon: <PlugIcon className="size-5" />,
     tags: ["browser_use_external", "chrome", "t3_browser_external"],
   },
@@ -122,7 +122,7 @@ function describeDesktopBridgeError(error: unknown): string {
     message.includes("No handler registered") ||
     message.includes("Error invoking remote method")
   ) {
-    return "桌面主进程还没有加载新的插件 IPC。请完全退出并重新启动 T3 Code 后再试。";
+    return "桌面主进程还没有加载新的插件 IPC。请完全退出并重新启动 Bahew 后再试。";
   }
   return message;
 }
@@ -366,14 +366,14 @@ function BrowserExternalPluginDetails({
       <section>
         <h3 className="text-[13px] font-medium text-muted-foreground">配置流程</h3>
         <div className="mt-3 rounded-md border border-border/70 px-3">
-          <SettingRow label="1. T3 插件" value={statusPill("ready")} />
+          <SettingRow label="1. Bahew 插件" value={statusPill("ready")} />
           <SettingRow
             label="2. Chrome 扩展"
             value={
               state?.extensionId ? (
                 statusPill("ready")
               ) : (
-                <span className="text-muted-foreground">下载并安装 T3 Code Chrome Extension</span>
+                <span className="text-muted-foreground">下载并安装 Bahew Chrome Extension</span>
               )
             }
           />
@@ -387,7 +387,7 @@ function BrowserExternalPluginDetails({
         <div className="flex items-start gap-2">
           <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="text-xs leading-5 text-muted-foreground">
-            安装扩展后仍需把上方 Endpoint 与 Token 填入扩展弹窗完成配对。Token 会在每次重启 T3 Code
+            安装扩展后仍需把上方 Endpoint 与 Token 填入扩展弹窗完成配对。Token 会在每次重启 Bahew
             后更新，此时需要重新配对。连接后 @Chrome 会使用 browser_use_external。
           </p>
         </div>
@@ -411,7 +411,7 @@ function BrowserExternalSetupGuide({
         <div>
           <h2 className="text-sm font-semibold text-foreground">下一步：安装并配对 Chrome 扩展</h2>
           <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-            Browser Use External 已加入 T3 Code，但还不能使用。你需要先下载 T3 Code Chrome Extension
+            Browser Use External 已加入 Bahew，但还不能使用。你需要先下载 Bahew Chrome Extension
             安装包，在 Chrome 中加载扩展，并把本页 Endpoint 与 Token 填入扩展弹窗。
           </p>
         </div>
@@ -424,7 +424,7 @@ function BrowserExternalSetupGuide({
         <SetupStep
           index={1}
           title="下载 Chrome 扩展"
-          description="下载 T3 Code 提供的 Chrome 扩展安装包，并解压到一个固定目录。"
+          description="下载 Bahew 提供的 Chrome 扩展安装包，并解压到一个固定目录。"
           action={<ChromeExtensionDownloadButton />}
         />
         <SetupStep
@@ -436,7 +436,7 @@ function BrowserExternalSetupGuide({
         <SetupStep
           index={3}
           title="配置扩展弹窗"
-          description="点击 Chrome 工具栏里的 T3 Code 扩展，把本页 Endpoint 与 Token 填入弹窗后点击连接。"
+          description="点击 Chrome 工具栏里的 Bahew 扩展，把本页 Endpoint 与 Token 填入弹窗后点击连接。"
           action={
             <div className="grid gap-1.5">
               {endpoint ? <CopyConnectionValue value={endpoint} /> : null}
@@ -447,7 +447,7 @@ function BrowserExternalSetupGuide({
         <SetupStep
           index={4}
           title="确认连接"
-          description="扩展弹窗显示“已连接到 T3 Code”后，输入框菜单中的 Chrome 才会真正可用。"
+          description="扩展弹窗显示“已连接到 Bahew”后，输入框菜单中的 Chrome 才会真正可用。"
           action={<CopyConnectionValue value={CHROME_EXTENSIONS_URL} />}
         />
       </div>
@@ -488,11 +488,11 @@ function BrowserExternalInstallDetails({ onInstall }: { readonly onInstall: () =
       <section>
         <h2 className="text-sm font-semibold text-foreground">安装 Browser Use External</h2>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          安装后，输入框插件菜单才会显示 Chrome。随后还需要安装 T3 Code Chrome Extension，并使用
+          安装后，输入框插件菜单才会显示 Chrome。随后还需要安装 Bahew Chrome Extension，并使用
           Endpoint 与 Token 完成配对。
         </p>
         <div className="mt-4 rounded-md border border-border/70 bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-          T3 Code 会提供已构建好的 Chrome 扩展安装包。点击安装后，请按下一步引导下载扩展包、 安装到
+          Bahew 会提供已构建好的 Chrome 扩展安装包。点击安装后，请按下一步引导下载扩展包、 安装到
           Chrome，并在扩展弹窗中填写 Endpoint 与 Token。
         </div>
         <Button type="button" className="mt-4" onClick={onInstall}>
@@ -502,7 +502,7 @@ function BrowserExternalInstallDetails({ onInstall }: { readonly onInstall: () =
       </section>
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="text-xs leading-5 text-muted-foreground">
-          安装流程：安装 T3 插件 → 下载 Chrome 扩展 → 加载解压后的扩展目录 → 配置 Endpoint/Token →
+          安装流程：安装 Bahew 插件 → 下载 Chrome 扩展 → 加载解压后的扩展目录 → 配置 Endpoint/Token →
           扩展显示已连接。
         </div>
       </section>
@@ -686,8 +686,8 @@ function ComputerPluginDetails({
         <div className="flex items-start gap-2">
           <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="text-xs leading-5 text-muted-foreground">
-            Computer Use 会在使用未授权 App 前请求确认；执行桌面控制时 T3 Code
-            会让出前台，避免遮挡目标 App。终端应用、T3 Code 和 Codex
+            Computer Use 会在使用未授权 App 前请求确认；执行桌面控制时 Bahew
+            会让出前台，避免遮挡目标 App。终端应用、Bahew 和 Codex
             自身会被拦截，避免绕过会话权限与安全策略。
           </p>
         </div>
@@ -826,8 +826,8 @@ function CodexPluginDetails({
       </section>
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="text-xs leading-5 text-muted-foreground">
-          Codex 插件的安装、卸载、skills、MCP、apps 和 hooks 生命周期由 Codex app-server 管理。T3
-          Code 只负责展示、授权边界和商业化运行环境。
+          Codex 插件的安装、卸载、skills、MCP、apps 和 hooks 生命周期由 Codex app-server 管理。Bahew
+          只负责展示、授权边界和商业化运行环境。
         </div>
       </section>
     </div>
@@ -1201,7 +1201,7 @@ export function PluginsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-      <header className="flex flex-wrap items-center justify-end gap-3 border-b border-border/60 px-8 py-3">
+      <header className="drag-region flex min-h-[52px] shrink-0 flex-wrap items-center justify-end gap-3 border-b border-border/60 px-8 py-3 wco:min-h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]">
         <form
           className="flex min-w-[280px] items-center gap-2"
           onSubmit={(event) => {
@@ -1260,7 +1260,7 @@ export function PluginsPage() {
                 插件
               </h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                管理运行时插件、T3 内置桥接能力、自动化入口和授权边界。
+                管理运行时插件、Bahew 内置桥接能力、自动化入口和授权边界。
               </p>
             </div>
 

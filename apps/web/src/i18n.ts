@@ -18,7 +18,7 @@ const TRANSLATIONS = {
     "auth.heroDescription":
       "Connect your account to unlock the local engine, model gateway, diffs, terminals, and project-aware conversations.",
     "auth.signInDescription":
-      "Sign in once. T3 Code will keep your IDE token encrypted on this device and route model usage through the gateway.",
+      "Sign in once. Bahew will keep your IDE token encrypted on this device and route model usage through the gateway.",
     "auth.featureLocalRuntime": "Local runtime and terminal orchestration",
     "auth.featureGitAware": "Git-aware conversations, diffs, and checkpoints",
     "auth.featurePrivateToken": "Gateway token stored securely on this device",
@@ -86,7 +86,7 @@ const TRANSLATIONS = {
     "sidebar.signOutFailed": "Could not sign out",
     "settings.general": "General",
     "settings.theme": "Theme",
-    "settings.themeDescription": "Choose how T3 Code looks across the app.",
+    "settings.themeDescription": "Choose how Bahew looks across the app.",
     "settings.themeLight": "Claude Light",
     "settings.themeDark": "Claude Dark",
     "settings.themeSystem": "System",
@@ -105,6 +105,7 @@ const TRANSLATIONS = {
     "settings.nav.providers": "Providers",
     "settings.nav.sourceControl": "Source Control",
     "settings.nav.connections": "Connections",
+    "settings.nav.about": "About",
     "settings.nav.archive": "Archive",
     "settings.nav.back": "Back",
     "settings.nav.search": "Search settings...",
@@ -119,8 +120,8 @@ const TRANSLATIONS = {
     "settings.section.workflow": "Sessions & Workspace",
     "settings.section.aiGit": "AI & Git Assistance",
     "settings.section.privacy": "Privacy",
-    "settings.section.account": "Account & Gateway",
-    "settings.section.about": "About & Diagnostics",
+    "settings.section.account": "Bahew Account",
+    "settings.section.about": "About",
     "settings.customInstructions": "Custom instructions",
     "settings.customInstructionsDescription":
       "Provide extra guidance and context to Codex across your projects.",
@@ -206,6 +207,14 @@ const TRANSLATIONS = {
     "settings.updateCheck": "Check for Updates",
     "settings.diagnostics": "Diagnostics",
     "settings.viewDiagnostics": "View diagnostics",
+    "settings.about.coreEngine": "Core engine",
+    "settings.about.coreEngineDescription":
+      "Bahew is developed on top of the open-source Codex core engine project, integrating its local agent runtime, protocol, tool execution, and workspace orchestration capabilities.",
+    "settings.about.productPositioning": "Product positioning",
+    "settings.about.productPositioningDescription":
+      "Bahew packages those engine capabilities into an independent commercial IDE client, with desktop, web, provider routing, model gateway, source control, terminal, checkpoint, and account experiences designed around this product.",
+    "settings.about.diagnosticsDescription":
+      "Inspect local runtime processes, resource history, trace records, and engine diagnostics.",
     "settings.providers": "Providers",
     "settings.addProviderInstance": "Add provider instance",
     "settings.refreshProviderStatus": "Refresh provider status",
@@ -282,7 +291,7 @@ const TRANSLATIONS = {
     "auth.heroDescription":
       "登录后即可使用本地引擎、模型网关、Diff、终端和理解项目上下文的对话能力。",
     "auth.signInDescription":
-      "只需登录一次。T3 Code 会把 IDE 令牌加密保存在本机，并通过网关安全转发模型请求。",
+      "只需登录一次。Bahew 会把 IDE 令牌加密保存在本机，并通过网关安全转发模型请求。",
     "auth.featureLocalRuntime": "本地运行时与终端编排",
     "auth.featureGitAware": "理解 Git、Diff 与 checkpoint",
     "auth.featurePrivateToken": "网关令牌加密保存在此设备",
@@ -349,7 +358,7 @@ const TRANSLATIONS = {
     "sidebar.signOutFailed": "退出登录失败",
     "settings.general": "通用",
     "settings.theme": "主题",
-    "settings.themeDescription": "选择 T3 Code 在应用中的显示外观。",
+    "settings.themeDescription": "选择 Bahew 在应用中的显示外观。",
     "settings.themeLight": "Claude Light",
     "settings.themeDark": "Claude Dark",
     "settings.themeSystem": "跟随系统",
@@ -368,6 +377,7 @@ const TRANSLATIONS = {
     "settings.nav.providers": "模型服务",
     "settings.nav.sourceControl": "源代码管理",
     "settings.nav.connections": "连接",
+    "settings.nav.about": "关于",
     "settings.nav.archive": "归档",
     "settings.nav.back": "返回",
     "settings.nav.search": "搜索设置...",
@@ -382,10 +392,10 @@ const TRANSLATIONS = {
     "settings.section.workflow": "会话与工作区",
     "settings.section.aiGit": "AI 与 Git 辅助",
     "settings.section.privacy": "隐私",
-    "settings.section.account": "账号与网关",
-    "settings.section.about": "关于与诊断",
+    "settings.section.account": "Bahew 账号",
+    "settings.section.about": "关于",
     "settings.customInstructions": "自定义指令",
-    "settings.customInstructionsDescription": "为你的项目向 Codex 提供额外说明和上下文。",
+    "settings.customInstructionsDescription": "为你的项目向 Bahew 提供额外说明和上下文。",
     "settings.customInstructionsPlaceholder": "添加自定义指令...",
     "settings.customInstructionsLoading": "正在加载自定义指令...",
     "settings.customInstructionsSaved": "自定义指令已保存",
@@ -458,6 +468,14 @@ const TRANSLATIONS = {
     "settings.updateCheck": "检查更新",
     "settings.diagnostics": "诊断",
     "settings.viewDiagnostics": "查看诊断",
+    "settings.about.coreEngine": "核心引擎",
+    "settings.about.coreEngineDescription":
+      "Bahew 基于 Codex 核心引擎开源项目开发，整合其本地 Agent 运行时、协议、工具执行和工作区编排能力。",
+    "settings.about.productPositioning": "产品定位",
+    "settings.about.productPositioningDescription":
+      "Bahew 将这些引擎能力封装为独立商业化 IDE 客户端，并围绕本产品设计桌面端、Web、模型服务路由、模型网关、源代码管理、终端、checkpoint 和账号体验。",
+    "settings.about.diagnosticsDescription":
+      "查看本地运行时进程、资源历史、trace 记录和引擎诊断信息。",
     "settings.providers": "模型服务",
     "settings.addProviderInstance": "添加模型服务实例",
     "settings.refreshProviderStatus": "刷新模型服务状态",

@@ -84,7 +84,7 @@ export const layer = Layer.effect(
         const token = process.env[TOKEN_ENV];
         if (!endpoint || !token) {
           return textResponse(
-            "T3 external browser automation host is unavailable. Install and connect the T3 Code Chrome Extension.",
+            "Bahew external browser automation host is unavailable. Install and connect the Bahew Chrome Extension.",
             false,
           );
         }

@@ -11,10 +11,10 @@ import { promptUsesChromePlugin } from "./browserExternalPluginState";
 describe("composerPluginLaunch", () => {
   it("adds launch context for built-in plugin mentions", () => {
     expect(buildComposerPluginLaunchContext("@Computer 截屏看看")).toContain(
-      "@Computer: use T3 computer_use",
+      "@Computer: use Bahew computer_use",
     );
     expect(buildComposerPluginLaunchContext("@Browser 打开 localhost:3000")).toContain(
-      "@Browser: use the T3 in-app browser tools",
+      "@Browser: use the Bahew in-app browser tools",
     );
     expect(buildComposerPluginLaunchContext("@Chrome 检查登录页")).toContain(
       "@Chrome: use browser_use_external with the t3_browser_external namespace",

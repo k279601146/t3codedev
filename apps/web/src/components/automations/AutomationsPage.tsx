@@ -818,7 +818,7 @@ function AutomationFormDialog({
       <DialogPopup className="max-w-3xl rounded-xl" showCloseButton>
         <DialogHeader>
           <DialogTitle className="text-lg">{draft.id ? "编辑自动化" : "新建自动化"}</DialogTitle>
-          <DialogDescription>保存后由本地 T3 Code 服务按计划触发运行。</DialogDescription>
+          <DialogDescription>保存后由本地 Bahew 服务按计划触发运行。</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">

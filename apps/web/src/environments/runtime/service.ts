@@ -27,7 +27,11 @@ import {
 } from "~/composerDraftStore";
 import { ensureLocalApi } from "~/localApi";
 import { collectActiveTerminalThreadIds } from "~/lib/terminalStateCleanup";
-import { deriveOrchestrationBatchEffects } from "~/orchestrationEventEffects";
+import {
+  deriveOrchestrationBatchEffects,
+  deriveThreadCompletionNotificationCandidates,
+  showThreadCompletionNotifications,
+} from "~/orchestrationEventEffects";
 import { projectQueryKeys } from "~/lib/projectReactQuery";
 import { providerQueryKeys } from "~/lib/providerReactQuery";
 import { getPrimaryKnownEnvironment } from "../primary";
@@ -998,6 +1002,14 @@ function applyRecoveredEventBatch(
   }
 
   useStore.getState().applyOrchestrationEvents(uiEvents, environmentId);
+  showThreadCompletionNotifications(
+    deriveThreadCompletionNotificationCandidates({
+      events,
+      resolveThread: (threadId) =>
+        selectThreadByRef(useStore.getState(), scopeThreadRef(environmentId, threadId)),
+    }),
+    window,
+  );
   if (needsProjectUiSync) {
     const projects = selectProjectsAcrossEnvironments(useStore.getState());
     const clientSettings = getClientSettings();

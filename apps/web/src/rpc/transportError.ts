@@ -3,7 +3,7 @@ import { sanitizeProviderErrorMessage } from "../friendlyErrors";
 const TRANSPORT_ERROR_PATTERNS = [
   /\bSocketCloseError\b/i,
   /\bSocketOpenError\b/i,
-  /Unable to connect to the T3 server WebSocket\./i,
+  /Unable to connect to the Bahew server WebSocket\./i,
   /\bping timeout\b/i,
 ] as const;
 

@@ -37,7 +37,7 @@ async function getConfig() {
 
 async function postJson(path, body) {
   const { endpoint, token } = await getConfig();
-  if (!endpoint || !token) throw new Error("请先在扩展弹窗中配置 T3 Code endpoint 和 token。");
+  if (!endpoint || !token) throw new Error("请先在扩展弹窗中配置 Bahew endpoint 和 token。");
   const response = await fetch(`${endpoint}${path}`, {
     method: "POST",
     headers: {
@@ -48,7 +48,7 @@ async function postJson(path, body) {
   });
   const payload = await response.json().catch(() => undefined);
   if (!response.ok) {
-    throw new Error(payload?.error || `T3 Code 返回 HTTP ${response.status}`);
+    throw new Error(payload?.error || `Bahew 返回 HTTP ${response.status}`);
   }
   return payload;
 }

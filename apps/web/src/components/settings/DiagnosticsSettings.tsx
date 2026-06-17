@@ -52,7 +52,7 @@ const DIAGNOSTICS_COPY = {
     openLogsFailed: "Unable to open logs folder.",
     processAlreadyExitedTitle: "Process already exited",
     processAlreadyExitedDescription:
-      "The process is not a child of the T3 Server. It might already have exited.",
+      "The process is not a child of the Bahew Server. It might already have exited.",
     signalFailedTitle: "Could not send {signal}",
     signalFailedFallback: "Failed to send {signal}.",
     confirmKill:
@@ -117,7 +117,7 @@ const DIAGNOSTICS_COPY = {
       refresh: "Refresh resource history",
       cpuTime: "CPU Time",
       cpuTimeTooltip:
-        "Approximate active CPU time for the T3 server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.",
+        "Approximate active CPU time for the Bahew server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.",
       samples: "Samples",
       samplesTooltip:
         "In-memory process samples retained by the server. This resets when the server restarts.",
@@ -202,7 +202,7 @@ const DIAGNOSTICS_COPY = {
     openLogsFailed: "无法打开日志文件夹。",
     processAlreadyExitedTitle: "进程已退出",
     processAlreadyExitedDescription:
-      "该进程已不是 T3 Server 的子进程，可能已经退出。",
+      "该进程已不是 Bahew Server 的子进程，可能已经退出。",
     signalFailedTitle: "无法发送 {signal}",
     signalFailedFallback: "发送 {signal} 失败。",
     confirmKill: "确定向进程 {pid} 发送 SIGKILL 吗？该信号不能被进程自行处理。",
@@ -264,7 +264,7 @@ const DIAGNOSTICS_COPY = {
       refresh: "刷新资源历史",
       cpuTime: "CPU 时间",
       cpuTimeTooltip:
-        "所选窗口内 T3 server 根进程及其子进程的近似活跃 CPU 时间。只有采样进程使用 CPU 时才会增长，旧采样会随窗口移动被移出。",
+        "所选窗口内 Bahew server 根进程及其子进程的近似活跃 CPU 时间。只有采样进程使用 CPU 时才会增长，旧采样会随窗口移动被移出。",
       samples: "采样",
       samplesTooltip: "server 内存中保留的进程采样；server 重启后会清空。",
       interval: "间隔",

@@ -82,7 +82,7 @@ export interface DesktopEnvironmentShape {
   readonly engineHomePath: string;
   /** 独立热更新引擎版本目录 */
   readonly engineVersionsPath: string;
-  /** 随客户端打包的 T3 内置插件/技能目录 */
+  /** 随客户端打包的 Bahew 内置插件/技能目录 */
   readonly bundledExtensionsPath: string;
 }
 
@@ -91,7 +91,7 @@ export class DesktopEnvironment extends Context.Service<
   DesktopEnvironmentShape
 >()("t3/desktop/Environment") {}
 
-const APP_BASE_NAME = "T3 Code";
+const APP_BASE_NAME = "Bahew";
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;

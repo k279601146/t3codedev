@@ -121,7 +121,7 @@ const BUILTIN_PLUGINS: readonly PluginSummary[] = [
     id: "builtin:browser_use_external",
     name: "browser_use_external",
     displayName: "Browser Use External",
-    description: "通过 T3 Code Chrome Extension 控制用户 Chrome。",
+    description: "通过 Bahew Chrome Extension 控制用户 Chrome。",
     installed: true,
     enabled: true,
     authPolicy: "ON_USE",

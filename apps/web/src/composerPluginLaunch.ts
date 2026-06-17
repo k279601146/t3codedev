@@ -38,11 +38,11 @@ export function buildComposerPluginLaunchContext(prompt: string): string | null 
 
   const lines = [PLUGIN_LAUNCH_CONTEXT_START];
   if (plugins.includes("Browser")) {
-    lines.push("- @Browser: use the T3 in-app browser tools for web navigation and page checks.");
+    lines.push("- @Browser: use the Bahew in-app browser tools for web navigation and page checks.");
   }
   if (plugins.includes("Computer")) {
     lines.push(
-      "- @Computer: use T3 computer_use; prefer computer_list_windows, computer_select_window, then computer_get_window_state. Use includeText=true when element_index targeting is useful, then use window-scoped input tools or computer_click_element/computer_set_value.",
+      "- @Computer: use Bahew computer_use; prefer computer_list_windows, computer_select_window, then computer_get_window_state. Use includeText=true when element_index targeting is useful, then use window-scoped input tools or computer_click_element/computer_set_value.",
     );
   }
   if (plugins.includes("Chrome")) {

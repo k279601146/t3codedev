@@ -102,7 +102,7 @@ function HostedStaticOnboardingState() {
                 Connect an environment to get started
               </EmptyTitle>
               <EmptyDescription className="mt-2 text-sm leading-relaxed text-muted-foreground/78">
-                Open a pairing link from your T3 Code desktop app or add a reachable backend
+                Open a pairing link from your Bahew desktop app or add a reachable backend
                 manually. Your saved environments stay in this browser.
               </EmptyDescription>
               <div className="mt-6 flex justify-center">

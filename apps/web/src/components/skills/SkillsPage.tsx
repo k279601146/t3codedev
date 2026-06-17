@@ -394,7 +394,7 @@ export function SkillsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-      <header className="flex items-center justify-end gap-3 border-b border-border/60 px-8 py-3">
+      <header className="drag-region flex min-h-[52px] shrink-0 items-center justify-end gap-3 border-b border-border/60 px-8 py-3 wco:min-h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]">
         <Button
           size="xs"
           variant="ghost"

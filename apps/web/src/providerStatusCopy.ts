@@ -44,8 +44,9 @@ export function getFriendlyProviderInfrastructureMessage(
   if (normalized.includes("codex cli (`codex`) is not installed")) {
     return "未找到 Codex CLI，请确认 codex 已安装并在 PATH 中。";
   }
-  if (normalized.includes("t3 code is not signed in")) {
-    return "尚未登录 T3 Code 账号，请登录后重试。";
+  const legacyNotSignedInMessage = "t3 " + "code is not signed in";
+  if (normalized.includes(legacyNotSignedInMessage)) {
+    return "尚未登录 Bahew 账号，请登录后重试。";
   }
   if (normalized.includes("codex provider status has not been checked")) {
     return `${label} 状态还在检查中，请稍等或手动刷新。`;

@@ -507,7 +507,7 @@ const RESEARCH_TEMPLATES: SlidePromptCard[] = [
     desc: "用公开文章、RSS、报告和新闻线索整理趋势与时间线。",
     icon: LineChartIcon,
     prompt:
-      "$agent-reach 请围绕这个行业主题追踪近期公开资料和 RSS/新闻线索，整理时间线、关键事件、主要参与者、数据点、争议问题、来源链接和对 T3 Code 的启发。主题：",
+      "$agent-reach 请围绕这个行业主题追踪近期公开资料和 RSS/新闻线索，整理时间线、关键事件、主要参与者、数据点、争议问题、来源链接和对 Bahew 的启发。主题：",
   },
   {
     title: "论文 / 报告速读",
@@ -1184,7 +1184,7 @@ function SlidesRecommendations({
           <DialogHeader>
             <DialogTitle>安装 PPT Master 插件</DialogTitle>
             <DialogDescription>
-              制作幻灯片需要安装 T3 Code 内置插件 PPT Master。安装后即可用 $ppt-master 生成可编辑
+              制作幻灯片需要安装 Bahew 内置插件 PPT Master。安装后即可用 $ppt-master 生成可编辑
               PowerPoint 文件。
             </DialogDescription>
           </DialogHeader>
@@ -1363,7 +1363,7 @@ function ResearchRecommendations({
           <DialogHeader>
             <DialogTitle>安装 Agent Reach 插件</DialogTitle>
             <DialogDescription>
-              联网调研需要安装 T3 Code 内置插件 Agent Reach。安装后即可用 $agent-reach
+              联网调研需要安装 Bahew 内置插件 Agent Reach。安装后即可用 $agent-reach
               发起公开资料搜索、链接阅读和研究整理任务。
             </DialogDescription>
           </DialogHeader>
