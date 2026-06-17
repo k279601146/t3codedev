@@ -182,7 +182,9 @@ export interface WsRpcClient {
   };
   readonly skills: {
     readonly list: RpcUnaryNoArgMethod<typeof WS_METHODS.skillsList>;
-    readonly catalog: RpcUnaryNoArgMethod<typeof WS_METHODS.skillsCatalog>;
+    readonly catalog: (
+      input?: RpcInput<typeof WS_METHODS.skillsCatalog>,
+    ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.skillsCatalog>>;
     readonly refresh: RpcUnaryMethod<typeof WS_METHODS.skillsRefresh>;
     readonly install: RpcUnaryMethod<typeof WS_METHODS.skillsInstall>;
     readonly uninstall: RpcUnaryMethod<typeof WS_METHODS.skillsUninstall>;
@@ -408,7 +410,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     },
     skills: {
       list: () => transport.request((client) => client[WS_METHODS.skillsList]({})),
-      catalog: () => transport.request((client) => client[WS_METHODS.skillsCatalog]({})),
+      catalog: (input) =>
+        transport.request((client) => client[WS_METHODS.skillsCatalog](input ?? {})),
       refresh: (input) => transport.request((client) => client[WS_METHODS.skillsRefresh](input)),
       install: (input) => transport.request((client) => client[WS_METHODS.skillsInstall](input)),
       uninstall: (input) =>

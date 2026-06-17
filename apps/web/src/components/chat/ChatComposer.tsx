@@ -431,20 +431,11 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
                 ) : null}
               </div>
               <MenuSeparator className="mx-0 mt-1" />
-              <MenuItem
-                onClick={() =>
-                  toastManager.add({
-                    type: "info",
-                    title: "请在技能页安装技能，或在插件页安装带技能的插件。",
-                  })
-                }
-              >
+              <MenuItem onClick={() => window.location.assign("/extensions")}>
                 <PlusIcon className="size-4 shrink-0 opacity-80" />
                 添加技能
               </MenuItem>
-              <MenuItem
-                onClick={() => toastManager.add({ type: "info", title: "请在设置中管理技能。" })}
-              >
+              <MenuItem onClick={() => window.location.assign("/extensions")}>
                 <SettingsIcon className="size-4 shrink-0 opacity-80" />
                 管理技能
               </MenuItem>
@@ -2585,7 +2576,7 @@ export const ChatComposer = memo(
               ? "在插件页安装 Chrome 扩展，并将 Endpoint 与 Token 填入扩展弹窗。"
               : "安装插件后，插件页会引导你安装 Chrome 扩展并完成 Endpoint/Token 配对。",
           });
-          void navigate({ to: "/plugins" });
+          void navigate({ to: "/extensions", hash: "plugins" });
           return;
         }
         const snapshot = readComposerSnapshot();
@@ -2721,40 +2712,43 @@ export const ChatComposer = memo(
       removeComposerImageFromDraft(imageId);
     };
 
-    const openComposerAttachmentFolder = useCallback(async (attachment: ComposerImageAttachment) => {
-      const filePath =
-        typeof window !== "undefined"
-          ? window.desktopBridge?.getPathForFile?.(attachment.file)
-          : null;
-      if (!filePath) {
-        toastManager.add({
-          type: "error",
-          title: "无法打开文件夹",
-          description: "未能定位该附件的原始本地文件路径。",
-        });
-        return;
-      }
+    const openComposerAttachmentFolder = useCallback(
+      async (attachment: ComposerImageAttachment) => {
+        const filePath =
+          typeof window !== "undefined"
+            ? window.desktopBridge?.getPathForFile?.(attachment.file)
+            : null;
+        if (!filePath) {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: "未能定位该附件的原始本地文件路径。",
+          });
+          return;
+        }
 
-      const api = readLocalApi();
-      if (!api) {
-        toastManager.add({
-          type: "error",
-          title: "无法打开文件夹",
-          description: "本地桌面能力不可用。",
-        });
-        return;
-      }
+        const api = readLocalApi();
+        if (!api) {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: "本地桌面能力不可用。",
+          });
+          return;
+        }
 
-      try {
-        await revealFileInFolder(api, filePath);
-      } catch (error) {
-        toastManager.add({
-          type: "error",
-          title: "无法打开文件夹",
-          description: error instanceof Error ? error.message : "打开文件夹失败。",
-        });
-      }
-    }, []);
+        try {
+          await revealFileInFolder(api, filePath);
+        } catch (error) {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件夹",
+            description: error instanceof Error ? error.message : "打开文件夹失败。",
+          });
+        }
+      },
+      [],
+    );
 
     // ------------------------------------------------------------------
     // Callbacks: paste / drag

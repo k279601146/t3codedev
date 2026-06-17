@@ -79,10 +79,7 @@ import {
   ProviderRegistry,
   type ProviderRegistryShape,
 } from "./provider/Services/ProviderRegistry.ts";
-import {
-  ProviderService,
-  type ProviderServiceShape,
-} from "./provider/Services/ProviderService.ts";
+import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
@@ -92,10 +89,7 @@ import {
   type SkillsCatalogServiceShape,
 } from "./skills/SkillsCatalogService.ts";
 import { SkillsService, type SkillsServiceShape } from "./skills/SkillsService.ts";
-import {
-  CodexPluginService,
-  type CodexPluginServiceShape,
-} from "./plugins/CodexPluginService.ts";
+import { CodexPluginService, type CodexPluginServiceShape } from "./plugins/CodexPluginService.ts";
 import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager.ts";
 import {
   BrowserTraceCollector,
@@ -528,6 +522,10 @@ const buildAppUnderTest = (options?: {
         getCatalog: () =>
           Effect.succeed({
             snapshots: [],
+            categories: [],
+            total: 0,
+            page: 1,
+            pageSize: 20,
             hasErrors: false,
           }),
         warmUp: Effect.void,
@@ -535,11 +533,14 @@ const buildAppUnderTest = (options?: {
         findCatalogItem: () => Effect.succeed(undefined),
         resolveVendorAssetPath: () => Effect.succeed(null),
         readCatalogContent: () => Effect.succeed(null),
+        readCatalogFiles: () => Effect.succeed(null),
+        downloadCatalogZip: () => Effect.succeed(null),
         ...options?.layers?.skillsCatalogService,
       }),
       Layer.mock(SkillsService)({
         list: () => Effect.succeed({ skills: [] }),
-        catalog: () => Effect.succeed({ items: [] }),
+        catalog: () =>
+          Effect.succeed({ items: [], categories: [], total: 0, page: 1, pageSize: 20 }),
         install: () =>
           Effect.succeed({
             marketplaceName: "",
@@ -653,8 +654,10 @@ const buildAppUnderTest = (options?: {
           clearGoal: () => Effect.die(new Error("测试未提供 ProviderService.clearGoal")),
           stopSession: () => Effect.void,
           listSessions: () => Effect.succeed([]),
-          getCapabilities: () => Effect.die(new Error("测试未提供 ProviderService.getCapabilities")),
-          getInstanceInfo: () => Effect.die(new Error("测试未提供 ProviderService.getInstanceInfo")),
+          getCapabilities: () =>
+            Effect.die(new Error("测试未提供 ProviderService.getCapabilities")),
+          getInstanceInfo: () =>
+            Effect.die(new Error("测试未提供 ProviderService.getInstanceInfo")),
           rollbackConversation: () => Effect.void,
           streamEvents: Stream.empty,
           ...options?.layers?.providerService,

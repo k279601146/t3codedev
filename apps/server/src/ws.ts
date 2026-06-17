@@ -1239,12 +1239,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               "rpc.aggregate": "skills",
             },
           ),
-        [WS_METHODS.skillsCatalog]: (_input) =>
+        [WS_METHODS.skillsCatalog]: (input) =>
           observeRpcEffect(
             WS_METHODS.skillsCatalog,
             Effect.gen(function* () {
               const skillsService = yield* SkillsService;
-              return yield* skillsService.catalog();
+              return yield* skillsService.catalog(input);
             }),
             {
               "rpc.aggregate": "skills",
@@ -1255,7 +1255,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             WS_METHODS.skillsRefresh,
             Effect.gen(function* () {
               const skillsService = yield* SkillsService;
-              return yield* skillsService.catalog({ force: input.force === true });
+              return yield* skillsService.catalog({ ...input, force: input.force === true });
             }),
             {
               "rpc.aggregate": "skills",

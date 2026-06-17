@@ -380,7 +380,9 @@ function resolveMarkdownPreviewTarget(
   if (!isTextPreviewFilePath(filePath)) {
     if (isAbsolutePreviewFilePath(filePath)) {
       const absoluteTarget = splitAbsolutePreviewFilePath(filePath);
-      return absoluteTarget ? { workspaceRoot: absoluteTarget.workspaceRoot, filePath: null } : null;
+      return absoluteTarget
+        ? { workspaceRoot: absoluteTarget.workspaceRoot, filePath: null }
+        : null;
     }
     if (!workspaceRoot) {
       return null;
@@ -3567,7 +3569,7 @@ export default function ChatView(props: ChatViewProps) {
           ? "在插件页安装 Chrome 扩展，并将 Endpoint 与 Token 填入扩展弹窗。"
           : "安装插件后，按照插件页引导安装 Chrome 扩展并完成 Endpoint/Token 配对。",
       });
-      void navigate({ to: "/plugins" });
+      void navigate({ to: "/extensions", hash: "plugins" });
       return;
     }
     const {
@@ -3971,10 +3973,7 @@ export default function ChatView(props: ChatViewProps) {
             : current,
         );
       }
-      setThreadError(
-        activeThread.id,
-        err instanceof Error ? err.message : "停止当前任务失败。",
-      );
+      setThreadError(activeThread.id, err instanceof Error ? err.message : "停止当前任务失败。");
     }
   };
 
@@ -4542,7 +4541,10 @@ export default function ChatView(props: ChatViewProps) {
         scopeThreadRef(activeThread.environmentId, activeThread.id),
         input.modelSelection,
       );
-      setComposerDraftRuntimeMode(scopeThreadRef(activeThread.environmentId, activeThread.id), input.runtimeMode);
+      setComposerDraftRuntimeMode(
+        scopeThreadRef(activeThread.environmentId, activeThread.id),
+        input.runtimeMode,
+      );
       setStickyComposerModelSelection(input.modelSelection);
       toastManager.add({
         type: "success",

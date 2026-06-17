@@ -32,6 +32,7 @@
     "@pierre/diffs": "catalog:",
     "croner": "^10.0.1",
     "effect": "catalog:",
+    "fflate": "^0.8.3",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {

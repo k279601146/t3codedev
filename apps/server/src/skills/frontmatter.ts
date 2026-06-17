@@ -1,7 +1,7 @@
 /**
  * SKILL.md frontmatter 解析。
  *
- * 我们只关心几个固定字段（name / description / shortDescription / iconSmall / iconLarge），
+ * 我们只关心几个固定字段（name / description / shortDescription / iconUrl / iconSmall / iconLarge），
  * 不引入完整 YAML 解析依赖；手写一个最小子集解析器就够了，因为 OpenAI curated 仓库
  * 中的 frontmatter 都是简单的 key: "value" 形式。
  */
@@ -11,6 +11,7 @@ export interface ParsedSkillFrontmatter {
   readonly displayName?: string;
   readonly description?: string;
   readonly shortDescription?: string;
+  readonly iconUrl?: string;
   readonly iconSmall?: string;
   readonly iconLarge?: string;
 }
@@ -113,6 +114,7 @@ function parseFrontmatterLines(lines: ReadonlyArray<string>): ParsedSkillFrontma
     ...(out["displayName"] ? { displayName: out["displayName"] } : {}),
     ...(out["description"] ? { description: out["description"] } : {}),
     ...(out["shortDescription"] ? { shortDescription: out["shortDescription"] } : {}),
+    ...(out["iconUrl"] ? { iconUrl: out["iconUrl"] } : {}),
     ...(out["iconSmall"] ? { iconSmall: out["iconSmall"] } : {}),
     ...(out["iconLarge"] ? { iconLarge: out["iconLarge"] } : {}),
   };

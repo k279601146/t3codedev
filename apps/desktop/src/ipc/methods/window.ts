@@ -2,9 +2,11 @@ import {
   ContextMenuItemSchema,
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
+  DesktopNotificationInputSchema,
   DesktopThemeSchema,
   PickFolderOptionsSchema,
 } from "@t3tools/contracts";
+import * as Electron from "electron";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -30,6 +32,8 @@ const ContextMenuInput = Schema.Struct({
   position: Schema.optionalKey(ContextMenuPosition),
 });
 
+const MAX_NOTIFICATION_TITLE_LENGTH = 120;
+const MAX_NOTIFICATION_BODY_LENGTH = 240;
 const ALLOWED_EXTERNAL_URL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
 
 class DesktopExternalUrlError extends Data.TaggedError("DesktopExternalUrlError")<{
@@ -129,6 +133,24 @@ export const confirm = makeIpcMethod({
   }),
 });
 
+export const showNotification = makeIpcMethod({
+  channel: IpcChannels.SHOW_NOTIFICATION_CHANNEL,
+  payload: DesktopNotificationInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.showNotification")(function* (input) {
+    yield* Effect.sync(() => {
+      const notification = new Electron.Notification({
+        title: clampNotificationText(input.title, MAX_NOTIFICATION_TITLE_LENGTH) || "Bahew",
+        silent: false,
+        ...(input.body && input.body.trim().length > 0
+          ? { body: clampNotificationText(input.body, MAX_NOTIFICATION_BODY_LENGTH) }
+          : {}),
+      });
+      notification.show();
+    });
+  }),
+});
+
 export const setTheme = makeIpcMethod({
   channel: IpcChannels.SET_THEME_CHANNEL,
   payload: DesktopThemeSchema,
@@ -138,6 +160,14 @@ export const setTheme = makeIpcMethod({
     yield* electronTheme.setSource(theme);
   }),
 });
+
+function clampNotificationText(value: string, maxLength: number): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
+}
 
 export const showContextMenu = makeIpcMethod({
   channel: IpcChannels.CONTEXT_MENU_CHANNEL,

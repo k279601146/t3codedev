@@ -6,9 +6,14 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
+import { createHash } from "node:crypto";
+import { strToU8, zipSync } from "fflate";
 
 import { ServerConfig } from "../config.ts";
-import { BUNDLED_EXTENSIONS_PATH_ENV, BUNDLED_SKILL_SOURCE_ID } from "../extensions/BundledExtensions.ts";
+import {
+  BUNDLED_EXTENSIONS_PATH_ENV,
+  BUNDLED_SKILL_SOURCE_ID,
+} from "../extensions/BundledExtensions.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 
@@ -31,6 +36,20 @@ const bundledCatalogItem = {
   sourceId: BUNDLED_SKILL_SOURCE_ID,
 } satisfies CatalogSkillEntry;
 
+const skillHubCatalogItem = {
+  id: "skillhub:pdf",
+  name: "pdf",
+  displayName: "PDF",
+  description: "处理 PDF",
+  shortDescription: "处理 PDF",
+  repoPath: "pdf",
+  iconSmall: null,
+  iconLarge: null,
+  sourceId: "skillhub",
+  sourceLabel: "SkillHub",
+  slug: "pdf",
+} satisfies CatalogSkillEntry;
+
 const catalogLayer = Layer.succeed(
   SkillsCatalogService,
   SkillsCatalogService.of({
@@ -49,6 +68,10 @@ const catalogLayer = Layer.succeed(
             skills: [bundledCatalogItem],
           },
         ],
+        categories: [],
+        total: 1,
+        page: 1,
+        pageSize: 20,
         hasErrors: false,
       }),
     warmUp: Effect.void,
@@ -56,6 +79,8 @@ const catalogLayer = Layer.succeed(
       Effect.succeed(catalogItemId === bundledCatalogItem.id ? bundledCatalogItem : undefined),
     resolveVendorAssetPath: () => Effect.succeed(null),
     readCatalogContent: () => Effect.succeed(null),
+    readCatalogFiles: () => Effect.succeed(null),
+    downloadCatalogZip: () => Effect.succeed(null),
   } satisfies SkillsCatalogServiceShape),
 );
 
@@ -65,7 +90,8 @@ const providerRegistryLayer = Layer.succeed(
     getProviders: Effect.succeed([] satisfies ReadonlyArray<ServerProvider>),
     refresh: () => Effect.succeed([] satisfies ReadonlyArray<ServerProvider>),
     refreshInstance: () => Effect.succeed([] satisfies ReadonlyArray<ServerProvider>),
-    getProviderMaintenanceCapabilitiesForInstance: () => Effect.die("unexpected maintenance lookup"),
+    getProviderMaintenanceCapabilitiesForInstance: () =>
+      Effect.die("unexpected maintenance lookup"),
     setProviderMaintenanceActionState: () =>
       Effect.succeed([] satisfies ReadonlyArray<ServerProvider>),
     streamChanges: Stream.empty,
@@ -102,11 +128,8 @@ const withProcessEnv = <A, E, R>(
   );
 
 const withHarness = <A, E, R>(
-  effect: Effect.Effect<
-    A,
-    E,
-    R | FileSystem.FileSystem | Path.Path | ServerConfig | SkillsService
-  >,
+  effect: Effect.Effect<A, E, R | FileSystem.FileSystem | Path.Path | ServerConfig | SkillsService>,
+  customCatalogLayer: Layer.Layer<SkillsCatalogService> = catalogLayer,
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -126,13 +149,10 @@ const withHarness = <A, E, R>(
       "---\nname: test-skill\ndisplayName: Test Skill\n---\n# Test Skill\n",
     );
 
-    return yield* withProcessEnv(
-      { [BUNDLED_EXTENSIONS_PATH_ENV]: extensionsRoot },
-      effect,
-    ).pipe(
+    return yield* withProcessEnv({ [BUNDLED_EXTENSIONS_PATH_ENV]: extensionsRoot }, effect).pipe(
       Effect.provide(
         SkillsServiceLive.pipe(
-          Layer.provideMerge(catalogLayer),
+          Layer.provideMerge(customCatalogLayer),
           Layer.provideMerge(providerRegistryLayer),
           Layer.provideMerge(
             ServerSettingsService.layerTest({
@@ -148,6 +168,48 @@ const withHarness = <A, E, R>(
       ),
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function skillHubCatalogLayer(zipBytes: Uint8Array, manifestPath = "SKILL.md") {
+  const skillMd = strToU8("---\nname: pdf\n---\n# PDF\n");
+  return Layer.succeed(
+    SkillsCatalogService,
+    SkillsCatalogService.of({
+      getCatalog: () =>
+        Effect.succeed({
+          snapshots: [
+            {
+              source: {
+                id: "skillhub",
+                displayName: "SkillHub",
+                repo: "skillhub",
+                ref: "remote",
+                curatedPath: "",
+              },
+              fetchedAt: 1,
+              skills: [skillHubCatalogItem],
+            },
+          ],
+          categories: [],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+          hasErrors: false,
+        }),
+      warmUp: Effect.void,
+      findCatalogItem: (catalogItemId) =>
+        Effect.succeed(catalogItemId === skillHubCatalogItem.id ? skillHubCatalogItem : undefined),
+      resolveVendorAssetPath: () => Effect.succeed(null),
+      readCatalogContent: () => Effect.succeed({ markdown: "# PDF" }),
+      readCatalogFiles: () =>
+        Effect.succeed([{ path: manifestPath, sha256: sha256(skillMd), size: skillMd.byteLength }]),
+      downloadCatalogZip: () => Effect.succeed(zipBytes),
+    } satisfies SkillsCatalogServiceShape),
+  );
+}
 
 describe("SkillsService bundled skills", () => {
   it.effect("安装内置技能时复制到用户 skill 目录", () =>
@@ -193,6 +255,52 @@ describe("SkillsService bundled skills", () => {
         assert.deepEqual(result, { marketplaceName: "test-skill", alreadyAdded: true });
         assert.equal(yield* fs.readFileString(installedSkillMd), "# 用户已有版本\n");
       }),
+    ),
+  );
+});
+
+describe("SkillsService SkillHub ZIP skills", () => {
+  it.effect("安装 SkillHub ZIP 到用户 skill 目录", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const config = yield* ServerConfig;
+        const service = yield* SkillsService;
+
+        const result = yield* service.install({ catalogItemId: skillHubCatalogItem.id });
+        const installedSkill = path.join(
+          config.baseDir.replace(/server-home$/, "codex-home"),
+          "skills",
+          "pdf",
+          "SKILL.md",
+        );
+
+        assert.deepEqual(result, { marketplaceName: "pdf", alreadyAdded: false });
+        assert.equal(yield* fs.exists(installedSkill), true);
+      }),
+      skillHubCatalogLayer(
+        zipSync({
+          "pdf/SKILL.md": strToU8("---\nname: pdf\n---\n# PDF\n"),
+          "pdf/docs/readme.md": strToU8("ok"),
+        }),
+      ),
+    ),
+  );
+
+  it.effect("拦截 SkillHub ZIP 中的危险扩展文件", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const service = yield* SkillsService;
+        const exit = yield* Effect.exit(service.install({ catalogItemId: skillHubCatalogItem.id }));
+        assert.equal(exit._tag, "Failure");
+      }),
+      skillHubCatalogLayer(
+        zipSync({
+          "pdf/SKILL.md": strToU8("---\nname: pdf\n---\n# PDF\n"),
+          "pdf/install.ps1": strToU8("Write-Host nope"),
+        }),
+      ),
     ),
   );
 });

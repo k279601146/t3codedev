@@ -43,7 +43,7 @@ describe("AutomationSchedule", () => {
 });
 
 describe("AutomationTarget", () => {
-  it("accepts project and thread targets", () => {
+  it("accepts project, thread and conversation targets", () => {
     expect(
       decodeTarget({
         kind: "project",
@@ -60,6 +60,9 @@ describe("AutomationTarget", () => {
     expect(decodeTarget({ kind: "thread", threadId: "thread-1" })).toEqual({
       kind: "thread",
       threadId: "thread-1",
+    });
+    expect(decodeTarget({ kind: "conversation" })).toEqual({
+      kind: "conversation",
     });
   });
 });
@@ -104,6 +107,21 @@ describe("AutomationUpsertInput", () => {
 
     expect(parsed.runtimeMode).toBe("auto-accept-edits");
     expect(parsed.target.kind).toBe("project");
+  });
+
+  it("accepts a general conversation automation input", () => {
+    const parsed = decodeUpsertInput({
+      title: "每日提醒",
+      prompt: "提醒我整理今天的待办。",
+      status: "enabled",
+      schedule: { kind: "daily", time: "09:00" },
+      target: { kind: "conversation" },
+      modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+      runtimeMode: "auto-accept-edits",
+      interactionMode: "default",
+    });
+
+    expect(parsed.target.kind).toBe("conversation");
   });
 });
 

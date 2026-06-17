@@ -166,6 +166,7 @@ describe("AutomationsPage", () => {
 
     expect(markup).toContain("还没有自动化");
     expect(markup).toContain("创建自动化");
+    expect(markup).toContain("日常提醒");
     expect(markup).toContain("Triage");
   });
 
@@ -180,5 +181,21 @@ describe("AutomationsPage", () => {
     expect(markup).toContain("项目：project-1");
     expect(markup).toContain("运行历史");
     expect(markup).toContain("运行完成。");
+  });
+
+  it("renders general conversation automation targets", async () => {
+    const markup = renderPage({
+      automations: [
+        {
+          ...makeAutomation(),
+          title: "每日待办",
+          target: { kind: "conversation" },
+        },
+      ],
+      runs: [],
+    });
+
+    expect(markup).toContain("每日待办");
+    expect(markup).toContain("通用任务");
   });
 });

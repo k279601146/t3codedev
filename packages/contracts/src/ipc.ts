@@ -464,6 +464,18 @@ export const PickFolderOptionsSchema = Schema.Struct({
   initialPath: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
+export interface DesktopNotificationInput {
+  title: string;
+  body?: string;
+  tag?: string;
+}
+
+export const DesktopNotificationInputSchema = Schema.Struct({
+  title: Schema.String,
+  body: Schema.optionalKey(Schema.String),
+  tag: Schema.optionalKey(Schema.String),
+});
+
 export const DesktopCloudAuthFetchInputSchema = Schema.Struct({
   url: Schema.String,
   method: Schema.optionalKey(Schema.String),
@@ -655,6 +667,7 @@ export interface DesktopBridge {
   repairWindowsSandboxFirewall?: () => Promise<DesktopWindowsSandboxFirewallRepairResult>;
   pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
+  showNotification?: (input: DesktopNotificationInput) => Promise<void>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],

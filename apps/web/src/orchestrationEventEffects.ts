@@ -153,7 +153,23 @@ export function showThreadCompletionNotifications(
   candidates: readonly ThreadCompletionNotificationCandidate[],
   browserWindow: Window & typeof globalThis,
 ): void {
-  if (candidates.length === 0 || typeof browserWindow.Notification !== "function") {
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const desktopBridge = browserWindow.desktopBridge;
+  if (typeof desktopBridge?.showNotification === "function") {
+    for (const candidate of candidates) {
+      void desktopBridge.showNotification({
+        title: candidate.title,
+        body: candidate.body,
+        tag: `thread-completed:${candidate.threadId}:${candidate.turnId}`,
+      });
+    }
+    return;
+  }
+
+  if (typeof browserWindow.Notification !== "function") {
     return;
   }
 

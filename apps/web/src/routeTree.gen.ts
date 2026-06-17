@@ -13,6 +13,7 @@ import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PluginsRouteImport } from './routes/plugins'
 import { Route as PairRouteImport } from './routes/pair'
+import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
@@ -45,6 +46,11 @@ const PluginsRoute = PluginsRouteImport.update({
 const PairRoute = PairRouteImport.update({
   id: '/pair',
   path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExtensionsRoute = ExtensionsRouteImport.update({
+  id: '/extensions',
+  path: '/extensions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AutomationsRoute = AutomationsRouteImport.update({
@@ -116,6 +122,7 @@ const ChatEnvironmentIdThreadIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/automations': typeof AutomationsRoute
+  '/extensions': typeof ExtensionsRoute
   '/pair': typeof PairRoute
   '/plugins': typeof PluginsRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -133,6 +140,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/automations': typeof AutomationsRoute
+  '/extensions': typeof ExtensionsRoute
   '/pair': typeof PairRoute
   '/plugins': typeof PluginsRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
   '/automations': typeof AutomationsRoute
+  '/extensions': typeof ExtensionsRoute
   '/pair': typeof PairRoute
   '/plugins': typeof PluginsRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/automations'
+    | '/extensions'
     | '/pair'
     | '/plugins'
     | '/settings'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/automations'
+    | '/extensions'
     | '/pair'
     | '/plugins'
     | '/settings'
@@ -210,6 +221,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_chat'
     | '/automations'
+    | '/extensions'
     | '/pair'
     | '/plugins'
     | '/settings'
@@ -230,6 +242,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   AutomationsRoute: typeof AutomationsRoute
+  ExtensionsRoute: typeof ExtensionsRoute
   PairRoute: typeof PairRoute
   PluginsRoute: typeof PluginsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -264,6 +277,13 @@ declare module '@tanstack/react-router' {
       path: '/pair'
       fullPath: '/pair'
       preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/extensions': {
+      id: '/extensions'
+      path: '/extensions'
+      fullPath: '/extensions'
+      preLoaderRoute: typeof ExtensionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/automations': {
@@ -403,6 +423,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   AutomationsRoute: AutomationsRoute,
+  ExtensionsRoute: ExtensionsRoute,
   PairRoute: PairRoute,
   PluginsRoute: PluginsRoute,
   SettingsRoute: SettingsRouteWithChildren,

@@ -264,7 +264,40 @@ describe("shouldShowBrowserThreadCompletionNotification", () => {
 });
 
 describe("showThreadCompletionNotifications", () => {
-  it("用浏览器 Notification API 展示后台完成通知", () => {
+  it("桌面桥存在时优先调用原生通知", () => {
+    const showNotification = vi.fn();
+    const browserWindow = {
+      desktopBridge: {
+        showNotification,
+      },
+      Notification: undefined,
+      document: {
+        visibilityState: "hidden",
+        hasFocus: () => false,
+      },
+    } as unknown as Window & typeof globalThis;
+
+    showThreadCompletionNotifications(
+      [
+        {
+          threadId: ThreadId.make("thread-1"),
+          turnId: "turn-1",
+          title: "后台任务",
+          body: "任务已完成。",
+        },
+      ],
+      browserWindow,
+    );
+
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    expect(showNotification).toHaveBeenCalledWith({
+      title: "后台任务",
+      body: "任务已完成。",
+      tag: "thread-completed:thread-1:turn-1",
+    });
+  });
+
+  it("没有桌面桥时回退到浏览器 Notification API", () => {
     const created: Array<{ title: string; options: NotificationOptions | undefined }> = [];
     const NotificationMock = vi.fn(function Notification(
       this: Notification,

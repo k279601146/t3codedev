@@ -1,11 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { SkillsPage } from "../components/skills/SkillsPage";
-
-function SkillsRouteView() {
-  return <SkillsPage />;
-}
-
 export const Route = createFileRoute("/skills")({
   beforeLoad: ({ context }) => {
     if (
@@ -14,6 +8,6 @@ export const Route = createFileRoute("/skills")({
     ) {
       throw redirect({ to: "/pair", replace: true });
     }
+    throw redirect({ to: "/extensions", replace: true });
   },
-  component: SkillsRouteView,
 });

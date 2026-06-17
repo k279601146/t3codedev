@@ -122,6 +122,7 @@ import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./sett
 import {
   SkillContentInput,
   SkillContentResult,
+  SkillCatalogQueryInput,
   SkillInstallInput,
   SkillInstallResult,
   SkillUninstallInput,
@@ -368,13 +369,10 @@ export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess,
   success: ServerSignalProcessResult,
 });
 
-export const WsServerResolveAttachmentPathRpc = Rpc.make(
-  WS_METHODS.serverResolveAttachmentPath,
-  {
-    payload: ServerResolveAttachmentPathInput,
-    success: ServerResolveAttachmentPathResult,
-  },
-);
+export const WsServerResolveAttachmentPathRpc = Rpc.make(WS_METHODS.serverResolveAttachmentPath, {
+  payload: ServerResolveAttachmentPathInput,
+  success: ServerResolveAttachmentPathResult,
+});
 
 export const WsProviderWindowsSandboxReadinessRpc = Rpc.make(
   WS_METHODS.providerWindowsSandboxReadiness,
@@ -431,7 +429,7 @@ export const WsSkillsListRpc = Rpc.make(WS_METHODS.skillsList, {
 });
 
 export const WsSkillsCatalogRpc = Rpc.make(WS_METHODS.skillsCatalog, {
-  payload: Schema.Struct({}),
+  payload: SkillCatalogQueryInput,
   success: SkillsCatalogResponse,
   error: SkillsServiceError,
 });

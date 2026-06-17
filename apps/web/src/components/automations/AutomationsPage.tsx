@@ -1,4 +1,5 @@
 import {
+  CONVERSATION_PROJECT_ID,
   DEFAULT_MODEL,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   ProviderInstanceId,
@@ -69,6 +70,12 @@ const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "�
 type InboxFilter = "unread" | "all";
 type ScheduleKind = AutomationSchedule["kind"];
 type TargetKind = AutomationTarget["kind"];
+type TargetKindOption = {
+  readonly kind: TargetKind;
+  readonly label: string;
+  readonly description: string;
+  readonly disabled?: boolean;
+};
 
 interface AutomationDraft {
   readonly id?: Automation["id"];
@@ -126,6 +133,9 @@ function scheduleLabel(schedule: AutomationSchedule): string {
 }
 
 function targetLabel(target: AutomationTarget, projects: readonly Project[], threads: readonly ThreadShell[]) {
+  if (target.kind === "conversation") {
+    return "通用任务";
+  }
   if (target.kind === "thread") {
     const thread = threads.find((item) => item.id === target.threadId);
     return thread ? `线程：${thread.title}` : `线程：${target.threadId}`;
@@ -165,6 +175,7 @@ function runStatusVariant(status: AutomationRun["status"]): React.ComponentProps
 
 function defaultModelSelection(projects: readonly Project[], threads: readonly ThreadShell[]): ModelSelection {
   return (
+    threads.find((thread) => thread.projectId === CONVERSATION_PROJECT_ID)?.modelSelection ??
     projects.find((project) => project.defaultModelSelection)?.defaultModelSelection ??
     threads[0]?.modelSelection ?? {
       instanceId: ProviderInstanceId.make("codex"),
@@ -187,7 +198,7 @@ function createEmptyDraft(projects: readonly Project[], threads: readonly Thread
     weeklyWeekday: "1",
     weeklyTime: "09:00",
     cronExpression: "0 9 * * *",
-    targetKind: firstProject ? "project" : "thread",
+    targetKind: "conversation",
     projectId: firstProject?.id ?? "",
     threadId: firstThread?.id ?? "",
     runMode: "worktree",
@@ -266,13 +277,20 @@ function draftFromTemplate(
 ): AutomationDraft {
   const draft = createEmptyDraft(projects, threads);
   const weekly = template.id.includes("weekly");
-  const interval = template.id.includes("ci") || template.id.includes("bug");
+  const interval = template.id.includes("review") || template.id.includes("project");
+  const threadTemplate = template.id.includes("research");
+  const projectTemplate = template.id.includes("project") || template.id.includes("review");
+  const firstProject = projects[0] ?? null;
+  const firstThread = threads[0] ?? null;
   return {
     ...draft,
     title: template.title,
     prompt: template.prompt.replace(/^创建一个自动化：/, ""),
     scheduleKind: weekly ? "weekly" : interval ? "interval" : "daily",
     intervalMinutes: interval ? "120" : draft.intervalMinutes,
+    targetKind: projectTemplate && firstProject ? "project" : threadTemplate && firstThread ? "thread" : "conversation",
+    projectId: projectTemplate && firstProject ? firstProject.id : draft.projectId,
+    threadId: threadTemplate && firstThread ? firstThread.id : draft.threadId,
   };
 }
 
@@ -294,6 +312,11 @@ function buildSchedule(draft: AutomationDraft): AutomationSchedule {
 }
 
 function buildTarget(draft: AutomationDraft): AutomationTarget {
+  if (draft.targetKind === "conversation") {
+    return {
+      kind: "conversation",
+    };
+  }
   if (draft.targetKind === "thread") {
     return {
       kind: "thread",
@@ -487,12 +510,33 @@ export function AutomationsPage() {
     upsertMutation.mutate(buildUpsertInput(draft));
   }, [draft, upsertMutation]);
 
-  const hasTargets = projects.length > 0 || threads.length > 0;
   const loading = query.isLoading;
+  const targetOptions: readonly TargetKindOption[] = useMemo(
+    () => [
+      {
+        kind: "conversation",
+        label: "通用任务",
+        description: "每次运行创建独立结果线程，适合提醒、摘要、待办和日常跟进。",
+      },
+      {
+        kind: "thread",
+        label: "线程心跳",
+        description: "定期唤醒同一个线程，适合持续研究、等待结果或长线跟进。",
+        disabled: threads.length === 0,
+      },
+      {
+        kind: "project",
+        label: "项目巡检",
+        description: "绑定项目运行，适合代码仓库、PR、CI、发布说明和工程检查。",
+        disabled: projects.length === 0,
+      },
+    ],
+    [projects.length, threads.length],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-5">
+      <header className="drag-region flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-5 wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]">
         <div className="flex min-w-0 items-center gap-2">
           <BotIcon className="size-4 text-muted-foreground" />
           <span className="truncate text-sm font-medium">自动化</span>
@@ -505,7 +549,7 @@ export function AutomationsPage() {
             <BotIcon className="size-3.5" />
             通过聊天创建
           </Button>
-          <Button size="xs" onClick={openCreate} disabled={!hasTargets}>
+          <Button size="xs" onClick={openCreate}>
             <PlusIcon className="size-3.5" />
             新建
           </Button>
@@ -520,7 +564,7 @@ export function AutomationsPage() {
                 <div>
                   <h1 className="text-2xl font-semibold tracking-normal">自动化管理</h1>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    管理定时运行、线程心跳、Triage 收件箱和运行记录。
+                    管理日常提醒、线程心跳、项目巡检、Triage 收件箱和运行记录。
                   </p>
                 </div>
               </div>
@@ -537,7 +581,7 @@ export function AutomationsPage() {
                     <EmptyTitle className="text-base">还没有自动化</EmptyTitle>
                   </EmptyHeader>
                   <EmptyContent className="flex-row justify-center gap-2">
-                    <Button size="sm" onClick={openCreate} disabled={!hasTargets}>
+                    <Button size="sm" onClick={openCreate}>
                       <PlusIcon className="size-4" />
                       创建自动化
                     </Button>
@@ -641,6 +685,7 @@ export function AutomationsPage() {
         draft={draft}
         projects={projects}
         threads={threads}
+        targetOptions={targetOptions}
         saving={upsertMutation.isPending}
         onChange={setDraft}
         onClose={() => setDraft(null)}
@@ -790,6 +835,7 @@ function AutomationFormDialog({
   draft,
   projects,
   threads,
+  targetOptions,
   saving,
   onChange,
   onClose,
@@ -798,6 +844,7 @@ function AutomationFormDialog({
   readonly draft: AutomationDraft | null;
   readonly projects: readonly Project[];
   readonly threads: readonly ThreadShell[];
+  readonly targetOptions: readonly TargetKindOption[];
   readonly saving: boolean;
   readonly onChange: (draft: AutomationDraft | null) => void;
   readonly onClose: () => void;
@@ -810,6 +857,7 @@ function AutomationFormDialog({
     },
     [draft, onChange],
   );
+  const selectedTargetOption = targetOptions.find((option) => option.kind === draft?.targetKind);
 
   if (!draft) return null;
 
@@ -856,8 +904,11 @@ function AutomationFormDialog({
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="目标类型">
               <NativeSelect value={draft.targetKind} onChange={(event) => update("targetKind", event.target.value as TargetKind)}>
-                <option value="project">独立项目自动化</option>
-                <option value="thread">线程自动化</option>
+                {targetOptions.map((option) => (
+                  <option key={option.kind} value={option.kind} disabled={option.disabled}>
+                    {option.label}
+                  </option>
+                ))}
               </NativeSelect>
             </Field>
             {draft.targetKind === "project" ? (
@@ -873,7 +924,7 @@ function AutomationFormDialog({
                   ))}
                 </NativeSelect>
               </Field>
-            ) : (
+            ) : draft.targetKind === "thread" ? (
               <Field label="线程">
                 <NativeSelect value={draft.threadId} onChange={(event) => update("threadId", event.target.value)}>
                   <option value="" disabled>
@@ -886,8 +937,17 @@ function AutomationFormDialog({
                   ))}
                 </NativeSelect>
               </Field>
+            ) : (
+              <Field label="结果">
+                <Input value="新建独立结果线程" disabled />
+              </Field>
             )}
           </div>
+          {selectedTargetOption ? (
+            <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
+              {selectedTargetOption.description}
+            </p>
+          ) : null}
 
           {draft.targetKind === "project" ? (
             <div className="grid gap-4 md:grid-cols-2">

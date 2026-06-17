@@ -4,6 +4,7 @@ import {
   AutomationRun,
   AutomationRunId,
   AutomationServiceError,
+  CONVERSATION_PROJECT_ID,
   CommandId,
   MessageId,
   ThreadId,
@@ -227,6 +228,21 @@ const make = Effect.gen(function* () {
                 },
               }
             : {}),
+        };
+      }
+
+      if (automation.target.kind === "conversation") {
+        bootstrap = {
+          createThread: {
+            projectId: CONVERSATION_PROJECT_ID,
+            title: `自动化: ${automation.title}`,
+            modelSelection: automation.modelSelection,
+            runtimeMode: automation.runtimeMode,
+            interactionMode: automation.interactionMode,
+            branch: null,
+            worktreePath: null,
+            createdAt,
+          },
         };
       }
 

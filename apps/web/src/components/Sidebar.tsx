@@ -3639,11 +3639,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleCreateConversationThread = useCallback(() => {
     openConversationThread();
   }, [openConversationThread]);
-  const handleOpenPlugins = useCallback(() => {
-    void navigate({ to: "/plugins" });
-  }, [navigate]);
-  const handleOpenSkills = useCallback(() => {
-    void navigate({ to: "/skills" });
+  const handleOpenExtensions = useCallback(() => {
+    void navigate({ to: "/extensions" });
   }, [navigate]);
   const handleOpenAutomation = useCallback(() => {
     void navigate({ to: "/automations" });
@@ -3706,13 +3703,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </SidebarMenuItem>
           <SidebarNavButton
             icon={BlocksIcon}
-            label={t("sidebar.plugins")}
-            onClick={handleOpenPlugins}
-          />
-          <SidebarNavButton
-            icon={SparklesIcon}
-            label={t("sidebar.skills")}
-            onClick={handleOpenSkills}
+            label={t("sidebar.extensions")}
+            onClick={handleOpenExtensions}
           />
           <SidebarNavButton icon={GitPullRequestIcon} label={t("sidebar.pullRequests")} />
           <SidebarNavButton

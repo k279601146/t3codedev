@@ -1,8 +1,8 @@
 /**
- * Skills sources — built-in catalog source registry.
+ * Skills sources — legacy GitHub source registry.
  *
- * 第一版只内置 OpenAI 的 curated 仓库，不开放给用户管理。
- * 如需扩展，往 BUILT_IN_SKILL_SOURCES 数组里加条目即可。
+ * 远程 catalog 已迁移到 SkillCatalogProvider，默认只启用 SkillHub。
+ * 这里保留类型和 helper 仅用于兼容旧调用，不再注册 OpenAI curated 源。
  */
 
 export interface SkillSource {
@@ -18,15 +18,7 @@ export interface SkillSource {
   readonly curatedPath: string;
 }
 
-export const BUILT_IN_SKILL_SOURCES: ReadonlyArray<SkillSource> = [
-  {
-    id: "openai-curated",
-    displayName: "OpenAI Curated",
-    repo: "openai/skills",
-    ref: "main",
-    curatedPath: "skills/.curated",
-  },
-];
+export const BUILT_IN_SKILL_SOURCES: ReadonlyArray<SkillSource> = [];
 
 export function findSkillSource(id: string): SkillSource | undefined {
   return BUILT_IN_SKILL_SOURCES.find((source) => source.id === id);

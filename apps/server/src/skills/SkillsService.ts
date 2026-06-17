@@ -21,7 +21,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { cp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import * as NodeOS from "node:os";
+import { unzipSync } from "fflate";
 
 import {
   type CodexSettings,
@@ -49,15 +51,44 @@ import {
   SkillsCatalogService,
   SkillsCatalogError,
 } from "./SkillsCatalogService.ts";
-import { findSkillSource, repoHttpsUrl } from "./SkillsSources.ts";
+import { SKILLHUB_SOURCE_ID } from "./SkillHubCatalogProvider.ts";
 
 const ASSET_BASE = "/api/skills/asset";
 const INSTALLED_ASSET_BASE = "/api/skills/installed-asset";
+const MAX_ZIP_BYTES = 25 * 1024 * 1024;
+const MAX_UNZIPPED_BYTES = 50 * 1024 * 1024;
+const MAX_ZIP_FILE_COUNT = 500;
+const DANGEROUS_EXTENSIONS = new Set([
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".bin",
+  ".msi",
+  ".bat",
+  ".cmd",
+  ".ps1",
+  ".com",
+  ".scr",
+  ".wasm",
+  ".jar",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".7z",
+  ".rar",
+]);
 
 export interface SkillsServiceShape {
   readonly list: () => Effect.Effect<SkillsListResponse, SkillsServiceError>;
   readonly catalog: (options?: {
     readonly force?: boolean;
+    readonly query?: string;
+    readonly category?: string;
+    readonly page?: number;
+    readonly pageSize?: number;
+    readonly sortBy?: "downloads" | "updated" | "created" | "name";
+    readonly order?: "asc" | "desc";
   }) => Effect.Effect<SkillsCatalogResponse, SkillsServiceError>;
   readonly install: (input: {
     readonly catalogItemId: string;
@@ -114,6 +145,8 @@ const buildInstalledAssetUrl = (skillName: string, relativePath: string): string
   )}`;
 };
 
+const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value);
+
 const normalizeAssetRelPath = (value: string | null): string | null => {
   if (value === null) return null;
   const trimmed = value.trim();
@@ -161,14 +194,13 @@ const pickFallbackIconPaths = (
 };
 
 const catalogEntryToItem = (entry: CatalogSkillEntry): SkillCatalogItem => {
-  const source = findSkillSource(entry.sourceId);
   const sourceRepoUrl =
     entry.sourceId === BUNDLED_SKILL_SOURCE_ID
       ? "t3code://bundled/extensions"
-      : source
-        ? repoHttpsUrl(source)
-        : `https://github.com/${entry.sourceId}`;
-  const sourceRef = entry.sourceId === BUNDLED_SKILL_SOURCE_ID ? "bundled" : (source?.ref ?? "main");
+      : entry.sourceId === SKILLHUB_SOURCE_ID
+        ? "https://skillhub.cn/skills"
+        : (entry.sourceUrl ?? entry.homepage ?? `t3code://${entry.sourceId}`);
+  const sourceRef = entry.sourceId === BUNDLED_SKILL_SOURCE_ID ? "bundled" : "remote";
   return {
     id: entry.id,
     name: entry.name,
@@ -180,13 +212,195 @@ const catalogEntryToItem = (entry: CatalogSkillEntry): SkillCatalogItem => {
     sourceRef,
     sparsePath: entry.repoPath,
     ...(entry.iconSmall
-      ? { iconSmallUrl: buildAssetUrl(entry.sourceId, entry.repoPath, entry.iconSmall) }
+      ? {
+          iconSmallUrl: isHttpUrl(entry.iconSmall)
+            ? entry.iconSmall
+            : buildAssetUrl(entry.sourceId, entry.repoPath, entry.iconSmall),
+        }
       : {}),
     ...(entry.iconLarge
-      ? { iconLargeUrl: buildAssetUrl(entry.sourceId, entry.repoPath, entry.iconLarge) }
+      ? {
+          iconLargeUrl: isHttpUrl(entry.iconLarge)
+            ? entry.iconLarge
+            : buildAssetUrl(entry.sourceId, entry.repoPath, entry.iconLarge),
+        }
       : {}),
+    ...(entry.categoryKey ? { categoryKey: entry.categoryKey } : {}),
+    ...(entry.categoryName ? { categoryName: entry.categoryName } : {}),
+    ...(entry.sourceLabel ? { sourceLabel: entry.sourceLabel } : {}),
+    ...(entry.version ? { version: entry.version } : {}),
+    ...(entry.downloads !== undefined ? { downloads: entry.downloads } : {}),
+    ...(entry.installs !== undefined ? { installs: entry.installs } : {}),
+    ...(entry.stars !== undefined ? { stars: entry.stars } : {}),
+    ...(entry.requiresApiKey !== undefined ? { requiresApiKey: entry.requiresApiKey } : {}),
+    ...(entry.securityStatus ? { securityStatus: entry.securityStatus } : {}),
+    ...(entry.homepage ? { homepage: entry.homepage } : {}),
+    ...(entry.sourceUrl ? { sourceUrl: entry.sourceUrl } : {}),
   };
 };
+
+interface PreparedZipSkill {
+  readonly skillName: string;
+  readonly files: ReadonlyArray<{
+    readonly relPath: string;
+    readonly bytes: Uint8Array;
+  }>;
+  readonly securityStatus: "verified" | "unknown";
+}
+
+function normalizeZipPath(raw: string): string | null {
+  if (raw.length === 0 || raw.includes("\0")) return null;
+  const normalized = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (/^[a-zA-Z]:/.test(normalized)) return null;
+  const parts = normalized.split("/").filter((part) => part.length > 0);
+  if (parts.some((part) => part === "..")) return null;
+  return parts.join("/");
+}
+
+function pathExtension(relPath: string): string {
+  const name = relPath.split("/").pop() ?? "";
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
+
+function sanitizeInstallSkillName(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "skill";
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function prepareSkillHubZip(
+  zipBytes: Uint8Array,
+  item: CatalogSkillEntry,
+  manifestFiles: ReadonlyArray<{ readonly path: string; readonly sha256?: string | undefined }>,
+): PreparedZipSkill {
+  if (zipBytes.byteLength > MAX_ZIP_BYTES) {
+    throw new SkillsServiceError({
+      detail: `SkillHub ZIP is too large: ${zipBytes.byteLength} bytes.`,
+      kind: "internal",
+    });
+  }
+
+  const unzipped = unzipSync(zipBytes);
+  const normalizedEntries = Object.entries(unzipped)
+    .map(([rawPath, bytes]) => {
+      const relPath = normalizeZipPath(rawPath);
+      if (relPath === null) {
+        throw new SkillsServiceError({
+          detail: `SkillHub ZIP contains unsafe path: ${rawPath}`,
+          kind: "internal",
+        });
+      }
+      return { relPath, bytes };
+    })
+    .filter((entry) => !entry.relPath.endsWith("/"));
+
+  if (normalizedEntries.length > MAX_ZIP_FILE_COUNT) {
+    throw new SkillsServiceError({
+      detail: `SkillHub ZIP contains too many files: ${normalizedEntries.length}.`,
+      kind: "internal",
+    });
+  }
+
+  let totalBytes = 0;
+  for (const entry of normalizedEntries) {
+    totalBytes += entry.bytes.byteLength;
+    if (totalBytes > MAX_UNZIPPED_BYTES) {
+      throw new SkillsServiceError({
+        detail: `SkillHub ZIP expands beyond ${MAX_UNZIPPED_BYTES} bytes.`,
+        kind: "internal",
+      });
+    }
+  }
+
+  const rootSkill = normalizedEntries.find((entry) => entry.relPath.toLowerCase() === "skill.md");
+  const topLevelNames = new Set(
+    normalizedEntries
+      .map((entry) => entry.relPath.split("/")[0])
+      .filter((part): part is string => Boolean(part)),
+  );
+  const singleTopLevel = topLevelNames.size === 1 ? [...topLevelNames][0] : null;
+  const topLevelSkill = singleTopLevel
+    ? normalizedEntries.find(
+        (entry) => entry.relPath.toLowerCase() === `${singleTopLevel.toLowerCase()}/skill.md`,
+      )
+    : undefined;
+  const stripPrefix = rootSkill
+    ? ""
+    : topLevelSkill && singleTopLevel
+      ? `${singleTopLevel}/`
+      : null;
+  if (stripPrefix === null) {
+    throw new SkillsServiceError({
+      detail: "SkillHub ZIP must contain SKILL.md at root or under one top-level directory.",
+      kind: "internal",
+    });
+  }
+
+  const files = normalizedEntries.map((entry) => {
+    const relPath =
+      stripPrefix && entry.relPath.startsWith(stripPrefix)
+        ? entry.relPath.slice(stripPrefix.length)
+        : entry.relPath;
+    if (!relPath || normalizeZipPath(relPath) !== relPath) {
+      throw new SkillsServiceError({
+        detail: `SkillHub ZIP contains unsafe normalized path: ${entry.relPath}`,
+        kind: "internal",
+      });
+    }
+    const ext = pathExtension(relPath);
+    if (DANGEROUS_EXTENSIONS.has(ext)) {
+      throw new SkillsServiceError({
+        detail: `SkillHub ZIP contains blocked executable or archive file: ${relPath}`,
+        kind: "internal",
+      });
+    }
+    return { relPath, bytes: entry.bytes };
+  });
+
+  const skillMd = files.find((entry) => entry.relPath.toLowerCase() === "skill.md");
+  if (!skillMd) {
+    throw new SkillsServiceError({
+      detail: "SkillHub ZIP missing SKILL.md after normalization.",
+      kind: "internal",
+    });
+  }
+
+  let securityStatus: "verified" | "unknown" = "unknown";
+  const manifestWithHashes = manifestFiles.filter((file) => file.sha256);
+  if (manifestWithHashes.length > 0) {
+    const byPath = new Map(files.map((file) => [file.relPath.replace(/\\/g, "/"), file.bytes]));
+    for (const manifest of manifestWithHashes) {
+      const relPath = normalizeZipPath(manifest.path);
+      if (!relPath) continue;
+      const bytes = byPath.get(relPath);
+      if (!bytes) {
+        throw new SkillsServiceError({
+          detail: `SkillHub ZIP missing manifest file: ${relPath}`,
+          kind: "internal",
+        });
+      }
+      if (sha256Hex(bytes) !== manifest.sha256!.toLowerCase()) {
+        throw new SkillsServiceError({
+          detail: `SkillHub ZIP sha256 mismatch: ${relPath}`,
+          kind: "internal",
+        });
+      }
+    }
+    securityStatus = "verified";
+  }
+
+  const parsed = parseSkillDocument(new TextDecoder().decode(skillMd.bytes));
+  const skillName = sanitizeInstallSkillName(parsed.frontmatter.name ?? item.slug ?? item.name);
+  return { skillName, files, securityStatus };
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -328,9 +542,11 @@ const make = Effect.fn("makeSkillsService")(function* () {
                 assetEntries.map((asset) => `assets/${asset}`),
               );
               const small =
+                normalizeAssetRelPath(parsed.frontmatter.iconUrl ?? null) ??
                 normalizeAssetRelPath(parsed.frontmatter.iconSmall ?? null) ??
                 normalizeAssetRelPath(fallbackIcons.small);
               const large =
+                normalizeAssetRelPath(parsed.frontmatter.iconUrl ?? null) ??
                 normalizeAssetRelPath(parsed.frontmatter.iconLarge ?? null) ??
                 normalizeAssetRelPath(fallbackIcons.large);
               if (small) iconSmallUrl = buildInstalledAssetUrl(raw.name, small);
@@ -373,6 +589,10 @@ const make = Effect.fn("makeSkillsService")(function* () {
       items.sort((a, b) => a.displayName.localeCompare(b.displayName));
       return {
         items,
+        categories: [...state.categories],
+        total: state.total,
+        page: state.page,
+        pageSize: state.pageSize,
         ...(fetchedAt > 0 ? { fetchedAt } : {}),
         ...(state.hasErrors ? { hasErrors: true } : {}),
       } satisfies SkillsCatalogResponse;
@@ -380,9 +600,9 @@ const make = Effect.fn("makeSkillsService")(function* () {
 
   const install: SkillsServiceShape["install"] = (input) =>
     Effect.gen(function* () {
-      const item = yield* catalog.findCatalogItem(input.catalogItemId).pipe(
-        Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
-      );
+      const item = yield* catalog
+        .findCatalogItem(input.catalogItemId)
+        .pipe(Effect.mapError((cause) => errorFromUnknown("skills.install", cause)));
       if (!item) {
         return yield* Effect.fail(
           new SkillsServiceError({
@@ -391,9 +611,9 @@ const make = Effect.fn("makeSkillsService")(function* () {
           }),
         );
       }
-      const source = findSkillSource(item.sourceId);
       const isBundledSkill = item.sourceId === BUNDLED_SKILL_SOURCE_ID;
-      if (!source && !isBundledSkill) {
+      const isSkillHubSkill = item.sourceId === SKILLHUB_SOURCE_ID;
+      if (!isBundledSkill && !isSkillHubSkill) {
         return yield* Effect.fail(
           new SkillsServiceError({
             detail: `Unknown source: ${item.sourceId}`,
@@ -405,6 +625,90 @@ const make = Effect.fn("makeSkillsService")(function* () {
       const storage = yield* resolveStorageContext().pipe(
         Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
       );
+
+      if (isSkillHubSkill) {
+        const [zipBytes, manifestFiles] = yield* Effect.all(
+          [
+            catalog.downloadCatalogZip(input.catalogItemId),
+            catalog.readCatalogFiles(input.catalogItemId),
+          ],
+          { concurrency: 2 },
+        ).pipe(Effect.mapError((cause) => errorFromUnknown("skills.install", cause)));
+        if (!zipBytes) {
+          return yield* Effect.fail(
+            new SkillsServiceError({
+              detail: `SkillHub ZIP not found: ${input.catalogItemId}`,
+              kind: "notFound",
+            }),
+          );
+        }
+        const prepared = yield* Effect.try({
+          try: () => prepareSkillHubZip(zipBytes, item, manifestFiles ?? []),
+          catch: (cause) => errorFromUnknown("skills.install", cause),
+        });
+        const targetDir = path.join(storage.skillsRoot, prepared.skillName);
+        if (!isPathInside(storage.skillsRoot, targetDir)) {
+          return yield* Effect.fail(
+            new SkillsServiceError({
+              detail: `Cannot install skill outside CODEX_HOME/skills: ${targetDir}`,
+              kind: "internal",
+            }),
+          );
+        }
+        const exists = yield* fs.exists(targetDir).pipe(Effect.orElseSucceed(() => false));
+        if (exists) {
+          yield* refreshCodexProvidersInBackground("install", prepared.skillName);
+          return { marketplaceName: prepared.skillName, alreadyAdded: true };
+        }
+
+        yield* fs.makeDirectory(targetDir, { recursive: true }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new SkillsServiceError({
+                detail: `Creating skill directory failed: ${String(cause)}`,
+                kind: "internal",
+              }),
+          ),
+        );
+        for (const file of prepared.files) {
+          const targetPath = path.join(targetDir, file.relPath);
+          if (!isPathInside(targetDir, targetPath)) {
+            return yield* Effect.fail(
+              new SkillsServiceError({
+                detail: `Cannot write skill file outside target directory: ${file.relPath}`,
+                kind: "internal",
+              }),
+            );
+          }
+          yield* fs.makeDirectory(path.dirname(targetPath), { recursive: true }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SkillsServiceError({
+                  detail: `Creating skill subdirectory failed: ${String(cause)}`,
+                  kind: "internal",
+                }),
+            ),
+          );
+          yield* fs.writeFile(targetPath, file.bytes).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SkillsServiceError({
+                  detail: `Writing skill file failed: ${String(cause)}`,
+                  kind: "internal",
+                }),
+            ),
+          );
+        }
+        yield* Effect.logInfo("skills.install installed SkillHub ZIP", {
+          skillName: prepared.skillName,
+          catalogItemId: input.catalogItemId,
+          securityStatus: prepared.securityStatus,
+          targetDir,
+        });
+        yield* refreshCodexProvidersInBackground("install", prepared.skillName);
+        return { marketplaceName: prepared.skillName, alreadyAdded: false };
+      }
+
       const sourceDir = isBundledSkill
         ? yield* resolveBundledRoot().pipe(
             Effect.flatMap((bundledRoot) =>
@@ -419,7 +723,7 @@ const make = Effect.fn("makeSkillsService")(function* () {
             ),
             Effect.mapError((cause) => errorFromUnknown("skills.install", cause)),
           )
-        : path.join(config.baseDir, "vendor_imports", source!.id, item.repoPath);
+        : path.join(config.baseDir, "vendor_imports", item.sourceId, item.repoPath);
       const targetDir = path.join(storage.skillsRoot, item.name);
 
       if (!isPathInside(storage.skillsRoot, targetDir)) {

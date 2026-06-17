@@ -1,6 +1,12 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/plugins")({
+import { ExtensionsPage } from "../components/extensions/ExtensionsPage";
+
+function ExtensionsRouteView() {
+  return <ExtensionsPage />;
+}
+
+export const Route = createFileRoute("/extensions")({
   beforeLoad: ({ context }) => {
     if (
       context.authGateState.status !== "authenticated" &&
@@ -8,6 +14,6 @@ export const Route = createFileRoute("/plugins")({
     ) {
       throw redirect({ to: "/pair", replace: true });
     }
-    throw redirect({ to: "/extensions", hash: "plugins", replace: true });
   },
+  component: ExtensionsRouteView,
 });

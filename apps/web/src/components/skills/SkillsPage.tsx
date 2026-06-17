@@ -1,4 +1,8 @@
-import { type SkillCatalogItem, type InstalledSkill } from "@t3tools/contracts";
+import {
+  type SkillCatalogCategory,
+  type SkillCatalogItem,
+  type InstalledSkill,
+} from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
@@ -23,14 +27,17 @@ import { SkillDetailDialog } from "./SkillDetailDialog";
 
 const SKILLS_LIST_QUERY = ["skills", "list"] as const;
 const SKILLS_CATALOG_QUERY = ["skills", "catalog"] as const;
-const CATALOG_PAGE_SIZE = 20;
+const CATALOG_PAGE_SIZE = 30;
 
 function getSkillsClient() {
   return getPrimaryEnvironmentConnection().client.skills;
 }
 
 function getSkillIconUrl(skill: { iconSmallUrl?: string; iconLargeUrl?: string }): string | null {
-  return skill.iconSmallUrl ?? skill.iconLargeUrl ?? null;
+  const small = skill.iconSmallUrl?.trim();
+  if (small) return small;
+  const large = skill.iconLargeUrl?.trim();
+  return large || null;
 }
 
 function buildOptimisticInstalledSkill(catalogItem: SkillCatalogItem): InstalledSkill {
@@ -112,7 +119,7 @@ function SkillIcon({ iconUrl, fallbackName }: { iconUrl: string | null; fallback
     <img
       alt=""
       src={iconUrl}
-      className="size-8 object-contain"
+      className="size-8 rounded-sm object-contain"
       onError={() => setErrored(true)}
       draggable={false}
     />
@@ -131,16 +138,32 @@ function SkillCardSkeleton() {
   );
 }
 
-export function SkillsPage() {
+interface SkillsPageProps {
+  readonly embedded?: boolean;
+  readonly view?: "all" | "installed" | "sources";
+}
+
+export function SkillsPage({
+  embedded = false,
+  view = "all",
+}: SkillsPageProps = {}) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [activeSkill, setActiveSkill] = useState<
     { kind: "installed"; data: InstalledSkill } | { kind: "catalog"; data: SkillCatalogItem } | null
   >(null);
-  const [catalogVisibleCount, setCatalogVisibleCount] = useState(CATALOG_PAGE_SIZE);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogItems, setCatalogItems] = useState<SkillCatalogItem[]>([]);
+  const [catalogCategories, setCatalogCategories] = useState<ReadonlyArray<SkillCatalogCategory>>(
+    [],
+  );
+  const [catalogTotal, setCatalogTotal] = useState(0);
+  const [catalogExhausted, setCatalogExhausted] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
   const [uninstallingSkillName, setUninstallingSkillName] = useState<string | null>(null);
+  const trimmedSearch = search.trim();
 
   const installedQuery = useQuery({
     queryKey: SKILLS_LIST_QUERY,
@@ -148,15 +171,44 @@ export function SkillsPage() {
     staleTime: 30_000,
   });
 
+  const resetCatalogPagination = useCallback(() => {
+    setCatalogItems([]);
+    setCatalogTotal(0);
+    setCatalogPage(1);
+    setCatalogExhausted(false);
+  }, []);
+
   const catalogQuery = useQuery({
-    queryKey: SKILLS_CATALOG_QUERY,
-    queryFn: () => getSkillsClient().catalog(),
+    queryKey: [
+      ...SKILLS_CATALOG_QUERY,
+      {
+        category: selectedCategory,
+        page: catalogPage,
+        pageSize: CATALOG_PAGE_SIZE,
+        query: trimmedSearch,
+      },
+    ] as const,
+    queryFn: () =>
+      getSkillsClient().catalog({
+        page: catalogPage,
+        pageSize: CATALOG_PAGE_SIZE,
+        ...(selectedCategory !== "all" ? { category: selectedCategory } : {}),
+        ...(trimmedSearch ? { query: trimmedSearch } : {}),
+      }),
     staleTime: 60_000,
   });
 
   const refreshMutation = useMutation({
-    mutationFn: () => getSkillsClient().refresh({ force: true }),
+    mutationFn: () =>
+      getSkillsClient().refresh({
+        force: true,
+        page: 1,
+        pageSize: CATALOG_PAGE_SIZE,
+        ...(selectedCategory !== "all" ? { category: selectedCategory } : {}),
+        ...(trimmedSearch ? { query: trimmedSearch } : {}),
+      }),
     onSuccess: () => {
+      resetCatalogPagination();
       void queryClient.refetchQueries({ queryKey: SKILLS_CATALOG_QUERY, type: "active" });
       void queryClient.refetchQueries({ queryKey: SKILLS_LIST_QUERY, type: "active" });
     },
@@ -179,7 +231,9 @@ export function SkillsPage() {
       await queryClient.cancelQueries({ queryKey: SKILLS_LIST_QUERY });
       await queryClient.cancelQueries({ queryKey: SKILLS_CATALOG_QUERY });
 
-      const previousInstalled = queryClient.getQueryData<{ skills: InstalledSkill[] }>(SKILLS_LIST_QUERY);
+      const previousInstalled = queryClient.getQueryData<{ skills: InstalledSkill[] }>(
+        SKILLS_LIST_QUERY,
+      );
       const previousCatalog = queryClient.getQueryData<{
         items: SkillCatalogItem[];
         fetchedAt?: number;
@@ -261,7 +315,9 @@ export function SkillsPage() {
       setUninstallingSkillName(skill.name);
       await queryClient.cancelQueries({ queryKey: SKILLS_LIST_QUERY });
 
-      const previousInstalled = queryClient.getQueryData<{ skills: InstalledSkill[] }>(SKILLS_LIST_QUERY);
+      const previousInstalled = queryClient.getQueryData<{ skills: InstalledSkill[] }>(
+        SKILLS_LIST_QUERY,
+      );
 
       queryClient.setQueryData<{ skills: InstalledSkill[] }>(SKILLS_LIST_QUERY, (current) => ({
         skills: (current?.skills ?? []).filter((item) => item.name !== skill.name),
@@ -322,28 +378,47 @@ export function SkillsPage() {
   }, [installedQuery.data, search]);
 
   const filteredCatalog = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const items = (catalogQuery.data?.items ?? []).filter(
+    const items = catalogItems.filter(
       (item) => !installedNames.has(item.name.toLowerCase()),
     );
-    if (!query) return items;
-    return items.filter((item) =>
-      [item.name, item.displayName, item.description, item.shortDescription]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(query)),
-    );
-  }, [catalogQuery.data, installedNames, search]);
+    return items;
+  }, [catalogItems, installedNames]);
 
   useEffect(() => {
-    setCatalogVisibleCount(CATALOG_PAGE_SIZE);
-  }, [search, catalogQuery.data]);
+    resetCatalogPagination();
+  }, [trimmedSearch, selectedCategory, resetCatalogPagination]);
 
-  const visibleCatalog = useMemo(
-    () => filteredCatalog.slice(0, catalogVisibleCount),
-    [filteredCatalog, catalogVisibleCount],
-  );
+  useEffect(() => {
+    const data = catalogQuery.data;
+    if (!data) return;
+    setCatalogCategories(data.categories);
+    setCatalogTotal(data.total);
+    setCatalogItems((current) => {
+      if (data.page <= 1) {
+        setCatalogExhausted(data.items.length < CATALOG_PAGE_SIZE);
+        return [...data.items];
+      }
+      const byId = new Map(current.map((item) => [item.id, item]));
+      const beforeSize = byId.size;
+      for (const item of data.items) {
+        byId.set(item.id, item);
+      }
+      if (data.items.length < CATALOG_PAGE_SIZE || byId.size === beforeSize) {
+        setCatalogExhausted(true);
+      }
+      return [...byId.values()];
+    });
+  }, [catalogQuery.data]);
 
-  const hasMoreCatalog = visibleCatalog.length < filteredCatalog.length;
+  const categories =
+    catalogCategories.length > 0 ? catalogCategories : (catalogQuery.data?.categories ?? []);
+
+  const canLoadMoreCatalog =
+    view === "all" &&
+    !catalogExhausted &&
+    catalogItems.length < (catalogTotal || catalogQuery.data?.total || catalogItems.length);
+  const hasMoreCatalog = canLoadMoreCatalog && !catalogQuery.isFetching;
+  const loadingMoreCatalog = canLoadMoreCatalog && catalogPage > 1 && catalogQuery.isFetching;
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -354,9 +429,7 @@ export function SkillsPage() {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            setCatalogVisibleCount((current) =>
-              Math.min(current + CATALOG_PAGE_SIZE, filteredCatalog.length),
-            );
+            setCatalogPage((current) => current + 1);
             break;
           }
         }
@@ -365,21 +438,38 @@ export function SkillsPage() {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMoreCatalog, filteredCatalog.length]);
+  }, [hasMoreCatalog]);
 
   const refreshing = refreshMutation.isPending;
   const installedLoading = installedQuery.isLoading;
-  const catalogLoading = catalogQuery.isLoading;
+  const catalogLoading = catalogItems.length === 0 && catalogQuery.isLoading;
   const initialLoading = installedLoading || catalogLoading;
 
   const handleInstall = useCallback(
     (catalogItemId: string) => {
       if (installingSkillId !== null) return;
-      const item = catalogQuery.data?.items.find((it) => it.id === catalogItemId);
+      const item = catalogItems.find((it) => it.id === catalogItemId);
       if (!item) return;
       installMutation.mutate(item);
     },
-    [catalogQuery.data, installMutation, installingSkillId],
+    [catalogItems, installMutation, installingSkillId],
+  );
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      resetCatalogPagination();
+      setSearch(value);
+    },
+    [resetCatalogPagination],
+  );
+
+  const handleCategoryChange = useCallback(
+    (category: string) => {
+      if (category === selectedCategory) return;
+      resetCatalogPagination();
+      setSelectedCategory(category);
+    },
+    [resetCatalogPagination, selectedCategory],
   );
 
   const handleUninstall = useCallback(
@@ -394,7 +484,13 @@ export function SkillsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-      <header className="drag-region flex min-h-[52px] shrink-0 items-center justify-end gap-3 border-b border-border/60 px-8 py-3 wco:min-h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]">
+      <header
+        className={
+          embedded
+            ? "hidden"
+            : "drag-region flex min-h-[52px] shrink-0 items-center justify-end gap-3 border-b border-border/60 px-8 py-3 wco:min-h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]"
+        }
+      >
         <Button
           size="xs"
           variant="ghost"
@@ -408,7 +504,7 @@ export function SkillsPage() {
           <SearchIcon className="absolute start-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => handleSearchChange(event.target.value)}
             placeholder={t("skills.search")}
             className="h-8 ps-7 text-sm"
           />
@@ -416,23 +512,29 @@ export function SkillsPage() {
       </header>
 
       <ScrollArea className="flex-1 min-h-0">
-        <div className="mx-auto w-full max-w-5xl px-8 py-10">
-          <div>
-            <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground">
-              {t("skills.title")}
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {t("skills.subtitle")}
-              <a
-                href="https://platform.openai.com/docs/codex/concepts/skills"
-                target="_blank"
-                rel="noreferrer"
-                className="ms-1 text-primary hover:underline"
-              >
-                {t("skills.learnMore")}
-              </a>
-            </p>
-          </div>
+        <div
+          className={
+            embedded ? "mx-auto w-full max-w-5xl px-6 py-6" : "mx-auto w-full max-w-5xl px-8 py-10"
+          }
+        >
+          {!embedded ? (
+            <div>
+              <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground">
+                能力市场
+              </h1>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                从 SkillHub 安装技能，并管理本机可用能力。
+                <a
+                  href="https://skillhub.cn/skills"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ms-1 text-primary hover:underline"
+                >
+                  {t("skills.learnMore")}
+                </a>
+              </p>
+            </div>
+          ) : null}
 
           {initialLoading ? (
             <div
@@ -445,106 +547,232 @@ export function SkillsPage() {
             </div>
           ) : null}
 
-          <section className="mt-8">
-            <h2 className="text-[13px] font-medium text-muted-foreground">
-              {t("skills.installed")}
-            </h2>
-            <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
-              {installedLoading ? (
-                <>
-                  <SkillCardSkeleton />
-                  <SkillCardSkeleton />
-                </>
-              ) : filteredInstalled.length === 0 ? (
-                <div className="col-span-full px-3 py-6 text-sm text-muted-foreground">
-                  {t("skills.empty")}
+          {view === "all" ? (
+            <section className="mt-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-[13px] font-medium text-muted-foreground">
+                    {selectedCategory === "all"
+                      ? "SkillHub 全部技能"
+                      : (categories.find((category) => category.key === selectedCategory)?.name ??
+                        "SkillHub 分类")}
+                  </h2>
+                  {catalogTotal || catalogQuery.data?.total ? (
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {catalogTotal || catalogQuery.data?.total} 个远程技能
+                    </div>
+                  ) : null}
                 </div>
-              ) : (
-                filteredInstalled.map((skill) => (
-                  <SkillCard
-                    key={skill.name}
-                    icon={
-                      <SkillIcon
-                        iconUrl={getSkillIconUrl(skill)}
-                        fallbackName={skill.displayName ?? skill.name}
-                      />
-                    }
-                    title={skill.displayName ?? skill.name}
-                    {...((skill.shortDescription ?? skill.description)
-                      ? { subtitle: skill.shortDescription ?? skill.description }
-                      : {})}
-                    action={
-                      uninstallingSkillName === skill.name ? (
-                        <Loader2Icon
-                          className="size-4 animate-spin text-muted-foreground/80"
-                          aria-hidden
-                        />
-                      ) : (
-                        <CheckIcon className="size-4 text-muted-foreground/80" aria-hidden />
-                      )
-                    }
-                    onClick={() => setActiveSkill({ kind: "installed", data: skill })}
-                  />
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="mt-10">
-            <h2 className="text-[13px] font-medium text-muted-foreground">
-              {t("skills.recommended")}
-            </h2>
-            <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
-              {catalogLoading ? (
-                <>
-                  <SkillCardSkeleton />
-                  <SkillCardSkeleton />
-                  <SkillCardSkeleton />
-                  <SkillCardSkeleton />
-                </>
-              ) : visibleCatalog.length === 0 ? (
-                <div className="col-span-full flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">
-                  <PackageIcon className="size-4" />
-                  {t("skills.empty")}
+                <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    title={t("skills.refresh")}
+                    aria-label={t("skills.refresh")}
+                    onClick={() => refreshMutation.mutate()}
+                    disabled={refreshing}
+                  >
+                    <RefreshCcwIcon className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} />
+                  </Button>
+                  <div className="relative w-[240px]">
+                    <SearchIcon className="absolute start-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={search}
+                      onChange={(event) => handleSearchChange(event.target.value)}
+                      placeholder={t("skills.search")}
+                      className="h-8 ps-7 text-sm"
+                    />
+                  </div>
                 </div>
-              ) : (
-                visibleCatalog.map((item) => (
-                  <SkillCard
-                    key={item.id}
-                    icon={
-                      <SkillIcon iconUrl={getSkillIconUrl(item)} fallbackName={item.displayName} />
-                    }
-                    title={item.displayName}
-                    {...((item.shortDescription ?? item.description)
-                      ? { subtitle: item.shortDescription ?? item.description }
-                      : {})}
-                    action={
-                      installingSkillId === item.id ? (
-                        <Loader2Icon
-                          className="size-4 animate-spin text-muted-foreground/80"
-                          aria-hidden
-                        />
-                      ) : (
-                        <PlusIcon className="size-4 text-muted-foreground/80" aria-hidden />
-                      )
-                    }
-                    onClick={() => setActiveSkill({ kind: "catalog", data: item })}
-                  />
-                ))
-              )}
-            </div>
-            {hasMoreCatalog ? (
-              <div
-                ref={sentinelRef}
-                className="mt-3 flex items-center justify-center gap-2 px-3 py-4 text-xs text-muted-foreground"
-                role="status"
-                aria-live="polite"
-              >
-                <Loader2Icon className="size-3.5 animate-spin" />
-                <span>{t("skills.loadMore")}</span>
               </div>
-            ) : null}
-          </section>
+              <div className="mt-3 flex flex-wrap gap-2 [-webkit-app-region:no-drag]">
+                <button
+                  type="button"
+                  className={
+                    selectedCategory === "all"
+                      ? "shrink-0 rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-background"
+                      : "shrink-0 rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  }
+                  onClick={() => handleCategoryChange("all")}
+                >
+                  全部
+                </button>
+                {categories.length === 0 ? (
+                  <span className="shrink-0 px-1 py-1.5 text-xs text-muted-foreground">
+                    正在等待 SkillHub 分类数据
+                  </span>
+                ) : (
+                  categories.map((category) => (
+                    <button
+                      key={category.key}
+                      type="button"
+                      className={
+                        selectedCategory === category.key
+                          ? "shrink-0 rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-background"
+                          : "shrink-0 rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      }
+                      onClick={() => handleCategoryChange(category.key)}
+                    >
+                      {category.name}
+                      {category.count !== undefined ? (
+                        <span className="ms-1 opacity-70">{category.count}</span>
+                      ) : null}
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          {view === "installed" ? (
+            <section className={embedded ? "mt-2" : "mt-8"}>
+              <h2 className="text-[13px] font-medium text-muted-foreground">
+                {t("skills.installed")}
+              </h2>
+              <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+                {installedLoading ? (
+                  <>
+                    <SkillCardSkeleton />
+                    <SkillCardSkeleton />
+                  </>
+                ) : filteredInstalled.length === 0 ? (
+                  <div className="col-span-full px-3 py-6 text-sm text-muted-foreground">
+                    {t("skills.empty")}
+                  </div>
+                ) : (
+                  filteredInstalled.map((skill) => (
+                    <SkillCard
+                      key={skill.name}
+                      icon={
+                        <SkillIcon
+                          iconUrl={getSkillIconUrl(skill)}
+                          fallbackName={skill.displayName ?? skill.name}
+                        />
+                      }
+                      title={skill.displayName ?? skill.name}
+                      {...((skill.shortDescription ?? skill.description)
+                        ? { subtitle: skill.shortDescription ?? skill.description }
+                        : {})}
+                      action={
+                        uninstallingSkillName === skill.name ? (
+                          <Loader2Icon
+                            className="size-4 animate-spin text-muted-foreground/80"
+                            aria-hidden
+                          />
+                        ) : (
+                          <CheckIcon className="size-4 text-muted-foreground/80" aria-hidden />
+                        )
+                      }
+                      onClick={() => setActiveSkill({ kind: "installed", data: skill })}
+                    />
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          {view === "all" ? (
+            <section className="mt-4">
+              <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+                {catalogLoading ? (
+                  <>
+                    <SkillCardSkeleton />
+                    <SkillCardSkeleton />
+                    <SkillCardSkeleton />
+                    <SkillCardSkeleton />
+                  </>
+                ) : filteredCatalog.length === 0 ? (
+                  <div className="col-span-full flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">
+                    <PackageIcon className="size-4" />
+                    {t("skills.empty")}
+                  </div>
+                ) : (
+                  filteredCatalog.map((item) => (
+                    <SkillCard
+                      key={item.id}
+                      icon={
+                        <SkillIcon
+                          iconUrl={getSkillIconUrl(item)}
+                          fallbackName={item.displayName}
+                        />
+                      }
+                      title={item.displayName}
+                      {...((item.shortDescription ?? item.description)
+                        ? { subtitle: item.shortDescription ?? item.description }
+                        : {})}
+                      action={
+                        installingSkillId === item.id ? (
+                          <Loader2Icon
+                            className="size-4 animate-spin text-muted-foreground/80"
+                            aria-hidden
+                          />
+                        ) : (
+                          <PlusIcon className="size-4 text-muted-foreground/80" aria-hidden />
+                        )
+                      }
+                      onClick={() => setActiveSkill({ kind: "catalog", data: item })}
+                    />
+                  ))
+                )}
+              </div>
+              {canLoadMoreCatalog ? (
+                <div
+                  ref={sentinelRef}
+                  className="mt-3 flex items-center justify-center gap-2 px-3 py-4 text-xs text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {loadingMoreCatalog ? (
+                    <>
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                      <span>{t("skills.loadMore")}</span>
+                    </>
+                  ) : (
+                    <span>继续向下滚动加载更多</span>
+                  )}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {view === "sources" ? (
+            <section className="mt-2">
+              <h2 className="text-[13px] font-medium text-muted-foreground">来源</h2>
+              <div className="mt-3 grid gap-2">
+                <div className="rounded-md border border-border/70 px-3 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[13px] font-medium text-foreground">SkillHub</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        默认远程技能源，安装时通过 ZIP 下载并由本地服务校验。
+                      </div>
+                    </div>
+                    <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                      已启用
+                    </span>
+                  </div>
+                  {catalogQuery.data?.categories.length ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {catalogQuery.data.categories.slice(0, 16).map((category) => (
+                        <span
+                          key={category.key}
+                          className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground"
+                        >
+                          {category.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="rounded-md border border-border/70 px-3 py-3">
+                  <div className="text-[13px] font-medium text-foreground">T3 内置技能</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    来自随客户端分发的 extensions/skills，本地扫描，不依赖远程源。
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
       </ScrollArea>
 

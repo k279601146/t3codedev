@@ -55,6 +55,7 @@ import {
   pickFolder,
   revealPath,
   setTheme,
+  showNotification,
   showContextMenu,
 } from "./methods/window.ts";
 
@@ -98,6 +99,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
 
   yield* ipc.handle(pickFolder);
   yield* ipc.handle(confirm);
+  yield* ipc.handle(showNotification);
   yield* ipc.handle(setTheme);
   yield* ipc.handle(showContextMenu);
   yield* ipc.handle(openExternal);

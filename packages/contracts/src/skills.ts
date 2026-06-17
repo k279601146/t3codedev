@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -47,6 +48,23 @@ export const SkillsListResponse = Schema.Struct({
 });
 export type SkillsListResponse = typeof SkillsListResponse.Type;
 
+export const SkillCatalogCategory = Schema.Struct({
+  key: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  count: Schema.optionalKey(Schema.Number),
+});
+export type SkillCatalogCategory = typeof SkillCatalogCategory.Type;
+
+export const SkillCatalogQueryInput = Schema.Struct({
+  query: Schema.optionalKey(Schema.String),
+  category: Schema.optionalKey(Schema.String),
+  page: Schema.optionalKey(Schema.Number),
+  pageSize: Schema.optionalKey(Schema.Number),
+  sortBy: Schema.optionalKey(Schema.Literals(["downloads", "updated", "created", "name"])),
+  order: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
+});
+export type SkillCatalogQueryInput = typeof SkillCatalogQueryInput.Type;
+
 /**
  * 推荐目录中的一个技能条目。
  * 服务端从 vendor_imports/<source>/skills/.curated/<name>/SKILL.md 解析得到。
@@ -74,12 +92,29 @@ export const SkillCatalogItem = Schema.Struct({
   iconSmallUrl: Schema.optionalKey(TrimmedNonEmptyString),
   /** 大图标 HTTP URL */
   iconLargeUrl: Schema.optionalKey(TrimmedNonEmptyString),
+  categoryKey: Schema.optionalKey(TrimmedNonEmptyString),
+  categoryName: Schema.optionalKey(TrimmedNonEmptyString),
+  sourceLabel: Schema.optionalKey(TrimmedNonEmptyString),
+  version: Schema.optionalKey(TrimmedNonEmptyString),
+  downloads: Schema.optionalKey(Schema.Number),
+  installs: Schema.optionalKey(Schema.Number),
+  stars: Schema.optionalKey(Schema.Number),
+  requiresApiKey: Schema.optionalKey(Schema.Boolean),
+  securityStatus: Schema.optionalKey(Schema.Literals(["verified", "unknown", "blocked"])),
+  homepage: Schema.optionalKey(TrimmedNonEmptyString),
+  sourceUrl: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type SkillCatalogItem = typeof SkillCatalogItem.Type;
 
 export const SkillsCatalogResponse = Schema.Struct({
   /** 推荐技能列表（多个源合并后的全集） */
   items: Schema.Array(SkillCatalogItem),
+  categories: Schema.Array(SkillCatalogCategory).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  total: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  page: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(1))),
+  pageSize: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(20))),
   /** 最近一次成功刷新时间戳（毫秒） */
   fetchedAt: Schema.optionalKey(Schema.Number),
   /** 是否有源刷新失败；让 UI 提示用户 */
@@ -113,6 +148,12 @@ export type SkillUninstallResult = typeof SkillUninstallResult.Type;
 export const SkillsRefreshInput = Schema.Struct({
   /** 跳过 TTL 强制重新拉取；不传等同于 false */
   force: Schema.optionalKey(Schema.Boolean),
+  query: Schema.optionalKey(Schema.String),
+  category: Schema.optionalKey(Schema.String),
+  page: Schema.optionalKey(Schema.Number),
+  pageSize: Schema.optionalKey(Schema.Number),
+  sortBy: Schema.optionalKey(Schema.Literals(["downloads", "updated", "created", "name"])),
+  order: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
 });
 export type SkillsRefreshInput = typeof SkillsRefreshInput.Type;
 

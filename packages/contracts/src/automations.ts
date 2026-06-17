@@ -70,6 +70,9 @@ export const AutomationTarget = Schema.Union([
     kind: Schema.Literal("thread"),
     threadId: ThreadId,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("conversation"),
+  }),
 ]);
 export type AutomationTarget = typeof AutomationTarget.Type;
 

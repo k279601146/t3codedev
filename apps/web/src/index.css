@@ -978,6 +978,78 @@ label:has(> select#reasoning-effort) select {
   font-weight: 680;
 }
 
+.skill-detail-markdown .chat-markdown {
+  max-width: none;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  font-size: 14px;
+  line-height: 1.68;
+}
+
+.skill-detail-markdown .chat-markdown p,
+.skill-detail-markdown .chat-markdown ul,
+.skill-detail-markdown .chat-markdown ol,
+.skill-detail-markdown .chat-markdown blockquote,
+.skill-detail-markdown .chat-markdown pre,
+.skill-detail-markdown .chat-markdown table {
+  margin-bottom: 12px;
+}
+
+.skill-detail-markdown .chat-markdown h1,
+.skill-detail-markdown .chat-markdown h2,
+.skill-detail-markdown .chat-markdown h3,
+.skill-detail-markdown .chat-markdown h4 {
+  margin: 1rem 0 0.4rem;
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+  line-height: 1.34;
+}
+
+.skill-detail-markdown .chat-markdown h1 {
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.skill-detail-markdown .chat-markdown h2 {
+  padding-top: 0.75rem;
+  font-size: 0.98rem;
+  font-weight: 680;
+}
+
+.skill-detail-markdown .chat-markdown h3 {
+  font-size: 0.92rem;
+  font-weight: 660;
+}
+
+.skill-detail-markdown .chat-markdown h4 {
+  font-size: 0.88rem;
+  font-weight: 640;
+}
+
+.skill-detail-markdown .chat-markdown h1:first-child,
+.skill-detail-markdown .chat-markdown h2:first-child,
+.skill-detail-markdown .chat-markdown h3:first-child,
+.skill-detail-markdown .chat-markdown h4:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.skill-detail-markdown .chat-markdown strong {
+  font-weight: 660;
+}
+
+.skill-detail-markdown .chat-markdown blockquote {
+  font-size: 13.5px;
+}
+
+.skill-detail-markdown .chat-markdown pre {
+  background: color-mix(in srgb, var(--background) 82%, var(--muted));
+}
+
+.skill-detail-markdown .chat-markdown pre code {
+  font-size: 12px;
+  line-height: 1.58;
+}
+
 .proposed-plan-card .chat-markdown {
   color: #18181b;
   font-size: 14px;
