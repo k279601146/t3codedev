@@ -25,6 +25,11 @@ export interface ElectronShellShape {
   readonly openPath: (rawPath: unknown) => Effect.Effect<boolean>;
   readonly revealPath: (rawPath: unknown) => Effect.Effect<boolean>;
   readonly copyText: (text: string) => Effect.Effect<void>;
+  readonly writeShortcutLink: (
+    shortcutPath: string,
+    operation: "create" | "update" | "replace",
+    options: Electron.ShortcutDetails,
+  ) => Effect.Effect<boolean>;
 }
 
 export class ElectronShell extends Context.Service<ElectronShell, ElectronShellShape>()(
@@ -66,6 +71,8 @@ const make = ElectronShell.of({
     Effect.sync(() => {
       Electron.clipboard.writeText(text);
     }),
+  writeShortcutLink: (shortcutPath, operation, options) =>
+    Effect.sync(() => Electron.shell.writeShortcutLink(shortcutPath, operation, options)),
 });
 
 export const layer = Layer.succeed(ElectronShell, make);

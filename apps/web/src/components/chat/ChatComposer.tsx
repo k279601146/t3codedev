@@ -69,7 +69,6 @@ import {
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
-import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { getRunningPrimaryActionMode } from "./ComposerPrimaryActionState";
 import {
@@ -117,6 +116,7 @@ import {
   HandIcon,
   LaptopIcon,
   ListTodoIcon,
+  PaperclipIcon,
   PauseCircleIcon,
   PencilIcon,
   PlayCircleIcon,
@@ -357,8 +357,8 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
       </MenuTrigger>
       <MenuPopup align="start" side="bottom" sideOffset={8} className="min-w-56">
         <MenuItem onClick={props.onAttachFiles}>
-          <FileIcon className="size-4 shrink-0 opacity-80" />
-          添加文件
+          <PaperclipIcon className="size-4 shrink-0 opacity-80" />
+          添加照片和文件
         </MenuItem>
         <MenuSub>
           <MenuSubTrigger>
@@ -1193,6 +1193,7 @@ export interface ChatComposerProps {
   onRespondToApproval: (
     requestId: ApprovalRequestId,
     decision: ProviderApprovalDecision,
+    responseText?: string,
   ) => Promise<void>;
   onSelectActivePendingUserInputOption: (questionId: string, optionLabel: string) => void;
   onAdvanceActivePendingUserInput: () => void;
@@ -3019,6 +3020,9 @@ export const ChatComposer = memo(
           <div
             ref={composerSurfaceRef}
             data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
+            data-chat-composer-surface-root="true"
+            data-chat-composer-surface={newThreadMode ? "new-thread" : "reply"}
+            data-chat-composer-drag-over={isDragOverComposer ? "true" : "false"}
             className={cn(
               "relative border bg-card/98 transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65",
               composerMenuOpen && !isComposerApprovalState ? "overflow-visible" : "overflow-hidden",
@@ -3068,6 +3072,8 @@ export const ChatComposer = memo(
                   <ComposerPendingApprovalPanel
                     approval={activePendingApproval}
                     pendingCount={pendingApprovals.length}
+                    isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
+                    onRespondToApproval={onRespondToApproval}
                   />
                 </div>
               ) : pendingUserInputs.length > 0 ? (
@@ -3116,14 +3122,9 @@ export const ChatComposer = memo(
                 <ComposerPendingApprovalPanel
                   approval={activePendingApproval}
                   pendingCount={pendingApprovals.length}
+                  isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
+                  onRespondToApproval={onRespondToApproval}
                 />
-                <div className="flex flex-wrap items-center justify-end gap-2 px-3 pb-3 sm:px-4">
-                  <ComposerPendingApprovalActions
-                    requestId={activePendingApproval.requestId}
-                    isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
-                    onRespondToApproval={onRespondToApproval}
-                  />
-                </div>
               </div>
             ) : isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
               <div
@@ -3287,6 +3288,7 @@ export const ChatComposer = memo(
                   : "px-4 pb-1.5 sm:px-4",
                 !newThreadMode && (hasComposerHeader ? "pt-3" : "pt-3.5"),
                 isComposerCollapsedMobile && "hidden",
+                isComposerApprovalState && "hidden",
                 newThreadMode && isDragOverComposer && "opacity-20 blur-[1px]",
               )}
             >
@@ -3426,7 +3428,7 @@ export const ChatComposer = memo(
                   )}
                   {...(newThreadMode
                     ? {
-                        placeholderClassName: "text-[14px] leading-6 text-muted-foreground/45",
+                        placeholderClassName: "text-[14px] leading-6 text-[#c7c7c7]",
                       }
                     : {})}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
@@ -3489,15 +3491,7 @@ export const ChatComposer = memo(
             </div>
 
             {/* Bottom toolbar */}
-            {isComposerCollapsedMobile ? null : activePendingApproval ? (
-              <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
-                <ComposerPendingApprovalActions
-                  requestId={activePendingApproval.requestId}
-                  isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
-                  onRespondToApproval={onRespondToApproval}
-                />
-              </div>
-            ) : (
+            {isComposerCollapsedMobile || activePendingApproval ? null : (
               <ComposerFooterToolbar
                 composerSurface={composerSurface}
                 activeContextWindow={activeContextWindow}

@@ -1897,7 +1897,11 @@ const make = Effect.gen(function* () {
                 }).pipe(Effect.as(event)),
               ),
             )
-          : event;
+          : event.type === "runtime.warning" || event.type === "runtime.error"
+            ? event.turnId === undefined && activeTurnId !== null
+              ? { ...event, turnId: activeTurnId }
+              : event
+            : event;
       const activities = runtimeEventToActivities(activityEvent);
       yield* Effect.forEach(activities, (activity) =>
         orchestrationEngine.dispatch({

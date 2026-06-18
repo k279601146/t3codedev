@@ -2392,6 +2392,7 @@ function BahewMark() {
       alt=""
       aria-hidden="true"
       className="size-4 shrink-0 rounded-[4px] object-contain"
+      draggable={false}
       src="/apple-touch-icon.png"
     />
   );
@@ -2444,31 +2445,46 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }: {
   isElectron: boolean;
 }) {
+  const brandContent = (
+    <>
+      <BahewMark />
+      <span className="truncate text-[12px] font-medium tracking-tight text-muted-foreground">
+        {APP_BASE_NAME}
+      </span>
+      <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
+        {APP_STAGE_LABEL}
+      </span>
+    </>
+  );
   const wordmark = (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <SidebarTrigger className="shrink-0 md:hidden" />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Link
-              aria-label="Go to threads"
-              className="ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md outline-hidden ring-ring transition-colors hover:text-foreground focus-visible:ring-2"
-              to="/"
-            >
-              <BahewMark />
-              <span className="truncate text-[12px] font-medium tracking-tight text-muted-foreground">
-                {APP_BASE_NAME}
-              </span>
-              <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
-                {APP_STAGE_LABEL}
-              </span>
-            </Link>
-          }
-        />
-        <TooltipPopup side="bottom" sideOffset={2}>
-          Version {APP_VERSION}
-        </TooltipPopup>
-      </Tooltip>
+      {isElectron ? (
+        <div
+          aria-label={`${APP_BASE_NAME} ${APP_STAGE_LABEL}`}
+          className="ml-1 flex min-w-0 flex-1 select-none items-center gap-1.5 rounded-md"
+        >
+          {brandContent}
+        </div>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Link
+                aria-label="Go to threads"
+                className="ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md outline-hidden ring-ring transition-colors hover:text-foreground focus-visible:ring-2"
+                draggable={false}
+                to="/"
+              >
+                {brandContent}
+              </Link>
+            }
+          />
+          <TooltipPopup side="bottom" sideOffset={2}>
+            Version {APP_VERSION}
+          </TooltipPopup>
+        </Tooltip>
+      )}
       <SidebarAppUpdateButton />
     </div>
   );

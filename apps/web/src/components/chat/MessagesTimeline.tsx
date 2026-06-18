@@ -67,6 +67,7 @@ import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShimmerScanText } from "../ui/shimmer-scan-text";
 import { ImageGenerationShimmer } from "../ui/image-generation-shimmer";
+import { Skeleton } from "../ui/skeleton";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -145,7 +146,7 @@ const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 // Use PingFang SC explicitly for chat content so the increased font size keeps the
 // preferred Chinese-first typeface across all platforms.
 const CHAT_FONT_STACK =
-  "'PingFang SC', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif";
+  "'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif";
 const USER_MESSAGE_FONT_STYLE: React.CSSProperties = { fontFamily: CHAT_FONT_STACK };
 const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 
@@ -180,6 +181,7 @@ interface MessagesTimelineProps {
   workspaceRoot: string | undefined;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   onIsAtEndChange: (isAtEnd: boolean) => void;
+  isLoadingHistory?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +215,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   workspaceRoot,
   skills = EMPTY_TIMELINE_SKILLS,
   onIsAtEndChange,
+  isLoadingHistory = false,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
     () =>
@@ -439,6 +442,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
+  if (rows.length === 0 && isLoadingHistory) {
+    return <MessagesTimelineHistorySkeleton />;
+  }
+
   if (rows.length === 0 && !isWorking) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -473,6 +480,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </TimelineRowCtx.Provider>
   );
 });
+
+function MessagesTimelineHistorySkeleton() {
+  return (
+    <div
+      className="h-full min-h-0 overflow-hidden px-3 sm:px-5"
+      aria-busy="true"
+      aria-label="正在加载对话内容"
+      data-timeline-history-skeleton="true"
+    >
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
+        <div className="flex justify-end">
+          <div className="w-[78%] max-w-xl rounded-md bg-muted/35 p-4">
+            <Skeleton className="h-3 w-11/12 rounded-full" />
+            <Skeleton className="mt-3 h-3 w-7/12 rounded-full" />
+          </div>
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-3 w-24 rounded-full" />
+          <Skeleton className="h-3 w-full rounded-full" />
+          <Skeleton className="h-3 w-10/12 rounded-full" />
+          <Skeleton className="h-3 w-8/12 rounded-full" />
+        </div>
+        <div className="flex justify-end">
+          <div className="w-[64%] max-w-lg rounded-md bg-muted/30 p-4">
+            <Skeleton className="h-3 w-full rounded-full" />
+            <Skeleton className="mt-3 h-3 w-2/3 rounded-full" />
+          </div>
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-3 w-20 rounded-full" />
+          <Skeleton className="h-3 w-11/12 rounded-full" />
+          <Skeleton className="h-3 w-9/12 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function keyExtractor(item: MessagesTimelineRow) {
   return item.id;
@@ -610,7 +654,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
-        className="group/turn-summary inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[13px] leading-5 text-muted-foreground/70 transition-colors hover:text-foreground/85"
+        className="group/turn-summary inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
         style={USER_MESSAGE_FONT_STYLE}
         data-turn-summary-toggle="true"
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
@@ -741,7 +785,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   return (
     <>
       <div className="flex justify-end">
-        <div className="group flex max-w-[82%] flex-col items-end">
+        <div className="group flex max-w-[80%] flex-col items-end">
           {isEditing ? (
             <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-[18px] border border-border/55 bg-secondary px-3 py-3 shadow-sm">
               <textarea
@@ -760,7 +804,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     void submitEdit();
                   }
                 }}
-                className="block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[15px] leading-[1.78] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
+                className="block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14.5px] leading-[1.72] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
                 style={USER_MESSAGE_FONT_STYLE}
                 aria-label="编辑用户消息"
               />
@@ -796,7 +840,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                 </div>
               ) : null}
               {hasUserMessageBubble ? (
-                <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
+                <div className="w-fit max-w-full rounded-[18px] border border-border/45 bg-secondary/88 px-4 py-2.5">
                   {imageAttachments.length > 0 ? (
                     <div
                       className={cn(
@@ -1052,7 +1096,7 @@ function UrlPreviewCard({ url }: { url: string }) {
           onClick={() => onOpenUrl(url, "preview")}
           title={url}
         >
-          <div className="truncate text-[14px] font-semibold leading-5 text-foreground">
+          <div className="truncate text-[14px] font-medium leading-5 text-foreground">
             网页预览
           </div>
           <div className="truncate text-[13px] leading-5 text-muted-foreground">网站</div>
@@ -1173,7 +1217,7 @@ function AssistantCompletionDivider() {
 
   return (
     <div className="my-3 flex flex-col gap-2">
-      <span className="self-end text-[13px] leading-5 text-muted-foreground/70">
+      <span className="self-end text-[13px] leading-5 text-muted-foreground/62">
         {activity.completionSummary ?? "已结束"}
       </span>
       <span className="h-px bg-border" />
@@ -1225,9 +1269,9 @@ function RunningStatusShimmer({ label, className }: { label: string; className?:
         style={{
           display: "inline-block",
           fontWeight: 500,
-          letterSpacing: "0.05em",
+          letterSpacing: 0,
           // 1. 设置渐变背景：深灰 -> 极亮白 -> 深灰
-          backgroundImage: "linear-gradient(90deg, #71717a 0%, #fafafa 50%, #71717a 100%)",
+          backgroundImage: "linear-gradient(90deg, #8a8a8a 0%, #f7f7f7 50%, #8a8a8a 100%)",
           backgroundSize: "200% 100%",
           // 2. 核心：将背景裁剪到文字上
           WebkitBackgroundClip: "text",
@@ -1512,6 +1556,14 @@ const WorkGroupSection = memo(function WorkGroupSection({
     );
   }
 
+  if (groupedEntries.length === 1 && isCommandWorkEntry(groupedEntries[0]!)) {
+    return (
+      <div className="pt-2 pb-3 pl-1">
+        <CommandWorkEntryRow workEntry={groupedEntries[0]!} initiallyExpanded />
+      </div>
+    );
+  }
+
   const isSearchGroup = isSearchWorkGroup(groupedEntries);
   const SummaryIcon = isSearchGroup ? GlobeIcon : TerminalSquareIcon;
 
@@ -1519,13 +1571,13 @@ const WorkGroupSection = memo(function WorkGroupSection({
     <div className="pt-2 pb-3 pl-1">
       <button
         type="button"
-        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-[#999999] transition-colors hover:text-foreground/78"
+        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
         style={USER_MESSAGE_FONT_STYLE}
         aria-expanded={isExpanded}
         data-work-group-summary="true"
         onClick={() => setIsExpanded((value) => !value)}
       >
-        <SummaryIcon className="size-4 shrink-0 text-[#999999]" />
+        <SummaryIcon className="size-4 shrink-0 text-muted-foreground/58" />
         {showLiveScan ? (
           <RunningStatusShimmer className="-my-0.5" label={summary.liveLabel} />
         ) : (
@@ -1768,7 +1820,7 @@ function AssistantChangedFilesSectionInner({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="truncate text-[14px] font-semibold leading-5 text-foreground">
+              <div className="truncate text-[14px] font-medium leading-5 text-foreground">
                 {isSingleFile
                   ? `已编辑 ${singleFileTitle}`
                   : `已编辑 ${checkpointFiles.length} 个文件`}
@@ -2171,7 +2223,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
         return (
           <div
-            className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
+            className="whitespace-pre-wrap wrap-break-word text-[14.5px] leading-[1.72] text-foreground/96"
             style={USER_MESSAGE_FONT_STYLE}
           >
             {inlineNodes}
@@ -2206,7 +2258,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
     return (
       <div
-        className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
+        className="whitespace-pre-wrap wrap-break-word text-[14.5px] leading-[1.72] text-foreground/96"
         style={USER_MESSAGE_FONT_STYLE}
       >
         {inlineNodes}
@@ -2220,7 +2272,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
   return (
     <div
-      className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.78] text-foreground"
+      className="whitespace-pre-wrap wrap-break-word text-[14.5px] leading-[1.72] text-foreground/96"
       style={USER_MESSAGE_FONT_STYLE}
     >
       <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
@@ -2306,11 +2358,12 @@ function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles" | "output">,
   workspaceRoot: string | undefined,
 ) {
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
+  if (workEntry.output) return workEntry.output;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -2328,6 +2381,65 @@ function workEntryRawCommand(
     return null;
   }
   return rawCommand === workEntry.command.trim() ? null : rawCommand;
+}
+
+function commandWorkEntryCommand(workEntry: Pick<TimelineWorkEntry, "command" | "rawCommand">) {
+  return workEntry.command?.trim() || workEntry.rawCommand?.trim() || null;
+}
+
+function normalizeCommandDisplayText(value: string | null | undefined): string {
+  return (value ?? "").trim().replace(/\r\n/g, "\n");
+}
+
+function commandWorkEntryOutput(workEntry: TimelineWorkEntry): string {
+  const detail = normalizeCommandDisplayText(workEntry.output);
+  if (!detail) {
+    return "";
+  }
+  const command = normalizeCommandDisplayText(workEntry.command);
+  const rawCommand = normalizeCommandDisplayText(workEntry.rawCommand);
+  if (detail === command || detail === rawCommand) {
+    return "";
+  }
+  if (rawCommand && (detail.includes(rawCommand) || rawCommand.includes(detail))) {
+    return "";
+  }
+  return detail;
+}
+
+function commandWorkEntryCopyText(workEntry: TimelineWorkEntry): string {
+  const command = commandWorkEntryCommand(workEntry);
+  const output = commandWorkEntryOutput(workEntry);
+  if (command && output) {
+    return `$ ${command}\n\n${output}`;
+  }
+  return command || output || "";
+}
+
+function commandWorkEntryStatus(workEntry: TimelineWorkEntry): {
+  label: string;
+  className: string;
+  icon: LucideIcon;
+} {
+  if (workEntry.status === "running") {
+    return {
+      label: "运行中",
+      className: "text-muted-foreground/62",
+      icon: TerminalSquareIcon,
+    };
+  }
+  if (workEntry.tone === "error" || workEntry.status === "failed") {
+    return {
+      label: "失败",
+      className: "text-rose-500/82",
+      icon: CircleAlertIcon,
+    };
+  }
+  return {
+    label: "成功",
+    className: "text-emerald-500/82",
+    icon: CheckIcon,
+  };
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
@@ -2524,7 +2636,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
     <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
       <button
         type="button"
-        className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/75 transition-colors hover:bg-muted/15 hover:text-foreground/85"
+        className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/68 transition-colors hover:bg-muted/15 hover:text-foreground/82"
         aria-expanded={isExpanded}
         title={title}
         onClick={() => setIsExpanded((value) => !value)}
@@ -2552,7 +2664,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
           {files.slice(0, isExpanded ? files.length : 2).map((file) => (
             <div
               key={`${workEntry.id}:${file.path}`}
-              className="flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-muted-foreground/75"
+              className="flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-muted-foreground/68"
               title={file.displayPath}
             >
               <span className="shrink-0">{verb.replace("正在", "").replace("已", "已")}</span>
@@ -2582,6 +2694,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   }
   if (isFileChangeWorkEntry(workEntry)) {
     return <FileChangeWorkEntryRow workEntry={workEntry} workspaceRoot={workspaceRoot} />;
+  }
+  if (isCommandWorkEntry(workEntry)) {
+    return <CommandWorkEntryRow workEntry={workEntry} />;
   }
   const iconConfig = workToneIcon(workEntry.tone);
   const EntryIcon = workEntryIcon(workEntry);
@@ -2624,7 +2739,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <div className="min-w-0 flex-1 overflow-hidden flex items-center justify-between gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
             {isDetailExpanded ? (
-              <p className={cn("truncate text-[12px] leading-5", workToneClass(workEntry.tone))}>
+              <p className={cn("truncate text-[13px] leading-5", workToneClass(workEntry.tone))}>
                 <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
                   {displayText}
                 </span>
@@ -2682,7 +2797,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 >
                   <p
                     className={cn(
-                      "truncate text-[12px] leading-5",
+                      "truncate text-[13px] leading-5",
                       workToneClass(workEntry.tone),
                       preview ? "text-muted-foreground/70" : "",
                     )}
@@ -2745,10 +2860,10 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       )}
       {/* 展开的工具详情 */}
       {hasDetail && isDetailExpanded && (
-        <div className="mt-2 ml-6 rounded-xl border border-border/40 bg-muted/30 dark:bg-muted/15 p-3 flex flex-col gap-2 shadow-sm">
+        <div className="mt-2 ml-6 flex max-w-[min(100%,46rem)] flex-col gap-2 rounded-lg bg-muted/55 p-3 text-foreground/85 dark:bg-muted/20">
           {/* 首行：标题与复制按钮 */}
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold tracking-wider text-muted-foreground/60 uppercase">
+            <span className="text-[11px] font-medium tracking-normal text-muted-foreground/68 uppercase">
               {capitalizePhrase(workEntry.toolTitle || workEntry.label || "Tool")}
             </span>
             <MessageCopyButton
@@ -2759,15 +2874,15 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           </div>
 
           {isCommandWorkEntry(workEntry) && (workEntry.command || workEntry.rawCommand) ? (
-            <div className="font-mono text-[13px] font-semibold text-foreground/90 bg-background/40 px-2 py-1.5 rounded border border-border/20 whitespace-pre-wrap break-all flex items-center">
-              <span className="text-emerald-500 mr-1.5 font-bold select-none">$</span>
+            <div className="flex items-center rounded-md bg-background/52 px-2 py-1.5 font-mono text-[12.75px] font-medium leading-5 text-foreground/88 whitespace-pre-wrap break-all">
+              <span className="mr-1.5 select-none font-semibold text-muted-foreground/62">$</span>
               {workEntry.command || workEntry.rawCommand}
             </div>
           ) : null}
 
           <pre
             className={cn(
-              "text-[12px] leading-relaxed text-foreground/80 bg-background/25 dark:bg-background/40 rounded-lg p-2.5 border border-border/30 overflow-x-auto whitespace-pre-wrap break-all max-h-80 overflow-y-auto pr-1 select-text",
+              "max-h-80 overflow-x-auto overflow-y-auto rounded-md bg-background/45 p-2.5 pr-1 text-[12.75px] leading-[1.68] text-foreground/82 whitespace-pre-wrap break-all select-text",
               isCommandWorkEntry(workEntry) ? "font-mono" : "font-sans",
             )}
           >
@@ -2775,7 +2890,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           </pre>
 
           {/* 底部状态 */}
-          <div className="flex justify-end items-center text-[11px] font-medium">
+          <div className="flex items-center justify-end text-[11px] font-medium">
             {workEntry.tone === "error" ? (
               <span className="text-rose-500/80 flex items-center gap-1">
                 <CircleAlertIcon className="size-3" />
@@ -2790,6 +2905,133 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           </div>
         </div>
       )}
+    </div>
+  );
+});
+
+const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
+  workEntry,
+  initiallyExpanded = false,
+}: {
+  workEntry: TimelineWorkEntry;
+  initiallyExpanded?: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
+  const command = commandWorkEntryCommand(workEntry);
+  const output = commandWorkEntryOutput(workEntry);
+  const status = commandWorkEntryStatus(workEntry);
+  const StatusIcon = status.icon;
+  const copyText = commandWorkEntryCopyText(workEntry);
+  const collapsedSummaryText =
+    workEntry.status === "running"
+      ? command
+        ? `正在运行 ${command}`
+        : "正在运行命令"
+      : command
+        ? `已运行 ${command}`
+        : "已运行命令";
+  const summaryText = isExpanded
+    ? workEntry.status === "running"
+      ? "正在运行命令"
+      : "已运行命令"
+    : collapsedSummaryText;
+
+  return (
+    <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
+      <button
+        type="button"
+        className="group/command-summary flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:bg-muted/15 hover:text-foreground/78"
+        aria-expanded={isExpanded}
+        title={summaryText}
+        onClick={() => setIsExpanded((value) => !value)}
+      >
+        <TerminalSquareIcon className="size-3.5 shrink-0 text-muted-foreground/58" />
+        {workEntry.status === "running" ? (
+          <RunningStatusShimmer className="-my-0.5 min-w-0" label={summaryText} />
+        ) : (
+          <span className="min-w-0 truncate">{summaryText}</span>
+        )}
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/command-summary:text-muted-foreground/70",
+            isExpanded && "rotate-180",
+          )}
+        />
+      </button>
+
+      {isExpanded ? (
+        <div
+          className="group/command-panel relative mt-1 w-full max-w-[min(100%,46rem)] overflow-hidden rounded-lg bg-[#eeeeee] text-neutral-950 dark:bg-neutral-900 dark:text-neutral-50"
+          data-command-work-panel="true"
+        >
+          <div className="flex h-8 items-center justify-between gap-2 px-2.5 text-[12px] leading-5 text-neutral-500 dark:text-neutral-400">
+            <span className="shrink-0 font-normal">bash</span>
+            <MessageCopyButton
+              text={copyText}
+              size="icon-xs"
+              variant="ghost"
+              ariaLabel="复制命令和输出"
+              tooltipLabel="复制命令和输出"
+              className="h-6 w-6 border-transparent bg-transparent text-neutral-500 opacity-0 shadow-none transition-opacity hover:bg-black/5 hover:text-neutral-900 group-hover/command-panel:opacity-100 focus-visible:opacity-100 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-50"
+            />
+          </div>
+          <div className="px-2.5 pb-9">
+            <div
+              className="relative max-h-[220px] overflow-auto overscroll-contain rounded-md px-0.5 pb-10 font-mono text-[12.75px] leading-[1.68] text-neutral-950 [scrollbar-gutter:stable] dark:text-neutral-50"
+              data-command-output-scroll="true"
+            >
+              {command ? (
+                <div className="group/command-copy relative flex min-w-0 gap-2 pr-7">
+                  <span className="shrink-0 select-none text-neutral-500 dark:text-neutral-400">
+                    $
+                  </span>
+                  <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words">{command}</pre>
+                  <MessageCopyButton
+                    text={command}
+                    size="icon-xs"
+                    variant="ghost"
+                    ariaLabel="复制命令"
+                    tooltipLabel="复制命令"
+                    className="absolute right-0 top-0 h-6 w-6 border-transparent bg-transparent text-neutral-500 opacity-0 shadow-none transition-opacity hover:bg-black/5 hover:text-neutral-900 group-hover/command-copy:opacity-100 focus-visible:opacity-100 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-50"
+                  />
+                </div>
+              ) : null}
+              {output ? (
+                <div className="group/output-copy relative mt-2 pr-7">
+                  <pre className="whitespace-pre-wrap break-words pb-1 text-neutral-700 dark:text-neutral-200">
+                    {output}
+                  </pre>
+                  <MessageCopyButton
+                    text={output}
+                    size="icon-xs"
+                    variant="ghost"
+                    ariaLabel="复制输出"
+                    tooltipLabel="复制输出"
+                    className="absolute right-0 top-0 h-6 w-6 border-transparent bg-transparent text-neutral-500 opacity-0 shadow-none transition-opacity hover:bg-black/5 hover:text-neutral-900 group-hover/output-copy:opacity-100 focus-visible:opacity-100 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-50"
+                  />
+                </div>
+              ) : null}
+              {!output && workEntry.status === "running" ? (
+                <div className="mt-2 text-neutral-500 dark:text-neutral-400">等待命令输出...</div>
+              ) : null}
+              {!output && workEntry.status !== "running" ? (
+                <div className="mt-2 text-neutral-500 dark:text-neutral-400">无输出</div>
+              ) : null}
+            </div>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-10 items-end justify-end bg-linear-to-t from-[#eeeeee] via-[#eeeeee]/92 to-transparent px-2.5 pb-2 dark:from-neutral-900 dark:via-neutral-900/92">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-[12px] leading-4",
+                status.className,
+              )}
+            >
+              <StatusIcon className="size-3" />
+              {status.label}
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 });
@@ -2820,7 +3062,7 @@ const UserInputSummaryTimelineRow = memo(function UserInputSummaryTimelineRow({
       data-user-input-summary="true"
     >
       <div className="max-w-full rounded-md px-0.5 py-0.5">
-        <div className="flex items-center gap-1.5 text-[13px] leading-5 text-[#999999]">
+        <div className="flex items-center gap-1.5 text-[13px] leading-5 text-muted-foreground/62">
           <span className="min-w-0 truncate">{title}</span>
           <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/45" />
         </div>

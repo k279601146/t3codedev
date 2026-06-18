@@ -1011,6 +1011,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.rawCommand).toBe(
       `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo -NoProfile -Command 'rg -n -F "new Date()" .'`,
     );
+    expect(entry?.detail).toBeUndefined();
   });
 
   it("does not unwrap shell commands when no wrapper flag is present", () => {
@@ -1389,6 +1390,7 @@ describe("deriveWorkLogEntries", () => {
     });
     expect(entry?.detail).toBeUndefined();
     expect(entry?.command).toBeUndefined();
+    expect(entry?.output).toBe("total 960\napps\npackages");
   });
 
   it("uses Codex command aggregated output as the expandable command detail", () => {
@@ -1418,9 +1420,41 @@ describe("deriveWorkLogEntries", () => {
     expect(entry).toMatchObject({
       command: "bun test",
       detail: "ok",
+      output: "ok\n1 pass",
       itemType: "command_execution",
       toolTitle: "Ran command",
       toolFamily: "command",
+    });
+  });
+
+  it("combines command stdout and stderr into the preserved output", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-complete-with-streams",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          title: "Ran command",
+          data: {
+            item: {
+              id: "cmd_2",
+              type: "commandExecution",
+              command: "bun tsc --noEmit",
+              result: {
+                stdout: "checked 12 files",
+                stderr: "error TS2345: mismatch",
+              },
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry).toMatchObject({
+      command: "bun tsc --noEmit",
+      output: "checked 12 files\nerror TS2345: mismatch",
     });
   });
 

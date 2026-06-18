@@ -57,6 +57,7 @@ export interface WorkLogEntry {
   createdAt: string;
   label: string;
   detail?: string;
+  output?: string;
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
@@ -641,8 +642,12 @@ function toDerivedWorkLogEntry(
   const itemType = extractWorkLogItemType(payload);
   const requestKind = commandFileChange?.requestKind ?? extractWorkLogRequestKind(payload);
   const generatedImage = extractGeneratedImageArtifact(payload);
+  const output = extractToolOutput(payload, title ?? activity.summary);
   if (detail) {
     entry.detail = detail;
+  }
+  if (output) {
+    entry.output = output;
   }
   if (commandPreview.command) {
     entry.command = commandPreview.command;
@@ -823,6 +828,7 @@ function mergeDerivedWorkLogEntries(
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
   const detail = next.detail ?? previous.detail;
+  const output = next.output ?? previous.output;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
@@ -837,6 +843,7 @@ function mergeDerivedWorkLogEntries(
     ...previous,
     ...next,
     ...(detail ? { detail } : {}),
+    ...(output ? { output } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
@@ -1432,7 +1439,9 @@ function extractToolDetail(
 
   if (isCommandToolDetail(payload, heading)) {
     const command = extractToolCommand(payload).command;
+    const rawCommand = extractToolCommand(payload).rawCommand;
     const normalizedCommand = normalizePreviewForComparison(command);
+    const normalizedRawCommand = normalizePreviewForComparison(rawCommand);
     const normalizedRawOutputSummary = normalizePreviewForComparison(rawOutputSummary);
     if (
       command &&
@@ -1442,7 +1451,12 @@ function extractToolDetail(
     ) {
       return rawOutputSummary;
     }
-    return detail && normalizedHeading !== normalizedDetail ? detail : null;
+    return detail &&
+      normalizedHeading !== normalizedDetail &&
+      normalizedCommand !== normalizedDetail &&
+      normalizedRawCommand !== normalizedDetail
+      ? detail
+      : null;
   }
 
   if (detail && normalizedHeading !== normalizedDetail) {
@@ -1453,6 +1467,78 @@ function extractToolDetail(
     const normalizedRawOutputSummary = normalizePreviewForComparison(rawOutputSummary);
     if (normalizedRawOutputSummary !== normalizedHeading) {
       return rawOutputSummary;
+    }
+  }
+
+  return null;
+}
+
+function extractToolOutput(
+  payload: Record<string, unknown> | null,
+  heading: string,
+): string | null {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  const itemResult = asRecord(item?.result);
+  const rawOutput = asRecord(data?.rawOutput) ?? itemResult ?? asRecord(payload?.rawOutput);
+  const command = extractToolCommand(payload);
+  const normalizedCommand = normalizePreviewForComparison(command.command);
+  const normalizedRawCommand = normalizePreviewForComparison(command.rawCommand);
+  const normalizedHeading = normalizePreviewForComparison(heading);
+  const combineStreams = (record: Record<string, unknown> | null | undefined): string | null => {
+    const stdout = asTrimmedString(record?.stdout);
+    const stderr = asTrimmedString(record?.stderr);
+    return [stdout, stderr].filter((value): value is string => Boolean(value)).join("\n");
+  };
+
+  const candidates: Array<unknown> = [
+    combineStreams(rawOutput),
+    rawOutput?.content,
+    rawOutput?.output,
+    rawOutput?.text,
+    rawOutput?.aggregatedOutput,
+    combineStreams(data),
+    data?.content,
+    data?.output,
+    data?.text,
+    data?.aggregatedOutput,
+    combineStreams(item),
+    item?.content,
+    item?.output,
+    item?.text,
+    item?.aggregatedOutput,
+    combineStreams(itemResult),
+    itemResult?.content,
+    itemResult?.output,
+    itemResult?.text,
+    itemResult?.aggregatedOutput,
+    asTrimmedString(payload?.output),
+    asTrimmedString(payload?.stdout),
+    asTrimmedString(payload?.stderr),
+    asTrimmedString(payload?.content),
+    asTrimmedString(payload?.text),
+    asTrimmedString(payload?.aggregatedOutput),
+  ];
+
+  if (isCommandToolDetail(payload, heading)) {
+    const detail = asTrimmedString(payload?.detail);
+    if (detail) {
+      candidates.push(stripTrailingExitCode(detail).output);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const output = asTrimmedString(candidate);
+    if (!output) {
+      continue;
+    }
+    const normalizedOutput = normalizePreviewForComparison(output);
+    if (
+      normalizedOutput !== normalizedHeading &&
+      normalizedOutput !== normalizedCommand &&
+      normalizedOutput !== normalizedRawCommand
+    ) {
+      return stripTrailingExitCode(output).output ?? output;
     }
   }
 

@@ -393,9 +393,15 @@
   --claude-shadow-panel:
     0 1px 1px rgb(15 23 42 / 0.035), 0 14px 36px rgb(15 23 42 / 0.055),
     0 0 0 1px var(--claude-border-subtle);
+  --t3-composer-surface: #ffffff;
+  --t3-composer-border: #dedede;
+  --t3-composer-border-focus: #d4d4d4;
   --t3-shadow-composer:
-    0 1px 1px rgb(15 23 42 / 0.035), 0 10px 28px rgb(15 23 42 / 0.06),
-    0 0 0 1px rgb(15 23 42 / 0.02);
+    0 1px 1px rgb(0 0 0 / 0.025), 0 10px 24px -16px rgb(0 0 0 / 0.34),
+    0 0 0 1px rgb(0 0 0 / 0.006);
+  --t3-shadow-composer-focus:
+    0 1px 1px rgb(0 0 0 / 0.03), 0 12px 26px -17px rgb(0 0 0 / 0.36),
+    0 0 0 1px rgb(0 0 0 / 0.012);
   --t3-shadow-card: 0 1px 1px rgb(15 23 42 / 0.025), 0 8px 20px rgb(15 23 42 / 0.035);
 }
 
@@ -471,7 +477,12 @@
   --claude-shadow-lg: 0 18px 48px rgb(0 0 0 / 0.4);
   --claude-shadow-focus: 0 0 0 3px rgb(255 255 255 / 0.06);
   --claude-shadow-panel: 0 12px 36px rgb(0 0 0 / 0.36), 0 0 0 1px var(--claude-border-subtle);
-  --t3-shadow-composer: 0 14px 36px rgb(0 0 0 / 0.34), 0 0 0 1px rgb(255 255 255 / 0.03);
+  --t3-composer-surface: color-mix(in srgb, var(--background) 76%, var(--card));
+  --t3-composer-border: color-mix(in srgb, var(--border) 68%, var(--background));
+  --t3-composer-border-focus: color-mix(in srgb, var(--border) 86%, var(--foreground));
+  --t3-shadow-composer: 0 16px 40px -34px rgb(0 0 0 / 0.72), 0 0 0 1px rgb(255 255 255 / 0.025);
+  --t3-shadow-composer-focus:
+    0 18px 44px -34px rgb(0 0 0 / 0.78), 0 0 0 3px rgb(255 255 255 / 0.045);
   --t3-shadow-card: 0 10px 28px rgb(0 0 0 / 0.22);
 }
 
@@ -609,6 +620,99 @@ code {
 
 [data-chat-composer-form="true"] [data-slot="button"] {
   border-radius: 0.625rem;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-drag-over="false"] {
+  background: var(--t3-composer-surface);
+  border-color: var(--t3-composer-border);
+  box-shadow: var(--t3-shadow-composer);
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-drag-over="false"]:focus-within {
+  background: var(--t3-composer-surface);
+  border-color: var(--t3-composer-border-focus);
+  box-shadow: var(--t3-shadow-composer-focus);
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"][data-chat-composer-drag-over="false"] {
+  background: #ffffff;
+  background-clip: padding-box;
+  border-color: #dcdcdc;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.92) inset,
+    0 10px 22px -18px rgb(0 0 0 / 0.42);
+}
+
+.dark
+  [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"][data-chat-composer-drag-over="false"] {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--card) 58%, transparent),
+      color-mix(in srgb, var(--background) 88%, var(--card))
+    ),
+    var(--t3-composer-surface);
+  box-shadow:
+    0 16px 40px -34px rgb(0 0 0 / 0.76),
+    0 0 0 1px rgb(255 255 255 / 0.02);
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"][data-chat-composer-drag-over="false"]:focus-within {
+  background: #ffffff;
+  border-color: #d6d6d6;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.92) inset,
+    0 10px 24px -18px rgb(0 0 0 / 0.44);
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-testid="composer-editor"] {
+  color: #1f1f1f;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-composer-footer="true"] {
+  color: #8f8f8f;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-composer-footer="true"]
+  > div:first-child
+  [data-slot="button"] {
+  color: #9b9b9b;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-composer-footer="true"]
+  > div:first-child
+  [data-slot="button"]:hover {
+  background: transparent;
+  color: #767676;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-provider-model-picker="true"] {
+  color: #373737;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-provider-model-picker="true"]:hover {
+  background: transparent;
+  color: #242424;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-composer-actions="right"]
+  [data-slot="button"]:last-child {
+  background: #8d8f93;
+  color: #ffffff;
+}
+
+[data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
+  [data-chat-composer-actions="right"]
+  [data-slot="button"]:last-child:hover {
+  background: #7e8084;
+  color: #ffffff;
 }
 
 .shimmer-scan {
@@ -843,11 +947,17 @@ label:has(> select#reasoning-effort) select {
   overflow-wrap: break-word;
   word-break: normal;
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
-    "Noto Sans CJK SC", sans-serif;
-  font-size: 15px;
+    "PingFang SC",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    sans-serif;
+  font-size: 14.5px;
   font-weight: 400;
-  color: color-mix(in srgb, var(--foreground) 93%, transparent);
+  color: color-mix(in srgb, var(--foreground) 94%, transparent);
   line-height: 1.72;
   letter-spacing: 0;
   text-align: left;
@@ -869,39 +979,39 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown blockquote,
 .chat-markdown pre,
 .chat-markdown table {
-  margin: 0 0 13px 0;
+  margin: 0 0 12px 0;
 }
 
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4 {
-  margin: 1.05rem 0 0.45rem;
-  color: color-mix(in srgb, var(--foreground) 94%, transparent);
-  line-height: 1.34;
+  margin: 0.95rem 0 0.36rem;
+  color: color-mix(in srgb, var(--foreground) 95%, transparent);
+  line-height: 1.42;
   letter-spacing: 0;
 }
 
 .chat-markdown h1 {
-  font-size: 1.26rem;
-  font-weight: 760;
+  font-size: 1.12rem;
+  font-weight: 620;
 }
 
 .chat-markdown h2 {
-  padding-top: 0.45rem;
-  border-top: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
-  font-size: 1.12rem;
-  font-weight: 720;
+  padding-top: 0.32rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 36%, transparent);
+  font-size: 1.04rem;
+  font-weight: 610;
 }
 
 .chat-markdown h3 {
-  font-size: 1rem;
-  font-weight: 680;
+  font-size: 0.98rem;
+  font-weight: 600;
 }
 
 .chat-markdown h4 {
   font-size: 0.94rem;
-  font-weight: 650;
+  font-weight: 580;
 }
 
 .chat-markdown h1:first-child,
@@ -914,21 +1024,21 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ul {
-  padding-left: 1.15rem;
+  padding-left: 1.14rem;
   list-style-type: disc;
 }
 
 .chat-markdown ol {
-  padding-left: 1.35rem;
+  padding-left: 1.34rem;
   list-style-type: decimal;
 }
 
 .chat-markdown li {
-  padding-left: 0.08rem;
+  padding-left: 0.12rem;
 }
 
 .chat-markdown li::marker {
-  color: color-mix(in srgb, var(--foreground) 72%, transparent);
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
   font-weight: 500;
 }
 
@@ -951,21 +1061,21 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown li + li {
-  margin-top: 0.32rem;
+  margin-top: 0.28rem;
 }
 
 .chat-markdown > ul > li + li,
 .chat-markdown > ol > li + li {
-  margin-top: 0.58rem;
+  margin-top: 0.48rem;
 }
 
 .chat-markdown li > p {
-  margin-bottom: 0.36rem;
+  margin-bottom: 0.3rem;
 }
 
 .chat-markdown li > ul,
 .chat-markdown li > ol {
-  margin-top: 0.34rem;
+  margin-top: 0.3rem;
   margin-bottom: 0.2rem;
 }
 
@@ -975,7 +1085,7 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown strong {
   color: color-mix(in srgb, var(--foreground) 96%, transparent);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .skill-detail-markdown .chat-markdown {
@@ -1053,31 +1163,31 @@ label:has(> select#reasoning-effort) select {
 .proposed-plan-card .chat-markdown {
   color: #18181b;
   font-size: 14px;
-  line-height: 1.68;
+  line-height: 1.66;
 }
 
 .proposed-plan-card .chat-markdown h1 {
-  margin: 0 0 18px 0;
+  margin: 0 0 12px 0;
   color: #18181b;
-  font-size: 22px;
-  font-weight: 750;
-  line-height: 1.32;
+  font-size: 17px;
+  font-weight: 620;
+  line-height: 1.38;
 }
 
 .proposed-plan-card .chat-markdown h2 {
-  margin: 22px 0 8px 0;
+  margin: 16px 0 7px 0;
   color: #18181b;
-  font-size: 19px;
-  font-weight: 650;
-  line-height: 1.35;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .proposed-plan-card .chat-markdown h3 {
-  margin: 18px 0 8px 0;
+  margin: 14px 0 6px 0;
   color: #27272a;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.4;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.42;
 }
 
 .proposed-plan-card .chat-markdown p,
@@ -1141,7 +1251,7 @@ label:has(> select#reasoning-effort) select {
   overflow: hidden;
   border-radius: 0.25rem;
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
-  font-size: 0.84em;
+  font-size: 0.9em;
   line-height: 1.45;
   text-decoration: none;
   vertical-align: baseline;
@@ -1154,7 +1264,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown-url-host {
   flex: 0 0 auto;
   color: color-mix(in srgb, var(--info-foreground) 82%, var(--foreground));
-  font-weight: 560;
+  font-weight: 500;
 }
 
 .chat-markdown-url-path {
@@ -1166,41 +1276,42 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown blockquote {
-  border-left: 2px solid color-mix(in srgb, var(--info-foreground) 28%, var(--border));
-  border-radius: 0 0.35rem 0.35rem 0;
-  background: color-mix(in srgb, var(--muted) 38%, transparent);
-  padding: 0.45rem 0.8rem;
-  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground));
+  border-left: 2px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+  padding: 0.48rem 0.82rem;
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
   font-size: 14px;
   line-height: 1.68;
 }
 
 .chat-markdown :not(pre) > code {
-  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
-  border-radius: 0.28rem;
-  background: color-mix(in srgb, var(--muted) 48%, transparent);
-  padding: 0.06rem 0.28rem;
-  color: color-mix(in srgb, var(--foreground) 88%, transparent);
-  font-family: "SF Mono", "Fira Code", Consolas, monospace;
-  font-size: 0.82em;
+  border: 0;
+  border-radius: 0.32rem;
+  background: color-mix(in srgb, var(--muted) 72%, var(--background));
+  padding: 0.1rem 0.34rem;
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9em;
+  font-weight: 400;
   line-height: 1.45;
   overflow-wrap: anywhere;
   word-break: normal;
-  vertical-align: 0.02em;
+  vertical-align: 0.03em;
 }
 
 .chat-markdown .chat-markdown-file-link {
   display: inline-flex;
   align-items: center;
-  gap: 0.16rem;
-  border-radius: 0.22rem;
-  padding: 0 0.04rem;
+  gap: 0.18rem;
+  border-radius: 0.32rem;
+  padding: 0.02rem 0.12rem;
   color: color-mix(in srgb, var(--info-foreground) 82%, var(--foreground));
   font-family: inherit;
-  font-size: 0.9em;
+  font-size: 0.96em;
   font-weight: 500;
-  line-height: 1.28;
-  vertical-align: -0.04em;
+  line-height: 1.3;
+  vertical-align: -0.03em;
   text-decoration: none;
   text-decoration-line: none;
   transition:
@@ -1242,20 +1353,21 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown pre {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
-  border-radius: 0.45rem;
-  background: color-mix(in srgb, var(--muted) 62%, var(--background));
-  padding: 0.72rem 0.82rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--muted) 78%, var(--background));
+  padding: 0.74rem 0.88rem;
   box-shadow: none;
+  scrollbar-gutter: stable;
 }
 
 .chat-markdown pre code {
   border: none;
   background: transparent;
   padding: 0;
-  font-family: "SF Mono", "Fira Code", Consolas, monospace;
-  font-size: 12.5px;
-  line-height: 1.62;
+  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12.75px;
+  line-height: 1.68;
 }
 
 .markdown-file-link-tooltip-scroll {
@@ -1277,20 +1389,20 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-codeblock {
-  --chat-markdown-codeblock-copy-button-space: 1.5rem;
+  --chat-markdown-codeblock-copy-button-space: 1.55rem;
   position: relative;
-  margin: 0.75rem 0;
+  margin: 0.8rem 0 0.9rem;
 }
 
 .chat-markdown .chat-markdown-codeblock-language {
   position: absolute;
-  top: 0.46rem;
-  left: 0.65rem;
+  top: 0.5rem;
+  left: 0.72rem;
   z-index: 1;
   max-width: calc(100% - 4rem);
   overflow: hidden;
-  color: color-mix(in srgb, var(--muted-foreground) 76%, transparent);
-  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
+  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 11px;
   line-height: 1.5rem;
   text-overflow: ellipsis;
@@ -1303,7 +1415,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-codeblock.has-language pre {
-  padding-top: 2.05rem;
+  padding-top: 2.12rem;
 }
 
 .chat-markdown .chat-markdown-copy-button {
@@ -1317,31 +1429,29 @@ label:has(> select#reasoning-effort) select {
   height: 1.5rem;
   width: 1.5rem;
   border-radius: 0.375rem;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--background) 82%, transparent);
+  border: 0;
+  background: color-mix(in srgb, var(--background) 68%, transparent);
   color: var(--muted-foreground);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.78;
   transition:
     opacity 120ms ease,
     color 120ms ease,
-    border-color 120ms ease;
+    background-color 120ms ease;
 }
 
 .chat-markdown .chat-markdown-codeblock:hover .chat-markdown-copy-button,
 .chat-markdown .chat-markdown-codeblock:focus-within .chat-markdown-copy-button {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .chat-markdown .chat-markdown-copy-button:hover {
   color: var(--foreground);
-  border-color: color-mix(in srgb, var(--border) 70%, var(--foreground));
+  background: color-mix(in srgb, var(--background) 92%, transparent);
 }
 
 .chat-markdown .chat-markdown-shiki .shiki {
-  background: color-mix(in srgb, var(--muted) 58%, var(--background)) !important;
+  background: color-mix(in srgb, var(--muted) 78%, var(--background)) !important;
 }
 
 .chat-markdown table {

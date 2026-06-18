@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 import type * as Electron from "electron";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
@@ -35,6 +36,12 @@ interface ElectronAppCalls {
   readonly setAboutPanelOptions: Array<Electron.AboutPanelOptionsOptions>;
   readonly setDockIcon: string[];
   readonly setName: string[];
+  readonly setAppUserModelId: string[];
+  readonly writeShortcutLink: Array<{
+    readonly shortcutPath: string;
+    readonly operation: "create" | "update" | "replace";
+    readonly options: Electron.ShortcutDetails;
+  }>;
 }
 
 const makeElectronAppLayer = (calls: ElectronAppCalls) =>
@@ -54,7 +61,10 @@ const makeElectronAppLayer = (calls: ElectronAppCalls) =>
       Effect.sync(() => {
         calls.setAboutPanelOptions.push(options);
       }),
-    setAppUserModelId: () => Effect.void,
+    setAppUserModelId: (id) =>
+      Effect.sync(() => {
+        calls.setAppUserModelId.push(id);
+      }),
     setDesktopName: () => Effect.void,
     setDockIcon: (iconPath) =>
       Effect.sync(() => {
@@ -63,6 +73,19 @@ const makeElectronAppLayer = (calls: ElectronAppCalls) =>
     appendCommandLineSwitch: () => Effect.void,
     on: () => Effect.void,
   } satisfies ElectronApp.ElectronAppShape);
+
+const makeElectronShellLayer = (calls: ElectronAppCalls) =>
+  Layer.succeed(ElectronShell.ElectronShell, {
+    openExternal: () => Effect.succeed(false),
+    openPath: () => Effect.succeed(false),
+    revealPath: () => Effect.succeed(false),
+    copyText: () => Effect.void,
+    writeShortcutLink: (shortcutPath, operation, options) =>
+      Effect.sync(() => {
+        calls.writeShortcutLink.push({ shortcutPath, operation, options });
+        return true;
+      }),
+  } satisfies ElectronShell.ElectronShellShape);
 
 const makeAssetsLayer = (png: Option.Option<string>) =>
   Layer.succeed(DesktopAssets.DesktopAssets, {
@@ -112,6 +135,8 @@ const withIdentity = <A, E, R>(
     setAboutPanelOptions: [],
     setDockIcon: [],
     setName: [],
+    setAppUserModelId: [],
+    writeShortcutLink: [],
   };
 
   return effect.pipe(
@@ -121,11 +146,13 @@ const withIdentity = <A, E, R>(
           FileSystem.layerNoop({
             exists: (path) =>
               Effect.succeed(input.legacyPathExists === true && path.includes("T3 Code (Alpha)")),
+            makeDirectory: () => Effect.void,
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
         ),
         Layer.provideMerge(makeAssetsLayer(input.pngIconPath ?? Option.none())),
+        Layer.provideMerge(makeElectronShellLayer(calls)),
         Layer.provideMerge(makeElectronAppLayer(calls)),
         Layer.provideMerge(makeEnvironmentLayer(input.environment)),
       ),
@@ -154,6 +181,8 @@ describe("DesktopAppIdentity", () => {
       setAboutPanelOptions: [],
       setDockIcon: [],
       setName: [],
+      setAppUserModelId: [],
+      writeShortcutLink: [],
     };
 
     return withIdentity(
@@ -162,6 +191,8 @@ describe("DesktopAppIdentity", () => {
         yield* identity.configure;
 
         assert.deepEqual(calls.setName, ["Bahew (Alpha)"]);
+        assert.deepEqual(calls.setAppUserModelId, []);
+        assert.deepEqual(calls.writeShortcutLink, []);
         assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "Bahew (Alpha)");
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
@@ -175,6 +206,47 @@ describe("DesktopAppIdentity", () => {
           },
         },
         pngIconPath: Option.some("/icon.png"),
+      },
+    );
+  });
+
+  it.effect("在 Windows 上写入带 Bahew 身份的通知快捷方式", () => {
+    const calls: ElectronAppCalls = {
+      setAboutPanelOptions: [],
+      setDockIcon: [],
+      setName: [],
+      setAppUserModelId: [],
+      writeShortcutLink: [],
+    };
+
+    return withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        yield* identity.configure;
+
+        assert.deepEqual(calls.setAppUserModelId, ["com.t3tools.t3code.dev"]);
+        assert.equal(calls.writeShortcutLink.length, 1);
+        assert.equal(
+          slash(calls.writeShortcutLink[0]?.shortcutPath ?? ""),
+          "/Users/alice/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Bahew.lnk",
+        );
+        assert.equal(calls.writeShortcutLink[0]?.operation, "replace");
+        assert.equal(calls.writeShortcutLink[0]?.options.target, process.execPath);
+        assert.equal(
+          calls.writeShortcutLink[0]?.options.appUserModelId,
+          "com.t3tools.t3code.dev",
+        );
+        assert.equal(calls.writeShortcutLink[0]?.options.description, "Bahew (Dev)");
+      }),
+      {
+        calls,
+        environment: {
+          platform: "win32",
+          env: {
+            T3CODE_PORT: "4949",
+            VITE_DEV_SERVER_URL: "http://localhost:5173",
+          },
+        },
       },
     );
   });

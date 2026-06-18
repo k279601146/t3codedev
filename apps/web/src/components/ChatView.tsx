@@ -84,6 +84,8 @@ import {
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
 import {
+  type AppState,
+  selectEnvironmentState,
   selectProjectsAcrossEnvironments,
   selectThreadsAcrossEnvironments,
   useStore,
@@ -910,6 +912,39 @@ export default function ChatView(props: ChatViewProps) {
   const serverThread = useStore(
     useMemo(
       () => createThreadSelectorByRef(routeKind === "server" ? routeThreadRef : null),
+      [routeKind, routeThreadRef],
+    ),
+  );
+  const serverThreadDetailLoaded = useStore(
+    useMemo(
+      () => (state: AppState) => {
+        if (routeKind !== "server") {
+          return true;
+        }
+        const environmentState = selectEnvironmentState(state, routeThreadRef.environmentId);
+        return environmentState.messageIdsByThreadId[routeThreadRef.threadId] !== undefined;
+      },
+      [routeKind, routeThreadRef],
+    ),
+  );
+  const serverThreadHasSidebarHistory = useStore(
+    useMemo(
+      () => (state: AppState) => {
+        if (routeKind !== "server") {
+          return false;
+        }
+        const environmentState = selectEnvironmentState(state, routeThreadRef.environmentId);
+        const summary = environmentState.sidebarThreadSummaryById[routeThreadRef.threadId];
+        return Boolean(
+          summary &&
+            (summary.latestUserMessageAt ||
+              summary.latestTurn !== null ||
+              summary.session !== null ||
+              summary.hasPendingApprovals ||
+              summary.hasPendingUserInput ||
+              summary.hasActionableProposedPlan),
+        );
+      },
       [routeKind, routeThreadRef],
     ),
   );
@@ -3978,31 +4013,60 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   const onRespondToApproval = useCallback(
-    async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
+    async (
+      requestId: ApprovalRequestId,
+      decision: ProviderApprovalDecision,
+      responseText?: string,
+    ) => {
       const api = readEnvironmentApi(environmentId);
       if (!api || !activeThreadId) return;
+      const trimmedResponseText = decision === "decline" ? responseText?.trim() : "";
+      const activeTurnIdForResponse =
+        trimmedResponseText && activeThread?.session?.activeTurnId
+          ? activeThread.session.activeTurnId
+          : null;
 
       setRespondingRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
-      await api.orchestration
-        .dispatchCommand({
+      try {
+        await api.orchestration.dispatchCommand({
           type: "thread.approval.respond",
           commandId: newCommandId(),
           threadId: activeThreadId,
           requestId,
           decision,
           createdAt: new Date().toISOString(),
-        })
-        .catch((err: unknown) => {
-          setThreadError(
-            activeThreadId,
-            err instanceof Error ? err.message : "Failed to submit approval decision.",
-          );
         });
-      setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
+
+        if (trimmedResponseText && activeTurnIdForResponse) {
+          const createdAt = new Date().toISOString();
+          await api.orchestration.dispatchCommand({
+            type: "thread.turn.steer",
+            commandId: newCommandId(),
+            threadId: activeThreadId,
+            expectedTurnId: activeTurnIdForResponse,
+            message: {
+              messageId: newMessageId(),
+              role: "user",
+              text: trimmedResponseText,
+              attachments: [],
+            },
+            createdAt,
+          });
+        } else if (trimmedResponseText) {
+          setThreadError(activeThreadId, "当前没有运行中的任务，无法发送调整说明。");
+        }
+      } catch (err: unknown) {
+        setThreadError(
+          activeThreadId,
+          err instanceof Error ? err.message : "Failed to submit approval decision.",
+        );
+      } finally {
+        setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
+      }
     },
-    [activeThreadId, environmentId, setThreadError],
+    [activeThread?.session?.activeTurnId, activeThreadId, environmentId, setThreadError],
   );
 
   const onRespondToUserInput = useCallback(
@@ -4833,16 +4897,24 @@ export default function ChatView(props: ChatViewProps) {
     />
   ) : null;
 
-  const isEmptyNewThread = shouldShowEmptyNewThread({
-    routeKind,
-    isConversationThread,
-    activeThreadMessagesCount: activeThread.messages.length,
-    displayedMessagesCount: timelineMessages.length,
-    latestTurn: activeThread.latestTurn,
-    error: activeThread.error,
-  });
+  const shouldSuppressEmptyNewThreadForHistoryLoad =
+    routeKind === "server" && !serverThreadDetailLoaded && serverThreadHasSidebarHistory;
+  const isEmptyNewThread =
+    !shouldSuppressEmptyNewThreadForHistoryLoad &&
+    shouldShowEmptyNewThread({
+      routeKind,
+      isConversationThread,
+      activeThreadMessagesCount: activeThread.messages.length,
+      displayedMessagesCount: timelineMessages.length,
+      latestTurn: activeThread.latestTurn,
+      error: activeThread.error,
+    });
   const hideProjectChromeForEmptyNewThread =
     isEmptyNewThread && (isConversationThread || !activeProject);
+  const isLoadingThreadHistory =
+    routeKind === "server" &&
+    !serverThreadDetailLoaded &&
+    (threadHasStarted(activeThread) || serverThreadHasSidebarHistory);
   const markdownCwd = gitCwd ?? activeWorkspaceRoot ?? undefined;
   const inlineRightPanel =
     rightPanelOpen && !shouldUseRightPanelSheet ? (
@@ -5068,6 +5140,7 @@ export default function ChatView(props: ChatViewProps) {
               mode={newThreadLauncherMode}
               isComposerEmpty={composerPrompt.trim().length === 0}
               projectName={!isConversationThread ? activeProject?.name : undefined}
+              providerSkills={inlineDisplaySkills}
               composer={
                 <>
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
@@ -5119,6 +5192,7 @@ export default function ChatView(props: ChatViewProps) {
                   workspaceRoot={activeWorkspaceRoot}
                   skills={inlineDisplaySkills}
                   onIsAtEndChange={onIsAtEndChange}
+                  isLoadingHistory={isLoadingThreadHistory}
                 />
 
                 {/* scroll to bottom pill — shown when user has scrolled away from the bottom */}

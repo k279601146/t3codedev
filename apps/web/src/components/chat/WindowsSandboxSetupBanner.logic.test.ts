@@ -27,7 +27,7 @@ function provider(input: Partial<ServerProvider> = {}): ServerProvider {
 }
 
 describe("WindowsSandboxSetupBanner.logic", () => {
-  it("在 elevated 降级为 unelevated 时显示可继续使用的提示", () => {
+  it("在 unelevated 已就绪时不显示阻塞输入的提示", () => {
     const copy = deriveWindowsSandboxBannerCopy(
       provider(),
       {
@@ -40,12 +40,27 @@ describe("WindowsSandboxSetupBanner.logic", () => {
       },
     );
 
+    expect(copy).toBeNull();
+  });
+
+  it("在 unelevated 返回错误时仍显示可诊断的错误提示", () => {
+    const copy = deriveWindowsSandboxBannerCopy(
+      provider(),
+      {
+        mode: "unelevated",
+        readiness: "error",
+        commandRunnerAvailable: true,
+        setupHelperAvailable: true,
+        lastError: "沙箱状态检查失败",
+        updatedAt: "2026-06-17T00:00:00.000Z",
+      },
+    );
+
     expect(copy).toEqual({
-      kind: "fallback",
-      tone: "warning",
-      title: "Agent 沙箱已降级运行",
-      detail:
-        "Windows elevated 沙箱暂不可用，已使用 unelevated 沙箱继续运行；修复后可在设置中恢复 elevated。",
+      kind: "error",
+      tone: "error",
+      title: "Agent 沙箱启动失败",
+      detail: "沙箱状态检查失败",
     });
   });
 });

@@ -86,7 +86,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       data-workspace-root={workspaceRoot ?? undefined}
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 text-[14px] font-semibold leading-5 text-[#09090b] dark:text-foreground/92">
+        <div className="min-w-0 text-[14px] font-medium leading-5 text-[#09090b] dark:text-foreground/92">
           计划
         </div>
         <div className="flex shrink-0 items-center gap-1 text-[#71717a] dark:text-muted-foreground">

@@ -7,6 +7,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
@@ -38,6 +39,7 @@ const normalizeCommitHash = (value: string): Option.Option<string> => {
 const make = Effect.gen(function* () {
   const assets = yield* DesktopAssets.DesktopAssets;
   const electronApp = yield* ElectronApp.ElectronApp;
+  const electronShell = yield* ElectronShell.ElectronShell;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const commitHashCache = yield* Ref.make<Option.Option<Option.Option<string>>>(Option.none());
@@ -104,6 +106,11 @@ const make = Effect.gen(function* () {
 
     if (environment.platform === "win32") {
       yield* electronApp.setAppUserModelId(environment.appUserModelId);
+      yield* ensureWindowsNotificationShortcut({
+        electronShell,
+        fileSystem,
+        environment,
+      });
     }
 
     if (environment.platform === "linux") {
@@ -124,5 +131,54 @@ const make = Effect.gen(function* () {
     configure,
   });
 });
+
+const ensureWindowsNotificationShortcut = (input: {
+  readonly electronShell: ElectronShell.ElectronShellShape;
+  readonly fileSystem: FileSystem.FileSystem;
+  readonly environment: DesktopEnvironment.DesktopEnvironmentShape;
+}) =>
+  Effect.gen(function* () {
+    const shortcutDirectory = input.environment.path.join(
+      input.environment.appDataDirectory,
+      "Microsoft",
+      "Windows",
+      "Start Menu",
+      "Programs",
+    );
+    const shortcutPath = input.environment.path.join(
+      shortcutDirectory,
+      `${input.environment.branding.baseName}.lnk`,
+    );
+    yield* input.fileSystem.makeDirectory(shortcutDirectory, { recursive: true });
+
+    const shortcutTarget = process.execPath;
+    const shortcutArgs = input.environment.isPackaged ? undefined : buildWindowsShortcutArgs();
+    const success = yield* input.electronShell.writeShortcutLink(shortcutPath, "replace", {
+      target: shortcutTarget,
+      ...(shortcutArgs ? { args: shortcutArgs } : {}),
+      appUserModelId: input.environment.appUserModelId,
+      description: input.environment.displayName,
+    });
+    if (!success) {
+      return;
+    }
+  }).pipe(Effect.ignore);
+
+function buildWindowsShortcutArgs(): string {
+  return process.argv
+    .slice(1)
+    .map((arg) => quoteWindowsShortcutArgument(arg))
+    .join(" ");
+}
+
+function quoteWindowsShortcutArgument(value: string): string {
+  if (value.length === 0) {
+    return '""';
+  }
+  if (!/[\s"]/u.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1")}"`;
+}
 
 export const layer = Layer.effect(DesktopAppIdentity, make);

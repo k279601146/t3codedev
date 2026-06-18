@@ -2665,6 +2665,47 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBeNull();
   });
 
+  it("将缺少 turnId 的运行时警告归属到当前活跃 turn", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turnless-warning-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-warning-active"),
+      payload: {},
+    });
+
+    harness.emit({
+      type: "runtime.warning",
+      eventId: asEventId("evt-turnless-runtime-warning"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: asThreadId("thread-1"),
+      payload: {
+        message:
+          "image generation failed: stream error: failed to decode image generation response: missing field `created`",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === "evt-turnless-runtime-warning" &&
+          activity.kind === "runtime.warning" &&
+          activity.turnId === "turn-warning-active",
+      ),
+    );
+    const warning = thread.activities.find(
+      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-turnless-runtime-warning",
+    );
+
+    expect(warning?.turnId).toBe("turn-warning-active");
+  });
+
   it("maps session/thread lifecycle and item.started into session/activity projections", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

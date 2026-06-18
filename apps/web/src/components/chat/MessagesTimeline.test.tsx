@@ -144,6 +144,18 @@ function buildAssistantTimelineEntry(input: {
 }
 
 describe("MessagesTimeline", () => {
+  it("renders a history skeleton while an existing thread detail is loading", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[]} isLoadingHistory />,
+    );
+
+    expect(markup).toContain('data-timeline-history-skeleton="true"');
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup).toContain("正在加载对话内容");
+    expect(markup).not.toContain("Send a message to start the conversation.");
+  }, 20_000);
+
   it("renders collapse controls for long user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
@@ -222,7 +234,10 @@ describe("MessagesTimeline", () => {
   it("does not render a steer marker for ordinary user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
-      <MessagesTimeline {...buildProps()} timelineEntries={[buildUserTimelineEntry("开始任务。")]} />,
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("开始任务。")]}
+      />,
     );
 
     expect(markup).not.toContain("已引导对话");
@@ -455,7 +470,7 @@ describe("MessagesTimeline", () => {
               changedFiles: ["hello.py"],
               status: "running",
               detail:
-                "diff --git a/hello.py b/hello.py\nnew file mode 100644\n--- /dev/null\n+++ b/hello.py\n@@ -0,0 +1,1 @@\n+print(\"你好\")",
+                'diff --git a/hello.py b/hello.py\nnew file mode 100644\n--- /dev/null\n+++ b/hello.py\n@@ -0,0 +1,1 @@\n+print("你好")',
             },
           },
         ]}
@@ -496,6 +511,141 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("bun typecheck");
     expect(markup).toContain("textShimmerMoving");
     expect(markup).toContain('aria-busy="true"');
+  });
+
+  it("renders command work as a scrollable shell panel with copy actions", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const command = "Get-Content -Path apps\\web\\package.json -TotalCount 160";
+    const output = Array.from({ length: 18 }, (_, index) => `"line-${index + 1}": "value"`).join(
+      "\n",
+    );
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command,
+              output,
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-command-work-panel="true"');
+    expect(markup).toContain("bash");
+    expect(markup).toContain("max-h-[220px]");
+    expect(markup).toContain(command);
+    expect(markup).toContain("&quot;line-18&quot;: &quot;value&quot;");
+    expect(markup).toContain('aria-label="复制命令和输出"');
+    expect(markup).toContain('aria-label="复制命令"');
+    expect(markup).toContain('aria-label="复制输出"');
+    expect(markup).toContain("成功");
+    expect(markup).toContain('data-command-output-scroll="true"');
+  });
+
+  it("hides duplicated command text from the output block", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const command = "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command 'bun run lint'";
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "bun run lint",
+              rawCommand: command,
+              detail: command,
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("已运行命令");
+    expect(markup).toContain("无输出");
+    expect(markup).not.toContain("复制输出");
+    expect(markup).not.toContain('"C:\\Program Files\\PowerShell\\7\\pwsh.exe"');
+  });
+
+  it("uses the explicit output field when present", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "bun tsc --noEmit",
+              output: "line-1\nline-2\nline-3",
+              detail: "summary line",
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("line-3");
+    expect(markup).toContain("已运行命令");
+    expect(markup).not.toContain("summary line");
+  });
+
+  it("keeps the collapsed summary command text while expanding the shell panel title", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "bun test",
+              output: "ok\n1 pass",
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("已运行命令");
+    expect(markup).toContain("ok");
+    expect(markup).not.toContain("bun test\nok");
   });
 
   it.each([

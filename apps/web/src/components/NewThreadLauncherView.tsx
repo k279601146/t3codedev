@@ -1,4 +1,4 @@
-import type { PluginSummary } from "@t3tools/contracts";
+import type { PluginSummary, ServerProviderSkill } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -45,6 +45,11 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
+
+import {
+  buildIdleSuggestions,
+  IDLE_SUGGESTION_DELAY_MS,
+} from "./NewThreadLauncherSuggestions";
 
 export type LauncherModeId =
   | "general"
@@ -556,29 +561,6 @@ const MODE_TITLES: Record<LauncherModeId, string> = {
   playbook: "想沉淀哪套流程？",
 };
 
-const IDLE_SUGGESTION_POOL = [
-  "整理最近的客户反馈，并提炼出优先级和下一步行动。",
-  "研究一个竞品最近的产品更新，并总结值得借鉴的变化。",
-  "生成一份团队周报或项目状态报告。",
-  "把一个模糊想法拆成可执行的项目计划。",
-  "创建一份产品介绍幻灯片大纲。",
-  "分析一份表格并找出关键趋势。",
-  "为一个新功能设计落地页文案。",
-  "定期追踪行业新闻并生成摘要。",
-  "把会议记录整理成待办事项和负责人。",
-  "比较两个方案的优劣并给出决策建议。",
-  "为一次产品发布准备传播计划。",
-  "生成一份用户调研访谈提纲。",
-  "梳理一个功能的 PRD 初稿。",
-  "把长文档总结成一页执行摘要。",
-  "设计一组社交媒体宣传图的创意方向。",
-  "创建一份预算规划表并列出关键公式。",
-  "分析销售漏斗数据并找出转化瓶颈。",
-  "为招聘岗位生成面试问题清单。",
-  "把学习目标拆成一周行动计划。",
-  "生成一份面向管理层的简报提纲。",
-];
-
 const PLUGINS_LIST_QUERY = ["plugins", "list"] as const;
 
 function getPluginsClient() {
@@ -656,6 +638,7 @@ export function NewThreadLauncherView({
   projectName,
   composer,
   footer,
+  providerSkills,
   onModeChange,
   onSubmitPreset,
 }: {
@@ -664,6 +647,9 @@ export function NewThreadLauncherView({
   projectName?: string | undefined;
   composer: ReactNode;
   footer: ReactNode;
+  providerSkills?: ReadonlyArray<
+    Pick<ServerProviderSkill, "name" | "displayName" | "shortDescription" | "description">
+  >;
   onModeChange: (mode: LauncherModeId) => void;
   onSubmitPreset: (prompt: string, mode?: LauncherModeId) => void;
 }) {
@@ -711,6 +697,7 @@ export function NewThreadLauncherView({
             <IdleSuggestionsPanel
               onClose={() => setIsIdleSuggestionsDismissed(true)}
               onSubmitPreset={onSubmitPreset}
+              providerSkills={providerSkills ?? []}
             />
           ) : (
             <LauncherModeBar activeMode={mode} onModeChange={onModeChange} />
@@ -772,7 +759,7 @@ function useIdleSuggestionsVisibility(mode: LauncherModeId, isComposerEmpty: boo
       setIsVisible(false);
       return;
     }
-    const timer = window.setTimeout(() => setIsVisible(true), 45000);
+    const timer = window.setTimeout(() => setIsVisible(true), IDLE_SUGGESTION_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [isEligible]);
 
@@ -782,16 +769,33 @@ function useIdleSuggestionsVisibility(mode: LauncherModeId, isComposerEmpty: boo
 function IdleSuggestionsPanel({
   onClose,
   onSubmitPreset,
+  providerSkills,
 }: {
   onClose: () => void;
   onSubmitPreset: (prompt: string, mode?: LauncherModeId) => void;
+  providerSkills: ReadonlyArray<
+    Pick<ServerProviderSkill, "name" | "displayName" | "shortDescription" | "description">
+  >;
 }) {
-  const suggestions = useMemo(() => getRandomIdleSuggestions(5), []);
+  const pptMaster = usePptMasterPlugin();
+  const agentReach = useAgentReachPlugin();
+  const suggestions = useMemo(
+    () =>
+      buildIdleSuggestions({
+        skills: providerSkills,
+        plugins: {
+          pptMasterInstalled: pptMaster.plugin?.installed === true,
+          agentReachInstalled: agentReach.plugin?.installed === true,
+        },
+        count: 5,
+      }),
+    [agentReach.plugin?.installed, providerSkills, pptMaster.plugin?.installed],
+  );
 
   return (
     <section className="mt-4 w-full animate-in fade-in slide-in-from-top-1 px-3 duration-300 sm:px-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-[15px] font-semibold text-foreground">以下是您可以让我做的事情:</h2>
+        <h2 className="text-[15px] font-semibold text-foreground">可以从这些任务开始</h2>
         <button
           type="button"
           onClick={onClose}
@@ -817,10 +821,6 @@ function IdleSuggestionsPanel({
       </div>
     </section>
   );
-}
-
-function getRandomIdleSuggestions(count: number) {
-  return [...IDLE_SUGGESTION_POOL].sort(() => Math.random() - 0.5).slice(0, count);
 }
 
 function LauncherModeBar({

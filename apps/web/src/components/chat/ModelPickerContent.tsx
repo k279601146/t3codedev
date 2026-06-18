@@ -144,6 +144,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   } = props;
   const [searchQuery, setSearchQuery] = useState("");
   const [modelSubmenuOpen, setModelSubmenuOpen] = useState(false);
+  const modelSubmenuCloseTimeoutRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRegionRef = useRef<HTMLDivElement>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
@@ -180,6 +181,30 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     reasoningDescriptor.options.length > 0 &&
     typeof props.onModelOptionsChange === "function";
   const showReasoningFirstMenu = props.simplified && showReasoningSubmenu;
+  const cancelModelSubmenuClose = useCallback(() => {
+    if (modelSubmenuCloseTimeoutRef.current === null) {
+      return;
+    }
+    window.clearTimeout(modelSubmenuCloseTimeoutRef.current);
+    modelSubmenuCloseTimeoutRef.current = null;
+  }, []);
+  const openModelSubmenu = useCallback(() => {
+    cancelModelSubmenuClose();
+    setModelSubmenuOpen(true);
+  }, [cancelModelSubmenuClose]);
+  const scheduleModelSubmenuClose = useCallback(() => {
+    cancelModelSubmenuClose();
+    modelSubmenuCloseTimeoutRef.current = window.setTimeout(() => {
+      modelSubmenuCloseTimeoutRef.current = null;
+      setModelSubmenuOpen(false);
+    }, 180);
+  }, [cancelModelSubmenuClose]);
+
+  useEffect(() => {
+    return () => {
+      cancelModelSubmenuClose();
+    };
+  }, [cancelModelSubmenuClose]);
 
   const handleReasoningChange = useCallback(
     (value: string) => {
@@ -632,11 +657,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       <TooltipProvider delay={0}>
         <div
           className="relative w-[200px] max-w-[calc(100vw-1rem)] select-none"
-          onMouseLeave={() => setModelSubmenuOpen(false)}
+          onMouseEnter={cancelModelSubmenuClose}
+          onMouseLeave={scheduleModelSubmenuClose}
         >
           {modelSubmenuOpen ? (
             <div
               className="absolute right-[calc(100%+0.25rem)] bottom-0 z-20 w-[200px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[12px] border bg-popover p-1 text-popover-foreground shadow-lg/10 before:pointer-events-none before:absolute before:inset-0 before:rounded-[11px] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]"
+              onMouseEnter={cancelModelSubmenuClose}
               onMouseDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
@@ -652,7 +679,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       key={`${model.instanceId}:${model.slug}`}
                       type="button"
                       className={cn(
-                        "flex h-8 w-full items-center justify-between gap-3 rounded-[7px] px-2 text-left text-[13px] leading-none text-foreground outline-none transition-colors hover:bg-accent/70",
+                        "flex h-8 w-full items-center justify-between gap-3 rounded-[7px] px-2 text-left text-[13px] leading-5 text-foreground outline-none transition-colors hover:bg-accent/70",
                         selected && "bg-accent/60",
                       )}
                       onClick={() => handleModelSelect(model.slug, model.instanceId)}
@@ -686,7 +713,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     key={option.id}
                     type="button"
                     className={cn(
-                      "flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[13px] leading-none text-foreground outline-none transition-colors hover:bg-accent/70",
+                      "flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[13px] leading-5 text-foreground outline-none transition-colors hover:bg-accent/70",
                       selected && "bg-accent/60",
                     )}
                     onClick={() => handleReasoningChange(option.id)}
@@ -707,12 +734,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               aria-haspopup="menu"
               data-model-picker-model-submenu-trigger="true"
               className={cn(
-                "flex h-8 w-full items-center justify-between gap-3 rounded-[7px] px-2 text-left text-[13px] leading-none text-foreground outline-none transition-colors hover:bg-accent/70",
+                "flex h-8 w-full items-center justify-between gap-3 rounded-[7px] px-2 text-left text-[13px] leading-5 text-foreground outline-none transition-colors hover:bg-accent/70",
                 modelSubmenuOpen && "bg-accent/60",
               )}
-              onClick={() => setModelSubmenuOpen((open) => !open)}
-              onFocus={() => setModelSubmenuOpen(true)}
-              onMouseEnter={() => setModelSubmenuOpen(true)}
+              onClick={() => {
+                cancelModelSubmenuClose();
+                setModelSubmenuOpen((open) => !open);
+              }}
+              onFocus={openModelSubmenu}
+              onMouseEnter={openModelSubmenu}
             >
               <span className="min-w-0 truncate">{activeModelLabel}</span>
               <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/70" />

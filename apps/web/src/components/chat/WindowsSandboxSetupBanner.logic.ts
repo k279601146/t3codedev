@@ -10,7 +10,6 @@ export type WindowsSandboxBannerKind =
   | "missingSnapshot"
   | "notConfigured"
   | "updateRequired"
-  | "fallback"
   | "error";
 
 export interface WindowsSandboxBannerCopy {
@@ -38,14 +37,8 @@ export function deriveWindowsSandboxBannerCopy(
     };
   }
 
-  if (sandbox.mode === "unelevated") {
-    return {
-      kind: "fallback",
-      tone: "warning",
-      title: "Agent 沙箱已降级运行",
-      detail:
-        "Windows elevated 沙箱暂不可用，已使用 unelevated 沙箱继续运行；修复后可在设置中恢复 elevated。",
-    };
+  if (sandbox.mode === "unelevated" && sandbox.readiness === "ready" && !sandbox.lastError) {
+    return null;
   }
 
   switch (sandbox.readiness) {

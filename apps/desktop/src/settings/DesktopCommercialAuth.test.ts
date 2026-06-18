@@ -86,6 +86,7 @@ function makeLayer(
         openPath: () => Effect.succeed(true),
         revealPath: () => Effect.succeed(true),
         copyText: () => Effect.void,
+        writeShortcutLink: () => Effect.succeed(false),
       } satisfies ElectronShell.ElectronShellShape),
     ),
     Layer.provideMerge(NodeServices.layer),
