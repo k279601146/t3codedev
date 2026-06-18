@@ -964,7 +964,7 @@ it.layer(
 
       expect(ptyAdapter.spawnInputs[0]).toEqual(
         expect.objectContaining({
-          shell: "pwsh.exe",
+          shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
           args: ["-NoLogo"],
         }),
       );
@@ -984,15 +984,15 @@ it.layer(
       });
       ptyAdapter.spawnFailures.push(
         new Error("spawn custom-shell.exe ENOENT"),
-        new Error("spawn pwsh.exe ENOENT"),
+        new Error("spawn powershell.exe ENOENT"),
       );
 
       yield* manager.open(openInput());
 
       expect(ptyAdapter.spawnInputs.map((input) => input.shell)).toEqual([
         "C:\\missing\\custom-shell.exe",
-        "pwsh.exe",
         "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "powershell.exe",
       ]);
       expect(ptyAdapter.spawnInputs[1]?.args).toEqual(["-NoLogo"]);
       expect(ptyAdapter.spawnInputs[2]?.args).toEqual(["-NoLogo"]);

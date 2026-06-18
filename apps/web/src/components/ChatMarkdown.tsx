@@ -27,6 +27,10 @@ import { openInPreferredEditor } from "../editorPreferences";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
+import {
+  TEXT_PREVIEW_BASENAME_PATTERN_SOURCE,
+  TEXT_PREVIEW_FILE_EXTENSION_PATTERN_SOURCE,
+} from "../filePreview";
 import { useTheme } from "../hooks/useTheme";
 import {
   type MarkdownFileLinkMeta,
@@ -383,8 +387,14 @@ interface MarkdownWebLinkProps {
 }
 
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
-const PLAIN_FILE_PATH_PATTERN =
-  /(?:~\/|\.{1,2}\/|\/|[A-Za-z]:[\\/]|\\\\)[^\s"'`<>)\]]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}|[A-Za-z0-9._-]+\.(?:c|cc|cjs|cpp|cs|css|cts|cxx|env|gif|go|gql|graphql|h|hpp|htm|html|ini|java|jpeg|jpg|js|json|jsx|kt|kts|log|md|mdx|mjs|mts|pdf|php|png|ps1|py|rb|rs|sass|scss|sh|sql|svg|swift|toml|ts|tsx|txt|webp|xml|yaml|yml|zsh)(?::\d+){0,2}/gi;
+const PLAIN_FILE_LINK_EXTENSION_PATTERN_SOURCE = `${TEXT_PREVIEW_FILE_EXTENSION_PATTERN_SOURCE}|avif|bmp|doc|docx|gif|jpeg|jpg|pdf|png|webp`;
+const PLAIN_FILE_PATH_PATTERN = new RegExp(
+  "(?:~\\/|\\.{1,2}\\/|\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\s\"'`<>)\\]]+" +
+    "|[A-Za-z0-9._-]+(?:\\/[A-Za-z0-9._-]+)+(?::\\d+){0,2}" +
+    `|(?:${TEXT_PREVIEW_BASENAME_PATTERN_SOURCE})(?::\\d+){0,2}` +
+    `|[A-Za-z0-9._-]+\\.(?:${PLAIN_FILE_LINK_EXTENSION_PATTERN_SOURCE})(?::\\d+){0,2}`,
+  "gi",
+);
 const PLAIN_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 const INLINE_CODE_PATTERN = /`([^`\n]+)`/g;
 const PLAIN_LINE_SUFFIX_PATTERN = /^\s*\(line\s+(\d+)\)/i;

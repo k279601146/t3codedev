@@ -192,7 +192,7 @@ function defaultShellResolver(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   if (platform === "win32") {
-    return "pwsh.exe";
+    return windowsPowerShellPath(env);
   }
   return env.SHELL ?? "bash";
 }
@@ -297,9 +297,9 @@ function resolveShellCandidates(
   if (platform === "win32") {
     return uniqueShellCandidates([
       requested,
-      shellCandidateFromCommand("pwsh.exe", platform),
       shellCandidateFromCommand(windowsPowerShellPath(env), platform),
       shellCandidateFromCommand("powershell.exe", platform),
+      shellCandidateFromCommand("pwsh.exe", platform),
       shellCandidateFromCommand(env.ComSpec ?? null, platform),
       shellCandidateFromCommand(windowsCmdPath(env), platform),
       shellCandidateFromCommand("cmd.exe", platform),

@@ -304,6 +304,13 @@ const TRANSLATIONS = {
     "composer.placeholder.reply": "Describe the next change, ask a question, or attach context",
     "composer.placeholder.disconnectedReply":
       "Continue the thread, request changes, or attach context",
+    "composer.plan.refine": "Refine",
+    "composer.plan.implement": "Implement",
+    "composer.plan.sending": "Sending...",
+    "composer.plan.implementInNewThread": "Implement in a new thread",
+    "composer.plan.implementationActions": "Implementation actions",
+    "composer.plan.feedbackPlaceholder":
+      "Add feedback to refine the plan, or leave this blank to implement it",
   },
   "zh-CN": {
     "auth.welcome": "欢迎使用 {appName}",
@@ -580,6 +587,12 @@ const TRANSLATIONS = {
     "composer.model.empty": "没有可用模型",
     "composer.placeholder.reply": "描述下一步修改、继续提问，或附加上下文",
     "composer.placeholder.disconnectedReply": "继续提问、补充修改需求，或附加上下文",
+    "composer.plan.refine": "调整计划",
+    "composer.plan.implement": "执行",
+    "composer.plan.sending": "正在发送...",
+    "composer.plan.implementInNewThread": "在新对话中执行",
+    "composer.plan.implementationActions": "执行计划操作",
+    "composer.plan.feedbackPlaceholder": "输入反馈可调整计划，留空则执行该计划",
   },
 } as const;
 

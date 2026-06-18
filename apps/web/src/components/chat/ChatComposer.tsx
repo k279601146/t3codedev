@@ -3442,7 +3442,7 @@ export const ChatComposer = memo(
                       : activePendingProgress
                         ? "Type your own answer, or leave this blank to use the selected option"
                         : showPlanFollowUpPrompt && activeProposedPlan
-                          ? "Add feedback to refine the plan, or leave this blank to implement it"
+                          ? t("composer.plan.feedbackPlaceholder")
                           : environmentUnavailable
                             ? `${environmentUnavailable.label} is ${
                                 environmentUnavailable.connectionState === "connecting"

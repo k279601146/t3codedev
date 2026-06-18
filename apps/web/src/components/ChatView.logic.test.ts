@@ -278,6 +278,7 @@ describe("shouldShowEmptyNewThread", () => {
         displayedMessagesCount: 2,
         latestTurn: null,
         error: null,
+        isWorking: false,
       }),
     ).toBe(false);
   });
@@ -291,8 +292,23 @@ describe("shouldShowEmptyNewThread", () => {
         displayedMessagesCount: 0,
         latestTurn: null,
         error: null,
+        isWorking: false,
       }),
     ).toBe(true);
+  });
+
+  it("正在重试发送时不切回首页空状态", () => {
+    expect(
+      shouldShowEmptyNewThread({
+        routeKind: "server",
+        isConversationThread: true,
+        activeThreadMessagesCount: 0,
+        displayedMessagesCount: 0,
+        latestTurn: null,
+        error: null,
+        isWorking: true,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -663,7 +679,8 @@ describe("waitForStartedServerThread", () => {
     setStoreThreads([makeThread({ id: threadId })]);
     const promise = waitForStartedServerThread(scopeThreadRef(localEnvironmentId, threadId), 500);
 
-    await vi.advanceTimersByTimeAsync(500);
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
 
     await expect(promise).resolves.toBe(false);
   });
@@ -717,6 +734,92 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         localDispatch,
         phase: "ready",
         latestTurn: previousLatestTurn,
+        session: previousSession,
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("重试开始前已有的旧错误不会清掉本地发送态", () => {
+    const localDispatch = createLocalDispatchSnapshot({
+      id: ThreadId.make("thread-1"),
+      environmentId: localEnvironmentId,
+      codexThreadId: null,
+      projectId,
+      title: "Thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      session: previousSession,
+      messages: [],
+      proposedPlans: [],
+      error: "旧的失败错误",
+      createdAt: "2026-03-29T00:00:00.000Z",
+      archivedAt: null,
+      updatedAt: "2026-03-29T00:00:10.000Z",
+      latestTurn: previousLatestTurn,
+      branch: null,
+      worktreePath: null,
+      turnDiffSummaries: [],
+      activities: [],
+    });
+
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch,
+        phase: "ready",
+        latestTurn: previousLatestTurn,
+        session: previousSession,
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: "旧的失败错误",
+      }),
+    ).toBe(false);
+
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch,
+        phase: "ready",
+        latestTurn: previousLatestTurn,
+        session: previousSession,
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: "新的失败错误",
+      }),
+    ).toBe(true);
+  });
+
+  it("编辑重试的回退中间态不会清掉本地发送态", () => {
+    const localDispatch = createLocalDispatchSnapshot({
+      id: ThreadId.make("thread-1"),
+      environmentId: localEnvironmentId,
+      codexThreadId: null,
+      projectId,
+      title: "Thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      session: previousSession,
+      messages: [],
+      proposedPlans: [],
+      error: "旧的失败错误",
+      createdAt: "2026-03-29T00:00:00.000Z",
+      archivedAt: null,
+      updatedAt: "2026-03-29T00:00:10.000Z",
+      latestTurn: previousLatestTurn,
+      branch: null,
+      worktreePath: null,
+      turnDiffSummaries: [],
+      activities: [],
+    });
+
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch,
+        phase: "ready",
+        latestTurn: null,
         session: previousSession,
         hasPendingApproval: false,
         hasPendingUserInput: false,

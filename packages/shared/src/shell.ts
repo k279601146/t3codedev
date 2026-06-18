@@ -9,7 +9,7 @@ const PATH_CAPTURE_END = "__T3CODE_PATH_END__";
 const SHELL_ENV_NAME_PATTERN = /^[A-Z0-9_]+$/;
 const WINDOWS_PATH_DELIMITER = ";";
 const POSIX_PATH_DELIMITER = ":";
-const WINDOWS_SHELL_CANDIDATES = ["pwsh.exe", "powershell.exe"] as const;
+const WINDOWS_SHELL_CANDIDATES = ["powershell.exe", "pwsh.exe"] as const;
 
 type ExecFileSyncLike = (
   file: string,

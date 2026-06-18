@@ -14,6 +14,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
@@ -56,8 +57,11 @@ import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
+  fileChangeVerbLabel,
   isCommandWorkEntry,
   normalizeCompactToolLabel,
+  resolveAggregateFileChangeAction,
+  resolveFileChangeActionFromKind,
   resolveAssistantMessageCopyState,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
@@ -143,11 +147,6 @@ const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 
-// Use PingFang SC explicitly for chat content so the increased font size keeps the
-// preferred Chinese-first typeface across all platforms.
-const CHAT_FONT_STACK =
-  "'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif";
-const USER_MESSAGE_FONT_STYLE: React.CSSProperties = { fontFamily: CHAT_FONT_STACK };
 const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 
 // ---------------------------------------------------------------------------
@@ -435,7 +434,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // from TimelineRowCtx, which propagates through LegendList's memo.
   const renderItem = useCallback(
     ({ item }: { item: MessagesTimelineRow }) => (
-      <div className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip" data-timeline-root="true">
+      <div
+        className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip"
+        data-timeline-root="true"
+      >
         <TimelineRowContent row={item} />
       </div>
     ),
@@ -448,18 +450,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   if (rows.length === 0 && !isWorking) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
-      </div>
+      <div
+        className="h-full"
+        aria-label="暂无对话内容"
+        data-timeline-empty-placeholder="true"
+        data-testid="timeline-empty-placeholder"
+      />
     );
   }
 
   return (
     <TimelineRowCtx.Provider value={sharedState}>
       <TimelineRowActivityCtx.Provider value={activityState}>
-        <div ref={containerRef} className="h-full min-h-0 w-full min-w-0 flex-1">
+        <div
+          ref={containerRef}
+          className="h-full min-h-0 w-full min-w-0 flex-1 bg-white dark:bg-background"
+        >
           <LegendList<MessagesTimelineRow>
             ref={listRef}
             data={rows}
@@ -471,7 +477,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             maintainScrollAtEndThreshold={0.1}
             maintainVisibleContentPosition
             onScroll={handleScroll}
-            className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-5"
+            className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
             ListHeaderComponent={TIMELINE_LIST_HEADER}
             ListFooterComponent={TIMELINE_LIST_FOOTER}
           />
@@ -578,9 +584,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 function timelineRowSpacingClass(row: TimelineRow): string {
   if (row.kind === "message") {
     if (row.message.role === "assistant") {
-      return row.showAssistantMeta ? "pb-3" : "pb-2";
+      return row.showAssistantMeta ? "pb-4" : "pb-3";
     }
-    return "pb-4";
+    return "pb-3";
   }
   if (row.kind === "work") return "pb-2";
   return "pb-3";
@@ -648,14 +654,13 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   }, [assistantMessageId, ctx]);
 
   return (
-    <div className="pt-1 pb-1">
+    <div className="pt-1 pb-1.5">
       <button
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
-        className="group/turn-summary inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
-        style={USER_MESSAGE_FONT_STYLE}
+        className="chat-text group/turn-summary inline-flex items-center gap-1 rounded-md px-0 py-0.5 text-[13px] leading-5 text-muted-foreground/70 transition-colors hover:text-foreground/75"
         data-turn-summary-toggle="true"
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
         data-scroll-anchor-ignore
@@ -663,7 +668,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
         <span className="min-w-0 truncate">{elapsed ? `已处理 ${elapsed}` : "已处理"}</span>
         <ChevronDownIcon
           className={cn(
-            "size-3.5 shrink-0 -rotate-90 text-muted-foreground/55 transition-transform duration-200 group-hover/turn-summary:text-muted-foreground/85",
+            "size-3.5 shrink-0 -rotate-90 text-muted-foreground/58 transition-transform duration-200 group-hover/turn-summary:text-muted-foreground/80",
             !isCollapsed && "rotate-0",
           )}
         />
@@ -787,7 +792,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       <div className="flex justify-end">
         <div className="group flex max-w-[80%] flex-col items-end">
           {isEditing ? (
-            <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-[18px] border border-border/55 bg-secondary px-3 py-3 shadow-sm">
+            <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-md border border-border/60 bg-white px-3 py-3 shadow-sm dark:bg-background">
               <textarea
                 ref={editTextAreaRef}
                 value={draftText}
@@ -804,8 +809,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     void submitEdit();
                   }
                 }}
-                className="block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14.5px] leading-[1.72] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
-                style={USER_MESSAGE_FONT_STYLE}
+                className="chat-text block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14px] leading-[1.78] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
                 aria-label="编辑用户消息"
               />
               <div className="mt-3 flex items-center justify-end gap-2">
@@ -815,7 +819,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                   variant="outline"
                   disabled={isSubmittingEdit}
                   onClick={cancelEdit}
-                  className="rounded-full border-border/60 bg-background/80 px-3 text-foreground/80 shadow-none hover:bg-background"
+                  className="rounded-md border-border/60 bg-background/80 px-3 text-foreground/80 shadow-none hover:bg-background"
                 >
                   取消
                 </Button>
@@ -824,7 +828,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                   size="xs"
                   disabled={draftText.trim().length === 0 || isSubmittingEdit}
                   onClick={() => void submitEdit()}
-                  className="rounded-full px-3"
+                  className="rounded-md px-3"
                 >
                   发送
                 </Button>
@@ -833,14 +837,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           ) : (
             <>
               {fileAttachments.length > 0 ? (
-                <div className="mb-1.5 flex max-w-full flex-wrap justify-end gap-1.5">
+                <div className="mb-2 flex max-w-full flex-wrap justify-end gap-1.5">
                   {fileAttachments.map((attachment) => (
                     <UserFileAttachmentChip key={attachment.id} attachment={attachment} />
                   ))}
                 </div>
               ) : null}
               {hasUserMessageBubble ? (
-                <div className="w-fit max-w-full rounded-[18px] border border-border/45 bg-secondary/88 px-4 py-2.5">
+                <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
                   {imageAttachments.length > 0 ? (
                     <div
                       className={cn(
@@ -889,10 +893,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             </>
           )}
           <div
-            className="mt-1 flex min-h-6 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
+            className="mt-1 flex min-h-5 items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100"
             data-user-message-actions="true"
           >
-            <span className="px-0.5 text-[11px] text-muted-foreground/50">
+            <span className="px-0 text-[11px] text-muted-foreground/45">
               {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
             </span>
             {displayedUserMessage.copyText && (
@@ -1096,7 +1100,9 @@ function UrlPreviewCard({ url }: { url: string }) {
           onClick={() => onOpenUrl(url, "preview")}
           title={url}
         >
-          <div className="truncate text-[14px] font-medium leading-5 text-foreground">
+          <div
+            className="chat-text truncate text-[14px] font-medium leading-5 text-foreground"
+          >
             网页预览
           </div>
           <div className="truncate text-[13px] leading-5 text-muted-foreground">网站</div>
@@ -1133,7 +1139,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   return (
     <>
       {row.showSteerMarkerBefore ? <SteerConversationMarker /> : null}
-      <div className="min-w-0 px-1 py-0.5">
+      <div className="min-w-0 py-0.5">
         <ChatMarkdown
           text={messageText}
           cwd={ctx.markdownCwd}
@@ -1148,8 +1154,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         />
         {previewUrl ? <UrlPreviewCard url={previewUrl} /> : null}
         {row.showAssistantMeta ? (
-          <div className="mt-1.5 flex items-center gap-2">
-            <p className="text-[11px] text-muted-foreground/40" data-assistant-message-meta="true">
+          <div className="mt-1 flex items-center gap-2">
+            <p className="text-[11px] text-muted-foreground/45" data-assistant-message-meta="true">
               {row.message.streaming ? (
                 <LiveMessageMeta
                   createdAt={row.message.createdAt}
@@ -1217,10 +1223,10 @@ function AssistantCompletionDivider() {
 
   return (
     <div className="my-3 flex flex-col gap-2">
-      <span className="self-end text-[13px] leading-5 text-muted-foreground/62">
+      <span className="self-start text-[13px] leading-5 text-muted-foreground/62">
         {activity.completionSummary ?? "已结束"}
       </span>
-      <span className="h-px bg-border" />
+      <span className="h-px bg-border/70" />
     </div>
   );
 }
@@ -1258,7 +1264,6 @@ function RunningStatusShimmer({ label, className }: { label: string; className?:
     <span
       className={cn("inline-flex min-w-0 max-w-full items-center py-1", className)}
       style={{
-        ...USER_MESSAGE_FONT_STYLE,
         // 强制覆盖字号，确保清晰可见
         fontSize: "14px",
       }}
@@ -1571,8 +1576,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
     <div className="pt-2 pb-3 pl-1">
       <button
         type="button"
-        className="group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
-        style={USER_MESSAGE_FONT_STYLE}
+        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
         aria-expanded={isExpanded}
         data-work-group-summary="true"
         onClick={() => setIsExpanded((value) => !value)}
@@ -1697,7 +1701,6 @@ const CompactRequestErrorRow = memo(function CompactRequestErrorRow({
     <div className="pt-2 pb-3">
       <div
         className="flex min-h-10 items-center gap-3 rounded-2xl border border-border/75 bg-background px-4 py-2.5 text-[13px] leading-5 text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
-        style={USER_MESSAGE_FONT_STYLE}
         title={message}
       >
         <CircleAlertIcon className="size-4 shrink-0 text-foreground/80" />
@@ -1820,7 +1823,9 @@ function AssistantChangedFilesSectionInner({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="truncate text-[14px] font-medium leading-5 text-foreground">
+              <div
+                className="chat-text truncate text-[14px] font-medium leading-5 text-foreground"
+              >
                 {isSingleFile
                   ? `已编辑 ${singleFileTitle}`
                   : `已编辑 ${checkpointFiles.length} 个文件`}
@@ -1915,11 +1920,64 @@ function formatChangedFilePath(filePath: string, workspaceRoot: string | undefin
   return displayedPath;
 }
 
+function buildChangedFileLinkMeta(filePath: string, displayPath: string): MarkdownFileLinkMeta {
+  return {
+    filePath,
+    targetPath: filePath,
+    displayPath,
+    basename: basenameOfChangedFile(filePath),
+  };
+}
+
+function ChangedFileOpenButton({
+  filePath,
+  displayPath,
+  className,
+  onOpenFile,
+  stopPropagation = false,
+}: {
+  filePath: string;
+  displayPath: string;
+  className?: string | undefined;
+  onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
+  stopPropagation?: boolean | undefined;
+}) {
+  if (!onOpenFile) {
+    return (
+      <span className={className} title={displayPath}>
+        {displayPath}
+      </span>
+    );
+  }
+
+  const handleClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (stopPropagation) {
+      event.stopPropagation();
+    }
+    onOpenFile(buildChangedFileLinkMeta(filePath, displayPath));
+  };
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        "min-w-0 truncate text-left font-mono text-[#147DFF] underline-offset-2 transition-colors hover:text-[#0F66D0] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        className,
+      )}
+      title={displayPath}
+      onClick={handleClick}
+    >
+      {displayPath}
+    </button>
+  );
+}
+
 interface InlineDiffFileSummary {
   path: string;
   displayPath: string;
   additions: number;
   deletions: number;
+  kind?: string | undefined;
   patch: ReturnType<typeof parseUnifiedDiff>[number] | null;
 }
 
@@ -2157,7 +2215,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
             onClick={() => setExpanded((value) => !value)}
             className="-ml-1 h-6 rounded-md px-1.5 text-xs text-muted-foreground/72 hover:bg-muted/55 hover:text-foreground/85"
           >
-            {expanded ? "Show less" : "Show full message"}
+            {expanded ? "收起" : "显示完整消息"}
           </Button>
         </div>
       ) : null}
@@ -2223,8 +2281,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
         return (
           <div
-            className="whitespace-pre-wrap wrap-break-word text-[14.5px] leading-[1.72] text-foreground/96"
-            style={USER_MESSAGE_FONT_STYLE}
+            className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95"
           >
             {inlineNodes}
           </div>
@@ -2258,8 +2315,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
     return (
       <div
-        className="whitespace-pre-wrap wrap-break-word text-[14.5px] leading-[1.72] text-foreground/96"
-        style={USER_MESSAGE_FONT_STYLE}
+        className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95"
       >
         {inlineNodes}
       </div>
@@ -2272,8 +2328,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
   return (
     <div
-      className="whitespace-pre-wrap wrap-break-word text-[14.5px] leading-[1.72] text-foreground/96"
-      style={USER_MESSAGE_FONT_STYLE}
+      className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95"
     >
       <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
     </div>
@@ -2577,6 +2632,7 @@ function buildFileChangeSummaries(
       displayPath,
       additions: patch ? countPatchLines(patch, "add") : 0,
       deletions: patch ? countPatchLines(patch, "remove") : 0,
+      kind: resolvePatchFileChangeKind(patch),
       patch,
     });
   }
@@ -2591,6 +2647,7 @@ function buildFileChangeSummaries(
       displayPath: formatWorkspaceRelativePath(patchPath, workspaceRoot),
       additions: countPatchLines(patch, "add"),
       deletions: countPatchLines(patch, "remove"),
+      kind: resolvePatchFileChangeKind(patch),
       patch,
     });
   }
@@ -2598,20 +2655,34 @@ function buildFileChangeSummaries(
   return summaries;
 }
 
+function resolvePatchFileChangeKind(
+  patch: ReturnType<typeof parseUnifiedDiff>[number] | null,
+): string | undefined {
+  if (!patch) {
+    return undefined;
+  }
+  if (patch.oldPath === null && patch.newPath) {
+    return "added";
+  }
+  if (patch.newPath === null && patch.oldPath) {
+    return "deleted";
+  }
+  if (patch.oldPath && patch.newPath && patch.oldPath !== patch.newPath) {
+    return "renamed";
+  }
+  return "modified";
+}
+
 function fileChangeVerb(workEntry: TimelineWorkEntry, files: ReadonlyArray<InlineDiffFileSummary>) {
   const isRunning = workEntry.status === "running";
-  const allFilesAreNew =
-    files.length > 0 && files.every((file) => file.patch?.oldPath === null && file.patch.newPath);
-  if (allFilesAreNew) {
-    return isRunning ? "正在创建" : "已创建";
-  }
-  return isRunning ? "正在编辑" : "已编辑";
+  return fileChangeVerbLabel(resolveAggregateFileChangeAction(files), isRunning ? "running" : "completed");
 }
 
 const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
 }) {
+  const ctx = use(TimelineRowCtx);
   const { workEntry, workspaceRoot } = props;
   const [isExpanded, setIsExpanded] = useState(false);
   const files = useMemo(
@@ -2633,18 +2704,22 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
       : `${verb} ${files.length} 个文件`;
 
   return (
-    <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
-      <button
-        type="button"
+    <div className="chat-text rounded-md px-1 py-0.5">
+      <div
         className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/68 transition-colors hover:bg-muted/15 hover:text-foreground/82"
         aria-expanded={isExpanded}
         title={title}
-        onClick={() => setIsExpanded((value) => !value)}
       >
         <SquarePenIcon className="size-3.5 shrink-0 text-muted-foreground/65" />
         <span className="shrink-0">{verb}</span>
         {files.length === 1 && firstFile ? (
-          <span className="min-w-0 truncate font-mono text-[#147DFF]">{firstFile.displayPath}</span>
+          <ChangedFileOpenButton
+            filePath={firstFile.path}
+            displayPath={firstFile.displayPath}
+            className="flex-1"
+            onOpenFile={ctx.onOpenMarkdownFile}
+            stopPropagation
+          />
         ) : (
           <span className="shrink-0">{files.length} 个文件</span>
         )}
@@ -2652,13 +2727,18 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
           additions={summaryStat.additions}
           deletions={summaryStat.deletions}
         />
-        <ChevronDownIcon
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/file-change:text-muted-foreground/70",
-            isExpanded && "rotate-180",
-          )}
-        />
-      </button>
+        <button
+          type="button"
+          className="ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/45 transition-colors hover:bg-muted/30 hover:text-muted-foreground/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label={isExpanded ? "收起文件变更详情" : "展开文件变更详情"}
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((value) => !value)}
+        >
+          <ChevronDownIcon
+            className={cn("size-3.5 transition-transform duration-150", isExpanded && "rotate-180")}
+          />
+        </button>
+      </div>
       {files.length > 1 ? (
         <div className="mt-0.5 space-y-0.5 pl-6">
           {files.slice(0, isExpanded ? files.length : 2).map((file) => (
@@ -2667,8 +2747,15 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
               className="flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-muted-foreground/68"
               title={file.displayPath}
             >
-              <span className="shrink-0">{verb.replace("正在", "").replace("已", "已")}</span>
-              <span className="min-w-0 truncate font-mono text-[#147DFF]">{file.displayPath}</span>
+              <span className="shrink-0">
+                {fileChangeVerbLabel(resolveFileChangeActionFromKind(file.kind) ?? "edit", "completed")}
+              </span>
+              <ChangedFileOpenButton
+                filePath={file.path}
+                displayPath={file.displayPath}
+                className="flex-1"
+                onOpenFile={ctx.onOpenMarkdownFile}
+              />
               <AnimatedDiffStatLabel additions={file.additions} deletions={file.deletions} />
             </div>
           ))}
@@ -2688,6 +2775,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
 }) {
+  const ctx = use(TimelineRowCtx);
   const { workEntry, workspaceRoot } = props;
   if (workEntry.userInputSummary) {
     return <UserInputSummaryTimelineRow workEntry={workEntry} compact />;
@@ -2723,7 +2811,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const animateText = shouldAnimateWorkEntryText(workEntry, displayText);
 
   return (
-    <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
+    <div className="chat-text rounded-md px-1 py-0.5">
       <div
         className={cn(
           "flex items-center gap-2 transition-[opacity,translate] duration-200 rounded-md px-1 py-0.5",
@@ -2842,13 +2930,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
             const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
             return (
-              <span
+              <ChangedFileOpenButton
                 key={`${workEntry.id}:${filePath}`}
-                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground/75"
-                title={displayPath}
-              >
-                {displayPath}
-              </span>
+                filePath={filePath}
+                displayPath={displayPath}
+                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 text-[11px]"
+                onOpenFile={ctx.onOpenMarkdownFile}
+                stopPropagation
+              />
             );
           })}
           {(workEntry.changedFiles?.length ?? 0) > 4 && (
@@ -2875,7 +2964,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
 
           {isCommandWorkEntry(workEntry) && (workEntry.command || workEntry.rawCommand) ? (
             <div className="flex items-center rounded-md bg-background/52 px-2 py-1.5 font-mono text-[12.75px] font-medium leading-5 text-foreground/88 whitespace-pre-wrap break-all">
-              <span className="mr-1.5 select-none font-semibold text-muted-foreground/62">$</span>
+              <span className="mr-1.5 select-none font-normal text-muted-foreground/62">$</span>
               {workEntry.command || workEntry.rawCommand}
             </div>
           ) : null}
@@ -2937,7 +3026,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
     : collapsedSummaryText;
 
   return (
-    <div className="rounded-md px-1 py-0.5" style={USER_MESSAGE_FONT_STYLE}>
+    <div className="chat-text rounded-md px-1 py-0.5">
       <button
         type="button"
         className="group/command-summary flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:bg-muted/15 hover:text-foreground/78"
@@ -3057,8 +3146,7 @@ const UserInputSummaryTimelineRow = memo(function UserInputSummaryTimelineRow({
 
   return (
     <div
-      className={cn("pb-3 pl-1 pt-2", compact && "pb-1 pt-0")}
-      style={USER_MESSAGE_FONT_STYLE}
+      className={cn("chat-text pb-3 pl-1 pt-2", compact && "pb-1 pt-0")}
       data-user-input-summary="true"
     >
       <div className="max-w-full rounded-md px-0.5 py-0.5">

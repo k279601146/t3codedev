@@ -575,24 +575,27 @@ describe("resolveThreadStatusPill", () => {
 describe("resolveThreadRowClassName", () => {
   it("uses the Codex accent palette when a thread is both selected and active", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: true });
-    expect(className).toContain("bg-accent/70");
+    expect(className).toContain("t3-sidebar-thread-row");
+    expect(className).toContain("h-7.5");
+    expect(className).toContain("text-[13px]");
+    expect(className).toContain("bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)]");
     expect(className).toContain("font-normal");
-    expect(className).toContain("hover:bg-accent/75");
+    expect(className).toContain("hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)]");
     expect(className).not.toContain("bg-primary");
   });
 
   it("uses a quiet accent color for selected threads", () => {
     const className = resolveThreadRowClassName({ isActive: false, isSelected: true });
-    expect(className).toContain("bg-accent/60");
-    expect(className).toContain("hover:bg-accent/70");
+    expect(className).toContain("bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)]");
+    expect(className).toContain("hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)]");
     expect(className).not.toContain("bg-primary");
   });
 
   it("keeps the Codex accent palette for active-only threads", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: false });
-    expect(className).toContain("bg-accent/70");
+    expect(className).toContain("bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)]");
     expect(className).toContain("font-normal");
-    expect(className).toContain("hover:bg-accent/75");
+    expect(className).toContain("hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)]");
   });
 });
 

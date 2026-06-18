@@ -1,6 +1,11 @@
 import * as Equal from "effect/Equal";
 import { formatElapsed, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
-import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
+import {
+  type ChatMessage,
+  type ProposedPlan,
+  type TurnDiffFileChange,
+  type TurnDiffSummary,
+} from "../../types";
 import { type MessageId, type TurnId } from "@t3tools/contracts";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
@@ -309,6 +314,87 @@ export function resolveAssistantMessageCopyState({
     text: hasText ? text : null,
     visible: showCopyButton && hasText && !streaming,
   };
+}
+
+export type FileChangeAction = "create" | "delete" | "rename" | "edit" | "change";
+export type FileChangeTense = "running" | "completed" | "bare";
+
+const FILE_CHANGE_KIND_TO_ACTION: Record<string, FileChangeAction | undefined> = {
+  added: "create",
+  created: "create",
+  new: "create",
+  deleted: "delete",
+  removed: "delete",
+  renamed: "rename",
+  moved: "rename",
+  modified: "edit",
+  changed: "edit",
+  updated: "edit",
+};
+
+const FILE_CHANGE_VERB_LABELS: Record<
+  FileChangeAction,
+  Record<FileChangeTense, string>
+> = {
+  create: {
+    running: "正在创建",
+    completed: "已创建",
+    bare: "创建",
+  },
+  delete: {
+    running: "正在删除",
+    completed: "已删除",
+    bare: "删除",
+  },
+  rename: {
+    running: "正在重命名",
+    completed: "已重命名",
+    bare: "重命名",
+  },
+  edit: {
+    running: "正在编辑",
+    completed: "已编辑",
+    bare: "编辑",
+  },
+  change: {
+    running: "正在更新",
+    completed: "已更新",
+    bare: "更新",
+  },
+};
+
+function normalizeFileChangeKind(kind: string | undefined): string {
+  return kind?.trim().toLowerCase().replace(/_/g, "-") ?? "";
+}
+
+export function resolveFileChangeActionFromKind(
+  kind: string | undefined,
+): FileChangeAction | null {
+  const normalized = normalizeFileChangeKind(kind);
+  if (!normalized) {
+    return null;
+  }
+  return FILE_CHANGE_KIND_TO_ACTION[normalized] ?? null;
+}
+
+export function resolveAggregateFileChangeAction(
+  files: ReadonlyArray<Pick<TurnDiffFileChange, "kind">>,
+): FileChangeAction {
+  const actions = files
+    .map((file) => resolveFileChangeActionFromKind(file.kind))
+    .filter((action): action is FileChangeAction => action !== null);
+  if (actions.length === 0) {
+    return "edit";
+  }
+  const firstAction = actions[0];
+  if (firstAction && actions.every((action) => action === firstAction)) {
+    return firstAction;
+  }
+  return "change";
+}
+
+export function fileChangeVerbLabel(action: FileChangeAction, tense: FileChangeTense): string {
+  return FILE_CHANGE_VERB_LABELS[action][tense];
 }
 
 function resolveResultCompletedAt(row: MessagesTimelineRow): string | null {

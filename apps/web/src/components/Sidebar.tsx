@@ -11,6 +11,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FolderPlusIcon,
+  GitPullRequestIcon,
   LogOutIcon,
   MessageCircleIcon,
   PanelLeftIcon,
@@ -592,7 +593,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-[14px] leading-5 text-inherit"
+                    className="min-w-0 flex-1 truncate text-[13px] leading-5 text-inherit"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -698,8 +699,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </span>
                 ) : (
                   <span
-                    className={`text-[13px] tabular-nums ${threadTimeClassName} ${
-                      isHighlighted ? "text-muted-foreground/70" : "text-muted-foreground/58"
+                    className={`text-[12px] tabular-nums ${threadTimeClassName} ${
+                      isHighlighted ? "text-muted-foreground/62" : "text-muted-foreground/50"
                     }`}
                   >
                     {formatSidebarThreadTimeLabel(
@@ -783,7 +784,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
         render={buttonRender}
         data-thread-selection-safe
         size="sm"
-        className="h-8.5 w-full translate-x-0 justify-start rounded-md px-2 text-left text-[14px] font-normal text-muted-foreground/70 hover:bg-accent/45 hover:text-muted-foreground/90"
+        className="t3-sidebar-thread-row h-7.5 w-full translate-x-0 justify-start rounded-[7px] px-2 text-left text-[13px] font-normal text-muted-foreground/70 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-muted-foreground/90"
         onClick={expanded ? onCollapse : onExpand}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -2137,7 +2138,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className="h-7 cursor-default gap-2 rounded-none px-0 py-0 pr-7 text-left text-[14px] font-normal leading-5 text-foreground/72 hover:bg-transparent hover:text-foreground/82 group-hover/project-header:bg-transparent group-hover/project-header:text-foreground/82 max-sm:pr-14"
+          className="t3-sidebar-project-row h-7 cursor-default gap-2 rounded-[7px] px-2 py-0 pr-7 text-left text-[13px] font-normal leading-5 text-foreground/66 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/82 group-hover/project-header:text-foreground/82 max-sm:pr-14"
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
           onPointerDownCapture={handleProjectButtonPointerDownCapture}
@@ -2147,7 +2148,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         >
           <SidebarProjectIcon project={project} />
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-[14px] font-normal leading-5 text-foreground/72 group-hover/project-header:text-foreground/82">
+            <span className="truncate text-[13px] font-normal leading-5 text-foreground/66 group-hover/project-header:text-foreground/82">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -2620,7 +2621,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   }, [accountWebBaseUrl]);
 
   return (
-    <SidebarFooter className="border-border/70 border-t px-2 py-1">
+    <SidebarFooter className="t3-project-sidebar-footer px-2 py-1">
       <SidebarProviderUpdatePill />
       <div className="flex items-center justify-between gap-1.5">
         <Menu>
@@ -2630,7 +2631,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1.5 rounded-md px-1.5 py-1 text-[13px] font-normal text-muted-foreground/78 hover:bg-accent/45 hover:text-foreground/86"
+                className="h-7 gap-1.5 rounded-[7px] px-1.5 py-1 text-[13px] font-normal text-muted-foreground/78 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground/86"
               />
             }
           >
@@ -2740,7 +2741,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
           variant="ghost"
           size="icon-xs"
           aria-label={layoutMode === "cursor" ? "切换到默认布局" : "切换到 Code 模式"}
-          className="size-7 rounded-md text-muted-foreground/78 hover:bg-accent/45 hover:text-foreground/86"
+          className="size-7 rounded-[7px] text-muted-foreground/78 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground/86"
           onClick={() =>
             updateSettings({ layoutMode: layoutMode === "cursor" ? "codex" : "cursor" })
           }
@@ -3124,11 +3125,13 @@ function SidebarSectionTitle({
 
 function SidebarNavButton({
   icon: Icon,
+  isActive = false,
   label,
   trailing,
   onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
+  isActive?: boolean;
   label: string;
   trailing?: React.ReactNode;
   onClick?: () => void;
@@ -3140,10 +3143,11 @@ function SidebarNavButton({
       <SidebarMenuButton
         render={buttonRender}
         size="sm"
-        className="h-8.5 gap-2 rounded-md px-2 text-[14px] font-normal text-foreground/82 hover:bg-accent/55 hover:text-foreground focus-visible:ring-0"
+        isActive={isActive}
+        className="t3-sidebar-nav-row h-7.5 gap-2 rounded-[7px] px-2 text-[13px] font-normal text-foreground/82 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground focus-visible:ring-0"
         onClick={onClick}
       >
-        <Icon className="size-3.5 text-foreground/70" />
+        <Icon className="size-3.5 text-foreground/72" />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         {trailing ? (
           <span className="ml-auto shrink-0 text-[12px] text-muted-foreground/60">{trailing}</span>
@@ -3158,6 +3162,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 ) {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -3367,8 +3372,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
+  const [confirmingArchiveThreadKey, setConfirmingArchiveThreadKey] = useState<string | null>(null);
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
+  const confirmArchiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{
     threadId: ThreadId;
@@ -3657,6 +3664,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleOpenExtensions = useCallback(() => {
     void navigate({ to: "/extensions" });
   }, [navigate]);
+  const handleOpenPullRequests = useCallback(() => {
+    void navigate({ to: "/settings/source-control" });
+  }, [navigate]);
   const handleOpenAutomation = useCallback(() => {
     void navigate({ to: "/automations" });
   }, [navigate]);
@@ -3694,8 +3704,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   );
 
   return (
-    <SidebarContent className="gap-0">
-      <SidebarGroup className="px-2 pt-2 pb-3">
+    <SidebarContent hideScrollbars={false} className="t3-project-sidebar gap-0">
+      <SidebarGroup className="px-1.5 pt-2 pb-2">
         <SidebarMenu className="gap-0.5">
           <SidebarNavButton
             icon={MessageCircleIcon}
@@ -3707,22 +3717,29 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="h-8.5 gap-2 rounded-md px-2 text-[14px] font-normal text-foreground/82 hover:bg-accent/55 hover:text-foreground focus-visible:ring-0"
+                  className="t3-sidebar-nav-row h-7.5 gap-2 rounded-[7px] px-2 text-[13px] font-normal text-foreground/82 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground focus-visible:ring-0"
                   data-testid="command-palette-trigger"
                 />
               }
             >
-              <SearchIcon className="size-3.5 text-foreground/70" />
+              <SearchIcon className="size-3.5 text-foreground/72" />
               <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.search")}</span>
             </CommandDialogTrigger>
           </SidebarMenuItem>
           <SidebarNavButton
             icon={BlocksIcon}
-            label={t("sidebar.extensions")}
+            isActive={pathname.startsWith("/extensions")}
+            label={t("sidebar.plugins")}
             onClick={handleOpenExtensions}
           />
           <SidebarNavButton
+            icon={GitPullRequestIcon}
+            label={t("sidebar.pullRequests")}
+            onClick={handleOpenPullRequests}
+          />
+          <SidebarNavButton
             icon={Clock3Icon}
+            isActive={pathname.startsWith("/automations")}
             label={t("sidebar.automations")}
             onClick={handleOpenAutomation}
           />
@@ -3752,7 +3769,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarGroup>
       ) : null}
       <SidebarGroup
-        className="px-2 py-0.5"
+        className="px-1.5 py-0.5"
         style={{ order: 20 + (defaultSidebarSectionOrderIndex.get("projects") ?? 0) }}
       >
         <SidebarSectionTitle
@@ -3951,9 +3968,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                     setRenamingTitle={setRenamingTitle}
                     renamingInputRef={renamingInputRef}
                     renamingCommittedRef={renamingCommittedRef}
-                    confirmingArchiveThreadKey={null}
-                    setConfirmingArchiveThreadKey={() => {}}
-                    confirmArchiveButtonRefs={{ current: new Map() }}
+                    confirmingArchiveThreadKey={confirmingArchiveThreadKey}
+                    setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
+                    confirmArchiveButtonRefs={confirmArchiveButtonRefs}
                     handleThreadClick={handleGlobalThreadClick}
                     navigateToThread={(ref) => {
                       clearSelection();
@@ -4043,9 +4060,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   setRenamingTitle={setRenamingTitle}
                   renamingInputRef={renamingInputRef}
                   renamingCommittedRef={renamingCommittedRef}
-                  confirmingArchiveThreadKey={null}
-                  setConfirmingArchiveThreadKey={() => {}}
-                  confirmArchiveButtonRefs={{ current: new Map() }}
+                  confirmingArchiveThreadKey={confirmingArchiveThreadKey}
+                  setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
+                  confirmArchiveButtonRefs={confirmArchiveButtonRefs}
                   handleThreadClick={handleGlobalThreadClick}
                   navigateToThread={(ref) => {
                     clearSelection();

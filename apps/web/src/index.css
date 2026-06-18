@@ -487,11 +487,16 @@
 }
 
 body {
+  --t3-chat-font-family:
+    "Microsoft YaHei", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  --t3-sidebar-font-family:
+    "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-family:
-    "PingFang SC",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
+    "PingFang SC",
     "Microsoft YaHei UI",
     "Microsoft YaHei",
     "Hiragino Sans GB",
@@ -513,6 +518,14 @@ body {
 body {
   height: 100%;
   overflow: hidden;
+}
+
+.chat-text {
+  font-family: var(--t3-chat-font-family);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: normal;
+  font-variation-settings: normal;
+  font-synthesis-weight: none;
 }
 
 #root {
@@ -605,6 +618,66 @@ code {
 
 [data-slot="sidebar-inner"] {
   background: var(--sidebar);
+}
+
+.t3-project-sidebar,
+.t3-project-sidebar-footer {
+  font-family: var(--t3-sidebar-font-family);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-rendering: auto;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis-weight: none;
+}
+
+.t3-project-sidebar {
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+.t3-project-sidebar [data-slot="sidebar-menu"] {
+  gap: 2px;
+}
+
+.t3-project-sidebar [data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
+  width: 10px;
+  margin: 0 1px 0 0;
+  opacity: 1;
+}
+
+.t3-project-sidebar [data-slot="scroll-area-thumb"] {
+  max-width: 8px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--foreground) 15%, transparent),
+      color-mix(in srgb, var(--foreground) 15%, transparent)
+    )
+    content-box;
+}
+
+.t3-project-sidebar [data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] {
+  display: none;
+}
+
+.t3-sidebar-nav-row,
+.t3-sidebar-project-row,
+.t3-sidebar-thread-row {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.t3-sidebar-nav-row[data-active="true"],
+.t3-sidebar-thread-row[data-active="true"] {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.dark .t3-sidebar-nav-row[data-active="true"],
+.dark .t3-sidebar-thread-row[data-active="true"] {
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
 }
 
 [data-slot="sidebar-menu-button"],
@@ -943,25 +1016,21 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown {
   container-type: inline-size;
   min-width: 0;
-  max-width: min(100%, 760px);
+  max-width: min(100%, 736px);
   overflow-wrap: break-word;
   word-break: normal;
-  font-family:
-    "PingFang SC",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "Microsoft YaHei UI",
-    "Microsoft YaHei",
-    "Noto Sans CJK SC",
-    sans-serif;
-  font-size: 14.5px;
+  font-family: var(--t3-chat-font-family);
+  font-size: 14px;
   font-weight: 400;
-  color: color-mix(in srgb, var(--foreground) 94%, transparent);
-  line-height: 1.72;
+  color: #111827;
+  line-height: 1.78;
   letter-spacing: 0;
   text-align: left;
-  text-rendering: optimizeLegibility;
+  text-rendering: auto;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: normal;
+  font-variation-settings: normal;
+  font-synthesis-weight: none;
   line-break: auto;
 }
 
@@ -986,32 +1055,30 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4 {
-  margin: 0.95rem 0 0.36rem;
-  color: color-mix(in srgb, var(--foreground) 95%, transparent);
-  line-height: 1.42;
+  margin: 0.7rem 0 0.34rem;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
   letter-spacing: 0;
 }
 
 .chat-markdown h1 {
-  font-size: 1.12rem;
-  font-weight: 620;
+  font-size: inherit;
 }
 
 .chat-markdown h2 {
-  padding-top: 0.32rem;
-  border-top: 1px solid color-mix(in srgb, var(--border) 36%, transparent);
-  font-size: 1.04rem;
-  font-weight: 610;
+  padding-top: 0;
+  border-top: 0;
+  font-size: inherit;
 }
 
 .chat-markdown h3 {
-  font-size: 0.98rem;
-  font-weight: 600;
+  font-size: inherit;
 }
 
 .chat-markdown h4 {
-  font-size: 0.94rem;
-  font-weight: 580;
+  font-size: inherit;
 }
 
 .chat-markdown h1:first-child,
@@ -1024,12 +1091,12 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ul {
-  padding-left: 1.14rem;
+  padding-left: 1.18rem;
   list-style-type: disc;
 }
 
 .chat-markdown ol {
-  padding-left: 1.34rem;
+  padding-left: 1.38rem;
   list-style-type: decimal;
 }
 
@@ -1038,8 +1105,8 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown li::marker {
-  color: color-mix(in srgb, var(--foreground) 78%, transparent);
-  font-weight: 500;
+  color: #111827;
+  font-weight: 400;
 }
 
 .chat-markdown ul ul {
@@ -1061,12 +1128,12 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown li + li {
-  margin-top: 0.28rem;
+  margin-top: 0.48rem;
 }
 
 .chat-markdown > ul > li + li,
 .chat-markdown > ol > li + li {
-  margin-top: 0.48rem;
+  margin-top: 0.58rem;
 }
 
 .chat-markdown li > p {
@@ -1084,7 +1151,12 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown strong {
-  color: color-mix(in srgb, var(--foreground) 96%, transparent);
+  color: inherit;
+  font-weight: 600;
+}
+
+.chat-markdown b {
+  color: inherit;
   font-weight: 600;
 }
 
@@ -1216,28 +1288,27 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown a {
-  color: color-mix(in srgb, var(--info-foreground) 86%, var(--foreground));
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--info-foreground) 28%, transparent);
-  text-decoration-thickness: 0.06em;
-  text-underline-offset: 0.16em;
+  color: #1473e6;
+  text-decoration: none;
+  text-decoration-color: transparent;
 }
 
 .chat-markdown a:hover {
-  opacity: 0.8;
+  color: #0b5fca;
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
 }
 
 .chat-markdown-web-link {
   max-width: 100%;
-  color: color-mix(in srgb, var(--info-foreground) 84%, var(--foreground));
+  color: #1473e6;
   overflow-wrap: anywhere;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--info-foreground) 24%, transparent);
-  text-underline-offset: 0.16em;
+  text-decoration: none;
 }
 
 .chat-markdown-web-link:hover {
-  color: color-mix(in srgb, var(--info-foreground) 100%, var(--foreground));
+  color: #0b5fca;
   text-decoration-color: currentColor;
   opacity: 1;
 }
@@ -1276,23 +1347,23 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown blockquote {
-  border-left: 2px solid color-mix(in srgb, var(--border) 88%, transparent);
-  border-radius: 0 0.4rem 0.4rem 0;
-  background: color-mix(in srgb, var(--muted) 32%, transparent);
-  padding: 0.48rem 0.82rem;
-  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
+  border-left: 2px solid #d9d9d9;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.25rem 0 0.25rem 0.82rem;
+  color: #374151;
   font-size: 14px;
-  line-height: 1.68;
+  line-height: 1.78;
 }
 
 .chat-markdown :not(pre) > code {
   border: 0;
   border-radius: 0.32rem;
-  background: color-mix(in srgb, var(--muted) 72%, var(--background));
-  padding: 0.1rem 0.34rem;
-  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+  background: #f1f1f1;
+  padding: 0.08rem 0.34rem;
+  color: #111827;
   font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 0.9em;
+  font-size: 0.84em;
   font-weight: 400;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -1306,10 +1377,10 @@ label:has(> select#reasoning-effort) select {
   gap: 0.18rem;
   border-radius: 0.32rem;
   padding: 0.02rem 0.12rem;
-  color: color-mix(in srgb, var(--info-foreground) 82%, var(--foreground));
+  color: #1473e6;
   font-family: inherit;
   font-size: 0.96em;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.3;
   vertical-align: -0.03em;
   text-decoration: none;
@@ -1322,8 +1393,8 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown .chat-markdown-file-link:hover {
   opacity: 1;
-  color: color-mix(in srgb, var(--info-foreground) 92%, var(--foreground));
-  background: color-mix(in srgb, var(--info-foreground) 5%, transparent);
+  color: #0b5fca;
+  background: rgba(20, 115, 230, 0.06);
   text-decoration: none;
   text-decoration-line: none;
 }
@@ -1354,8 +1425,8 @@ label:has(> select#reasoning-effort) select {
   max-width: 100%;
   overflow-x: auto;
   border: 0;
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--muted) 78%, var(--background));
+  border-radius: 0.42rem;
+  background: #f3f3f3;
   padding: 0.74rem 0.88rem;
   box-shadow: none;
   scrollbar-gutter: stable;
@@ -1451,7 +1522,30 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-shiki .shiki {
+  background: #f3f3f3 !important;
+}
+
+.dark .chat-markdown {
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+}
+
+.dark .chat-markdown li::marker {
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
+
+.dark .chat-markdown :not(pre) > code {
+  background: color-mix(in srgb, var(--muted) 70%, var(--background));
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+}
+
+.dark .chat-markdown pre,
+.dark .chat-markdown .chat-markdown-shiki .shiki {
   background: color-mix(in srgb, var(--muted) 78%, var(--background)) !important;
+}
+
+.dark .chat-markdown blockquote {
+  border-left-color: color-mix(in srgb, var(--border) 88%, transparent);
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
 }
 
 .chat-markdown table {

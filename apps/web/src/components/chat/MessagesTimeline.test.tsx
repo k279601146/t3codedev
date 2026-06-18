@@ -70,6 +70,7 @@ beforeAll(() => {
 
 const ACTIVE_THREAD_ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const MESSAGE_CREATED_AT = "2026-03-17T19:12:28.000Z";
+const LEGACY_EMPTY_TIMELINE_PROMPT = "Send a message to start " + "the conversation.";
 
 function buildProps() {
   return {
@@ -144,6 +145,14 @@ function buildAssistantTimelineEntry(input: {
 }
 
 describe("MessagesTimeline", () => {
+  it("does not render the legacy empty conversation prompt for an empty timeline", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(<MessagesTimeline {...buildProps()} timelineEntries={[]} />);
+
+    expect(markup).toContain('data-timeline-empty-placeholder="true"');
+    expect(markup).not.toContain(LEGACY_EMPTY_TIMELINE_PROMPT);
+  }, 20_000);
+
   it("renders a history skeleton while an existing thread detail is loading", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
@@ -153,7 +162,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-timeline-history-skeleton="true"');
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain("正在加载对话内容");
-    expect(markup).not.toContain("Send a message to start the conversation.");
+    expect(markup).not.toContain(LEGACY_EMPTY_TIMELINE_PROMPT);
   }, 20_000);
 
   it("renders collapse controls for long user messages", async () => {
@@ -165,10 +174,19 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Show full message");
+    expect(markup).toContain("显示完整消息");
+    expect(markup).toContain("justify-end");
+    expect(markup).toContain("items-end");
+    expect(markup).toContain("max-w-[80%]");
+    expect(markup).toContain("w-fit");
+    expect(markup).toContain("rounded-[18px]");
+    expect(markup).toContain("bg-secondary");
+    expect(markup).toContain("px-4");
+    expect(markup).toContain("py-2.5");
     expect(markup).toContain('data-user-message-collapsed="true"');
     expect(markup).toContain('data-user-message-fade="true"');
     expect(markup).toContain('data-user-message-footer="true"');
+    expect(markup).not.toContain("chat-user-document");
   }, 20_000);
 
   it("does not render collapse controls for short user messages", async () => {
@@ -180,7 +198,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).not.toContain("Show full message");
+    expect(markup).not.toContain("显示完整消息");
     expect(markup).toContain('data-user-message-collapsible="false"');
   });
 
@@ -335,7 +353,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Terminal 1 lines 1-5");
     expect(markup).toContain("lucide-terminal");
     expect(markup).toContain("yoo what&#x27;s ");
-    expect(markup).toContain("Show full message");
+    expect(markup).toContain("显示完整消息");
   }, 20_000);
 
   it("keeps the copy button for collapsed long user messages", async () => {
@@ -449,6 +467,37 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("apps/web/src/App.tsx");
     expect(markup).toContain("+2");
     expect(markup).toContain("-1");
+  });
+
+  it("renders changed file paths as open-file buttons when the side panel handler is available", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        onOpenMarkdownFile={() => {}}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Updated files",
+              tone: "tool",
+              changedFiles: ["C:/repo/apps/web/src/App.tsx"],
+              detail:
+                "diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\n--- a/apps/web/src/App.tsx\n+++ b/apps/web/src/App.tsx\n@@ -1,1 +1,1 @@\n-old\n+new",
+            },
+          },
+        ]}
+        workspaceRoot="C:/repo"
+      />,
+    );
+
+    expect(markup).toContain("<button");
+    expect(markup).toContain("apps/web/src/App.tsx");
+    expect(markup).toContain("hover:text-[#0F66D0]");
   });
 
   it("labels synthetic new-file diffs as creating file work", async () => {

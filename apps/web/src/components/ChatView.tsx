@@ -51,6 +51,7 @@ import { useGitStatus } from "~/lib/gitStatusState";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
+import { isTextPreviewFilePath, looksLikeDirectoryPreviewPath } from "../filePreview";
 import { readLocalApi } from "../localApi";
 import type { MarkdownFileLinkMeta } from "../markdown-links";
 import { splitPathAndPosition } from "../terminal-links";
@@ -243,72 +244,6 @@ import {
 
 const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more files without additional text. Respond using the conversation context and the attached files.]";
-const TEXT_PREVIEW_EXTENSIONS = new Set([
-  "bat",
-  "c",
-  "cc",
-  "cjs",
-  "cmd",
-  "cpp",
-  "cs",
-  "css",
-  "cts",
-  "cxx",
-  "diff",
-  "env",
-  "go",
-  "gql",
-  "graphql",
-  "h",
-  "hpp",
-  "htm",
-  "html",
-  "ini",
-  "java",
-  "js",
-  "json",
-  "jsx",
-  "kt",
-  "kts",
-  "less",
-  "log",
-  "md",
-  "mdx",
-  "mjs",
-  "mts",
-  "patch",
-  "php",
-  "ps1",
-  "py",
-  "rb",
-  "rs",
-  "sass",
-  "scss",
-  "sh",
-  "sql",
-  "svg",
-  "swift",
-  "toml",
-  "ts",
-  "tsx",
-  "txt",
-  "xml",
-  "yaml",
-  "yml",
-  "zsh",
-]);
-const KNOWN_EXTENSIONLESS_TEXT_FILENAMES = new Set([
-  "dockerfile",
-  "makefile",
-  "readme",
-  "license",
-  "changelog",
-  "gitignore",
-  "gitattributes",
-  "editorconfig",
-  "npmrc",
-  "yarnrc",
-]);
 
 function normalizeComparableFilePath(value: string): string {
   return value.replaceAll("\\", "/").replace(/^\/([A-Za-z]:\/)/, "$1");
@@ -347,32 +282,6 @@ function splitRelativePreviewFilePath(filePath: string): {
     directoryPath: normalizedFilePath.slice(0, separatorIndex),
     basename: normalizedFilePath.slice(separatorIndex + 1),
   };
-}
-
-function looksLikeDirectoryPreviewPath(filePath: string): boolean {
-  const { path } = splitPathAndPosition(filePath);
-  if (/[\\/]$/.test(path)) {
-    return true;
-  }
-
-  const basename = path.split(/[\\/]/).filter(Boolean).at(-1);
-  if (!basename) {
-    return false;
-  }
-  if (basename.includes(".")) {
-    return false;
-  }
-  return !KNOWN_EXTENSIONLESS_TEXT_FILENAMES.has(basename.toLowerCase());
-}
-
-function isTextPreviewFilePath(filePath: string): boolean {
-  const { path } = splitPathAndPosition(filePath);
-  const basename = path.split(/[\\/]/).at(-1) ?? path;
-  const extension = basename.includes(".") ? basename.split(".").at(-1)?.toLowerCase() : undefined;
-  if (!extension) {
-    return true;
-  }
-  return TEXT_PREVIEW_EXTENSIONS.has(extension);
 }
 
 function resolveMarkdownPreviewTarget(
@@ -1890,6 +1799,7 @@ export default function ChatView(props: ChatViewProps) {
     threadError: activeThread?.error,
   });
   const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
+  const visibleThreadError = isSendBusy ? null : (activeThread?.error ?? null);
   const canSteerActiveTurn =
     phase === "running" &&
     isServerThread &&
@@ -4907,7 +4817,8 @@ export default function ChatView(props: ChatViewProps) {
       activeThreadMessagesCount: activeThread.messages.length,
       displayedMessagesCount: timelineMessages.length,
       latestTurn: activeThread.latestTurn,
-      error: activeThread.error,
+      error: visibleThreadError,
+      isWorking,
     });
   const hideProjectChromeForEmptyNewThread =
     isEmptyNewThread && (isConversationThread || !activeProject);
@@ -5129,7 +5040,7 @@ export default function ChatView(props: ChatViewProps) {
       <div className="shrink-0">
         <ProviderStatusBanner status={activeProviderStatus} />
         <ThreadErrorBanner
-          error={activeThread.error}
+          error={visibleThreadError}
           onDismiss={() => setThreadError(activeThread.id, null)}
         />
       </div>

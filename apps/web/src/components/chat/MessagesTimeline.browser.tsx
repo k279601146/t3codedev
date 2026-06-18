@@ -47,6 +47,7 @@ vi.mock("@legendapp/list/react", async () => {
 import { MessagesTimeline } from "./MessagesTimeline";
 
 const MESSAGE_CREATED_AT = "2026-04-13T12:00:00.000Z";
+const LEGACY_EMPTY_TIMELINE_PROMPT = "Send a message to start " + "the conversation.";
 
 function buildProps() {
   return {
@@ -125,7 +126,7 @@ describe("MessagesTimeline", () => {
 
     try {
       await expect
-        .element(page.getByText("Send a message to start the conversation."))
+        .element(page.getByText(LEGACY_EMPTY_TIMELINE_PROMPT))
         .not.toBeInTheDocument();
       await expect.element(page.getByText("Thinking - Inspecting repository state")).toBeVisible();
     } finally {
@@ -147,8 +148,11 @@ describe("MessagesTimeline", () => {
 
     try {
       await expect
-        .element(page.getByText("Send a message to start the conversation."))
-        .toBeVisible();
+        .element(page.getByTestId("timeline-empty-placeholder"))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByText(LEGACY_EMPTY_TIMELINE_PROMPT))
+        .not.toBeInTheDocument();
 
       await screen.rerender(
         <MessagesTimeline

@@ -300,30 +300,33 @@ export function resolveThreadRowClassName(input: {
   isSelected: boolean;
 }): string {
   const baseClassName =
-    "h-8.5 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left text-[14px] font-normal select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+    "t3-sidebar-thread-row h-7.5 w-full translate-x-0 cursor-pointer justify-start rounded-[7px] px-2 text-left text-[13px] font-normal select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 
   if (input.isSelected && input.isActive) {
     return cn(
       baseClassName,
-      "bg-accent/70 text-foreground/88 hover:bg-accent/75 hover:text-foreground",
+      "bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] text-foreground/88 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground",
     );
   }
 
   if (input.isSelected) {
     return cn(
       baseClassName,
-      "bg-accent/60 text-foreground/86 hover:bg-accent/70 hover:text-foreground",
+      "bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)] text-foreground/86 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground",
     );
   }
 
   if (input.isActive) {
     return cn(
       baseClassName,
-      "bg-accent/70 text-foreground/88 hover:bg-accent/75 hover:text-foreground",
+      "bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] text-foreground/88 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground",
     );
   }
 
-  return cn(baseClassName, "text-foreground/80 hover:bg-accent/45 hover:text-foreground/90");
+  return cn(
+    baseClassName,
+    "text-foreground/76 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground/90",
+  );
 }
 
 export function resolveThreadStatusPill(input: {

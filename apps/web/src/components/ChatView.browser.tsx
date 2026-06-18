@@ -3819,14 +3819,6 @@ describe("ChatView timeline estimator parity (full app)", () => {
   });
 
   it("shows the confirm archive action after clicking the archive button", async () => {
-    localStorage.setItem(
-      "t3code:client-settings:v1",
-      JSON.stringify({
-        ...DEFAULT_CLIENT_SETTINGS,
-        confirmThreadArchive: true,
-      }),
-    );
-
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
       snapshot: createSnapshotForTargetUser({
@@ -3834,6 +3826,12 @@ describe("ChatView timeline estimator parity (full app)", () => {
         targetText: "archive confirm target",
       }),
     });
+    const archiveRequests = () =>
+      wsRequests.filter(
+        (request) =>
+          request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+          (request as { type?: unknown }).type === "thread.archive",
+      );
 
     try {
       const threadRow = page.getByTestId(`thread-row-${THREAD_ID}`);
@@ -3844,12 +3842,23 @@ describe("ChatView timeline estimator parity (full app)", () => {
       const archiveButton = page.getByTestId(`thread-archive-${THREAD_ID}`);
       await expect.element(archiveButton).toBeInTheDocument();
       await archiveButton.click();
+      await waitForLayout();
+      expect(archiveRequests()).toHaveLength(0);
 
       const confirmButton = page.getByTestId(`thread-archive-confirm-${THREAD_ID}`);
       await expect.element(confirmButton).toBeInTheDocument();
       await expect.element(confirmButton).toBeVisible();
+      await confirmButton.click();
+
+      await vi.waitFor(() => {
+        expect(archiveRequests()).toHaveLength(1);
+      });
+      expect(archiveRequests()[0]).toMatchObject({
+        _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+        type: "thread.archive",
+        threadId: THREAD_ID,
+      });
     } finally {
-      localStorage.removeItem("t3code:client-settings:v1");
       await mounted.cleanup();
     }
   });

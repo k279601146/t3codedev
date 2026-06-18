@@ -67,13 +67,15 @@ export function shouldShowEmptyNewThread(input: {
   displayedMessagesCount: number;
   latestTurn: Thread["latestTurn"];
   error: string | null | undefined;
+  isWorking: boolean;
 }): boolean {
   return (
     (input.routeKind === "draft" || input.isConversationThread) &&
     input.activeThreadMessagesCount === 0 &&
     input.displayedMessagesCount === 0 &&
     input.latestTurn === null &&
-    !input.error
+    !input.error &&
+    !input.isWorking
   );
 }
 
@@ -550,6 +552,7 @@ export interface LocalDispatchSnapshot {
   latestTurnCompletedAt: string | null;
   sessionOrchestrationStatus: ThreadSession["orchestrationStatus"] | null;
   sessionUpdatedAt: string | null;
+  threadError: string | null | undefined;
 }
 
 export function createLocalDispatchSnapshot(
@@ -567,6 +570,7 @@ export function createLocalDispatchSnapshot(
     latestTurnCompletedAt: latestTurn?.completedAt ?? null,
     sessionOrchestrationStatus: session?.orchestrationStatus ?? null,
     sessionUpdatedAt: session?.updatedAt ?? null,
+    threadError: activeThread?.error,
   };
 }
 
@@ -582,7 +586,11 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   if (!input.localDispatch) {
     return false;
   }
-  if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
+  if (
+    input.hasPendingApproval ||
+    input.hasPendingUserInput ||
+    (Boolean(input.threadError) && input.threadError !== input.localDispatch.threadError)
+  ) {
     return true;
   }
 
@@ -603,10 +611,10 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     return false;
   }
 
-  // 只要这一轮 turn 已经被服务端确认但还没结束，本地发送态就继续托底。
-  // 否则 session 在 starting/connecting/running 等中间态切换时会让“正在思考”
-  // 短暂消失，再由后续 running 事件显示第二次。
-  if (latestTurnChanged && latestTurn && latestTurn.completedAt == null) {
+  // 编辑最后一条用户消息会先回退旧 turn，再启动新 turn。回退事件会把
+  // latestTurn 清空；这只是重试的中间态，不应结束本地发送态，否则对话页
+  // 会短暂满足“空的新会话”条件并跳回首页。
+  if (latestTurnChanged && latestTurn === null && input.localDispatch.latestTurnTurnId !== null) {
     if (!orchestrationEnded) {
       return false;
     }
@@ -627,6 +635,15 @@ export function hasServerAcknowledgedLocalDispatch(input: {
       return false;
     }
     return true;
+  }
+
+  // 只要这一轮 turn 已经被服务端确认但还没结束，本地发送态就继续托底。
+  // 否则 session 在 starting/connecting/running 等中间态切换时会让“正在思考”
+  // 短暂消失，再由后续 running 事件显示第二次。
+  if (latestTurnChanged && latestTurn && latestTurn.completedAt == null) {
+    if (!orchestrationEnded) {
+      return false;
+    }
   }
 
   return (

@@ -658,9 +658,15 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
   );
 }
 
-function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarContent({
+  className,
+  hideScrollbars = true,
+  ...props
+}: React.ComponentProps<"div"> & {
+  hideScrollbars?: boolean;
+}) {
   return (
-    <ScrollArea hideScrollbars scrollFade className="h-auto min-h-0 flex-1">
+    <ScrollArea hideScrollbars={hideScrollbars} scrollFade className="h-auto min-h-0 flex-1">
       <div
         className={cn(
           "flex w-full min-w-0 flex-col gap-2 group-data-[collapsible=icon]:overflow-hidden",
