@@ -66,6 +66,12 @@ function scoreProviderSkill(skill: ServerProviderSkill, query: string): number |
   return Math.min(...scores);
 }
 
+function compareSkillsByInstallTime(a: ServerProviderSkill, b: ServerProviderSkill): number {
+  const aTime = a.installedAtMs ?? Number.NEGATIVE_INFINITY;
+  const bTime = b.installedAtMs ?? Number.NEGATIVE_INFINITY;
+  return bTime - aTime;
+}
+
 export function searchProviderSkills(
   skills: ReadonlyArray<ServerProviderSkill>,
   query: string,
@@ -75,7 +81,7 @@ export function searchProviderSkills(
   const normalizedQuery = normalizeSearchQuery(query, { trimLeadingPattern: /^\$+/ });
 
   if (!normalizedQuery) {
-    return enabledSkills;
+    return [...enabledSkills].sort(compareSkillsByInstallTime).slice(0, limit);
   }
 
   const ranked: Array<{

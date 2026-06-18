@@ -154,6 +154,8 @@ export const ServerProviderSkill = Schema.Struct({
   enabled: Schema.Boolean,
   displayName: Schema.optional(TrimmedNonEmptyString),
   shortDescription: Schema.optional(TrimmedNonEmptyString),
+  /** 本机安装/更新时间戳（毫秒），用于把新安装技能优先展示给用户。 */
+  installedAtMs: Schema.optional(Schema.Number),
 });
 export type ServerProviderSkill = typeof ServerProviderSkill.Type;
 

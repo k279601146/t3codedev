@@ -101,4 +101,54 @@ describe("SkillHubCatalogProvider", () => {
       }),
     ),
   );
+
+  it.effect("远端返回未过滤列表时按搜索词本地过滤", () =>
+    withMockFetch(
+      (url) => {
+        if (url.includes("/api/v1/categories")) {
+          return Response.json([{ key: "docs", name: "文档" }]);
+        }
+        if (url.includes("/api/skills?")) {
+          const parsed = new URL(url);
+          assert.equal(parsed.searchParams.get("query"), "pdf");
+          assert.equal(parsed.searchParams.get("q"), "pdf");
+          assert.equal(parsed.searchParams.get("search"), "pdf");
+          assert.equal(parsed.searchParams.get("keyword"), "pdf");
+          return Response.json({
+            data: {
+              skills: [
+                {
+                  slug: "pdf",
+                  name: "pdf",
+                  title: "PDF",
+                  description_zh: "处理 PDF",
+                  category: "docs",
+                },
+                {
+                  slug: "ppt",
+                  name: "ppt",
+                  title: "PPT",
+                  description_zh: "生成演示文稿",
+                  category: "docs",
+                },
+              ],
+              total: 2,
+            },
+          });
+        }
+        return Response.json({}, { status: 404 });
+      },
+      Effect.gen(function* () {
+        const provider = makeSkillHubCatalogProvider({} as HttpClient.HttpClient);
+
+        const catalog = yield* provider.list({ page: 1, pageSize: 5, query: "pdf" });
+
+        assert.deepEqual(
+          catalog.items.map((item) => item.id),
+          ["skillhub:pdf"],
+        );
+        assert.equal(catalog.total, 1);
+      }),
+    ),
+  );
 });

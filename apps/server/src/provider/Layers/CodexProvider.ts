@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as DateTime from "effect/DateTime";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
@@ -9,6 +10,8 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Types from "effect/Types";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import { stat } from "node:fs/promises";
+import nodePath from "node:path";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexSchema from "effect-codex-app-server/schema";
 import * as CodexErrors from "effect-codex-app-server/errors";
@@ -521,40 +524,78 @@ function appendCustomCodexModels(
   return customEntries.length === 0 ? models : [...models, ...customEntries];
 }
 
+function resolveSkillInstallTimestampMs(
+  skillPath: string,
+): Effect.Effect<number | undefined> {
+  return Effect.gen(function* () {
+    const statPath = nodePath.basename(skillPath).toLowerCase() === "skill.md"
+      ? nodePath.dirname(skillPath)
+      : skillPath;
+    const entryStat = yield* Effect.tryPromise({
+      try: () => stat(statPath),
+      catch: () => undefined,
+    });
+    return entryStat.birthtime?.getTime() ?? entryStat.mtime?.getTime();
+  }).pipe(Effect.orElseSucceed(() => undefined));
+}
+
+function compareCodexSkillsByInstallTime(
+  a: ServerProviderSkill,
+  b: ServerProviderSkill,
+): number {
+  const aTime = a.installedAtMs ?? Number.NEGATIVE_INFINITY;
+  const bTime = b.installedAtMs ?? Number.NEGATIVE_INFINITY;
+  if (aTime !== bTime) {
+    return bTime - aTime;
+  }
+  const aName = (a.displayName ?? a.name).toLowerCase();
+  const bName = (b.displayName ?? b.name).toLowerCase();
+  return aName.localeCompare(bName);
+}
+
 function parseCodexSkillsListResponse(
   response: CodexSchema.V2SkillsListResponse,
   cwd: string,
-): ReadonlyArray<ServerProviderSkill> {
+): Effect.Effect<ReadonlyArray<ServerProviderSkill>> {
   const matchingEntry = response.data.find((entry) => entry.cwd === cwd);
   const skills = matchingEntry
     ? matchingEntry.skills
     : response.data.flatMap((entry) => entry.skills);
 
-  return skills.map((skill) => {
-    const shortDescription =
-      skill.shortDescription ?? skill.interface?.shortDescription ?? undefined;
+  return Effect.forEach(
+    skills,
+    (skill) =>
+      Effect.gen(function* () {
+        const shortDescription =
+          skill.shortDescription ?? skill.interface?.shortDescription ?? undefined;
+        const installedAtMs = yield* resolveSkillInstallTimestampMs(skill.path);
 
-    const parsedSkill: Types.Mutable<ServerProviderSkill> = {
-      name: skill.name,
-      path: skill.path,
-      enabled: skill.enabled,
-    };
+        const parsedSkill: Types.Mutable<ServerProviderSkill> = {
+          name: skill.name,
+          path: skill.path,
+          enabled: skill.enabled,
+        };
 
-    if (skill.description) {
-      parsedSkill.description = skill.description;
-    }
-    if (skill.scope) {
-      parsedSkill.scope = skill.scope;
-    }
-    if (skill.interface?.displayName) {
-      parsedSkill.displayName = skill.interface.displayName;
-    }
-    if (shortDescription) {
-      parsedSkill.shortDescription = shortDescription;
-    }
+        if (skill.description) {
+          parsedSkill.description = skill.description;
+        }
+        if (skill.scope) {
+          parsedSkill.scope = skill.scope;
+        }
+        if (skill.interface?.displayName) {
+          parsedSkill.displayName = skill.interface.displayName;
+        }
+        if (shortDescription) {
+          parsedSkill.shortDescription = shortDescription;
+        }
+        if (installedAtMs !== undefined) {
+          parsedSkill.installedAtMs = installedAtMs;
+        }
 
-    return parsedSkill;
-  });
+        return parsedSkill;
+      }),
+    { concurrency: "unbounded" },
+  ).pipe(Effect.map((parsedSkills) => [...parsedSkills].sort(compareCodexSkillsByInstallTime)));
 }
 
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
@@ -690,12 +731,14 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     commercialUsage,
   );
 
+  const skills = yield* parseCodexSkillsListResponse(skillsResponse, input.cwd);
+
   return {
     account: accountResponse,
     rateLimits: resolvedRateLimits,
     version,
     models,
-    skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
+    skills,
     permissionProfiles,
     ...(windowsSandboxReadiness.status !== undefined
       ? { windowsSandboxReadiness: windowsSandboxReadiness.status }

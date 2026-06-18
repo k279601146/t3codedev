@@ -156,6 +156,8 @@ export function makeSkillHubCatalogProvider(
       if (search) {
         params.set("query", search);
         params.set("q", search);
+        params.set("search", search);
+        params.set("keyword", search);
       }
       const category = query?.category?.trim();
       if (category && category !== "all") {
@@ -166,7 +168,7 @@ export function makeSkillHubCatalogProvider(
         [fetchJson<unknown>(`${API_BASE}/api/skills?${params.toString()}`), fetchCategories()],
         { concurrency: 2 },
       );
-      const normalized = normalizeSkillList(payload, categories, page, pageSize);
+      const normalized = normalizeSkillList(payload, categories, page, pageSize, query);
       return normalized;
     });
 
@@ -233,6 +235,7 @@ function normalizeSkillList(
   categories: SkillCatalogProviderResult["categories"],
   page: number,
   pageSize: number,
+  query?: SkillCatalogQuery,
 ): SkillCatalogProviderResult {
   const root = asRecord(payload);
   const data = asRecord(root?.["data"]);
@@ -245,23 +248,54 @@ function normalizeSkillList(
     asArray(root?.["skills"]) ??
     asArray(root?.["list"]) ??
     (Array.isArray(payload) ? payload : []);
-  const total =
+  const rawTotal =
     toNumber(root?.["total"]) ??
     toNumber(data?.["total"]) ??
     toNumber(root?.["count"]) ??
     toNumber(data?.["count"]) ??
     toNumber(asRecord(root?.["pagination"])?.["total"]) ??
     rawItems.length;
+  const items = rawItems
+    .map((entry) => normalizeSkillSummary(entry, undefined, categoryNameByKey))
+    .filter(isCatalogSkillEntry)
+    .filter((entry) => matchesCatalogQuery(entry, query));
+  const total = query?.query?.trim() ? items.length : rawTotal;
   return {
-    items: rawItems
-      .map((entry) => normalizeSkillSummary(entry, undefined, categoryNameByKey))
-      .filter(isCatalogSkillEntry),
+    items,
     categories,
     total,
     page,
     pageSize,
     fetchedAt: Date.now(),
   };
+}
+
+function matchesCatalogQuery(entry: CatalogSkillEntry, query?: SkillCatalogQuery): boolean {
+  const category = query?.category?.trim();
+  if (category && category !== "all" && entry.categoryKey !== category) return false;
+
+  const search = query?.query?.trim().toLowerCase();
+  if (!search) return true;
+  const terms = search.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = [
+    entry.id,
+    entry.name,
+    entry.displayName,
+    entry.description,
+    entry.shortDescription,
+    entry.categoryKey,
+    entry.categoryName,
+    entry.sourceLabel,
+    entry.version,
+    entry.homepage,
+    entry.sourceUrl,
+    entry.slug,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return terms.every((term) => haystack.includes(term));
 }
 
 function normalizeSkillDetail(payload: unknown, fallbackSlug: string): CatalogSkillEntry {

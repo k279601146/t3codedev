@@ -334,7 +334,7 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
   const { t } = useI18n();
   const [skillQuery, setSkillQuery] = useState("");
   const visibleSkills = useMemo(
-    () => searchProviderSkills(props.skills, skillQuery, 8),
+    () => searchProviderSkills(props.skills, skillQuery, 12),
     [props.skills, skillQuery],
   );
 

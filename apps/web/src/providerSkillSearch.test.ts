@@ -13,6 +13,19 @@ function makeSkill(input: Partial<ServerProviderSkill> & Pick<ServerProviderSkil
 }
 
 describe("searchProviderSkills", () => {
+  it("在空查询时优先展示最新安装的技能并受限于数量上限", () => {
+    const skills = [
+      makeSkill({ name: "older", installedAtMs: 1000 }),
+      makeSkill({ name: "newer", installedAtMs: 2000 }),
+      makeSkill({ name: "middle", installedAtMs: 1500 }),
+    ];
+
+    expect(searchProviderSkills(skills, "", 2).map((skill) => skill.name)).toEqual([
+      "newer",
+      "middle",
+    ]);
+  });
+
   it("moves exact ui matches ahead of broader ui matches", () => {
     const skills = [
       makeSkill({
