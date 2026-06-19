@@ -169,7 +169,19 @@ export function makeSkillHubCatalogProvider(
         { concurrency: 2 },
       );
       const normalized = normalizeSkillList(payload, categories, page, pageSize, query);
-      return normalized;
+      const enrichedItems = yield* Effect.forEach(
+        normalized.items,
+        (item) =>
+          find(item.id).pipe(
+            Effect.map((detail) => (detail ? mergeCatalogEntry(item, detail) : item)),
+            Effect.orElseSucceed(() => item),
+          ),
+        { concurrency: 6 },
+      );
+      return {
+        ...normalized,
+        items: enrichedItems,
+      };
     });
 
   const find: SkillCatalogProvider["find"] = (catalogItemId) =>
@@ -300,8 +312,37 @@ function matchesCatalogQuery(entry: CatalogSkillEntry, query?: SkillCatalogQuery
 
 function normalizeSkillDetail(payload: unknown, fallbackSlug: string): CatalogSkillEntry {
   const root = asRecord(payload);
-  const detail = asRecord(root?.["skill"]) ?? asRecord(root?.["data"]) ?? root ?? {};
+  const detail = {
+    ...(asRecord(root?.["skill"]) ?? asRecord(root?.["data"]) ?? root ?? {}),
+    ...(root?.["latestVersion"] ? { latestVersion: root["latestVersion"] } : {}),
+  };
   return normalizeSkillSummary(detail, fallbackSlug);
+}
+
+function mergeCatalogEntry(summary: CatalogSkillEntry, detail: CatalogSkillEntry): CatalogSkillEntry {
+  return {
+    ...summary,
+    ...detail,
+    description: detail.description ?? summary.description,
+    shortDescription: detail.shortDescription ?? summary.shortDescription,
+    iconSmall: detail.iconSmall ?? summary.iconSmall,
+    iconLarge: detail.iconLarge ?? summary.iconLarge,
+    categoryKey: detail.categoryKey ?? summary.categoryKey,
+    categoryName: summary.categoryName ?? detail.categoryName,
+    sourceLabel: summary.sourceLabel ?? detail.sourceLabel,
+    downloads: detail.downloads ?? summary.downloads,
+    installs: detail.installs ?? summary.installs,
+    stars: detail.stars ?? summary.stars,
+    favorites: detail.favorites ?? summary.favorites,
+    updatedAt: detail.updatedAt ?? summary.updatedAt,
+    requiresApiKey: detail.requiresApiKey ?? summary.requiresApiKey,
+    securityStatus:
+      detail.securityStatus === "verified" || summary.securityStatus === "verified"
+        ? "verified"
+        : (detail.securityStatus ?? summary.securityStatus),
+    homepage: detail.homepage ?? summary.homepage,
+    sourceUrl: detail.sourceUrl ?? summary.sourceUrl,
+  };
 }
 
 function normalizeSkillSummary(
@@ -328,6 +369,9 @@ function normalizeSkillSummary(
     toStringValue(record["source_url"]) ??
     toStringValue(record["repository"]) ??
     toStringValue(record["repo"]);
+  const stats = asRecord(record["stats"]);
+  const latestVersion = asRecord(record["latestVersion"]);
+  const tags = asRecord(record["tags"]);
   return {
     id: `${SOURCE_ID}:${slug}`,
     name,
@@ -344,10 +388,36 @@ function normalizeSkillSummary(
     sourceLabel: SOURCE_LABEL,
     categoryKey: category?.key,
     categoryName: category?.name,
-    version: toStringValue(record["version"]),
-    downloads: toNumber(record["downloads"]) ?? toNumber(record["downloadCount"]),
-    installs: toNumber(record["installs"]) ?? toNumber(record["installCount"]),
-    stars: toNumber(record["stars"]) ?? toNumber(record["starCount"]),
+    version:
+      toStringValue(record["version"]) ??
+      toStringValue(latestVersion?.["version"]) ??
+      toStringValue(tags?.["latest"]),
+    downloads:
+      toNumber(record["downloads"]) ??
+      toNumber(record["downloadCount"]) ??
+      toNumber(stats?.["downloads"]),
+    installs:
+      toNumber(record["installs"]) ??
+      toNumber(record["installCount"]) ??
+      toNumber(stats?.["installs"]),
+    stars:
+      toNumber(record["stars"]) ?? toNumber(record["starCount"]) ?? toNumber(stats?.["stars"]),
+    favorites:
+      toNumber(record["favorites"]) ??
+      toNumber(record["favoriteCount"]) ??
+      toNumber(record["likes"]) ??
+      toNumber(record["likeCount"]) ??
+      toNumber(record["stars"]) ??
+      toNumber(record["starCount"]) ??
+      toNumber(stats?.["favorites"]) ??
+      toNumber(stats?.["stars"]),
+    updatedAt:
+      toDateStringValue(latestVersion?.["createdAt"]) ??
+      toDateStringValue(record["updated_at"]) ??
+      toDateStringValue(record["updatedAt"]) ??
+      toDateStringValue(record["updated"]) ??
+      toDateStringValue(record["lastUpdated"]) ??
+      toDateStringValue(record["modified_at"]),
     requiresApiKey:
       toBoolean(record["requiresApiKey"]) ??
       toBoolean(record["requires_api_key"]) ??
@@ -453,6 +523,18 @@ function toNumber(value: unknown): number | undefined {
   if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function toDateStringValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value > 10_000_000_000 ? value : value * 1000);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
   }
   return undefined;
 }

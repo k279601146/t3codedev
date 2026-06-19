@@ -39,10 +39,10 @@ describe("Windows 沙箱防火墙修复提示", () => {
     ).toBe(true);
   });
 
-  it("elevated 仍需更新时提示修复，降级后不再反复提示", () => {
+  it("普通 elevated setup 待更新时不提前提示防火墙修复", () => {
     expect(shouldOfferWindowsSandboxFirewallRepair(sandbox({ mode: "unelevated" }))).toBe(false);
     expect(shouldOfferWindowsSandboxFirewallRepair(sandbox({ readiness: "updateRequired" }))).toBe(
-      true,
+      false,
     );
   });
 

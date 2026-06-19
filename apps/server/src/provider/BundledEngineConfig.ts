@@ -22,7 +22,6 @@ import {
   getCommercialEngineEnvVar,
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
-  resolveCommercialEngineWindowsSandboxMode,
   buildCommercialEngineProcessEnv,
 } from "@t3tools/shared/commercialEngine";
 
@@ -111,11 +110,6 @@ export function resolveBundledEngineConfig(
     CODEX_MODEL_PROVIDERS_OPENAI_ENV_KEY: ENV_IDE_JWT,
     OPENAI_BASE_URL: gatewayBaseUrl,
   };
-
-  // Windows sandbox can be upgraded by the desktop runtime after installer initialization.
-  if (process.platform === "win32") {
-    spawnEnvPatch.CODEX_WINDOWS_SANDBOX = resolveCommercialEngineWindowsSandboxMode(env);
-  }
 
   if (ideJwt) {
     spawnEnvPatch[ENV_IDE_JWT] = ideJwt;

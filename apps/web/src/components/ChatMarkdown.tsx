@@ -27,13 +27,10 @@ import { openInPreferredEditor } from "../editorPreferences";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
-import {
-  TEXT_PREVIEW_BASENAME_PATTERN_SOURCE,
-  TEXT_PREVIEW_FILE_EXTENSION_PATTERN_SOURCE,
-} from "../filePreview";
 import { useTheme } from "../hooks/useTheme";
 import {
   type MarkdownFileLinkMeta,
+  isBareMarkdownPreviewPath,
   normalizeMarkdownLinkDestination,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
@@ -370,6 +367,7 @@ function UncachedShikiCodeBlock({
 interface MarkdownFileLinkProps {
   href: string;
   targetPath: string;
+  previewPath?: string | undefined;
   displayPath: string;
   filePath: string;
   label: string;
@@ -387,12 +385,9 @@ interface MarkdownWebLinkProps {
 }
 
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
-const PLAIN_FILE_LINK_EXTENSION_PATTERN_SOURCE = `${TEXT_PREVIEW_FILE_EXTENSION_PATTERN_SOURCE}|avif|bmp|doc|docx|gif|jpeg|jpg|pdf|png|webp`;
 const PLAIN_FILE_PATH_PATTERN = new RegExp(
   "(?:~\\/|\\.{1,2}\\/|\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\s\"'`<>)\\]]+" +
-    "|[A-Za-z0-9._-]+(?:\\/[A-Za-z0-9._-]+)+(?::\\d+){0,2}" +
-    `|(?:${TEXT_PREVIEW_BASENAME_PATTERN_SOURCE})(?::\\d+){0,2}` +
-    `|[A-Za-z0-9._-]+\\.(?:${PLAIN_FILE_LINK_EXTENSION_PATTERN_SOURCE})(?::\\d+){0,2}`,
+    "|[A-Za-z0-9._-]+(?:\\/[A-Za-z0-9._-]+)+(?::\\d+){0,2}",
   "gi",
 );
 const PLAIN_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
@@ -615,7 +610,8 @@ function linkifyInlineCodeTargetsInSegment(segment: string, cwd: string | undefi
     }
 
     const fileValue = trimPlainFilePathCandidate(trimmedValue);
-    if (resolveMarkdownFileLinkMeta(fileValue, cwd)) {
+    const fileMeta = resolveMarkdownFileLinkMeta(fileValue, cwd);
+    if (fileMeta && !isBareMarkdownPreviewPath(fileMeta.previewPath)) {
       replacements.push({
         start,
         end: start + match[0].length,
@@ -735,6 +731,7 @@ function linkifyPlainFilePaths(text: string, cwd: string | undefined): string {
 const MarkdownFileLink = memo(function MarkdownFileLink({
   href,
   targetPath,
+  previewPath,
   displayPath,
   filePath,
   label,
@@ -749,6 +746,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       onOpenFile({
         filePath,
         targetPath,
+        ...(previewPath ? { previewPath } : {}),
         displayPath,
         basename: filePath.split(/[\\/]/).at(-1) ?? filePath,
         ...(line !== undefined ? { line } : {}),
@@ -775,7 +773,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         }),
       );
     });
-  }, [column, displayPath, filePath, line, onOpenFile, targetPath]);
+  }, [column, displayPath, filePath, line, onOpenFile, previewPath, targetPath]);
 
   const handleCopy = useCallback((value: string, title: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
@@ -851,13 +849,15 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       className={cn(MARKDOWN_FILE_LINK_ICON_CLASS_NAME, "text-current")}
     />
   );
+  const linkHref = previewPath ?? href;
+  const tooltipPath = previewPath ?? targetPath;
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <a
-            href={href}
+            href={linkHref}
             className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, className)}
             onClick={(event) => {
               event.preventDefault();
@@ -879,7 +879,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         className="max-w-[min(40rem,calc(100vw-2rem))] font-mono text-[11px] leading-tight"
       >
         <div className="markdown-file-link-tooltip-scroll overflow-x-auto whitespace-nowrap">
-          {targetPath}
+          {tooltipPath}
         </div>
       </TooltipPopup>
     </Tooltip>
@@ -929,6 +929,7 @@ function areMarkdownFileLinkPropsEqual(
   return (
     previous.href === next.href &&
     previous.targetPath === next.targetPath &&
+    previous.previewPath === next.previewPath &&
     previous.displayPath === next.displayPath &&
     previous.filePath === next.filePath &&
     previous.label === next.label &&
@@ -1005,6 +1006,13 @@ function ChatMarkdown({
             </MarkdownWebLink>
           );
         }
+        if (onOpenFile && isBareMarkdownPreviewPath(fileLinkMeta.previewPath)) {
+          return (
+            <span className={props.className} title={fileLinkMeta.previewPath}>
+              {children}
+            </span>
+          );
+        }
 
         const parentSuffix = fileLinkParentSuffixByPath.get(fileLinkMeta.filePath);
         const labelParts = [fileLinkMeta.basename];
@@ -1021,6 +1029,7 @@ function ChatMarkdown({
           <MarkdownFileLink
             href={fileLinkMeta.targetPath}
             targetPath={fileLinkMeta.targetPath}
+            previewPath={fileLinkMeta.previewPath}
             displayPath={fileLinkMeta.displayPath}
             filePath={fileLinkMeta.filePath}
             label={labelParts.join(" · ")}

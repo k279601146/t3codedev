@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
-import { COMMERCIAL_ENGINE_IDE_JWT_ENV } from "@t3tools/shared/commercialEngine";
+import {
+  COMMERCIAL_ENGINE_IDE_JWT_ENV,
+  COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
+} from "@t3tools/shared/commercialEngine";
 import { describe, it } from "vitest";
 
 import {
@@ -39,6 +42,18 @@ describe("BundledEngineConfig", () => {
       config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_ENV_KEY,
       COMMERCIAL_ENGINE_IDE_JWT_ENV,
     );
+  });
+
+  it("does not map Windows sandbox mode to an unsupported CODEX env var", () => {
+    const config = resolveBundledEngineConfig({
+      MYIDE_ENGINE_PATH: "/opt/myide/ai-engine",
+      MYIDE_ENGINE_HOME: "/home/user/.myide/agent-data",
+      [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: "unelevated",
+    });
+
+    assert.ok(config);
+    assert.equal(config.spawnEnvPatch[COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV], "unelevated");
+    assert.equal(config.spawnEnvPatch.CODEX_WINDOWS_SANDBOX, undefined);
   });
 
   it("generates TOML without serializing token values", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isBareMarkdownPreviewPath,
   resolveMarkdownFileLinkMeta,
   resolveMarkdownFileLinkTarget,
   rewriteMarkdownFileUriHref,
@@ -68,6 +69,37 @@ describe("resolveMarkdownFileLinkTarget", () => {
     );
   });
 
+  it("keeps bare file names unresolved for side-panel preview", () => {
+    expect(
+      resolveMarkdownFileLinkMeta("useCanvasEngine.ts", "D:\\workspace\\t3codedev"),
+    ).toMatchObject({
+      filePath: "D:\\workspace\\t3codedev\\useCanvasEngine.ts",
+      previewPath: "useCanvasEngine.ts",
+    });
+  });
+
+  it("keeps relative file paths relative for side-panel preview", () => {
+    expect(
+      resolveMarkdownFileLinkMeta(
+        "apps/web/src/components/ImageCanvas/useCanvasEngine.ts",
+        "D:\\workspace\\dev2_OpenHarness_SaaS",
+      ),
+    ).toMatchObject({
+      filePath:
+        "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\web\\src\\components\\ImageCanvas\\useCanvasEngine.ts",
+      previewPath: "apps/web/src/components/ImageCanvas/useCanvasEngine.ts",
+    });
+  });
+
+  it("keeps absolute paths from other projects absolute for side-panel preview", () => {
+    const path =
+      "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\web\\src\\components\\ImageCanvas\\useCanvasEngine.ts";
+    expect(resolveMarkdownFileLinkMeta(path, "D:\\workspace\\t3codedev")).toMatchObject({
+      filePath: path,
+      previewPath: path,
+    });
+  });
+
   it("maps #L line anchors to editor line suffixes", () => {
     expect(resolveMarkdownFileLinkTarget("/Users/julius/project/src/main.ts#L42C7")).toBe(
       "/Users/julius/project/src/main.ts:42:7",
@@ -125,5 +157,14 @@ describe("resolveMarkdownFileLinkTarget", () => {
 
   it("does not treat app routes as file links", () => {
     expect(resolveMarkdownFileLinkTarget("/chat/settings")).toBeNull();
+  });
+});
+
+describe("isBareMarkdownPreviewPath", () => {
+  it("detects ambiguous bare file references", () => {
+    expect(isBareMarkdownPreviewPath("useCanvasEngine.ts")).toBe(true);
+    expect(isBareMarkdownPreviewPath("useCanvasEngine.ts:42")).toBe(true);
+    expect(isBareMarkdownPreviewPath("apps/web/useCanvasEngine.ts")).toBe(false);
+    expect(isBareMarkdownPreviewPath("D:\\workspace\\app\\useCanvasEngine.ts")).toBe(false);
   });
 });

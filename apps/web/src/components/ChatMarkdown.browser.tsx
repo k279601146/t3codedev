@@ -90,7 +90,7 @@ describe("ChatMarkdown", () => {
       await expect.element(link).toBeInTheDocument();
       await expect
         .element(link)
-        .toHaveAttribute("href", "D:\\workspace\\testimg\\output\\pdf\\codex_app_plugin_intro.pdf");
+        .toHaveAttribute("href", "output/pdf/codex_app_plugin_intro.pdf");
 
       await link.click();
 
@@ -139,7 +139,7 @@ describe("ChatMarkdown", () => {
     try {
       const link = page.getByRole("link", { name: "PermissionRule.ts · L1:C7" });
       await expect.element(link).toBeInTheDocument();
-      await expect.element(link).toHaveAttribute("href", `${filePath}:1:7`);
+      await expect.element(link).toHaveAttribute("href", filePath);
 
       await link.click();
 
@@ -235,7 +235,7 @@ describe("ChatMarkdown", () => {
     }
   });
 
-  it("renders plain file paths as clickable file links", async () => {
+  it("keeps bare plain file names as non-clickable text in side-panel open mode", async () => {
     const onOpenFile = vi.fn();
     const screen = await render(
       <ChatMarkdown
@@ -246,21 +246,10 @@ describe("ChatMarkdown", () => {
     );
 
     try {
-      const link = page.getByRole("link", { name: "ComposerPrimaryActions.tsx · L75" });
-      await expect.element(link).toBeInTheDocument();
       await expect
-        .element(link)
-        .toHaveAttribute("href", "/repo/project/ComposerPrimaryActions.tsx:75");
-
-      await link.click();
-
-      expect(onOpenFile).toHaveBeenCalledWith(
-        expect.objectContaining({
-          filePath: "/repo/project/ComposerPrimaryActions.tsx",
-          targetPath: "/repo/project/ComposerPrimaryActions.tsx:75",
-          line: 75,
-        }),
-      );
+        .element(page.getByText("查看 ComposerPrimaryActions.tsx (line 75)。"))
+        .toBeInTheDocument();
+      expect(onOpenFile).not.toHaveBeenCalled();
       expect(openInPreferredEditorMock).not.toHaveBeenCalled();
     } finally {
       await screen.unmount();

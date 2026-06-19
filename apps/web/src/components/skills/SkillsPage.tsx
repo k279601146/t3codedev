@@ -6,11 +6,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
+  Clock3Icon,
+  DownloadIcon,
   Loader2Icon,
   PackageIcon,
   PlusIcon,
   RefreshCcwIcon,
   SearchIcon,
+  StarIcon,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -23,11 +26,24 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
 import { toastManager } from "~/components/ui/toast";
 
+import { CatalogMetaRow } from "./SkillCatalogBadges";
 import { SkillDetailDialog } from "./SkillDetailDialog";
 
 const SKILLS_LIST_QUERY = ["skills", "list"] as const;
 const SKILLS_CATALOG_QUERY = ["skills", "catalog"] as const;
 const CATALOG_PAGE_SIZE = 30;
+
+type CatalogSortBy = "updated" | "downloads" | "favorites";
+
+const CATALOG_SORT_OPTIONS: ReadonlyArray<{
+  readonly value: CatalogSortBy;
+  readonly label: string;
+  readonly icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { value: "updated", label: "最新发布", icon: Clock3Icon },
+  { value: "downloads", label: "下载最多", icon: DownloadIcon },
+  { value: "favorites", label: "收藏最多", icon: StarIcon },
+];
 
 function getSkillsClient() {
   return getPrimaryEnvironmentConnection().client.skills;
@@ -66,6 +82,7 @@ interface SkillCardProps {
   readonly icon: React.ReactNode;
   readonly title: string;
   readonly subtitle?: string;
+  readonly meta?: React.ReactNode;
   readonly action: React.ReactNode;
   readonly onClick: () => void;
 }
@@ -74,6 +91,7 @@ const SkillCard = memo(function SkillCard({
   icon,
   title,
   subtitle,
+  meta,
   action,
   onClick,
 }: SkillCardProps) {
@@ -89,6 +107,7 @@ const SkillCard = memo(function SkillCard({
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium text-foreground">{title}</div>
         {subtitle ? <div className="truncate text-xs text-muted-foreground">{subtitle}</div> : null}
+        {meta}
       </div>
       <div className="shrink-0">{action}</div>
     </button>
@@ -159,6 +178,7 @@ export function SkillsPage({
   const [catalogCategories, setCatalogCategories] = useState<ReadonlyArray<SkillCatalogCategory>>(
     [],
   );
+  const [catalogSortBy, setCatalogSortBy] = useState<CatalogSortBy>("downloads");
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogExhausted, setCatalogExhausted] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
@@ -186,12 +206,15 @@ export function SkillsPage({
         page: catalogPage,
         pageSize: CATALOG_PAGE_SIZE,
         query: trimmedSearch,
+        sortBy: catalogSortBy,
       },
     ] as const,
     queryFn: () =>
       getSkillsClient().catalog({
         page: catalogPage,
         pageSize: CATALOG_PAGE_SIZE,
+        sortBy: catalogSortBy,
+        order: "desc",
         ...(selectedCategory !== "all" ? { category: selectedCategory } : {}),
         ...(trimmedSearch ? { query: trimmedSearch } : {}),
       }),
@@ -204,6 +227,8 @@ export function SkillsPage({
         force: true,
         page: 1,
         pageSize: CATALOG_PAGE_SIZE,
+        sortBy: catalogSortBy,
+        order: "desc",
         ...(selectedCategory !== "all" ? { category: selectedCategory } : {}),
         ...(trimmedSearch ? { query: trimmedSearch } : {}),
       }),
@@ -386,7 +411,7 @@ export function SkillsPage({
 
   useEffect(() => {
     resetCatalogPagination();
-  }, [trimmedSearch, selectedCategory, resetCatalogPagination]);
+  }, [trimmedSearch, selectedCategory, catalogSortBy, resetCatalogPagination]);
 
   useEffect(() => {
     const data = catalogQuery.data;
@@ -470,6 +495,15 @@ export function SkillsPage({
       setSelectedCategory(category);
     },
     [resetCatalogPagination, selectedCategory],
+  );
+
+  const handleCatalogSortChange = useCallback(
+    (sortBy: CatalogSortBy) => {
+      if (sortBy === catalogSortBy) return;
+      resetCatalogPagination();
+      setCatalogSortBy(sortBy);
+    },
+    [catalogSortBy, resetCatalogPagination],
   );
 
   const handleUninstall = useCallback(
@@ -564,6 +598,30 @@ export function SkillsPage({
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
+                  <div
+                    className="flex h-8 shrink-0 items-center rounded-md border border-border/70 bg-background p-0.5"
+                    aria-label="技能排序"
+                  >
+                    {CATALOG_SORT_OPTIONS.map((option) => {
+                      const SortIcon = option.icon;
+                      const active = catalogSortBy === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={
+                            active
+                              ? "inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-muted px-2 text-[11px] font-medium text-foreground"
+                              : "inline-flex h-7 items-center gap-1.5 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                          }
+                          onClick={() => handleCatalogSortChange(option.value)}
+                        >
+                          <SortIcon className="size-3" />
+                          <span className="hidden sm:inline">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <Button
                     size="icon-sm"
                     variant="ghost"
@@ -700,6 +758,7 @@ export function SkillsPage({
                       {...((item.shortDescription ?? item.description)
                         ? { subtitle: item.shortDescription ?? item.description }
                         : {})}
+                      meta={<CatalogMetaRow item={item} />}
                       action={
                         installingSkillId === item.id ? (
                           <Loader2Icon

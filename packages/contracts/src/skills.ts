@@ -60,7 +60,9 @@ export const SkillCatalogQueryInput = Schema.Struct({
   category: Schema.optionalKey(Schema.String),
   page: Schema.optionalKey(Schema.Number),
   pageSize: Schema.optionalKey(Schema.Number),
-  sortBy: Schema.optionalKey(Schema.Literals(["downloads", "updated", "created", "name"])),
+  sortBy: Schema.optionalKey(
+    Schema.Literals(["downloads", "favorites", "updated", "created", "name"]),
+  ),
   order: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
 });
 export type SkillCatalogQueryInput = typeof SkillCatalogQueryInput.Type;
@@ -99,6 +101,8 @@ export const SkillCatalogItem = Schema.Struct({
   downloads: Schema.optionalKey(Schema.Number),
   installs: Schema.optionalKey(Schema.Number),
   stars: Schema.optionalKey(Schema.Number),
+  favorites: Schema.optionalKey(Schema.Number),
+  updatedAt: Schema.optionalKey(TrimmedNonEmptyString),
   requiresApiKey: Schema.optionalKey(Schema.Boolean),
   securityStatus: Schema.optionalKey(Schema.Literals(["verified", "unknown", "blocked"])),
   homepage: Schema.optionalKey(TrimmedNonEmptyString),
@@ -152,7 +156,9 @@ export const SkillsRefreshInput = Schema.Struct({
   category: Schema.optionalKey(Schema.String),
   page: Schema.optionalKey(Schema.Number),
   pageSize: Schema.optionalKey(Schema.Number),
-  sortBy: Schema.optionalKey(Schema.Literals(["downloads", "updated", "created", "name"])),
+  sortBy: Schema.optionalKey(
+    Schema.Literals(["downloads", "favorites", "updated", "created", "name"]),
+  ),
   order: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
 });
 export type SkillsRefreshInput = typeof SkillsRefreshInput.Type;

@@ -92,7 +92,11 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
-import { type MarkdownFileLinkMeta, rewriteMarkdownFileUriHref } from "../../markdown-links";
+import {
+  type MarkdownFileLinkMeta,
+  isBareMarkdownPreviewPath,
+  rewriteMarkdownFileUriHref,
+} from "../../markdown-links";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via useContext.
@@ -1924,6 +1928,7 @@ function buildChangedFileLinkMeta(filePath: string, displayPath: string): Markdo
   return {
     filePath,
     targetPath: filePath,
+    previewPath: filePath,
     displayPath,
     basename: basenameOfChangedFile(filePath),
   };
@@ -1942,7 +1947,7 @@ function ChangedFileOpenButton({
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   stopPropagation?: boolean | undefined;
 }) {
-  if (!onOpenFile) {
+  if (!onOpenFile || isBareMarkdownPreviewPath(filePath)) {
     return (
       <span className={className} title={displayPath}>
         {displayPath}

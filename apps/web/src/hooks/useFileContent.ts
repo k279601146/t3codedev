@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { readEnvironmentApi } from "../environmentApi";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { readWorkspaceFileWithBareNameFallback } from "./useFileContent.logic";
 
 export function useFileContent(
   environmentId: EnvironmentId | null | undefined,
@@ -20,11 +21,7 @@ export function useFileContent(
         throw new Error("Workspace API is unavailable.");
       }
 
-      const result = await api.projects.readFile({
-        cwd,
-        relativePath: filePath,
-      });
-      return result.contents;
+      return readWorkspaceFileWithBareNameFallback(api, cwd, filePath);
     },
     [cwd, environmentId],
   );

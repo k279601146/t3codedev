@@ -20,8 +20,5 @@ export function shouldOfferWindowsSandboxFirewallRepair(
   if (!sandbox) {
     return false;
   }
-  if (isWindowsSandboxFirewallPolicyError(sandbox.lastError)) {
-    return true;
-  }
-  return sandbox.mode === "elevated" && sandbox.readiness === "updateRequired";
+  return isWindowsSandboxFirewallPolicyError(sandbox.lastError);
 }

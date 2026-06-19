@@ -3,10 +3,7 @@ import { LoaderIcon, LockKeyholeIcon, RefreshCwIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ensureLocalApi } from "../../localApi";
-import {
-  repairWindowsSandboxFirewallWithConfirmation,
-  shouldOfferWindowsSandboxFirewallRepair,
-} from "../../lib/windowsSandboxRepair";
+import { runElevatedWindowsSandboxSetupFlow } from "../../lib/windowsSandboxSetupFlow";
 import {
   getFriendlyProviderInfrastructureMessage,
   getServerProviderLabel,
@@ -41,32 +38,6 @@ function readinessDisplayName(readiness: ServerProviderWindowsSandbox["readiness
     case "error":
       return "错误";
   }
-}
-
-async function waitForWindowsSandboxReady(input: {
-  readonly providerInstanceId: ServerProvider["instanceId"];
-  readonly attempts: number;
-  readonly delayMs: number;
-}): Promise<ServerProviderWindowsSandbox> {
-  const api = ensureLocalApi();
-  let latest: ServerProviderWindowsSandbox | null = null;
-  for (let attempt = 0; attempt < input.attempts; attempt += 1) {
-    if (attempt > 0) {
-      await new Promise((resolve) => window.setTimeout(resolve, input.delayMs));
-    }
-    const result = await api.server.windowsSandboxReadiness({
-      providerInstanceId: input.providerInstanceId,
-      mode: "elevated",
-    });
-    latest = result.windowsSandbox;
-    if (latest.readiness === "ready") {
-      return latest;
-    }
-  }
-  if (!latest) {
-    throw new Error("未收到 Windows 沙箱 readiness。");
-  }
-  return latest;
 }
 
 export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner({
@@ -163,29 +134,19 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
     if (!provider || isSettingUp) return;
     setIsSettingUp(true);
     setLocalError(null);
+    STARTED_WINDOWS_SANDBOX_SETUP_BY_PROVIDER.add(provider.instanceId);
+    setSetupStarted(true);
     try {
       const api = ensureLocalApi();
-      const startSetup = () =>
-        api.server.windowsSandboxSetupStart({
-          providerInstanceId: provider.instanceId,
-          mode: "elevated",
-        });
-      let result = await startSetup();
-      if (
-        shouldOfferWindowsSandboxFirewallRepair(result.windowsSandbox) &&
-        (await repairWindowsSandboxFirewallWithConfirmation())
-      ) {
-        result = await startSetup();
-      }
+      const { result } = await runElevatedWindowsSandboxSetupFlow({
+        providerInstanceId: provider.instanceId,
+        onChecked: (sandbox) => {
+          CHECKED_WINDOWS_SANDBOX_BY_PROVIDER.set(provider.instanceId, sandbox);
+          setCheckedSandbox(sandbox);
+        },
+      });
       if (result.started || result.windowsSandbox.readiness === "ready") {
-        const latest =
-          result.windowsSandbox.readiness === "ready"
-            ? result.windowsSandbox
-            : await waitForWindowsSandboxReady({
-                providerInstanceId: provider.instanceId,
-                attempts: 8,
-                delayMs: 1_500,
-              });
+        const latest = result.windowsSandbox;
         await api.server
           .refreshProviders({ instanceId: provider.instanceId })
           .catch(() => undefined);
@@ -195,9 +156,8 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
           setSetupStarted(false);
           setCheckedSandbox(latest);
         } else {
-          STARTED_WINDOWS_SANDBOX_SETUP_BY_PROVIDER.delete(provider.instanceId);
           CHECKED_WINDOWS_SANDBOX_BY_PROVIDER.set(provider.instanceId, latest);
-          setSetupStarted(false);
+          setSetupStarted(true);
           setCheckedSandbox(latest);
         }
       } else {
@@ -249,7 +209,7 @@ export const WindowsSandboxSetupBanner = memo(function WindowsSandboxSetupBanner
                   checkedSandbox.lastError,
                 )}`
               : ""
-          }。请确认管理员授权已完成；如果没有弹窗，请重新启动。`
+          }。沙箱初始化仍在等待系统完成；如已拒绝或未看到 UAC，请重新点击启动。`
         : setupStarted
           ? "请完成 Windows 管理员授权；完成后点击检查，ready 后此提示会消失"
           : copy.detail);

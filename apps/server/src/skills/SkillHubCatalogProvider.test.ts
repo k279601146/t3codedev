@@ -40,6 +40,8 @@ describe("SkillHubCatalogProvider", () => {
                   title: "PDF",
                   description_zh: "处理 PDF",
                   downloads: 42,
+                  favorites: 7,
+                  updated_at: "2026-06-12T00:00:00.000Z",
                   category: "docs",
                   iconUrl: "https://example.test/pdf.png",
                   labels: { requires_api_key: "true" },
@@ -64,11 +66,22 @@ describe("SkillHubCatalogProvider", () => {
         }
         if (url.includes("/api/v1/skills/pdf")) {
           return Response.json({
+            latestVersion: {
+              createdAt: 1774662200573,
+              version: "0.1.0",
+            },
             skill: {
               slug: "pdf",
               name: "pdf",
               title: "PDF",
-              version: "0.1.0",
+              updatedAt: 1781789022827,
+              stats: {
+                downloads: 100,
+                stars: 9,
+              },
+              tags: {
+                latest: "0.1.0",
+              },
             },
           });
         }
@@ -81,7 +94,9 @@ describe("SkillHubCatalogProvider", () => {
         assert.equal(catalog.total, 1);
         assert.equal(catalog.categories[0]?.key, "docs");
         assert.equal(catalog.items[0]?.id, "skillhub:pdf");
-        assert.equal(catalog.items[0]?.downloads, 42);
+        assert.equal(catalog.items[0]?.downloads, 100);
+        assert.equal(catalog.items[0]?.favorites, 9);
+        assert.equal(catalog.items[0]?.updatedAt, "2026-03-28T01:43:20.573Z");
         assert.equal(catalog.items[0]?.categoryName, "文档");
         assert.equal(catalog.items[0]?.iconSmall, "https://example.test/pdf.png");
         assert.equal(catalog.items[0]?.requiresApiKey, true);
@@ -89,6 +104,9 @@ describe("SkillHubCatalogProvider", () => {
 
         const detail = yield* provider.find("skillhub:pdf");
         assert.equal(detail?.version, "0.1.0");
+        assert.equal(detail?.downloads, 100);
+        assert.equal(detail?.favorites, 9);
+        assert.equal(detail?.updatedAt, "2026-03-28T01:43:20.573Z");
 
         const content = yield* provider.readContent("skillhub:pdf");
         assert.equal(content?.markdown, "# PDF");

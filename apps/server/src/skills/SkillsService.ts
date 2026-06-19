@@ -87,7 +87,7 @@ export interface SkillsServiceShape {
     readonly category?: string;
     readonly page?: number;
     readonly pageSize?: number;
-    readonly sortBy?: "downloads" | "updated" | "created" | "name";
+    readonly sortBy?: "downloads" | "favorites" | "updated" | "created" | "name";
     readonly order?: "asc" | "desc";
   }) => Effect.Effect<SkillsCatalogResponse, SkillsServiceError>;
   readonly install: (input: {
@@ -232,11 +232,55 @@ const catalogEntryToItem = (entry: CatalogSkillEntry): SkillCatalogItem => {
     ...(entry.downloads !== undefined ? { downloads: entry.downloads } : {}),
     ...(entry.installs !== undefined ? { installs: entry.installs } : {}),
     ...(entry.stars !== undefined ? { stars: entry.stars } : {}),
+    ...(entry.favorites !== undefined ? { favorites: entry.favorites } : {}),
+    ...(entry.updatedAt ? { updatedAt: entry.updatedAt } : {}),
     ...(entry.requiresApiKey !== undefined ? { requiresApiKey: entry.requiresApiKey } : {}),
     ...(entry.securityStatus ? { securityStatus: entry.securityStatus } : {}),
     ...(entry.homepage ? { homepage: entry.homepage } : {}),
     ...(entry.sourceUrl ? { sourceUrl: entry.sourceUrl } : {}),
   };
+};
+
+type SkillCatalogSortBy = NonNullable<Parameters<SkillsServiceShape["catalog"]>[0]>["sortBy"];
+type SkillCatalogSortOrder = NonNullable<Parameters<SkillsServiceShape["catalog"]>[0]>["order"];
+
+const sortCatalogItems = (
+  items: SkillCatalogItem[],
+  sortBy: SkillCatalogSortBy = "downloads",
+  order: SkillCatalogSortOrder = "desc",
+): SkillCatalogItem[] => {
+  const direction = order === "asc" ? 1 : -1;
+  const numericValue = (value: number | undefined): number =>
+    value === undefined || value === null || !Number.isFinite(value) ? 0 : value;
+  const timeValue = (value: string | undefined): number => {
+    if (!value) return 0;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  };
+  const byName = (a: SkillCatalogItem, b: SkillCatalogItem): number =>
+    a.displayName.localeCompare(b.displayName);
+
+  return items.sort((a, b) => {
+    let result = 0;
+    switch (sortBy) {
+      case "favorites":
+        result = numericValue(a.favorites ?? a.stars) - numericValue(b.favorites ?? b.stars);
+        break;
+      case "updated":
+      case "created":
+        result = timeValue(a.updatedAt) - timeValue(b.updatedAt);
+        break;
+      case "name":
+        result = byName(a, b);
+        break;
+      case "downloads":
+      default:
+        result = numericValue(a.downloads) - numericValue(b.downloads);
+        break;
+    }
+    if (result === 0) return byName(a, b);
+    return sortBy === "name" ? result * (order === "asc" ? 1 : -1) : result * direction;
+  });
 };
 
 interface PreparedZipSkill {
@@ -586,7 +630,7 @@ const make = Effect.fn("makeSkillsService")(function* () {
           items.push(catalogEntryToItem(entry));
         }
       }
-      items.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      sortCatalogItems(items, options?.sortBy, options?.order);
       return {
         items,
         categories: [...state.categories],

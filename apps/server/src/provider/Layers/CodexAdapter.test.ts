@@ -41,7 +41,6 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
@@ -591,7 +590,6 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
 });
 
 const lifecycleRuntimeFactory = makeRuntimeFactory();
-const lifecyclePersistedWindowsSandboxModes: Array<WindowsSandboxMode> = [];
 const lifecycleLayer = it.layer(
   Layer.effect(
     CodexAdapter,
@@ -599,10 +597,6 @@ const lifecycleLayer = it.layer(
       const codexConfig = decodeCodexSettings({});
       return yield* makeCodexAdapter(codexConfig, {
         makeRuntime: lifecycleRuntimeFactory.factory,
-        persistWindowsSandboxMode: (mode) =>
-          Effect.sync(() => {
-            lifecyclePersistedWindowsSandboxModes.push(mode);
-          }),
       });
     }),
   ).pipe(
@@ -1312,7 +1306,6 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     "maps unelevated windowsSandbox/setupCompleted failures to session state and warning",
     () =>
       Effect.gen(function* () {
-        lifecyclePersistedWindowsSandboxModes.length = 0;
         const { adapter, runtime } = yield* startLifecycleRuntime();
         const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
           Effect.forkChild,
@@ -1351,16 +1344,13 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         if (secondEvent?.type === "runtime.warning") {
           assert.equal(secondEvent.payload.message, "Sandbox setup failed");
         }
-        assert.deepEqual(lifecyclePersistedWindowsSandboxModes, []);
       }),
   );
 
-  it.effect("does not surface elevated setup failure after falling back to unelevated", () =>
+  it.effect("surfaces elevated setup failure and keeps elevated mode selected", () =>
     Effect.gen(function* () {
-      lifecyclePersistedWindowsSandboxModes.length = 0;
       const { adapter, runtime } = yield* startLifecycleRuntime();
-      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
-        Effect.timeoutOption(Duration.millis(1_000)),
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
         Effect.forkChild,
       );
 
@@ -1379,26 +1369,24 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         },
       });
 
-      yield* TestClock.adjust(Duration.seconds(1));
-      yield* Effect.yieldNow;
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      assert.equal(events.length, 2);
+      assert.equal(events[0]?.type, "session.state.changed");
+      assert.equal(events[1]?.type, "runtime.warning");
 
-      const firstEvent = yield* Fiber.join(firstEventFiber);
-      assert.equal(firstEvent._tag, "None");
-      assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["unelevated"]);
-
-      const readinessAfterFallback = yield* adapter.windowsSandboxReadiness!({
+      const readinessAfterFailure = yield* adapter.windowsSandboxReadiness!({
         mode: "elevated",
       });
-      assert.equal(readinessAfterFallback.mode, "unelevated");
-      assert.equal(readinessAfterFallback.readiness, "ready");
+      assert.equal(readinessAfterFailure.mode, "elevated");
+      assert.equal(readinessAfterFailure.readiness, "error");
+      assert.equal(readinessAfterFailure.lastError, "helper setup failed");
     }),
   );
 
   it.effect(
-    "falls back to unelevated and persists the fallback when elevated setup stays stale",
+    "reports elevated setup as started without treating pending readiness as failure",
     () =>
       Effect.gen(function* () {
-        lifecyclePersistedWindowsSandboxModes.length = 0;
         const { adapter, runtime } = yield* startLifecycleRuntime();
         runtime.setWindowsSandboxReadinessStatus("updateRequired");
 
@@ -1406,23 +1394,21 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
 
         assert.equal(runtime.windowsSandboxSetupStartImpl.mock.calls.at(-1)?.[0].mode, "elevated");
         assert.equal(result.started, true);
-        assert.equal(result.windowsSandbox.mode, "unelevated");
-        assert.equal(result.windowsSandbox.readiness, "ready");
-        assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["elevated", "unelevated"]);
+        assert.equal(result.windowsSandbox.mode, "elevated");
+        assert.equal(result.windowsSandbox.readiness, "updateRequired");
 
-        const readinessAfterFallback = yield* adapter.windowsSandboxReadiness!({
+        const readinessAfterSetupStart = yield* adapter.windowsSandboxReadiness!({
           mode: "elevated",
         });
-        assert.equal(readinessAfterFallback.mode, "unelevated");
-        assert.equal(readinessAfterFallback.readiness, "ready");
+        assert.equal(readinessAfterSetupStart.mode, "elevated");
+        assert.equal(readinessAfterSetupStart.readiness, "updateRequired");
       }),
   );
 
   it.effect(
-    "falls back to unelevated and persists the fallback when elevated setupStart fails",
+    "keeps elevated mode selected when elevated setupStart fails",
     () =>
       Effect.gen(function* () {
-        lifecyclePersistedWindowsSandboxModes.length = 0;
         const { adapter, runtime } = yield* startLifecycleRuntime();
         runtime.setWindowsSandboxSetupStartFailure(
           new CodexErrors.CodexAppServerRequestError({
@@ -1434,32 +1420,27 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
 
         assert.equal(result.started, false);
-        assert.equal(result.windowsSandbox.mode, "unelevated");
-        assert.equal(result.windowsSandbox.readiness, "ready");
-        assert.deepEqual(lifecyclePersistedWindowsSandboxModes, ["elevated", "unelevated"]);
+        assert.equal(result.windowsSandbox.mode, "elevated");
+        assert.equal(result.windowsSandbox.readiness, "error");
+        assert.match(result.windowsSandbox.lastError ?? "", /helper setup failed/);
       }),
   );
 
-  it.effect("can restore elevated mode after a persisted unelevated fallback", () =>
+  it.effect("reports elevated as ready after setup completes and readiness refresh succeeds", () =>
     Effect.gen(function* () {
-      lifecyclePersistedWindowsSandboxModes.length = 0;
       const { adapter, runtime } = yield* startLifecycleRuntime();
       runtime.setWindowsSandboxReadinessStatus("updateRequired");
 
-      const fallbackResult = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
-      assert.equal(fallbackResult.windowsSandbox.mode, "unelevated");
+      const pendingResult = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+      assert.equal(pendingResult.windowsSandbox.mode, "elevated");
+      assert.equal(pendingResult.windowsSandbox.readiness, "updateRequired");
 
       runtime.setWindowsSandboxReadinessStatus("ready");
-      const restoreResult = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+      const readyResult = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
 
-      assert.equal(restoreResult.started, true);
-      assert.equal(restoreResult.windowsSandbox.mode, "elevated");
-      assert.equal(restoreResult.windowsSandbox.readiness, "ready");
-      assert.deepEqual(lifecyclePersistedWindowsSandboxModes, [
-        "elevated",
-        "unelevated",
-        "elevated",
-      ]);
+      assert.equal(readyResult.started, true);
+      assert.equal(readyResult.windowsSandbox.mode, "elevated");
+      assert.equal(readyResult.windowsSandbox.readiness, "ready");
     }),
   );
 

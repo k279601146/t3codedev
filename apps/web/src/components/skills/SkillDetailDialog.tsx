@@ -1,6 +1,14 @@
 import { type SkillCatalogItem, type InstalledSkill } from "@t3tools/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2Icon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import {
+  Clock3Icon,
+  DownloadIcon,
+  Loader2Icon,
+  PlusIcon,
+  StarIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 
 import { getPrimaryEnvironmentConnection } from "~/environments/runtime";
@@ -19,6 +27,7 @@ import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Skeleton } from "~/components/ui/skeleton";
 
+import { ApiKeyBadge, formatCatalogCount, formatCatalogUpdatedLabel } from "./SkillCatalogBadges";
 import { normalizeSkillDetailMarkdown } from "./SkillDetailDialog.logic";
 
 const ChatMarkdown = lazy(() => import("../ChatMarkdown"));
@@ -57,6 +66,31 @@ function getSubtitle(target: SkillDialogTarget): string | undefined {
   return target.kind === "catalog"
     ? (target.data.shortDescription ?? target.data.description ?? undefined)
     : (target.data.shortDescription ?? target.data.description ?? undefined);
+}
+
+function CatalogDetailMeta({ item }: { item: SkillCatalogItem }) {
+  const favorites = item.favorites ?? item.stars;
+  const updatedLabel = formatCatalogUpdatedLabel(item.updatedAt);
+  return (
+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+      {item.categoryName ? <span className="truncate">{item.categoryName}</span> : null}
+      <span className="inline-flex items-center gap-1">
+        <DownloadIcon className="size-3" />
+        {formatCatalogCount(item.downloads)} 下载
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <StarIcon className="size-3" />
+        {formatCatalogCount(favorites)} 收藏
+      </span>
+      {updatedLabel ? (
+        <span className="inline-flex items-center gap-1">
+          <Clock3Icon className="size-3" />
+          {updatedLabel}
+        </span>
+      ) : null}
+      {item.requiresApiKey ? <ApiKeyBadge /> : null}
+    </div>
+  );
 }
 
 function FallbackBadge({ name }: { name: string }) {
@@ -160,6 +194,7 @@ export function SkillDetailDialog({
                       {getSubtitle(target)}
                     </p>
                   ) : null}
+                  {target.kind === "catalog" ? <CatalogDetailMeta item={target.data} /> : null}
                 </div>
               </div>
 

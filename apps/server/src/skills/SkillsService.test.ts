@@ -259,6 +259,100 @@ describe("SkillsService bundled skills", () => {
   );
 });
 
+describe("SkillsService catalog sorting", () => {
+  it.effect("按收藏数和版本发布时间排序市场列表", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const service = yield* SkillsService;
+
+        const byFavorites = yield* service.catalog({ sortBy: "favorites", order: "desc" });
+        assert.deepEqual(
+          byFavorites.items.map((item) => item.name),
+          ["gamma", "alpha", "beta"],
+        );
+
+        const byUpdated = yield* service.catalog({ sortBy: "updated", order: "desc" });
+        assert.deepEqual(
+          byUpdated.items.map((item) => item.name),
+          ["beta", "alpha", "gamma"],
+        );
+      }),
+      Layer.succeed(
+        SkillsCatalogService,
+        SkillsCatalogService.of({
+          getCatalog: () =>
+            Effect.succeed({
+              snapshots: [
+                {
+                  source: {
+                    id: "skillhub",
+                    displayName: "SkillHub",
+                    repo: "skillhub",
+                    ref: "remote",
+                    curatedPath: "",
+                  },
+                  fetchedAt: 1,
+                  skills: [
+                    {
+                      id: "skillhub:alpha",
+                      name: "alpha",
+                      displayName: "Alpha",
+                      description: undefined,
+                      shortDescription: undefined,
+                      repoPath: "alpha",
+                      iconSmall: null,
+                      iconLarge: null,
+                      sourceId: "skillhub",
+                      favorites: 12,
+                      updatedAt: "2026-06-01T00:00:00.000Z",
+                    },
+                    {
+                      id: "skillhub:beta",
+                      name: "beta",
+                      displayName: "Beta",
+                      description: undefined,
+                      shortDescription: undefined,
+                      repoPath: "beta",
+                      iconSmall: null,
+                      iconLarge: null,
+                      sourceId: "skillhub",
+                      favorites: 3,
+                      updatedAt: "2026-06-18T00:00:00.000Z",
+                    },
+                    {
+                      id: "skillhub:gamma",
+                      name: "gamma",
+                      displayName: "Gamma",
+                      description: undefined,
+                      shortDescription: undefined,
+                      repoPath: "gamma",
+                      iconSmall: null,
+                      iconLarge: null,
+                      sourceId: "skillhub",
+                      favorites: 20,
+                      updatedAt: "2026-05-20T00:00:00.000Z",
+                    },
+                  ],
+                },
+              ],
+              categories: [],
+              total: 3,
+              page: 1,
+              pageSize: 20,
+              hasErrors: false,
+            }),
+          warmUp: Effect.void,
+          findCatalogItem: () => Effect.succeed(undefined),
+          resolveVendorAssetPath: () => Effect.succeed(null),
+          readCatalogContent: () => Effect.succeed(null),
+          readCatalogFiles: () => Effect.succeed(null),
+          downloadCatalogZip: () => Effect.succeed(null),
+        } satisfies SkillsCatalogServiceShape),
+      ),
+    ),
+  );
+});
+
 describe("SkillsService SkillHub ZIP skills", () => {
   it.effect("安装 SkillHub ZIP 到用户 skill 目录", () =>
     withHarness(

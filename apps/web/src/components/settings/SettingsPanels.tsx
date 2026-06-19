@@ -48,9 +48,8 @@ import {
   useDesktopUpdateState,
 } from "../../lib/desktopUpdateReactQuery";
 import {
-  repairWindowsSandboxFirewallWithConfirmation,
-  shouldOfferWindowsSandboxFirewallRepair,
-} from "../../lib/windowsSandboxRepair";
+  runElevatedWindowsSandboxSetupFlow,
+} from "../../lib/windowsSandboxSetupFlow";
 import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
@@ -423,28 +422,23 @@ function SandboxPermissionsSection({
     async (providerInstanceId: ProviderInstanceId) => {
       setSettingUpInstanceId(providerInstanceId);
       try {
-        const api = ensureLocalApi();
-        const startSetup = () =>
-          api.server.windowsSandboxSetupStart({
-            providerInstanceId,
-            mode: "elevated",
-          });
-        let result = await startSetup();
-        if (
-          shouldOfferWindowsSandboxFirewallRepair(result.windowsSandbox) &&
-          (await repairWindowsSandboxFirewallWithConfirmation())
-        ) {
-          result = await startSetup();
-        }
+        const { result, repairedFirewall } = await runElevatedWindowsSandboxSetupFlow({
+          providerInstanceId,
+        });
         const fellBackToUnelevated =
           result.windowsSandbox.mode === "unelevated" &&
           result.windowsSandbox.readiness === "ready";
+        const isReady = result.windowsSandbox.readiness === "ready";
         toastManager.add(
           stackedThreadToast({
-            type: fellBackToUnelevated ? "warning" : result.started ? "success" : "warning",
+            type: fellBackToUnelevated || isReady ? "success" : "warning",
             title: fellBackToUnelevated
-              ? "已降级为 unelevated 沙箱"
-              : result.started
+              ? "unelevated 沙箱已可用"
+              : isReady
+                ? repairedFirewall
+                  ? "Windows 沙箱已修复并就绪"
+                  : "Windows 沙箱已就绪"
+                : result.started
                 ? "Windows 沙箱初始化已启动"
                 : "Windows 沙箱初始化未启动",
             description:
@@ -463,7 +457,7 @@ function SandboxPermissionsSection({
             description:
               error instanceof Error
                 ? error.message
-                : "setupStart 调用失败，可临时切换 unelevated 排查。",
+                : "setupStart 调用失败，请检查 elevated helper 和系统策略。",
           }),
         );
       } finally {
@@ -557,9 +551,9 @@ function SandboxPermissionsSection({
                     )
                   : null) ??
                 (canRestoreElevated
-                  ? "当前已降级为 unelevated，用户可以继续使用。修复系统环境后可恢复 elevated。"
+                  ? "当前显式使用 unelevated，用户可以继续使用。修复系统环境后可恢复 elevated。"
                   : needsSetup
-                    ? "elevated 沙箱需要初始化或更新。失败时会自动降级到 unelevated，避免阻塞使用。"
+                    ? "elevated 沙箱需要初始化或更新。失败时会保留 elevated 配置并展示错误，避免隐藏 helper 问题。"
                     : "Windows sandbox readiness 来自 ai-engine.exe 的 app-server 协议。")
               }
               status={
@@ -588,7 +582,7 @@ function SandboxPermissionsSection({
                     )}
                     <span>
                       {canRestoreElevated
-                        ? "恢复 elevated 沙箱"
+                        ? "启动 elevated 沙箱"
                         : sandbox.readiness === "error"
                           ? "重新启动 elevated 沙箱"
                           : "启动 elevated 沙箱"}

@@ -105,6 +105,7 @@ import {
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
   type ChatAttachment,
+  type Project,
   type SessionPhase,
   type Thread,
 } from "../types";
@@ -284,10 +285,90 @@ function splitRelativePreviewFilePath(filePath: string): {
   };
 }
 
+type MarkdownPreviewTarget = { workspaceRoot: string; filePath: string | null };
+
+function stripPreviewPathPosition(filePath: string): string {
+  return splitPathAndPosition(filePath).path;
+}
+
+function normalizedRelativePreviewPath(filePath: string): string {
+  return normalizeComparableFilePath(stripPreviewPathPosition(filePath)).replace(/^\.?[\\/]+/, "");
+}
+
+function basenameOfPreviewPath(filePath: string): string {
+  return normalizedRelativePreviewPath(filePath).split("/").filter(Boolean).at(-1) ?? filePath;
+}
+
+function isBarePreviewFilePath(filePath: string): boolean {
+  const path = stripPreviewPathPosition(filePath);
+  if (isAbsolutePreviewFilePath(path)) {
+    return false;
+  }
+  return !/[\\/]/.test(normalizedRelativePreviewPath(path));
+}
+
+function shouldSearchKnownProjectsForPreviewPath(filePath: string): boolean {
+  if (!isTextPreviewFilePath(filePath)) {
+    return false;
+  }
+  return !isAbsolutePreviewFilePath(stripPreviewPathPosition(filePath));
+}
+
+async function resolveMarkdownPreviewTargetFromKnownProjects(input: {
+  api: ReturnType<typeof readEnvironmentApi>;
+  projects: ReadonlyArray<Project>;
+  filePath: string;
+}): Promise<MarkdownPreviewTarget | null> {
+  if (!input.api) {
+    return null;
+  }
+
+  const normalizedPath = normalizedRelativePreviewPath(input.filePath);
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const basename = basenameOfPreviewPath(input.filePath);
+  const basenameLower = basename.toLowerCase();
+  const isBarePath = isBarePreviewFilePath(input.filePath);
+  const matches: Array<{ workspaceRoot: string; filePath: string }> = [];
+  const seen = new Set<string>();
+
+  await Promise.all(
+    input.projects.map(async (project) => {
+      const result = await input.api!.projects
+        .searchEntries({
+          cwd: project.cwd,
+          query: basename,
+          limit: 50,
+        })
+        .catch(() => null);
+      if (!result) return;
+
+      for (const entry of result.entries) {
+        if (entry.kind !== "file") continue;
+        const entryPath = normalizeComparableFilePath(entry.path).replace(/^\.?[\\/]+/, "");
+        const entryBasename = entryPath.split("/").filter(Boolean).at(-1)?.toLowerCase();
+        const matched = isBarePath
+          ? entryBasename === basenameLower
+          : entryPath.toLowerCase() === normalizedPath.toLowerCase();
+        if (!matched) continue;
+
+        const key = `${project.cwd}\0${entry.path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        matches.push({ workspaceRoot: project.cwd, filePath: entry.path });
+      }
+    }),
+  );
+
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}
+
 function resolveMarkdownPreviewTarget(
   filePath: string,
   workspaceRoot: string | null | undefined,
-): { workspaceRoot: string; filePath: string | null } | null {
+): MarkdownPreviewTarget | null {
   if (!isTextPreviewFilePath(filePath)) {
     if (isAbsolutePreviewFilePath(filePath)) {
       const absoluteTarget = splitAbsolutePreviewFilePath(filePath);
@@ -4598,7 +4679,8 @@ export default function ChatView(props: ChatViewProps) {
   );
   const onOpenMarkdownFile = useCallback(
     (file: MarkdownFileLinkMeta) => {
-      if (looksLikeDirectoryPreviewPath(file.filePath)) {
+      const previewPath = file.previewPath ?? file.filePath;
+      if (looksLikeDirectoryPreviewPath(previewPath)) {
         const api = readLocalApi();
         if (!api) {
           toastManager.add({
@@ -4619,7 +4701,61 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
-      const previewTarget = resolveMarkdownPreviewTarget(file.filePath, activeWorkspaceRoot);
+      const openPreviewTarget = (previewTarget: MarkdownPreviewTarget | null) => {
+        if (!previewTarget) {
+          toastManager.add({
+            type: "error",
+            title: "无法打开文件",
+            description: "无法确定这个文件属于哪个工作区。",
+          });
+          return;
+        }
+        if (previewTarget.filePath === null) {
+          const api = readLocalApi();
+          if (!api) {
+            toastManager.add({
+              type: "error",
+              title: "无法打开文件夹",
+              description: "本地 API 不可用。",
+            });
+            return;
+          }
+          void api.shell.openPath(previewTarget.workspaceRoot).catch((error: unknown) => {
+            toastManager.add({
+              type: "error",
+              title: "无法打开文件夹",
+              description: error instanceof Error ? error.message : "打开文件夹失败。",
+            });
+          });
+          return;
+        }
+        openRightPanelFile(previewTarget.filePath, activeThreadKey, previewTarget.workspaceRoot);
+      };
+
+      if (shouldSearchKnownProjectsForPreviewPath(previewPath)) {
+        const api = readEnvironmentApi(environmentId);
+        const projectsForEnvironment = allProjects.filter(
+          (project) => project.environmentId === environmentId,
+        );
+        void resolveMarkdownPreviewTargetFromKnownProjects({
+          api,
+          projects: projectsForEnvironment,
+          filePath: previewPath,
+        }).then((searchedTarget) => {
+          if (searchedTarget) {
+            openPreviewTarget(searchedTarget);
+            return;
+          }
+          if (isBarePreviewFilePath(previewPath)) {
+            openPreviewTarget(null);
+            return;
+          }
+          openPreviewTarget(resolveMarkdownPreviewTarget(previewPath, activeWorkspaceRoot));
+        });
+        return;
+      }
+
+      const previewTarget = resolveMarkdownPreviewTarget(previewPath, activeWorkspaceRoot);
       if (!previewTarget) {
         toastManager.add({
           type: "error",
@@ -4628,28 +4764,9 @@ export default function ChatView(props: ChatViewProps) {
         });
         return;
       }
-      if (previewTarget.filePath === null) {
-        const api = readLocalApi();
-        if (!api) {
-          toastManager.add({
-            type: "error",
-            title: "无法打开文件夹",
-            description: "本地 API 不可用。",
-          });
-          return;
-        }
-        void api.shell.openPath(previewTarget.workspaceRoot).catch((error: unknown) => {
-          toastManager.add({
-            type: "error",
-            title: "无法打开文件夹",
-            description: error instanceof Error ? error.message : "打开文件夹失败。",
-          });
-        });
-        return;
-      }
-      openRightPanelFile(previewTarget.filePath, activeThreadKey, previewTarget.workspaceRoot);
+      openPreviewTarget(previewTarget);
     },
-    [activeThreadKey, activeWorkspaceRoot, openRightPanelFile],
+    [activeThreadKey, activeWorkspaceRoot, allProjects, environmentId, openRightPanelFile],
   );
   const onOpenMessageUrl = useCallback(
     (url: string, mode: "preview" | "external") => {

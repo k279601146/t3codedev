@@ -25,6 +25,7 @@ const POSIX_FILE_ROOT_PREFIXES = [
 export interface MarkdownFileLinkMeta {
   filePath: string;
   targetPath: string;
+  previewPath?: string;
   displayPath: string;
   basename: string;
   line?: number;
@@ -132,10 +133,10 @@ function hasExternalScheme(path: string): boolean {
   return !POSITION_ONLY_PATTERN.test(rest);
 }
 
-export function resolveMarkdownFileLinkTarget(
+function resolveMarkdownFileLinkPaths(
   href: string | undefined,
   cwd?: string,
-): string | null {
+): { targetPath: string; previewPath: string } | null {
   if (!href) return null;
   const rawHref = normalizeMarkdownLinkDestination(href);
   if (rawHref.length === 0 || rawHref.startsWith("#")) return null;
@@ -162,11 +163,32 @@ export function resolveMarkdownFileLinkTarget(
 
   const pathWithPosition = appendLineColumnFromHash(decodedPath, decodedHash);
   if (!isRelativePath(pathWithPosition)) {
-    return pathWithPosition;
+    return { targetPath: pathWithPosition, previewPath: pathWithPosition };
   }
 
   if (!cwd) return null;
-  return resolvePathLinkTarget(pathWithPosition, cwd);
+  return {
+    targetPath: resolvePathLinkTarget(pathWithPosition, cwd),
+    previewPath: pathWithPosition,
+  };
+}
+
+export function resolveMarkdownFileLinkTarget(
+  href: string | undefined,
+  cwd?: string,
+): string | null {
+  return resolveMarkdownFileLinkPaths(href, cwd)?.targetPath ?? null;
+}
+
+export function isBareMarkdownPreviewPath(path: string | undefined): boolean {
+  if (!path) return false;
+  const { path: pathWithoutPosition } = splitPathAndPosition(path);
+  const normalizedPath = normalizeWindowsDrivePath(pathWithoutPosition).replace(/^\.?[\\/]+/, "");
+  return (
+    isRelativePath(pathWithoutPosition) &&
+    normalizedPath.length > 0 &&
+    !/[\\/]/.test(normalizedPath)
+  );
 }
 
 function basenameOfPath(path: string): string {
@@ -178,10 +200,12 @@ export function resolveMarkdownFileLinkMeta(
   href: string | undefined,
   cwd?: string,
 ): MarkdownFileLinkMeta | null {
-  const targetPath = resolveMarkdownFileLinkTarget(href, cwd);
-  if (!targetPath) return null;
+  const paths = resolveMarkdownFileLinkPaths(href, cwd);
+  if (!paths) return null;
+  const { targetPath, previewPath } = paths;
 
   const { path, line, column } = splitPathAndPosition(targetPath);
+  const { path: previewFilePath } = splitPathAndPosition(previewPath);
   const parsedLine = line ? Number.parseInt(line, 10) : Number.NaN;
   const parsedColumn = column ? Number.parseInt(column, 10) : Number.NaN;
   const lineNumber = Number.isFinite(parsedLine) ? parsedLine : undefined;
@@ -190,6 +214,7 @@ export function resolveMarkdownFileLinkMeta(
   return {
     filePath: path,
     targetPath,
+    previewPath: previewFilePath,
     displayPath: formatWorkspaceRelativePath(targetPath, cwd),
     basename: basenameOfPath(path),
     ...(lineNumber !== undefined ? { line: lineNumber } : {}),

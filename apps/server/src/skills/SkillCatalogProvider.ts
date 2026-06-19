@@ -21,6 +21,8 @@ export interface CatalogSkillEntry {
   readonly downloads?: number | undefined;
   readonly installs?: number | undefined;
   readonly stars?: number | undefined;
+  readonly favorites?: number | undefined;
+  readonly updatedAt?: string | undefined;
   readonly requiresApiKey?: boolean | undefined;
   readonly securityStatus?: "verified" | "unknown" | "blocked" | undefined;
   readonly homepage?: string | undefined;
@@ -34,7 +36,7 @@ export interface SkillCatalogQuery {
   readonly category?: string | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
-  readonly sortBy?: "downloads" | "updated" | "created" | "name" | undefined;
+  readonly sortBy?: "downloads" | "favorites" | "updated" | "created" | "name" | undefined;
   readonly order?: "asc" | "desc" | undefined;
 }
 
