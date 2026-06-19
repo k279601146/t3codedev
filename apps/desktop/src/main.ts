@@ -116,7 +116,7 @@ const electronLayer = Layer.mergeAll(
   Layer.succeed(DesktopIpc.DesktopIpc, DesktopIpc.make(Electron.ipcMain)),
 );
 
-const desktopFoundationLayer = Layer.mergeAll(
+const desktopFoundationBaseLayer = Layer.mergeAll(
   DesktopState.layer,
   DesktopLifecycle.layerShutdown,
   DesktopAppSettings.layer,
@@ -126,9 +126,12 @@ const desktopFoundationLayer = Layer.mergeAll(
   DesktopAssets.layer,
   DesktopEngineIntegrity.layer,
   DesktopEngineUpdater.layer,
-  DesktopWindowsSandbox.layer,
   DesktopObservability.layer,
 ).pipe(Layer.provideMerge(desktopEnvironmentLayer));
+
+const desktopFoundationLayer = DesktopWindowsSandbox.layer.pipe(
+  Layer.provideMerge(desktopFoundationBaseLayer),
+);
 
 const desktopApmLayer = DesktopApm.layer.pipe(
   Layer.provideMerge(DesktopInstallationIdentity.layer),

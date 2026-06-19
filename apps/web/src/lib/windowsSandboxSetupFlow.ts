@@ -20,12 +20,59 @@ export interface WindowsSandboxSetupFlowOptions {
 export interface WindowsSandboxSetupFlowResult {
   readonly result: ProviderWindowsSandboxSetupStartResult;
   readonly repairedFirewall: boolean;
+  readonly fellBackToUnelevated: boolean;
 }
 
 const DEFAULT_ATTEMPTS = 10;
 const DEFAULT_DELAY_MS = 1_500;
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
+function shouldFallbackToUnelevated(sandbox: ServerProviderWindowsSandbox): boolean {
+  return sandbox.mode === "elevated" && (sandbox.readiness === "error" || !!sandbox.lastError);
+}
+
+function buildUnelevatedFallbackSandbox(
+  latest: ServerProviderWindowsSandbox,
+): ServerProviderWindowsSandbox {
+  return {
+    mode: "unelevated",
+    readiness: "ready",
+    commandRunnerAvailable: latest.commandRunnerAvailable,
+    setupHelperAvailable: latest.setupHelperAvailable,
+    lastError: null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function fallbackToUnelevated(input: {
+  readonly providerInstanceId: ProviderInstanceId;
+  readonly latest: ProviderWindowsSandboxSetupStartResult;
+  readonly onChecked?: (sandbox: ServerProviderWindowsSandbox) => void;
+}): Promise<ProviderWindowsSandboxSetupStartResult | null> {
+  const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+  if (!bridge?.setWindowsSandboxMode) {
+    return null;
+  }
+
+  await bridge.setWindowsSandboxMode({
+    mode: "unelevated",
+    elevatedSetupFallbackDismissed: true,
+    elevatedSetupLastError:
+      input.latest.windowsSandbox.lastError ??
+      "Elevated Windows sandbox setup failed and could not be repaired automatically.",
+    elevatedSetupLastAttemptedAt: new Date().toISOString(),
+  });
+
+  const windowsSandbox = buildUnelevatedFallbackSandbox(input.latest.windowsSandbox);
+  input.onChecked?.(windowsSandbox);
+  return {
+    providerInstanceId: input.providerInstanceId,
+    started: false,
+    windowsSandbox,
+  };
 }
 
 async function waitForWindowsSandboxSettled(
@@ -50,7 +97,7 @@ async function waitForWindowsSandboxSettled(
     }
   }
   if (!latest) {
-    throw new Error("未收到 Windows 沙箱 readiness。");
+    throw new Error("未收到 Windows sandbox readiness。");
   }
   return latest;
 }
@@ -76,8 +123,7 @@ export async function runElevatedWindowsSandboxSetupFlow(
   let result = await startSetup();
   options.onChecked?.(result.windowsSandbox);
 
-  const shouldWait = result.started;
-  if (shouldWait) {
+  if (result.started) {
     const settled = await waitForWindowsSandboxSettled(waitInput());
     result = {
       ...result,
@@ -85,23 +131,40 @@ export async function runElevatedWindowsSandboxSetupFlow(
     };
   }
 
+  let repairedFirewall = false;
   if (shouldOfferWindowsSandboxFirewallRepair(result.windowsSandbox)) {
-    const repairedFirewall = await repairWindowsSandboxFirewallWithConfirmation();
-    if (!repairedFirewall) {
-      return { result, repairedFirewall: false };
+    repairedFirewall = await repairWindowsSandboxFirewallWithConfirmation();
+    if (repairedFirewall) {
+      result = await startSetup();
+      options.onChecked?.(result.windowsSandbox);
+      if (result.started) {
+        const settled = await waitForWindowsSandboxSettled(waitInput());
+        result = {
+          ...result,
+          windowsSandbox: settled,
+        };
+      }
     }
-
-    result = await startSetup();
-    options.onChecked?.(result.windowsSandbox);
-    if (result.started) {
-      const settled = await waitForWindowsSandboxSettled(waitInput());
-      result = {
-        ...result,
-        windowsSandbox: settled,
-      };
-    }
-    return { result, repairedFirewall: true };
   }
 
-  return { result, repairedFirewall: false };
+  if (shouldFallbackToUnelevated(result.windowsSandbox)) {
+    const fallbackResult = await fallbackToUnelevated({
+      providerInstanceId: options.providerInstanceId,
+      latest: result,
+      ...(options.onChecked ? { onChecked: options.onChecked } : {}),
+    });
+    if (fallbackResult) {
+      return {
+        result: fallbackResult,
+        repairedFirewall,
+        fellBackToUnelevated: true,
+      };
+    }
+  }
+
+  return {
+    result,
+    repairedFirewall,
+    fellBackToUnelevated: false,
+  };
 }

@@ -99,6 +99,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getAdvertisedEndpoints: () => ipcRenderer.invoke(IpcChannels.GET_ADVERTISED_ENDPOINTS_CHANNEL),
   repairWindowsSandboxFirewall: () =>
     ipcRenderer.invoke(IpcChannels.REPAIR_WINDOWS_SANDBOX_FIREWALL_CHANNEL),
+  setWindowsSandboxMode: (input) =>
+    ipcRenderer.invoke(IpcChannels.SET_WINDOWS_SANDBOX_MODE_CHANNEL, input),
   pickFolder: (options) => ipcRenderer.invoke(IpcChannels.PICK_FOLDER_CHANNEL, options),
   confirm: (message) => ipcRenderer.invoke(IpcChannels.CONFIRM_CHANNEL, message),
   showNotification: (input) =>

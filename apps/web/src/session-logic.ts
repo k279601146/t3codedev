@@ -86,6 +86,7 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
   activityKind: OrchestrationThreadActivity["kind"];
   collapseKey?: string;
   toolCallId?: string;
+  sourceTurnId?: TurnId | null;
 }
 
 export interface PendingApproval {
@@ -549,7 +550,7 @@ export function deriveWorkLogEntries(
         requestId ? requestedUserInputQuestionsByRequestId.get(requestId) : undefined,
       );
     });
-  return collapseDerivedWorkLogEntries(entries).map(
+  return pruneRedundantRuntimeWarnings(collapseDerivedWorkLogEntries(entries)).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
 }
@@ -630,6 +631,7 @@ function toDerivedWorkLogEntry(
           ? "info"
           : activity.tone,
     activityKind: activity.kind,
+    sourceTurnId: activity.turnId,
     status:
       activity.kind === "task.progress" ||
       activity.kind === "tool.updated" ||
@@ -693,6 +695,124 @@ function toDerivedWorkLogEntry(
     entry.collapseKey = collapseKey;
   }
   return entry;
+}
+
+const COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS = [
+  /^wall time:\s*/i,
+  /^output:\s*$/i,
+  /^stack trace:\s*$/i,
+  /^at\s.+/i,
+  /^at line:\d+\s+char:\d+/i,
+  /^file:\s.+/i,
+  /^\+\s.+/i,
+  /^~+\s*$/i,
+  /^cat\s*:/i,
+  /^get-content\s*:/i,
+  /^rg:\s.+/i,
+  /^select-string\s*:\s.+/i,
+  /^warning:\s.+/i,
+  /^total output lines:\s*\d+/i,
+  /^fullyqualifiederrorid\s*:/i,
+  /^categoryinfo\s*:/i,
+  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=exit code:\s*\d+/i,
+  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=unsupported call:/i,
+  /filtered by the -include or -exclude parameter\./i,
+  /cannot be bound to any parameters for the command/i,
+  /parameterbindingexception/i,
+  /unrecognized file type:/i,
+];
+
+function isRuntimeWarningDerivedEntry(entry: DerivedWorkLogEntry): boolean {
+  return entry.activityKind === "runtime.warning" || entry.activityKind === "runtime.error";
+}
+
+function isCommandDerivedEntry(entry: DerivedWorkLogEntry): boolean {
+  return (
+    entry.requestKind === "command" ||
+    entry.itemType === "command_execution" ||
+    typeof entry.command === "string" ||
+    typeof entry.rawCommand === "string"
+  );
+}
+
+function isCommandSummaryRuntimeWarningDetail(detail: string): boolean {
+  return COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS.some((pattern) => pattern.test(detail));
+}
+
+function normalizeRuntimeComparisonText(value: string): string {
+  return value.replace(/\r\n/g, "\n").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function commandOutputContainsRuntimeDetail(
+  entry: DerivedWorkLogEntry,
+  runtimeDetail: string,
+): boolean {
+  const output = asTrimmedString(entry.output);
+  if (!output) {
+    return false;
+  }
+  const normalizedOutput = normalizeRuntimeComparisonText(output);
+  const normalizedDetail = normalizeRuntimeComparisonText(runtimeDetail);
+  if (normalizedDetail.length === 0) {
+    return false;
+  }
+  return normalizedOutput.includes(normalizedDetail);
+}
+
+function findNearbyCommandEntry(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+  index: number,
+): DerivedWorkLogEntry | null {
+  const current = entries[index];
+  if (!current) {
+    return null;
+  }
+  const maxDistance = 12;
+  for (let distance = 1; distance <= maxDistance; distance += 1) {
+    for (const offset of [-distance, distance]) {
+      const candidate = entries[index + offset];
+      if (!candidate || !isCommandDerivedEntry(candidate)) {
+        continue;
+      }
+      if (
+        current.sourceTurnId !== undefined &&
+        candidate.sourceTurnId !== undefined &&
+        current.sourceTurnId !== candidate.sourceTurnId
+      ) {
+        continue;
+      }
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function shouldSuppressRuntimeWarningEntry(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+  index: number,
+): boolean {
+  const entry = entries[index];
+  if (!entry || !isRuntimeWarningDerivedEntry(entry)) {
+    return false;
+  }
+  const detail = asTrimmedString(entry.detail);
+  if (!detail) {
+    return false;
+  }
+  const nearbyCommand = findNearbyCommandEntry(entries, index);
+  if (!nearbyCommand) {
+    return false;
+  }
+  if (commandOutputContainsRuntimeDetail(nearbyCommand, detail)) {
+    return true;
+  }
+  return isCommandSummaryRuntimeWarningDetail(detail);
+}
+
+function pruneRedundantRuntimeWarnings(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+): DerivedWorkLogEntry[] {
+  return entries.filter((_, index) => !shouldSuppressRuntimeWarningEntry(entries, index));
 }
 
 function extractActivityRequestId(activity: OrchestrationThreadActivity): string | null {
@@ -1101,6 +1221,25 @@ function unquoteCommandToken(value: string): string {
   return trimmed;
 }
 
+function isNullRedirectionTarget(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "$null" || normalized === "null:";
+}
+
+function extractShellRedirectionTarget(command: string): string | null {
+  const match =
+    /(?:^|\s)>>\s*(".*?"|'.*?'|[^\s|]+)/u.exec(command) ??
+    /(?:^|\s)>\s*(".*?"|'.*?'|[^\s|]+)/u.exec(command);
+  if (!match?.[1]) {
+    return null;
+  }
+  const target = unquoteCommandToken(match[1]);
+  if (!target || /^&\d+$/u.test(target) || isNullRedirectionTarget(target)) {
+    return null;
+  }
+  return target;
+}
+
 function extractPowerShellWriteTarget(command: string): string | null {
   const explicitPathMatch = /-(?:Path|FilePath)\s+(".*?"|'.*?'|[^\s|]+)/iu.exec(command);
   if (explicitPathMatch?.[1]) {
@@ -1158,17 +1297,21 @@ function extractCommandFileChange(
   if (itemType !== "command_execution" && requestKind !== "command") {
     return null;
   }
-  if (!/\|\s*(?:Set-Content|Out-File|Add-Content)\b|>\s*["']?[^"'\s]+/iu.test(command)) {
+  const shellRedirectionTarget = extractShellRedirectionTarget(command);
+  if (!/\|\s*(?:Set-Content|Out-File|Add-Content)\b/iu.test(command) && !shellRedirectionTarget) {
     return null;
   }
   const path =
     extractPowerShellWriteTarget(command) ??
-    unquoteCommandToken(/>\s*(".*?"|'.*?'|[^\s|]+)/u.exec(command)?.[1] ?? "");
+    shellRedirectionTarget;
   if (!path) {
     return null;
   }
+  if (isNullRedirectionTarget(path)) {
+    return null;
+  }
   const content = extractPowerShellWriteContent(command) ?? "";
-  const isNewFile = /\|\s*Out-File\b|>\s*["']?[^"'\s]+/iu.test(command);
+  const isNewFile = /\|\s*Out-File\b/iu.test(command) || shellRedirectionTarget !== null;
   return {
     path,
     diff: buildSyntheticCommandFileDiff({ path, content, isNewFile }),
@@ -1628,7 +1771,12 @@ function extractWorkLogRequestKind(
 
 function pushChangedFile(target: string[], seen: Set<string>, value: unknown) {
   const normalized = asTrimmedString(value);
-  if (!normalized || seen.has(normalized)) {
+  if (
+    !normalized ||
+    seen.has(normalized) ||
+    /^&\d+$/u.test(normalized) ||
+    isNullRedirectionTarget(normalized)
+  ) {
     return;
   }
   seen.add(normalized);
@@ -1684,6 +1832,16 @@ function collectChangedFiles(value: unknown, target: string[], seen: Set<string>
 }
 
 function extractChangedFiles(payload: Record<string, unknown> | null): string[] {
+  const itemType = extractWorkLogItemType(payload);
+  const requestKind = extractWorkLogRequestKind(payload);
+  if (
+    itemType !== "file_change" &&
+    itemType !== "image_view" &&
+    requestKind !== "file-change" &&
+    !isRawImageGenerationPayload(payload)
+  ) {
+    return [];
+  }
   const changedFiles: string[] = [];
   const seen = new Set<string>();
   collectChangedFiles(asRecord(payload?.data), changedFiles, seen, 0);

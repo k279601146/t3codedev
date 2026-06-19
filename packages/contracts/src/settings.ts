@@ -60,6 +60,25 @@ export const DEFAULT_TELEMETRY_CONSENT: TelemetryConsent = {
   improveProduct: false,
 };
 
+export const DesktopWindowsSandboxMode = Schema.Literals(["elevated", "unelevated"]);
+export type DesktopWindowsSandboxMode = typeof DesktopWindowsSandboxMode.Type;
+
+export const ClientWindowsSandboxSettings = Schema.Struct({
+  mode: Schema.optionalKey(DesktopWindowsSandboxMode),
+  elevatedSetupFallbackDismissed: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  elevatedSetupLastError: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  elevatedSetupLastAttemptedAt: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+});
+export type ClientWindowsSandboxSettings = typeof ClientWindowsSandboxSettings.Type;
+export const DEFAULT_CLIENT_WINDOWS_SANDBOX_SETTINGS: ClientWindowsSandboxSettings =
+  Schema.decodeSync(ClientWindowsSandboxSettings)({});
+
 export const ClientSettingsSchema = Schema.Struct({
   autoOpenPlanSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -120,6 +139,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CLIENT_LANGUAGE)),
   ),
   layoutMode: LayoutMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_LAYOUT_MODE))),
+  windowsSandbox: ClientWindowsSandboxSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CLIENT_WINDOWS_SANDBOX_SETTINGS)),
+  ),
   lastUsedModel: Schema.optional(TrimmedNonEmptyString),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;

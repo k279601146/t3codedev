@@ -3,17 +3,27 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { DesktopWindowsSandboxFirewallRepairResultSchema } from "@t3tools/contracts";
+import {
+  DEFAULT_CLIENT_SETTINGS,
+  DesktopWindowsSandboxFirewallRepairResultSchema,
+  DesktopWindowsSandboxModeChangeInputSchema,
+  DesktopWindowsSandboxModeChangeResultSchema,
+} from "@t3tools/contracts";
 import * as Data from "effect/Data";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
+import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";
 
 const execFileAsync = promisify(execFile);
 const REPAIR_TIMEOUT_MS = 120_000;
+const BACKEND_WINDOWS_SANDBOX_RESTART_TIMEOUT = Duration.seconds(5);
 
 class WindowsSandboxFirewallRepairError extends Data.TaggedError(
   "WindowsSandboxFirewallRepairError",
@@ -172,5 +182,41 @@ export const repairWindowsSandboxFirewall = makeIpcMethod({
         },
       }),
     );
+  }),
+});
+
+export const setWindowsSandboxMode = makeIpcMethod({
+  channel: IpcChannels.SET_WINDOWS_SANDBOX_MODE_CHANNEL,
+  payload: DesktopWindowsSandboxModeChangeInputSchema,
+  result: DesktopWindowsSandboxModeChangeResultSchema,
+  handler: Effect.fn("desktop.ipc.windowsSandbox.setMode")(function* (input) {
+    const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
+    const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
+    const currentSettings = Option.getOrElse(yield* clientSettings.get, () => DEFAULT_CLIENT_SETTINGS);
+    const nextSettings = {
+      ...currentSettings,
+      windowsSandbox: {
+        ...currentSettings.windowsSandbox,
+        mode: input.mode,
+        ...(input.elevatedSetupFallbackDismissed !== undefined
+          ? { elevatedSetupFallbackDismissed: input.elevatedSetupFallbackDismissed }
+          : {}),
+        ...(input.elevatedSetupLastError !== undefined
+          ? { elevatedSetupLastError: input.elevatedSetupLastError }
+          : {}),
+        ...(input.elevatedSetupLastAttemptedAt !== undefined
+          ? { elevatedSetupLastAttemptedAt: input.elevatedSetupLastAttemptedAt }
+          : {}),
+      },
+    };
+
+    yield* clientSettings.set(nextSettings);
+    yield* backendManager.stop({ timeout: BACKEND_WINDOWS_SANDBOX_RESTART_TIMEOUT });
+    yield* backendManager.start;
+
+    return {
+      mode: input.mode,
+      restarted: true,
+    };
   }),
 });

@@ -61,24 +61,20 @@ function installApi(input: {
   readonly setupResults: ReadonlyArray<ProviderWindowsSandboxSetupStartResult>;
   readonly readinessResults: ReadonlyArray<ProviderWindowsSandboxReadinessResult>;
 }) {
-  const windowsSandboxSetupStart = vi
-    .fn()
-    .mockImplementation(async () => {
-      const next = input.setupResults[windowsSandboxSetupStart.mock.calls.length - 1];
-      if (!next) {
-        throw new Error("未配置 setupStart 测试结果");
-      }
-      return next;
-    });
-  const windowsSandboxReadiness = vi
-    .fn()
-    .mockImplementation(async () => {
-      const next = input.readinessResults[windowsSandboxReadiness.mock.calls.length - 1];
-      if (!next) {
-        throw new Error("未配置 readiness 测试结果");
-      }
-      return next;
-    });
+  const windowsSandboxSetupStart = vi.fn().mockImplementation(async () => {
+    const next = input.setupResults[windowsSandboxSetupStart.mock.calls.length - 1];
+    if (!next) {
+      throw new Error("未配置 setupStart 测试结果");
+    }
+    return next;
+  });
+  const windowsSandboxReadiness = vi.fn().mockImplementation(async () => {
+    const next = input.readinessResults[windowsSandboxReadiness.mock.calls.length - 1];
+    if (!next) {
+      throw new Error("未配置 readiness 测试结果");
+    }
+    return next;
+  });
 
   vi.mocked(ensureLocalApi).mockReturnValue({
     server: {
@@ -97,6 +93,7 @@ describe("runElevatedWindowsSandboxSetupFlow", () => {
   beforeEach(() => {
     vi.mocked(repairWindowsSandboxFirewallWithConfirmation).mockReset();
     vi.mocked(ensureLocalApi).mockReset();
+    Reflect.deleteProperty(globalThis, "window");
   });
 
   it("setup 后仅为 updateRequired 时不提前弹防火墙修复", async () => {
@@ -109,14 +106,16 @@ describe("runElevatedWindowsSandboxSetupFlow", () => {
       ],
     });
 
-    const { result, repairedFirewall } = await runElevatedWindowsSandboxSetupFlow({
-      providerInstanceId,
-      attempts: 2,
-      delayMs: 0,
-    });
+    const { result, repairedFirewall, fellBackToUnelevated } =
+      await runElevatedWindowsSandboxSetupFlow({
+        providerInstanceId,
+        attempts: 2,
+        delayMs: 0,
+      });
 
     expect(result.windowsSandbox.readiness).toBe("updateRequired");
     expect(repairedFirewall).toBe(false);
+    expect(fellBackToUnelevated).toBe(false);
     expect(repairWindowsSandboxFirewallWithConfirmation).not.toHaveBeenCalled();
     expect(api.windowsSandboxSetupStart).toHaveBeenCalledTimes(1);
   });
@@ -144,16 +143,18 @@ describe("runElevatedWindowsSandboxSetupFlow", () => {
       ],
     });
 
-    const { result, repairedFirewall } = await runElevatedWindowsSandboxSetupFlow({
-      providerInstanceId,
-      attempts: 2,
-      delayMs: 0,
-    });
+    const { result, repairedFirewall, fellBackToUnelevated } =
+      await runElevatedWindowsSandboxSetupFlow({
+        providerInstanceId,
+        attempts: 2,
+        delayMs: 0,
+      });
 
     expect(repairWindowsSandboxFirewallWithConfirmation).toHaveBeenCalledTimes(1);
     expect(api.windowsSandboxSetupStart).toHaveBeenCalledTimes(2);
     expect(result.windowsSandbox.readiness).toBe("ready");
     expect(repairedFirewall).toBe(true);
+    expect(fellBackToUnelevated).toBe(false);
   });
 
   it("readiness 先返回 ready 但随后收到防火墙失败时仍提示修复", async () => {
@@ -180,15 +181,66 @@ describe("runElevatedWindowsSandboxSetupFlow", () => {
       ],
     });
 
-    const { result, repairedFirewall } = await runElevatedWindowsSandboxSetupFlow({
-      providerInstanceId,
-      attempts: 2,
-      delayMs: 0,
-    });
+    const { result, repairedFirewall, fellBackToUnelevated } =
+      await runElevatedWindowsSandboxSetupFlow({
+        providerInstanceId,
+        attempts: 2,
+        delayMs: 0,
+      });
 
     expect(repairWindowsSandboxFirewallWithConfirmation).toHaveBeenCalledTimes(1);
     expect(api.windowsSandboxSetupStart).toHaveBeenCalledTimes(2);
     expect(result.windowsSandbox.readiness).toBe("ready");
     expect(repairedFirewall).toBe(true);
+    expect(fellBackToUnelevated).toBe(false);
+  });
+
+  it("修复失败后持久化切换到 unelevated 后备沙箱", async () => {
+    vi.mocked(repairWindowsSandboxFirewallWithConfirmation).mockResolvedValue(false);
+    const setWindowsSandboxMode = vi.fn().mockResolvedValue({
+      mode: "unelevated",
+      restarted: true,
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        desktopBridge: {
+          setWindowsSandboxMode,
+        },
+      },
+    });
+    const firewallError =
+      "helper_firewall_policy_access_failed: INetFwPolicy2::LocalPolicyModifyState failed: HRESULT(0x800706D9)";
+    const api = installApi({
+      setupResults: [makeSetupResult({})],
+      readinessResults: [
+        makeReadinessResult(
+          sandbox({
+            readiness: "error",
+            lastError: firewallError,
+          }),
+        ),
+      ],
+    });
+
+    const { result, repairedFirewall, fellBackToUnelevated } =
+      await runElevatedWindowsSandboxSetupFlow({
+        providerInstanceId,
+        attempts: 1,
+        delayMs: 0,
+      });
+
+    expect(repairedFirewall).toBe(false);
+    expect(fellBackToUnelevated).toBe(true);
+    expect(result.windowsSandbox.mode).toBe("unelevated");
+    expect(result.windowsSandbox.readiness).toBe("ready");
+    expect(setWindowsSandboxMode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "unelevated",
+        elevatedSetupFallbackDismissed: true,
+        elevatedSetupLastError: firewallError,
+      }),
+    );
+    expect(api.windowsSandboxSetupStart).toHaveBeenCalledTimes(1);
   });
 });

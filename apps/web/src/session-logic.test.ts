@@ -1150,6 +1150,307 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.detail).toContain("+from datetime import datetime");
   });
 
+  it("does not treat stderr redirection as file creation work", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-stderr-redirection",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command:
+                'bun run lint 2>&1 | Select-String -Pattern "error|warning|successful|clean" -CaseSensitive:$false',
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.itemType).toBe("command_execution");
+    expect(entry?.command).toContain('Select-String -Pattern "error|warning|successful|clean"');
+    expect(entry?.changedFiles).toBeUndefined();
+    expect(entry?.detail).toBeUndefined();
+  });
+
+  it("does not extract changed files from ordinary command output paths", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-path-output",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          requestKind: "command",
+          data: {
+            item: {
+              command: 'Get-ChildItem "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins"',
+              result: {
+                content:
+                  "[locale]\\\\workspace\\\\plugins\\\\page.tsx\n[locale]\\\\workspace\\\\plugins\\\\[tab]\\\\page.tsx",
+              },
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.requestKind).toBe("command");
+    expect(entry?.changedFiles).toBeUndefined();
+  });
+
+  it("drops runtime warning lines when the same command output already contains them", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "tool.completed",
+        summary: "Ran command",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          itemType: "command_execution",
+          requestKind: "command",
+          data: {
+            item: {
+              command: "python -m pytest tests/test_connectors_api.py -x -q 2>&1 | Select-Object -Last 15",
+              aggregatedOutput:
+                "tests/test_connectors_api.py::test_approval_response\n" +
+                "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\connectors.py:239: DeprecationWarning: datetime.datetime.utcnow() is deprecated\n" +
+                "5 passed, 9 warnings in 1.58s\n",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-output",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Output:",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-pytest",
+        createdAt: "2026-01-01T00:00:02.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "5 passed, 9 warnings in 1.58s",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-deprecation",
+        createdAt: "2026-01-01T00:00:03.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message:
+            "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\connectors.py:239: DeprecationWarning: datetime.datetime.utcnow() is deprecated",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-exit",
+        createdAt: "2026-01-01T00:00:04.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "2026-06-19T10:33:42.475527Z ERROR codex_core::tools::router: error=Exit code: 1",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-wall-time",
+        createdAt: "2026-01-01T00:00:05.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Wall time: 7.4 seconds",
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      requestKind: "command",
+      itemType: "command_execution",
+    });
+    expect(entries[0]?.output).toContain("5 passed, 9 warnings in 1.58s");
+  });
+
+  it("drops command-summary runtime warnings that sit near a command entry even when not duplicated in output", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "tool.completed",
+        summary: "Ran command",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          itemType: "command_execution",
+          requestKind: "command",
+          data: {
+            item: {
+              command: 'rg --type binary "pattern" src',
+              aggregatedOutput: "rg: unrecognized file type: binary",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-exit",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "2026-06-19T10:22:36.787195Z ERROR codex_core::tools::router: error=Exit code: 1",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-wall-time",
+        createdAt: "2026-01-01T00:00:02.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Wall time: 4.2 seconds",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-output",
+        createdAt: "2026-01-01T00:00:03.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Output:",
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.requestKind).toBe("command");
+    expect(entries[0]?.label).toBe("Ran command");
+  });
+
+  it("drops legacy PowerShell stderr fragments that belong to nearby command output", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "tool.completed",
+        summary: "Ran command",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          itemType: "command_execution",
+          requestKind: "command",
+          data: {
+            item: {
+              command:
+                'bun run lint 2>&1 | Select-String -Pattern "error|warning|successful|clean"',
+              aggregatedOutput:
+                "Select-String : The input object cannot be bound to any parameters for the command either because the command does not\n" +
+                "take pipeline input or the input and its properties do not match any of the parameters that take pipeline input.\n" +
+                "At line:2 char:34\n" +
+                "+ ... lint 2>&1 | Select-String -Pattern \"error|warning|successful|clean\" - ...\n" +
+                "+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" +
+                "+ CategoryInfo          : InvalidArgument: (> eslint .:PSObject) [Select-String], ParameterBindingException\n" +
+                "+ FullyQualifiedErrorId : InputObjectNotBound,Microsoft.PowerShell.Commands.SelectStringCommand\n",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-exit",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "2026-06-19T10:33:08.393688Z ERROR codex_core::tools::router: error=Exit code: 1",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-wall-time",
+        createdAt: "2026-01-01T00:00:02.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Wall time: 28.6 seconds",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-total-lines",
+        createdAt: "2026-01-01T00:00:03.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Total output lines: 1625",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-output",
+        createdAt: "2026-01-01T00:00:04.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Output:",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-select-string",
+        createdAt: "2026-01-01T00:00:05.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message:
+            "Select-String : The input object cannot be bound to any parameters for the command either because the command does not",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-at-line",
+        createdAt: "2026-01-01T00:00:06.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "At line:2 char:34",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-binding",
+        createdAt: "2026-01-01T00:00:07.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message:
+            "+ CategoryInfo          : InvalidArgument: (> eslint .:PSObject) [Select-String], ParameterBindingException",
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.requestKind).toBe("command");
+    expect(entries[0]?.output).toContain("At line:2 char:34");
+    expect(entries[0]?.output).toContain("FullyQualifiedErrorId");
+  });
+
   it("drops duplicated tool detail when it only repeats the title", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

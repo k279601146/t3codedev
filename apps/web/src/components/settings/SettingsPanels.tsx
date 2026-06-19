@@ -385,16 +385,16 @@ function AboutVersionSection() {
   );
 }
 
-function sandboxReadinessLabel(readiness: string): string {
+function sandboxReadinessDisplay(readiness: string): string {
   switch (readiness) {
     case "ready":
       return "ready";
     case "notConfigured":
-      return "not configured";
+      return "\u5c1a\u672a\u914d\u7f6e";
     case "updateRequired":
-      return "update required";
+      return "\u9700\u8981\u66f4\u65b0";
     case "error":
-      return "error";
+      return "\u9519\u8bef";
     default:
       return readiness;
   }
@@ -422,30 +422,29 @@ function SandboxPermissionsSection({
     async (providerInstanceId: ProviderInstanceId) => {
       setSettingUpInstanceId(providerInstanceId);
       try {
-        const { result, repairedFirewall } = await runElevatedWindowsSandboxSetupFlow({
-          providerInstanceId,
-        });
-        const fellBackToUnelevated =
-          result.windowsSandbox.mode === "unelevated" &&
-          result.windowsSandbox.readiness === "ready";
+        const { result, repairedFirewall, fellBackToUnelevated } =
+          await runElevatedWindowsSandboxSetupFlow({
+            providerInstanceId,
+          });
         const isReady = result.windowsSandbox.readiness === "ready";
         toastManager.add(
           stackedThreadToast({
-            type: fellBackToUnelevated || isReady ? "success" : "warning",
+            type: isReady ? "success" : "warning",
             title: fellBackToUnelevated
-              ? "unelevated 沙箱已可用"
+              ? "\u5df2\u5207\u6362\u5230 unelevated \u540e\u5907\u6c99\u7bb1"
               : isReady
                 ? repairedFirewall
-                  ? "Windows 沙箱已修复并就绪"
-                  : "Windows 沙箱已就绪"
+                  ? "Windows elevated \u6c99\u7bb1\u5df2\u4fee\u590d\u5e76\u5c31\u7eea"
+                  : "Windows elevated \u6c99\u7bb1\u5df2\u5c31\u7eea"
                 : result.started
-                ? "Windows 沙箱初始化已启动"
-                : "Windows 沙箱初始化未启动",
+                  ? "Windows elevated \u6c99\u7bb1\u521d\u59cb\u5316\u5df2\u542f\u52a8"
+                  : "Windows elevated \u6c99\u7bb1\u521d\u59cb\u5316\u672a\u542f\u52a8",
             description:
               result.windowsSandbox.lastError ??
-              `当前模式: ${result.windowsSandbox.mode}，readiness: ${sandboxReadinessLabel(
-                result.windowsSandbox.readiness,
-              )}`,
+              "\u5f53\u524d\u6a21\u5f0f: " +
+                result.windowsSandbox.mode +
+                "\uff0creadiness: " +
+                sandboxReadinessDisplay(result.windowsSandbox.readiness),
           }),
         );
         onRefreshProviders();
@@ -453,11 +452,11 @@ function SandboxPermissionsSection({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "无法初始化 Windows 沙箱",
+            title: "\u65e0\u6cd5\u521d\u59cb\u5316 Windows \u6c99\u7bb1",
             description:
               error instanceof Error
                 ? error.message
-                : "setupStart 调用失败，请检查 elevated helper 和系统策略。",
+                : "setupStart \u8c03\u7528\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5 elevated helper \u548c\u7cfb\u7edf\u7b56\u7565\u3002",
           }),
         );
       } finally {
@@ -468,10 +467,10 @@ function SandboxPermissionsSection({
   );
 
   return (
-    <SettingsSection title="沙箱与权限">
+    <SettingsSection title="\u6c99\u7bb1\u4e0e\u6743\u9650">
       <SettingsRow
-        title="当前有效配置"
-        description="Bahew 显式传给 ai-engine.exe 的官方 Codex 沙箱默认值。"
+        title="\u5f53\u524d\u9ed8\u8ba4\u914d\u7f6e"
+        description="\u672c\u5730\u5f15\u64ce\u9ed8\u8ba4\u4f7f\u7528 workspace-write \u4e0e on-request\uff1b\u8f93\u5165\u6846\u6743\u9650\u9009\u62e9\u4f1a\u5728 turn/start \u65f6\u8986\u76d6\u4e3a\u5bf9\u5e94 sandboxPolicy\u3002"
         status={
           <span className="flex flex-wrap gap-x-3 gap-y-1">
             <code>sandbox_mode=workspace-write</code>
@@ -483,27 +482,27 @@ function SandboxPermissionsSection({
         }
       />
       <SettingsRow
-        title="权限 Profile"
-        description="来自官方 permissionProfile/list。Bahew 当前三档权限仍使用显式 sandboxPolicy，不与 permission profile 混用。"
+        title="\u6743\u9650 Profile"
+        description="\u6765\u81ea\u5b98\u65b9 permissionProfile/list\u3002\u5f53\u524d\u4e09\u6863\u6743\u9650\u4f7f\u7528\u663e\u5f0f sandboxPolicy\uff1b\u9009\u62e9\u5177\u4f53 profile \u65f6\u624d\u4f1a\u6539\u4f20 permissions\uff0c\u4e8c\u8005\u4e0d\u6df7\u7528\u3002"
         status={
           permissionProfiles.length > 0 ? (
             <span className="flex flex-wrap gap-x-3 gap-y-1">
               {permissionProfiles.map((profile) => (
-                <span key={`${profile.providerInstanceId}:${profile.id}`}>
+                <span key={profile.providerInstanceId + ":" + profile.id}>
                   {profile.id}
-                  {profile.description ? `: ${profile.description}` : ""}
+                  {profile.description ? ": " + profile.description : ""}
                 </span>
               ))}
             </span>
           ) : (
-            <span>未返回 profile</span>
+            <span>\u672a\u8fd4\u56de profile</span>
           )
         }
       />
       {sandboxProviders.length === 0 ? (
         <SettingsRow
-          title="Agent 沙箱设置"
-          description="尚未收到 Codex provider 的 Windows sandbox readiness。可以直接初始化 elevated 沙箱，或刷新后重新检查。"
+          title="Agent \u6c99\u7bb1\u8bbe\u7f6e"
+          description="\u5c1a\u672a\u6536\u5230 Codex provider \u7684 Windows sandbox readiness\u3002\u53ef\u4ee5\u76f4\u63a5\u521d\u59cb\u5316 elevated \u6c99\u7bb1\uff0c\u6216\u5237\u65b0\u540e\u91cd\u65b0\u68c0\u67e5\u3002"
           control={
             <span className="flex gap-2">
               {codexProviders[0] ? (
@@ -519,12 +518,12 @@ function SandboxPermissionsSection({
                   ) : (
                     <ShieldCheckIcon className="size-3" />
                   )}
-                  <span>启动 elevated 沙箱</span>
+                  <span>\u542f\u52a8 elevated \u6c99\u7bb1</span>
                 </Button>
               ) : null}
               <Button type="button" size="xs" variant="outline" onClick={onRefreshProviders}>
                 <RefreshCwIcon className="size-3" />
-                <span>刷新</span>
+                <span>\u5237\u65b0</span>
               </Button>
             </span>
           }
@@ -533,15 +532,16 @@ function SandboxPermissionsSection({
         sandboxProviders.map((provider) => {
           const sandbox = provider.windowsSandbox!;
           const needsSetup =
-            sandbox.readiness === "notConfigured" ||
-            sandbox.readiness === "updateRequired" ||
-            sandbox.readiness === "error";
+            sandbox.mode === "elevated" &&
+            (sandbox.readiness === "notConfigured" ||
+              sandbox.readiness === "updateRequired" ||
+              sandbox.readiness === "error");
           const canRestoreElevated = sandbox.mode === "unelevated" && sandbox.readiness === "ready";
           const settingUp = settingUpInstanceId === provider.instanceId;
           return (
             <SettingsRow
               key={provider.instanceId}
-              title={`${provider.displayName ?? provider.instanceId} Agent 沙箱`}
+              title={(provider.displayName ?? provider.instanceId) + " Agent \u6c99\u7bb1"}
               description={
                 (sandbox.lastError
                   ? getFriendlyProviderInfrastructureMessage(
@@ -551,15 +551,15 @@ function SandboxPermissionsSection({
                     )
                   : null) ??
                 (canRestoreElevated
-                  ? "当前显式使用 unelevated，用户可以继续使用。修复系统环境后可恢复 elevated。"
+                  ? "\u5f53\u524d\u4f7f\u7528 unelevated \u540e\u5907\u6c99\u7bb1\uff0c\u4ecd\u6709\u57fa\u7840\u9694\u79bb\u4fdd\u62a4\u3002\u4fee\u590d\u7cfb\u7edf\u73af\u5883\u540e\u53ef\u5728\u8fd9\u91cc\u91cd\u65b0\u5c1d\u8bd5 elevated\u3002"
                   : needsSetup
-                    ? "elevated 沙箱需要初始化或更新。失败时会保留 elevated 配置并展示错误，避免隐藏 helper 问题。"
-                    : "Windows sandbox readiness 来自 ai-engine.exe 的 app-server 协议。")
+                    ? "Elevated \u6c99\u7bb1\u9700\u8981\u521d\u59cb\u5316\u6216\u66f4\u65b0\uff1b\u5982\u679c\u5e38\u89c1\u539f\u56e0\u65e0\u6cd5\u4fee\u590d\uff0c\u5c06\u81ea\u52a8\u56de\u9000\u5230 unelevated\u3002"
+                    : "Windows sandbox readiness \u6765\u81ea ai-engine.exe \u7684 app-server \u534f\u8bae\u3002")
               }
               status={
                 <span className="flex flex-wrap gap-x-3 gap-y-1">
                   <span>mode: {sandbox.mode}</span>
-                  <span>readiness: {sandboxReadinessLabel(sandbox.readiness)}</span>
+                  <span>readiness: {sandboxReadinessDisplay(sandbox.readiness)}</span>
                   <span>
                     command runner: {sandbox.commandRunnerAvailable ? "present" : "missing"}
                   </span>
@@ -582,15 +582,15 @@ function SandboxPermissionsSection({
                     )}
                     <span>
                       {canRestoreElevated
-                        ? "启动 elevated 沙箱"
+                        ? "\u91cd\u65b0\u5c1d\u8bd5 elevated"
                         : sandbox.readiness === "error"
-                          ? "重新启动 elevated 沙箱"
-                          : "启动 elevated 沙箱"}
+                          ? "\u91cd\u65b0\u542f\u52a8 elevated"
+                          : "\u542f\u52a8 elevated"}
                     </span>
                   </Button>
                 ) : (
                   <span className="text-xs font-medium text-muted-foreground">
-                    {sandbox.readiness === "ready" ? "ready" : "检查失败"}
+                    {sandbox.readiness === "ready" ? "ready" : "\u68c0\u67e5\u5931\u8d25"}
                   </span>
                 )
               }

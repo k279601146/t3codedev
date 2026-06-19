@@ -51,6 +51,26 @@ function makeThreadOpenResponse(
 }
 
 describe("buildTurnStartParams", () => {
+  it.each([
+    ["approval-required", { type: "readOnly" }, "untrusted"],
+    ["auto-accept-edits", { type: "workspaceWrite" }, "on-request"],
+    ["full-access", { type: "dangerFullAccess" }, "never"],
+  ] as const)(
+    "maps composer runtime mode %s to turn/start sandboxPolicy",
+    (runtimeMode, sandboxPolicy, approvalPolicy) => {
+      const params = Effect.runSync(
+        buildTurnStartParams({
+          threadId: "provider-thread-1",
+          runtimeMode,
+          prompt: "Check permissions",
+        }),
+      );
+
+      assert.deepStrictEqual(params.sandboxPolicy, sandboxPolicy);
+      assert.equal(params.approvalPolicy, approvalPolicy);
+    },
+  );
+
   it("includes plan collaboration mode when requested", () => {
     const params = Effect.runSync(
       buildTurnStartParams({

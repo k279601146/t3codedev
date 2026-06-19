@@ -36,6 +36,11 @@ const clientSettings: ClientSettings = {
   timestampFormat: "24-hour",
   language: "system",
   layoutMode: DEFAULT_LAYOUT_MODE,
+  windowsSandbox: {
+    elevatedSetupFallbackDismissed: false,
+    elevatedSetupLastError: null,
+    elevatedSetupLastAttemptedAt: null,
+  },
 };
 
 const decodeClientSettingsJson = Schema.decodeEffect(Schema.fromJsonString(ClientSettingsSchema));

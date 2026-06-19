@@ -529,7 +529,7 @@ describe("wsApi", () => {
     const api = createLocalApi(rpcClientMock as never);
 
     await expect(api.server.refreshProviders()).resolves.toEqual({ providers: nextProviders });
-    expect(rpcClientMock.server.refreshProviders).toHaveBeenCalledWith();
+    expect(rpcClientMock.server.refreshProviders).toHaveBeenCalledWith(undefined);
   });
 
   it("forwards provider updates directly to the RPC client", async () => {
@@ -640,6 +640,11 @@ describe("wsApi", () => {
       timestampFormat: "24-hour" as const,
       language: "system" as const,
       layoutMode: DEFAULT_LAYOUT_MODE,
+      windowsSandbox: {
+        elevatedSetupFallbackDismissed: false,
+        elevatedSetupLastAttemptedAt: null,
+        elevatedSetupLastError: null,
+      },
     };
     const getClientSettings = vi.fn().mockResolvedValue({
       ...clientSettings,
@@ -711,6 +716,11 @@ describe("wsApi", () => {
       timestampFormat: "24-hour" as const,
       language: "system" as const,
       layoutMode: DEFAULT_LAYOUT_MODE,
+      windowsSandbox: {
+        elevatedSetupFallbackDismissed: false,
+        elevatedSetupLastAttemptedAt: null,
+        elevatedSetupLastError: null,
+      },
     };
 
     await api.persistence.setClientSettings(clientSettings);

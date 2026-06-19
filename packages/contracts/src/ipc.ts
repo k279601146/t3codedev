@@ -98,7 +98,13 @@ import { AuthBearerBootstrapResult, AuthSessionState, AuthWebSocketTokenResult }
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { EditorId } from "./editor.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
-import type { ClientSettings, ServerSettings, ServerSettingsPatch } from "./settings.ts";
+import type {
+  ClientSettings,
+  DesktopWindowsSandboxMode,
+  ServerSettings,
+  ServerSettingsPatch,
+} from "./settings.ts";
+import { DesktopWindowsSandboxMode as DesktopWindowsSandboxModeSchema } from "./settings.ts";
 import type {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
@@ -615,6 +621,30 @@ export const DesktopWindowsSandboxFirewallRepairResultSchema = Schema.Struct({
   exitCode: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 });
 
+export interface DesktopWindowsSandboxModeChangeInput {
+  readonly mode: DesktopWindowsSandboxMode;
+  readonly elevatedSetupFallbackDismissed?: boolean;
+  readonly elevatedSetupLastError?: string | null;
+  readonly elevatedSetupLastAttemptedAt?: string | null;
+}
+
+export const DesktopWindowsSandboxModeChangeInputSchema = Schema.Struct({
+  mode: DesktopWindowsSandboxModeSchema,
+  elevatedSetupFallbackDismissed: Schema.optionalKey(Schema.Boolean),
+  elevatedSetupLastError: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  elevatedSetupLastAttemptedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+
+export interface DesktopWindowsSandboxModeChangeResult {
+  readonly mode: DesktopWindowsSandboxMode;
+  readonly restarted: boolean;
+}
+
+export const DesktopWindowsSandboxModeChangeResultSchema = Schema.Struct({
+  mode: DesktopWindowsSandboxModeSchema,
+  restarted: Schema.Boolean,
+});
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -665,6 +695,9 @@ export interface DesktopBridge {
   }) => Promise<DesktopServerExposureState>;
   getAdvertisedEndpoints: () => Promise<readonly AdvertisedEndpoint[]>;
   repairWindowsSandboxFirewall?: () => Promise<DesktopWindowsSandboxFirewallRepairResult>;
+  setWindowsSandboxMode?: (
+    input: DesktopWindowsSandboxModeChangeInput,
+  ) => Promise<DesktopWindowsSandboxModeChangeResult>;
   pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   showNotification?: (input: DesktopNotificationInput) => Promise<void>;

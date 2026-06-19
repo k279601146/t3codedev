@@ -16,9 +16,11 @@
  */
 
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import { cp, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -254,8 +256,10 @@ const sortCatalogItems = (
     value === undefined || value === null || !Number.isFinite(value) ? 0 : value;
   const timeValue = (value: string | undefined): number => {
     if (!value) return 0;
-    const timestamp = new Date(value).getTime();
-    return Number.isFinite(timestamp) ? timestamp : 0;
+    return DateTime.make(value).pipe(
+      Option.map(DateTime.toEpochMillis),
+      Option.getOrElse(() => 0),
+    );
   };
   const byName = (a: SkillCatalogItem, b: SkillCatalogItem): number =>
     a.displayName.localeCompare(b.displayName);

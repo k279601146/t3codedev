@@ -28,7 +28,7 @@ import {
   setServerExposureMode,
   setTailscaleServeEnabled,
 } from "./methods/serverExposure.ts";
-import { repairWindowsSandboxFirewall } from "./methods/windowsSandbox.ts";
+import { repairWindowsSandboxFirewall, setWindowsSandboxMode } from "./methods/windowsSandbox.ts";
 import {
   bootstrapSshBearerSession,
   disconnectSshEnvironment,
@@ -96,6 +96,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(setTailscaleServeEnabled);
   yield* ipc.handle(getAdvertisedEndpoints);
   yield* ipc.handle(repairWindowsSandboxFirewall);
+  yield* ipc.handle(setWindowsSandboxMode);
 
   yield* ipc.handle(pickFolder);
   yield* ipc.handle(confirm);

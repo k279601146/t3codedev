@@ -673,21 +673,7 @@ const ENGINE_RUNTIME_FILES = new Set([
   "ripgrep-UNLICENSE",
   "codex-command-runner-x86_64-pc-windows-msvc.exe",
   "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
-  "codex-command-runner.exe",
-  "command-runner.exe",
-  "codex-windows-sandbox-setup.exe",
 ]);
-
-const ENGINE_HELPER_ALIASES = [
-  {
-    source: "codex-command-runner-x86_64-pc-windows-msvc.exe",
-    aliases: ["codex-command-runner.exe", "command-runner.exe"],
-  },
-  {
-    source: "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
-    aliases: ["codex-windows-sandbox-setup.exe"],
-  },
-] as const;
 
 const stageEngineRuntimeFiles = Effect.fn("stageEngineRuntimeFiles")(function* (
   desktopBinDir: string,
@@ -710,17 +696,6 @@ const stageEngineRuntimeFiles = Effect.fn("stageEngineRuntimeFiles")(function* (
     const targetPath = path.join(stageEngineBinDir, entry);
     yield* fs.copyFile(sourcePath, targetPath);
     copied.add(entry);
-  }
-
-  for (const helper of ENGINE_HELPER_ALIASES) {
-    const sourcePath = path.join(desktopBinDir, helper.source);
-    if (!(yield* fs.exists(sourcePath))) {
-      continue;
-    }
-    for (const alias of helper.aliases) {
-      yield* fs.copyFile(sourcePath, path.join(stageEngineBinDir, alias));
-      copied.add(alias);
-    }
   }
 
   return copied;

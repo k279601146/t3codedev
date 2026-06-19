@@ -1029,6 +1029,109 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("suppresses command stderr summary lines that only restate a non-zero exit", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-process-stderr-exit-code"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "process/stderr",
+        turnId: asTurnId("turn-1"),
+        message: "2026-01-01T00:00:00.000000Z ERROR codex_core::tools::router: error=Exit code: 1",
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      assert.equal(firstEvent._tag, "None");
+    }),
+  );
+
+  it.effect("suppresses command stderr timing summary lines", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-process-stderr-wall-time"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "process/stderr",
+        turnId: asTurnId("turn-1"),
+        message: "Wall time: 2.6 seconds",
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      assert.equal(firstEvent._tag, "None");
+    }),
+  );
+
+  it.effect("suppresses PowerShell command failure summary lines from process stderr", () =>
+    Effect.gen(function* () {
+      const messages = [
+        "cat : An object at the specified path apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx does not exist, or has been filtered by the -Include or -Exclude parameter.",
+        "At line:2 char:1",
+        '+ cat "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx"',
+        "CategoryInfo          : ObjectNotFound: (System.String[]:String[]) [Get-Content], Exception",
+        "FullyQualifiedErrorId : ItemNotFound,Microsoft.PowerShell.Commands.GetContentCommand",
+      ];
+
+      for (const [index, message] of messages.entries()) {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+        yield* runtime.emit({
+          id: asEventId(`evt-process-stderr-powershell-${index}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "process/stderr",
+          turnId: asTurnId("turn-1"),
+          message,
+        } satisfies ProviderEvent);
+
+        const firstEvent = yield* Fiber.join(firstEventFiber);
+        assert.equal(firstEvent._tag, "None");
+      }
+    }),
+  );
+
+  it.effect("keeps actionable skill-load stderr notifications visible", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-process-stderr-skill-load"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "process/stderr",
+        turnId: asTurnId("turn-1"),
+        message:
+          "2026-01-01T00:00:00.000000Z ERROR codex_core::session::session: failed to load skill C:\\\\tmp\\\\skill\\\\SKILL.md: missing YAML frontmatter delimited by ---",
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "runtime.warning");
+      if (firstEvent.value.type !== "runtime.warning") {
+        return;
+      }
+      assert.match(firstEvent.value.payload.message, /failed to load skill/i);
+    }),
+  );
+
   it.effect("does not surface windowsSandbox/readiness as a chat runtime warning", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

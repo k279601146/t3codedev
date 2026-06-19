@@ -14,16 +14,9 @@ import {
 
 import { resolveBundledEngineConfig } from "./BundledEngineConfig.ts";
 
-const COMMAND_RUNNER_NAMES = [
-  "codex-command-runner.exe",
-  "command-runner.exe",
-  "codex-command-runner-x86_64-pc-windows-msvc.exe",
-];
+const COMMAND_RUNNER_NAMES = ["codex-command-runner-x86_64-pc-windows-msvc.exe"];
 
-const SETUP_HELPER_NAMES = [
-  "codex-windows-sandbox-setup.exe",
-  "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
-];
+const SETUP_HELPER_NAMES = ["codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe"];
 
 export function resolveProviderWindowsSandboxMode(
   environment: NodeJS.ProcessEnv = process.env,

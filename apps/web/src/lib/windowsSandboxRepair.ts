@@ -1,7 +1,6 @@
-import type { ServerProviderWindowsSandbox } from "@t3tools/contracts";
-
 import { ensureLocalApi } from "../localApi";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
+
 export {
   isWindowsSandboxFirewallPolicyError,
   shouldOfferWindowsSandboxFirewallRepair,

@@ -307,10 +307,57 @@ function cleanupWindowsSandboxWorkspaceArtifacts(cwd: string): Effect.Effect<voi
 }
 
 const FATAL_CODEX_STDERR_SNIPPETS = ["failed to connect to websocket"];
+const SUPPRESSED_CODEX_STDERR_PATTERNS = [
+  /^wall time:\s*/i,
+  /^output:\s*$/i,
+  /^stack trace:\s*$/i,
+  /^at\s.+/i,
+  /^at line:\d+\s+char:\d+/i,
+  /^file:\s.+/i,
+  /^\+\s.+/i,
+  /^~+\s*$/i,
+  /^cat\s*:/i,
+  /^get-content\s*:/i,
+  /^rg:\s.+/i,
+  /^select-string\s*:\s.+/i,
+  /^categoryinfo\s*:/i,
+  /^fullyqualifiederrorid\s*:/i,
+  /^total output lines:\s*\d+/i,
+];
+const SUPPRESSED_CODEX_STDERR_SUBSTRINGS = [
+  "codex_core::tools::router: error=exit code:",
+  "codex_core::tools::router: error=unsupported call:",
+  "filtered by the -include or -exclude parameter.",
+  "cannot be bound to any parameters for the command",
+  "parameterbindingexception",
+  "unrecognized file type:",
+];
+const VISIBLE_CODEX_STDERR_SUBSTRINGS = [
+  "failed to load skill",
+  "missing yaml frontmatter",
+  "windows sandbox",
+  "world-writable",
+  "failed to connect to websocket",
+];
 
 function isFatalCodexProcessStderrMessage(message: string): boolean {
   const normalized = message.toLowerCase();
   return FATAL_CODEX_STDERR_SNIPPETS.some((snippet) => normalized.includes(snippet));
+}
+
+function shouldSuppressCodexProcessStderrMessage(message: string): boolean {
+  const trimmed = message.trim();
+  if (trimmed.length === 0) {
+    return true;
+  }
+  const normalized = trimmed.toLowerCase();
+  if (VISIBLE_CODEX_STDERR_SUBSTRINGS.some((snippet) => normalized.includes(snippet))) {
+    return false;
+  }
+  if (SUPPRESSED_CODEX_STDERR_SUBSTRINGS.some((snippet) => normalized.includes(snippet))) {
+    return true;
+  }
+  return SUPPRESSED_CODEX_STDERR_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
 function normalizeCodexTokenUsage(
@@ -1537,6 +1584,9 @@ function mapToRuntimeEvents(
   if (event.method === "process/stderr") {
     const message = event.message ?? "Codex process stderr";
     const isFatal = isFatalCodexProcessStderrMessage(message);
+    if (!isFatal && shouldSuppressCodexProcessStderrMessage(message)) {
+      return [];
+    }
     return [
       isFatal
         ? {

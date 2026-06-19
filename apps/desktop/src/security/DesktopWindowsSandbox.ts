@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 
 export interface DesktopWindowsSandboxShape {
   readonly resolveMode: Effect.Effect<CommercialEngineWindowsSandboxMode>;
@@ -31,11 +32,17 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* DesktopConfig.DesktopConfig;
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
 
     const resolveMode = Effect.gen(function* () {
       const explicitMode = parseSandboxMode(Option.getOrUndefined(config.windowsSandboxMode));
       if (explicitMode !== undefined) {
         return explicitMode;
+      }
+      const settings = yield* clientSettings.get;
+      const persistedMode = Option.getOrUndefined(settings)?.windowsSandbox.mode;
+      if (persistedMode !== undefined) {
+        return persistedMode;
       }
       if (environment.platform !== "win32") {
         return "unelevated";
