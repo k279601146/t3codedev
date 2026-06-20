@@ -5,7 +5,7 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -25,10 +25,38 @@ const TABS: ReadonlyArray<{
   { id: "sources", label: "来源", icon: ListFilterIcon },
 ];
 
+function isExtensionsTab(value: string): value is ExtensionsTab {
+  return TABS.some((tab) => tab.id === value);
+}
+
+function getTabFromHash(hash: string): ExtensionsTab {
+  const value = hash.startsWith("#") ? hash.slice(1) : hash;
+  return isExtensionsTab(value) ? value : "all";
+}
+
+function replaceExtensionsHash(tab: ExtensionsTab) {
+  if (typeof window === "undefined") return;
+  const nextHash = "#" + tab;
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search + nextHash,
+  );
+}
+
 export function ExtensionsPage() {
   const [activeTab, setActiveTab] = useState<ExtensionsTab>(() =>
-    typeof window !== "undefined" && window.location.hash === "#plugins" ? "plugins" : "all",
+    typeof window !== "undefined" ? getTabFromHash(window.location.hash) : "all",
   );
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setActiveTab(getTabFromHash(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
@@ -57,6 +85,7 @@ export function ExtensionsPage() {
                 )}
                 onClick={() => {
                   setActiveTab(tab.id);
+                  replaceExtensionsHash(tab.id);
                 }}
               >
                 <Icon className="size-3.5" />

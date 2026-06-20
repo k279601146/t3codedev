@@ -4,6 +4,7 @@ import { createRouter, RouterHistory } from "@tanstack/react-router";
 
 import { AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import { routeTree } from "./routeTree.gen";
+import { RoutePendingView } from "./components/RoutePendingView";
 
 export function getRouter(history: RouterHistory) {
   const queryClient = new QueryClient();
@@ -11,6 +12,9 @@ export function getRouter(history: RouterHistory) {
   return createRouter({
     routeTree,
     history,
+    defaultPendingComponent: RoutePendingView,
+    defaultPendingMs: 120,
+    defaultPendingMinMs: 220,
     context: {
       queryClient,
     },

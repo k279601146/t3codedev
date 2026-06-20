@@ -141,7 +141,17 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { Menu, MenuGroup, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "./ui/menu";
+import {
+  Menu,
+  MenuGroup,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "./ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -2669,14 +2679,24 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                   {accountPlanLabel}
                 </div>
               </div>
-              <AccountUsageCard
-                credits={codexProvider?.auth.rateLimits?.credits ?? null}
-                providerUsage={providerUsage}
-                onInvite={handleOpenReferrals}
-                onUpgrade={handleOpenPlans}
-              />
               <MenuSeparator className="mx-0 my-0 bg-zinc-200 dark:bg-zinc-800" />
               <div className="space-y-1 p-3">
+                <MenuSub>
+                  <MenuSubTrigger className="min-h-11 rounded-xl px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 data-popup-open:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800 dark:data-popup-open:bg-zinc-800">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                      <SparklesIcon className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">剩余用量</span>
+                  </MenuSubTrigger>
+                  <MenuSubPopup className="w-[324px] overflow-hidden rounded-[20px] border-zinc-200 bg-white p-0 shadow-[0px_8px_32px_0px_rgba(0,0,0,0.08)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[0px_8px_32px_0px_rgba(0,0,0,0.3)] [&>div]:p-0">
+                    <AccountUsageCard
+                      credits={codexProvider?.auth.rateLimits?.credits ?? null}
+                      providerUsage={providerUsage}
+                      onInvite={handleOpenReferrals}
+                      onUpgrade={handleOpenPlans}
+                    />
+                  </MenuSubPopup>
+                </MenuSub>
                 <MenuItem
                   className="min-h-11 rounded-xl px-3 text-[13px] font-medium text-zinc-800 data-highlighted:bg-zinc-100 dark:text-zinc-200 dark:data-highlighted:bg-zinc-800"
                   onClick={handleOpenSettings}

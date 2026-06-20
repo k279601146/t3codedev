@@ -742,12 +742,15 @@ const make = Effect.gen(function* () {
         checkpoints: thread.checkpoints,
         messages: thread.messages,
       });
-      if (currentTurnCount === 0 || event.payload.numTurns === 0) {
+      if (event.payload.numTurns === 0) {
         return;
       }
 
-      const rolledBackTurns = Math.min(event.payload.numTurns, currentTurnCount);
-      const targetTurnCount = currentTurnCount - rolledBackTurns;
+      const rolledBackTurns =
+        currentTurnCount === 0
+          ? event.payload.numTurns
+          : Math.min(event.payload.numTurns, currentTurnCount);
+      const targetTurnCount = Math.max(0, currentTurnCount - rolledBackTurns);
 
       yield* providerService.rollbackConversation({
         threadId: event.payload.threadId,

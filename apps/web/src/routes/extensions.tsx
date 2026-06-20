@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
+import { RoutePendingView } from "../components/RoutePendingView";
 import { ExtensionsPage } from "../components/extensions/ExtensionsPage";
 
 function ExtensionsRouteView() {
@@ -16,4 +17,11 @@ export const Route = createFileRoute("/extensions")({
     }
   },
   component: ExtensionsRouteView,
+  pendingComponent: ExtensionsRoutePendingView,
+  pendingMs: 80,
+  pendingMinMs: 220,
 });
+
+function ExtensionsRoutePendingView() {
+  return <RoutePendingView label="正在加载能力市场..." />;
+}

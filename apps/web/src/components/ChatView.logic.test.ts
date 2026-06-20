@@ -18,6 +18,7 @@ import {
   buildTurnDiffSummaryByAssistantMessageId,
   buildRightPanelArtifacts,
   createChatTimelineDerivedStateCache,
+  deriveEditedMessageResubmissionTimelineMessages,
   buildExpiredTerminalContextToastCopy,
   buildRevertTurnCountByUserMessageId,
   createLocalDispatchSnapshot,
@@ -190,6 +191,121 @@ describe("createChatTimelineDerivedStateCache", () => {
     expect(second).not.toBe(first);
     expect(first.timelineEntries).toHaveLength(1);
     expect(second.timelineEntries).toHaveLength(0);
+  });
+});
+
+describe("deriveEditedMessageResubmissionTimelineMessages", () => {
+  it("编辑重发期间只展示目标消息之前的历史和新用户气泡", () => {
+    const originalUserMessage = {
+      id: MessageId.make("user-old"),
+      role: "user" as const,
+      text: "原来的消息",
+      createdAt: "2026-03-17T12:00:00.000Z",
+      streaming: false,
+    };
+    const oldAssistantMessage = {
+      id: MessageId.make("assistant-old"),
+      role: "assistant" as const,
+      text: "旧回复",
+      createdAt: "2026-03-17T12:00:01.000Z",
+      streaming: false,
+    };
+    const replacementMessage = {
+      id: MessageId.make("user-new"),
+      role: "user" as const,
+      text: "编辑后的消息",
+      createdAt: "2026-03-17T12:00:02.000Z",
+      streaming: false,
+    };
+
+    const result = deriveEditedMessageResubmissionTimelineMessages({
+      serverMessages: [originalUserMessage, oldAssistantMessage],
+      optimisticMessages: [replacementMessage],
+      targetMessageId: originalUserMessage.id,
+      replacementMessageId: replacementMessage.id,
+    });
+
+    expect(result).toEqual([replacementMessage]);
+  });
+
+  it("保留被编辑消息之前的多轮历史", () => {
+    const firstUserMessage = {
+      id: MessageId.make("user-1"),
+      role: "user" as const,
+      text: "第一轮",
+      createdAt: "2026-03-17T12:00:00.000Z",
+      streaming: false,
+    };
+    const firstAssistantMessage = {
+      id: MessageId.make("assistant-1"),
+      role: "assistant" as const,
+      text: "第一轮回复",
+      createdAt: "2026-03-17T12:00:01.000Z",
+      streaming: false,
+    };
+    const targetMessage = {
+      id: MessageId.make("user-2"),
+      role: "user" as const,
+      text: "第二轮旧消息",
+      createdAt: "2026-03-17T12:00:02.000Z",
+      streaming: false,
+    };
+    const oldTailMessage = {
+      id: MessageId.make("assistant-2"),
+      role: "assistant" as const,
+      text: "第二轮旧回复",
+      createdAt: "2026-03-17T12:00:03.000Z",
+      streaming: false,
+    };
+    const replacementMessage = {
+      id: MessageId.make("user-3"),
+      role: "user" as const,
+      text: "第二轮新消息",
+      createdAt: "2026-03-17T12:00:04.000Z",
+      streaming: false,
+    };
+
+    const result = deriveEditedMessageResubmissionTimelineMessages({
+      serverMessages: [firstUserMessage, firstAssistantMessage, targetMessage, oldTailMessage],
+      optimisticMessages: [replacementMessage],
+      targetMessageId: targetMessage.id,
+      replacementMessageId: replacementMessage.id,
+    });
+
+    expect(result).toEqual([firstUserMessage, firstAssistantMessage, replacementMessage]);
+  });
+
+  it("新用户气泡被服务端确认后仍然隐藏旧尾巴", () => {
+    const targetMessage = {
+      id: MessageId.make("user-old"),
+      role: "user" as const,
+      text: "旧消息",
+      createdAt: "2026-03-17T12:00:00.000Z",
+      streaming: false,
+    };
+    const staleAssistantMessage = {
+      id: MessageId.make("assistant-old"),
+      role: "assistant" as const,
+      text: "旧回复",
+      createdAt: "2026-03-17T12:00:01.000Z",
+      streaming: false,
+    };
+    const replacementMessage = {
+      id: MessageId.make("user-new"),
+      role: "user" as const,
+      text: "新消息",
+      createdAt: "2026-03-17T12:00:02.000Z",
+      streaming: false,
+    };
+
+    const result = deriveEditedMessageResubmissionTimelineMessages({
+      serverMessages: [targetMessage, staleAssistantMessage, replacementMessage],
+      optimisticMessages: [],
+      targetMessageId: targetMessage.id,
+      replacementMessageId: replacementMessage.id,
+    });
+
+    expect(result).toEqual([replacementMessage]);
   });
 });
 
@@ -642,7 +758,6 @@ const makeThread = (input: Partial<Thread> = {}): Thread => {
     turnDiffSummaries: [],
     activities: [],
     ...input,
-    latestTurn,
   };
 };
 
@@ -767,6 +882,7 @@ describe("waitForStartedServerThread", () => {
         latestTurn: {
           turnId: TurnId.make("turn-started"),
           state: "running",
+          assistantMessageId: null,
           requestedAt: "2026-03-29T00:00:01.000Z",
           startedAt: "2026-03-29T00:00:01.000Z",
           completedAt: null,
@@ -791,6 +907,7 @@ describe("waitForStartedServerThread", () => {
         latestTurn: {
           turnId: TurnId.make("turn-started"),
           state: "running",
+          assistantMessageId: null,
           requestedAt: "2026-03-29T00:00:01.000Z",
           startedAt: "2026-03-29T00:00:01.000Z",
           completedAt: null,
@@ -816,6 +933,7 @@ describe("waitForStartedServerThread", () => {
             latestTurn: {
               turnId: TurnId.make("turn-race"),
               state: "running",
+              assistantMessageId: null,
               requestedAt: "2026-03-29T00:00:01.000Z",
               startedAt: "2026-03-29T00:00:01.000Z",
               completedAt: null,
@@ -875,6 +993,100 @@ describe("waitForThreadRevertedAfter", () => {
         id: threadId,
         updatedAt: "2026-03-29T00:00:03.000Z",
         latestTurn: null,
+      }),
+    ]);
+
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it("resolves when the target edited message is removed", async () => {
+    const threadId = ThreadId.make("thread-revert-target-message");
+    const targetMessageId = MessageId.make("message-before-revert");
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:00.000Z",
+        messages: [
+          {
+            id: targetMessageId,
+            role: "user",
+            text: "旧消息",
+            createdAt: "2026-03-29T00:00:00.000Z",
+            streaming: false,
+          },
+        ],
+      }),
+    ]);
+
+    const promise = waitForThreadRevertedAfter(
+      scopeThreadRef(localEnvironmentId, threadId),
+      {
+        previousUpdatedAt: "2026-03-29T00:00:00.000Z",
+        targetMessageId,
+      },
+      500,
+    );
+
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:00.000Z",
+        messages: [],
+      }),
+    ]);
+
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it("keeps waiting when an unrelated update arrives before the target message is removed", async () => {
+    vi.useFakeTimers();
+
+    const threadId = ThreadId.make("thread-revert-target-message-still-visible");
+    const targetMessageId = MessageId.make("message-before-revert");
+    const targetMessage = {
+      id: targetMessageId,
+      role: "user" as const,
+      text: "old message",
+      createdAt: "2026-03-29T00:00:00.000Z",
+      streaming: false,
+    };
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:00.000Z",
+        messages: [targetMessage],
+      }),
+    ]);
+
+    const promise = waitForThreadRevertedAfter(
+      scopeThreadRef(localEnvironmentId, threadId),
+      {
+        previousUpdatedAt: "2026-03-29T00:00:00.000Z",
+        targetMessageId,
+      },
+      500,
+    );
+
+    let settled = false;
+    promise.then(() => {
+      settled = true;
+    });
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:01.000Z",
+        messages: [targetMessage],
+      }),
+    ]);
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:02.000Z",
+        messages: [],
       }),
     ]);
 

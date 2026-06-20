@@ -192,6 +192,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createChatTimelineDerivedStateCache,
   createLocalDispatchSnapshot,
+  deriveEditedMessageResubmissionTimelineMessages,
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -461,6 +462,11 @@ interface PendingSteerMessage {
   attachments: ChatAttachment[];
   goalObjective: string | null;
   createdAt: string;
+}
+
+interface EditedMessageResubmissionState {
+  targetMessageId: MessageId;
+  replacementMessageId: MessageId;
 }
 
 type ThreadPlanCatalogEntry = Pick<Thread, "id" | "proposedPlans">;
@@ -1036,13 +1042,15 @@ export default function ChatView(props: ChatViewProps) {
     () => OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [],
   );
   const [pendingSteerMessage, setPendingSteerMessage] = useState<PendingSteerMessage | null>(null);
-  const [isResubmittingEditedMessage, setIsResubmittingEditedMessage] = useState(false);
+  const [editedMessageResubmission, setEditedMessageResubmission] =
+    useState<EditedMessageResubmissionState | null>(null);
   const [goalMessageIdsByThreadKey, setGoalMessageIdsByThreadKey] = useState<
     Record<string, MessageId[]>
   >(() => Object.fromEntries(GOAL_MESSAGE_IDS_BY_THREAD_KEY));
   const [goalModeByThreadKey, setGoalModeByThreadKey] = useState<Record<string, boolean>>({});
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
   optimisticUserMessagesRef.current = optimisticUserMessages;
+  const isResubmittingEditedMessage = editedMessageResubmission !== null;
   const setOptimisticUserMessages = useCallback(
     (next: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => {
       const current = optimisticUserMessagesRef.current;
@@ -1903,6 +1911,7 @@ export default function ChatView(props: ChatViewProps) {
     threadError: activeThread?.error,
   });
   const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
+  const timelineIsWorking = isWorking || isResubmittingEditedMessage;
   const visibleThreadError = isSendBusy ? null : (activeThread?.error ?? null);
   const canSteerActiveTurn =
     phase === "running" &&
@@ -2139,6 +2148,15 @@ export default function ChatView(props: ChatViewProps) {
             return changed ? { ...message, attachments } : message;
           });
 
+    if (editedMessageResubmission) {
+      return deriveEditedMessageResubmissionTimelineMessages({
+        serverMessages: serverMessagesWithPreviewHandoff,
+        optimisticMessages: optimisticUserMessages,
+        targetMessageId: editedMessageResubmission.targetMessageId,
+        replacementMessageId: editedMessageResubmission.replacementMessageId,
+      });
+    }
+
     if (optimisticUserMessages.length === 0) {
       return serverMessagesWithPreviewHandoff;
     }
@@ -2148,7 +2166,12 @@ export default function ChatView(props: ChatViewProps) {
       return serverMessagesWithPreviewHandoff;
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
-  }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
+  }, [
+    serverMessages,
+    attachmentPreviewHandoffByMessageId,
+    editedMessageResubmission,
+    optimisticUserMessages,
+  ]);
   const timelineDerivedStateCacheRef = useRef(createChatTimelineDerivedStateCache());
   const goalMessageIds = useMemo(() => {
     const ids = new Set<MessageId>(
@@ -2902,17 +2925,34 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     setIsRevertingCheckpoint(false);
-    setIsResubmittingEditedMessage(false);
+    setEditedMessageResubmission(null);
   }, [activeThread?.id]);
 
   useEffect(() => {
-    if (!isResubmittingEditedMessage) {
+    if (!editedMessageResubmission) {
       return;
     }
-    if (activeLatestTurn?.startedAt || activeThread?.error) {
-      setIsResubmittingEditedMessage(false);
+    if (activeThread?.error && !isSendBusy && !isRevertingCheckpoint) {
+      setEditedMessageResubmission(null);
+      return;
     }
-  }, [activeLatestTurn?.startedAt, activeThread?.error, isResubmittingEditedMessage]);
+    const messages = activeThread?.messages ?? [];
+    const targetStillVisible = messages.some(
+      (message) => message.id === editedMessageResubmission.targetMessageId,
+    );
+    const replacementAcknowledged = messages.some(
+      (message) => message.id === editedMessageResubmission.replacementMessageId,
+    );
+    if (!targetStillVisible && replacementAcknowledged) {
+      setEditedMessageResubmission(null);
+    }
+  }, [
+    activeThread?.error,
+    activeThread?.messages,
+    editedMessageResubmission,
+    isRevertingCheckpoint,
+    isSendBusy,
+  ]);
 
   useEffect(() => {
     if (!activeThread?.id || terminalState.terminalOpen) return;
@@ -3422,7 +3462,10 @@ export default function ChatView(props: ChatViewProps) {
       sendInFlightRef.current = true;
       beginLocalDispatch({ preparingWorktree: false });
       setThreadError(threadIdForSend, null);
-      setIsResubmittingEditedMessage(true);
+      setEditedMessageResubmission({
+        targetMessageId: messageId,
+        replacementMessageId: messageIdForSend,
+      });
       setIsRevertingCheckpoint(true);
       setOptimisticUserMessages((existing) => [
         ...existing.filter((message) => message.id !== messageIdForSend),
@@ -3434,6 +3477,12 @@ export default function ChatView(props: ChatViewProps) {
           streaming: false,
         },
       ]);
+      isAtEndRef.current = true;
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+      window.requestAnimationFrame(() => {
+        void legendListRef.current?.scrollToEnd?.({ animated: false });
+      });
 
       let turnStartSucceeded = false;
       try {
@@ -3446,7 +3495,10 @@ export default function ChatView(props: ChatViewProps) {
         });
         const reverted = await waitForThreadRevertedAfter(
           scopeThreadRef(activeThread.environmentId, threadIdForSend),
-          { previousUpdatedAt: activeThread.updatedAt },
+          {
+            previousUpdatedAt: activeThread.updatedAt ?? messageCreatedAt,
+            targetMessageId: messageId,
+          },
         );
         if (!reverted) {
           throw new Error("等待消息回退超时，请稍后重试。");
@@ -3494,7 +3546,7 @@ export default function ChatView(props: ChatViewProps) {
           threadIdForSend,
           err instanceof Error ? err.message : "发送编辑后的消息失败。",
         );
-        setIsResubmittingEditedMessage(false);
+        setEditedMessageResubmission(null);
         resetLocalDispatch();
         throw err;
       } finally {
@@ -3516,7 +3568,6 @@ export default function ChatView(props: ChatViewProps) {
       resetLocalDispatch,
       runtimeMode,
       setOptimisticUserMessages,
-      setIsResubmittingEditedMessage,
       setThreadError,
       showUsageLimitReachedToast,
       usageLimitBlock,
@@ -5165,8 +5216,8 @@ export default function ChatView(props: ChatViewProps) {
                 {/* Messages — LegendList handles virtualization and scrolling internally */}
                 <MessagesTimeline
                   key={activeThread.id}
-                  isWorking={isWorking}
-                  activeTurnInProgress={isWorking || !latestTurnSettled}
+                  isWorking={timelineIsWorking}
+                  activeTurnInProgress={timelineIsWorking || !latestTurnSettled}
                   activeTurnId={activeLatestTurn?.turnId ?? null}
                   activeTurnStartedAt={activeWorkStartedAt}
                   listRef={legendListRef}

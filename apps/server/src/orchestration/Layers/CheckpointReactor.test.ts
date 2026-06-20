@@ -1068,6 +1068,36 @@ describe("CheckpointReactor", () => {
     ]);
   });
 
+  it("emits thread.reverted for conversation rollback when the read model has no turn rows", async () => {
+    const harness = await createHarness();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.conversation.rollback",
+        commandId: CommandId.make("cmd-conversation-rollback-empty-read-model"),
+        threadId: ThreadId.make("thread-1"),
+        numTurns: 1,
+        createdAt: "2026-01-01T00:00:03.000Z",
+      }),
+    );
+
+    const events = await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    await harness.drain();
+
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
+      threadId: ThreadId.make("thread-1"),
+      numTurns: 1,
+    });
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.reverted" &&
+          event.aggregateId === ThreadId.make("thread-1") &&
+          event.payload.turnCount === 0,
+      ),
+    ).toBe(true);
+  });
+
   it("still emits thread.reverted when conversation rollback filesystem restore fails", async () => {
     const restoreCheckpoint = vi.fn(() =>
       Effect.fail(

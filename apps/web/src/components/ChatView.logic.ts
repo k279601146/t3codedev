@@ -126,6 +126,35 @@ export interface ChatTimelineDerivedCacheInput {
   suppressHistoricalWorkLogEntries?: boolean;
 }
 
+export function deriveEditedMessageResubmissionTimelineMessages(input: {
+  serverMessages: ReadonlyArray<ChatMessage>;
+  optimisticMessages: ReadonlyArray<ChatMessage>;
+  targetMessageId: MessageId;
+  replacementMessageId: MessageId;
+}): ChatMessage[] {
+  const replacementServerMessage = input.serverMessages.find(
+    (message) => message.id === input.replacementMessageId,
+  );
+  const replacementOptimisticMessage = input.optimisticMessages.find(
+    (message) => message.id === input.replacementMessageId,
+  );
+  const replacementMessage = replacementServerMessage ?? replacementOptimisticMessage ?? null;
+  const targetIndex = input.serverMessages.findIndex(
+    (message) => message.id === input.targetMessageId,
+  );
+  const visibleMessages =
+    targetIndex >= 0 ? input.serverMessages.slice(0, targetIndex) : [...input.serverMessages];
+
+  if (
+    !replacementMessage ||
+    visibleMessages.some((message) => message.id === replacementMessage.id)
+  ) {
+    return visibleMessages;
+  }
+
+  return [...visibleMessages, replacementMessage];
+}
+
 export function createChatTimelineDerivedStateCache(): (
   input: ChatTimelineDerivedCacheInput,
 ) => ChatTimelineDerivedState {
@@ -700,11 +729,18 @@ export async function waitForThreadRevertedAfter(
   threadRef: ScopedThreadRef,
   baseline: {
     previousUpdatedAt: string;
+    targetMessageId?: MessageId | undefined;
   },
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<boolean> {
   const hasReverted = (thread: Thread | null | undefined) => {
     if (!thread) {
+      return false;
+    }
+    if (baseline.targetMessageId !== undefined) {
+      return !thread.messages.some((message) => message.id === baseline.targetMessageId);
+    }
+    if (!thread.updatedAt) {
       return false;
     }
     return (

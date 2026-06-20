@@ -324,7 +324,9 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
   showRuntimeModeControl: boolean;
   showInteractionModeToggle: boolean;
   onAttachFiles: () => void;
+  onAddSkill: () => void;
   onGoalModeChange: (enabled: boolean) => void;
+  onManageSkills: () => void;
   onSelectPlugin: (plugin: ComposerPluginMention) => void;
   pluginMentions: readonly ComposerPluginMention[];
   onSelectSkill: (skill: ServerProviderSkill) => void;
@@ -431,11 +433,11 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
                 ) : null}
               </div>
               <MenuSeparator className="mx-0 mt-1" />
-              <MenuItem onClick={() => window.location.assign("/extensions")}>
+              <MenuItem onClick={props.onAddSkill}>
                 <PlusIcon className="size-4 shrink-0 opacity-80" />
                 添加技能
               </MenuItem>
-              <MenuItem onClick={() => window.location.assign("/extensions")}>
+              <MenuItem onClick={props.onManageSkills}>
                 <SettingsIcon className="size-4 shrink-0 opacity-80" />
                 管理技能
               </MenuItem>
@@ -690,6 +692,7 @@ const ComposerFooterToolbar = memo(function ComposerFooterToolbar(props: {
   modelPicker: ReactNode;
   newThreadModeLabel: string | null;
   onAttachFiles: () => void;
+  onAddSkill: () => void;
   onClearGoal: () => void;
   onClearNewThreadMode?: () => void;
   onGoalModeChange: (enabled: boolean) => void;
@@ -700,6 +703,7 @@ const ComposerFooterToolbar = memo(function ComposerFooterToolbar(props: {
   onRuntimeModeChange: (mode: RuntimeMode) => void;
   onSelectPlugin: (plugin: ComposerPluginMention) => void;
   onSelectSkill: (skill: ServerProviderSkill) => void;
+  onManageSkills: () => void;
   onTogglePlanSidebar: () => void;
   pendingAction: {
     questionIndex: number;
@@ -748,7 +752,9 @@ const ComposerFooterToolbar = memo(function ComposerFooterToolbar(props: {
           showRuntimeModeControl
           showInteractionModeToggle={props.showInteractionModeToggle}
           onAttachFiles={props.onAttachFiles}
+          onAddSkill={props.onAddSkill}
           onGoalModeChange={props.onGoalModeChange}
+          onManageSkills={props.onManageSkills}
           onSelectPlugin={props.onSelectPlugin}
           pluginMentions={props.pluginMentions}
           onSelectSkill={props.onSelectSkill}
@@ -2529,6 +2535,14 @@ export const ChatComposer = memo(
       composerAttachmentInputRef.current?.click();
     }, []);
 
+    const openAllSkills = useCallback(() => {
+      void navigate({ to: "/extensions", hash: "all" });
+    }, [navigate]);
+
+    const openInstalledSkills = useCallback(() => {
+      void navigate({ to: "/extensions", hash: "installed" });
+    }, [navigate]);
+
     const insertSkillAtComposerCursor = useCallback(
       (skill: ServerProviderSkill) => {
         if (isComposerApprovalState || activePendingProgress) {
@@ -3514,6 +3528,7 @@ export const ChatComposer = memo(
                 modelPicker={composerModelPicker}
                 newThreadModeLabel={newThreadModeLabel}
                 onAttachFiles={openAttachmentPicker}
+                onAddSkill={openAllSkills}
                 onClearGoal={clearGoalFromPanel}
                 {...(onClearNewThreadMode ? { onClearNewThreadMode } : {})}
                 onGoalModeChange={onGoalModeChange}
@@ -3524,6 +3539,7 @@ export const ChatComposer = memo(
                 onRuntimeModeChange={handleRuntimeModeChange}
                 onSelectPlugin={insertPluginAtComposerCursor}
                 onSelectSkill={insertSkillAtComposerCursor}
+                onManageSkills={openInstalledSkills}
                 onTogglePlanSidebar={togglePlanSidebar}
                 pendingAction={pendingPrimaryAction}
                 phase={phase}
