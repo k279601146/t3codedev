@@ -1593,7 +1593,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
   if (groupedEntries.length === 1 && isCommandWorkEntry(groupedEntries[0]!)) {
     return (
       <div className="pt-2 pb-3 pl-1">
-        <CommandWorkEntryRow workEntry={groupedEntries[0]!} initiallyExpanded />
+        <CommandWorkEntryRow workEntry={groupedEntries[0]!} />
       </div>
     );
   }

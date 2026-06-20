@@ -572,7 +572,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-busy="true"');
   });
 
-  it("renders command work as a scrollable shell panel with copy actions", async () => {
+  it("starts completed command work collapsed with the command summary", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const command = "Get-Content -Path apps\\web\\package.json -TotalCount 160";
     const output = Array.from({ length: 18 }, (_, index) => `"line-${index + 1}": "value"`).join(
@@ -601,16 +601,17 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('data-command-work-panel="true"');
-    expect(markup).toContain("bash");
-    expect(markup).toContain("max-h-[220px]");
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("已运行");
     expect(markup).toContain(command);
-    expect(markup).toContain("&quot;line-18&quot;: &quot;value&quot;");
-    expect(markup).toContain('aria-label="复制命令和输出"');
-    expect(markup).toContain('aria-label="复制命令"');
-    expect(markup).toContain('aria-label="复制输出"');
-    expect(markup).toContain("成功");
-    expect(markup).toContain('data-command-output-scroll="true"');
+    expect(markup).not.toContain('data-command-work-panel="true"');
+    expect(markup).not.toContain("bash");
+    expect(markup).not.toContain("&quot;line-18&quot;: &quot;value&quot;");
+    expect(markup).not.toContain('aria-label="复制命令和输出"');
+    expect(markup).not.toContain('aria-label="复制命令"');
+    expect(markup).not.toContain('aria-label="复制输出"');
+    expect(markup).not.toContain("成功");
+    expect(markup).not.toContain('data-command-output-scroll="true"');
   });
 
   it("hides duplicated command text from the output block", async () => {
@@ -640,13 +641,13 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已运行命令");
-    expect(markup).toContain("无输出");
+    expect(markup).toContain("已运行 bun run lint");
+    expect(markup).not.toContain("无输出");
     expect(markup).not.toContain("复制输出");
     expect(markup).not.toContain('"C:\\Program Files\\PowerShell\\7\\pwsh.exe"');
   });
 
-  it("uses the explicit output field when present", async () => {
+  it("keeps explicit command output hidden while collapsed", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -672,12 +673,13 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("line-3");
-    expect(markup).toContain("已运行命令");
+    expect(markup).toContain("已运行 bun tsc --noEmit");
+    expect(markup).not.toContain("line-3");
+    expect(markup).not.toContain("已运行命令");
     expect(markup).not.toContain("summary line");
   });
 
-  it("keeps the collapsed summary command text while expanding the shell panel title", async () => {
+  it("keeps the collapsed summary command text without rendering shell output", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -702,8 +704,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已运行命令");
-    expect(markup).toContain("ok");
+    expect(markup).toContain("已运行 bun test");
+    expect(markup).not.toContain("1 pass");
     expect(markup).not.toContain("bun test\nok");
   });
 
