@@ -1036,6 +1036,7 @@ export default function ChatView(props: ChatViewProps) {
     () => OPTIMISTIC_USER_MESSAGES_BY_THREAD_KEY.get(routeThreadKey) ?? [],
   );
   const [pendingSteerMessage, setPendingSteerMessage] = useState<PendingSteerMessage | null>(null);
+  const [isResubmittingEditedMessage, setIsResubmittingEditedMessage] = useState(false);
   const [goalMessageIdsByThreadKey, setGoalMessageIdsByThreadKey] = useState<
     Record<string, MessageId[]>
   >(() => Object.fromEntries(GOAL_MESSAGE_IDS_BY_THREAD_KEY));
@@ -2192,11 +2193,13 @@ export default function ChatView(props: ChatViewProps) {
         workLogEntries,
         turnDiffSummaries,
         inferredCheckpointTurnCountByTurnId,
+        suppressHistoricalWorkLogEntries: isResubmittingEditedMessage,
       }),
     [
       activeThread?.proposedPlans,
       activeThreadKey,
       inferredCheckpointTurnCountByTurnId,
+      isResubmittingEditedMessage,
       timelineMessages,
       turnDiffSummaries,
       workLogEntries,
@@ -3409,6 +3412,7 @@ export default function ChatView(props: ChatViewProps) {
       sendInFlightRef.current = true;
       beginLocalDispatch({ preparingWorktree: false });
       setThreadError(threadIdForSend, null);
+      setIsResubmittingEditedMessage(true);
       setIsRevertingCheckpoint(true);
 
       let optimisticMessageAdded = false;
@@ -3473,6 +3477,7 @@ export default function ChatView(props: ChatViewProps) {
           createdAt: messageCreatedAt,
         });
         turnStartSucceeded = true;
+        setIsResubmittingEditedMessage(false);
       } catch (err) {
         if (optimisticMessageAdded && !turnStartSucceeded) {
           setOptimisticUserMessages((existing) =>
@@ -3483,6 +3488,7 @@ export default function ChatView(props: ChatViewProps) {
           threadIdForSend,
           err instanceof Error ? err.message : "发送编辑后的消息失败。",
         );
+        setIsResubmittingEditedMessage(false);
         resetLocalDispatch();
         throw err;
       } finally {
@@ -3504,6 +3510,7 @@ export default function ChatView(props: ChatViewProps) {
       resetLocalDispatch,
       runtimeMode,
       setOptimisticUserMessages,
+      setIsResubmittingEditedMessage,
       setThreadError,
       showUsageLimitReachedToast,
       usageLimitBlock,

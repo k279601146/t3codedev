@@ -123,6 +123,7 @@ export interface ChatTimelineDerivedCacheInput {
   workLogEntries: ReadonlyArray<WorkLogEntry>;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   inferredCheckpointTurnCountByTurnId: Readonly<Record<TurnId, number | undefined>>;
+  suppressHistoricalWorkLogEntries?: boolean;
 }
 
 export function createChatTimelineDerivedStateCache(): (
@@ -141,31 +142,38 @@ export function createChatTimelineDerivedStateCache(): (
       previousInput.workLogEntries === input.workLogEntries &&
       previousInput.turnDiffSummaries === input.turnDiffSummaries &&
       previousInput.inferredCheckpointTurnCountByTurnId ===
-        input.inferredCheckpointTurnCountByTurnId
+        input.inferredCheckpointTurnCountByTurnId &&
+      previousInput.suppressHistoricalWorkLogEntries === input.suppressHistoricalWorkLogEntries
     ) {
       return previousResult;
     }
 
+    const suppressHistoricalWorkState = input.suppressHistoricalWorkLogEntries === true;
+    const visibleProposedPlans = suppressHistoricalWorkState ? [] : [...input.proposedPlans];
+    const visibleWorkLogEntries = suppressHistoricalWorkState ? [] : [...input.workLogEntries];
+    const visibleTurnDiffSummaries = suppressHistoricalWorkState
+      ? []
+      : [...input.turnDiffSummaries];
     const timelineEntries = deriveTimelineEntries(
       [...input.timelineMessages],
-      [...input.proposedPlans],
-      [...input.workLogEntries],
+      visibleProposedPlans,
+      visibleWorkLogEntries,
     );
     const turnDiffSummaryByAssistantMessageId = buildTurnDiffSummaryByAssistantMessageId({
       timelineEntries,
-      turnDiffSummaries: input.turnDiffSummaries,
+      turnDiffSummaries: visibleTurnDiffSummaries,
     });
     const result: ChatTimelineDerivedState = {
       timelineEntries,
       rightPanelArtifacts: buildRightPanelArtifacts({
         timelineMessages: input.timelineMessages,
-        workLogEntries: input.workLogEntries,
-        turnDiffSummaries: input.turnDiffSummaries,
+        workLogEntries: visibleWorkLogEntries,
+        turnDiffSummaries: visibleTurnDiffSummaries,
       }),
       turnDiffSummaryByAssistantMessageId,
       revertTurnCountByUserMessageId: buildRevertTurnCountByUserMessageId({
         timelineEntries,
-        turnDiffSummaries: input.turnDiffSummaries,
+        turnDiffSummaries: visibleTurnDiffSummaries,
         turnDiffSummaryByAssistantMessageId,
         inferredCheckpointTurnCountByTurnId: input.inferredCheckpointTurnCountByTurnId,
       }),

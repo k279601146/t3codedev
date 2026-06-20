@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
 import {
   EnvironmentId,
   MessageId,
+  OrchestrationProposedPlanId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -110,6 +111,84 @@ describe("createChatTimelineDerivedStateCache", () => {
     const second = cache({ ...input, threadKey: "thread-2" });
 
     expect(second).not.toBe(first);
+  });
+
+  it("suppresses historical work rows while an edited message is being resent", () => {
+    const cache = createChatTimelineDerivedStateCache();
+    const input = {
+      threadKey: "thread-1",
+      timelineMessages: [
+        {
+          id: MessageId.make("user-1"),
+          role: "user" as const,
+          text: "旧消息",
+          createdAt: "2026-03-17T12:00:00.000Z",
+          streaming: false,
+        },
+      ],
+      proposedPlans: [
+        {
+          id: OrchestrationProposedPlanId.make("plan-1"),
+          turnId: TurnId.make("turn-1"),
+          planMarkdown: "旧计划",
+          implementedAt: null,
+          implementationThreadId: null,
+          createdAt: "2026-03-17T12:00:00.500Z",
+          updatedAt: "2026-03-17T12:00:00.500Z",
+        },
+      ],
+      workLogEntries: [
+        {
+          id: "work-1",
+          createdAt: "2026-03-17T12:00:01.000Z",
+          label: "Runtime error",
+          detail: "旧 turn 的错误",
+          tone: "error" as const,
+        },
+      ],
+      turnDiffSummaries: [
+        {
+          turnId: TurnId.make("turn-1"),
+          completedAt: "2026-03-17T12:00:02.000Z",
+          status: "ready" as const,
+          files: [{ path: "src/old.ts", additions: 1, deletions: 0 }],
+        },
+      ],
+      inferredCheckpointTurnCountByTurnId: {},
+      suppressHistoricalWorkLogEntries: true,
+    };
+
+    const result = cache(input);
+
+    expect(result.timelineEntries.map((entry) => entry.kind)).toEqual(["message"]);
+    expect(result.rightPanelArtifacts).toEqual([]);
+    expect(result.revertTurnCountByUserMessageId.size).toBe(0);
+  });
+
+  it("recomputes when historical work suppression changes", () => {
+    const cache = createChatTimelineDerivedStateCache();
+    const input = {
+      threadKey: "thread-1",
+      timelineMessages: [],
+      proposedPlans: [],
+      workLogEntries: [
+        {
+          id: "work-1",
+          createdAt: "2026-03-17T12:00:01.000Z",
+          label: "Runtime error",
+          tone: "error" as const,
+        },
+      ],
+      turnDiffSummaries: [],
+      inferredCheckpointTurnCountByTurnId: {},
+    };
+
+    const first = cache(input);
+    const second = cache({ ...input, suppressHistoricalWorkLogEntries: true });
+
+    expect(second).not.toBe(first);
+    expect(first.timelineEntries).toHaveLength(1);
+    expect(second.timelineEntries).toHaveLength(0);
   });
 });
 

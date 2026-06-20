@@ -747,16 +747,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const activity = use(TimelineRowActivityCtx);
   const userAttachments = row.message.attachments ?? [];
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
-  const terminalContexts = displayedUserMessage.contexts;
   const imageAttachments = userAttachments.filter(
     (attachment) => attachment.type === "image" && attachment.previewUrl,
   );
   const fileAttachments = userAttachments.filter(
     (attachment) => attachment.type === "file" || !attachment.previewUrl,
   );
-  const hasVisibleUserMessageBody =
-    displayedUserMessage.visibleText.trim().length > 0 || terminalContexts.length > 0;
-  const hasUserMessageBubble = imageAttachments.length > 0 || hasVisibleUserMessageBody;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
   const editableText = displayedUserMessage.copyText || row.message.text;
   const canEditUserMessage =
@@ -767,7 +763,15 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(editableText);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [submittedEditText, setSubmittedEditText] = useState<string | null>(null);
   const editTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const visibleMessageText =
+    isSubmittingEdit && submittedEditText ? submittedEditText : row.message.text;
+  const visibleDisplayedUserMessage = deriveDisplayedUserMessageState(visibleMessageText);
+  const visibleTerminalContexts = visibleDisplayedUserMessage.contexts;
+  const visibleHasUserMessageBody =
+    visibleDisplayedUserMessage.visibleText.trim().length > 0 || visibleTerminalContexts.length > 0;
+  const visibleHasUserMessageBubble = imageAttachments.length > 0 || visibleHasUserMessageBody;
 
   useEffect(() => {
     if (!isEditing) {
@@ -802,11 +806,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     }
 
     setIsSubmittingEdit(true);
+    setSubmittedEditText(trimmed);
     try {
       await ctx.onSubmitEditedUserMessage(row.message.id, trimmed);
       setIsEditing(false);
     } catch {
       // 错误已由发送层写入线程错误横幅；这里保留编辑态方便用户重试。
+      setSubmittedEditText(null);
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -816,7 +822,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     <>
       <div className="flex justify-end">
         <div className="group flex max-w-[80%] flex-col items-end">
-          {isEditing ? (
+          {isEditing && !isSubmittingEdit ? (
             <div className="w-[min(46rem,calc(100vw-2rem))] max-w-full rounded-md border border-border/60 bg-white px-3 py-3 shadow-sm dark:bg-background">
               <textarea
                 ref={editTextAreaRef}
@@ -868,14 +874,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                   ))}
                 </div>
               ) : null}
-              {hasUserMessageBubble ? (
+              {visibleHasUserMessageBubble ? (
                 <div className="w-fit max-w-full rounded-[18px] border border-border/55 bg-secondary px-4 py-2.5">
                   {imageAttachments.length > 0 ? (
                     <div
                       className={cn(
                         "grid max-w-[548px] gap-3",
                         imageAttachments.length === 1 ? "grid-cols-1" : "grid-cols-2",
-                        hasVisibleUserMessageBody && "mb-2",
+                        visibleHasUserMessageBody && "mb-2",
                       )}
                     >
                       {imageAttachments.map((attachment) => (
@@ -906,10 +912,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                       ))}
                     </div>
                   ) : null}
-                  {hasVisibleUserMessageBody ? (
+                  {visibleHasUserMessageBody ? (
                     <CollapsibleUserMessageBody
-                      text={displayedUserMessage.visibleText}
-                      terminalContexts={terminalContexts}
+                      text={visibleDisplayedUserMessage.visibleText}
+                      terminalContexts={visibleTerminalContexts}
                       skills={ctx.skills}
                     />
                   ) : null}

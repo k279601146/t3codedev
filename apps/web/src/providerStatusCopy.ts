@@ -33,10 +33,10 @@ export function getFriendlyProviderInfrastructureMessage(
 
   const normalized = rawMessage.toLowerCase();
   if (normalized.includes(CODEX_PROVIDER_STATUS_TIMEOUT.toLowerCase())) {
-    return `${label} 状态检查超时。引擎可能还在启动，稍后刷新即可；如果反复出现，请重启本地服务。`;
+    return `${label} 启动时间比平时久一些，当前状态检查还没有完成。你可以先稍等，或点击重试再次检查。`;
   }
   if (normalized.includes("codex app-server provider probe failed")) {
-    return `${label} 状态检查失败。请确认本地引擎可以启动，然后刷新 provider 状态。`;
+    return `${label} 这次状态检查没有通过。请稍后重试；如果一直失败，再检查本地服务是否正常启动。`;
   }
   if (normalized.includes("bundled ai engine binary is missing")) {
     return "内置 AI 引擎文件缺失或无法访问，请检查安装包或重新构建 ai-engine.exe。";
@@ -76,12 +76,20 @@ export function getProviderStatusAlertCopy(provider: ServerProvider): {
   readonly detail: string;
 } {
   const label = getServerProviderLabel(provider);
+  const message = provider.message?.trim().toLowerCase();
+  const isStatusTimeout =
+    message?.includes(CODEX_PROVIDER_STATUS_TIMEOUT.toLowerCase()) === true ||
+    message?.includes("codex provider status has not been checked") === true;
   const fallback =
     provider.status === "error"
-      ? `${label} 暂时不可用，请稍后刷新状态。`
-      : `${label} 可用性受限，请检查设置或稍后刷新。`;
+      ? `${label} 正在准备中，请稍后重试状态检查。`
+      : `${label} 正在确认状态，请稍后重试。`;
   return {
-    title: provider.status === "error" ? `${label} 暂时不可用` : `${label} 需要确认`,
+    title: isStatusTimeout
+      ? `${label} 正在准备`
+      : provider.status === "error"
+        ? `${label} 连接遇到问题`
+        : `${label} 需要确认`,
     detail: getFriendlyProviderStatusMessage(provider, fallback) ?? fallback,
   };
 }
