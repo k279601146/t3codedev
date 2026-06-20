@@ -32,7 +32,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CheckpointStoreLive } from "../../checkpointing/Layers/CheckpointStore.ts";
 import * as ShadowGitCheckpoints from "../../checkpointing/Layers/ShadowGitCheckpoints.ts";
-import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
+import {
+  CheckpointStore,
+  type CheckpointStoreShape,
+} from "../../checkpointing/Services/CheckpointStore.ts";
+import { CheckpointInvariantError } from "../../checkpointing/Errors.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
@@ -284,6 +288,7 @@ describe("CheckpointReactor", () => {
     readonly providerSessionCwd?: string;
     readonly providerName?: ProviderDriverKind;
     readonly gitStatusRefreshCalls?: Array<string>;
+    readonly checkpointStore?: CheckpointStoreShape;
   }) {
     const cwd = createGitRepository();
     tempDirs.push(cwd);
@@ -328,18 +333,20 @@ describe("CheckpointReactor", () => {
       streamStatus: () => Stream.empty,
     });
 
+    const checkpointStoreLayer = options?.checkpointStore
+      ? Layer.succeed(CheckpointStore, options.checkpointStore)
+      : CheckpointStoreLive.pipe(
+          Layer.provide(VcsDriverRegistry.layer),
+          Layer.provide(ShadowGitCheckpoints.layer),
+        );
+
     const layer = CheckpointReactorLive.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
-      Layer.provideMerge(
-        CheckpointStoreLive.pipe(
-          Layer.provide(VcsDriverRegistry.layer),
-          Layer.provide(ShadowGitCheckpoints.layer),
-        ),
-      ),
+      Layer.provideMerge(checkpointStoreLayer),
       Layer.provideMerge(
         WorkspaceEntriesLive.pipe(
           Layer.provide(WorkspacePathsLive),
@@ -1059,6 +1066,139 @@ describe("CheckpointReactor", () => {
       { id: MessageId.make("msg-user-1"), role: "user", text: "第一轮" },
       { id: MessageId.make("msg-assistant-1"), role: "assistant", text: "" },
     ]);
+  });
+
+  it("still emits thread.reverted when conversation rollback filesystem restore fails", async () => {
+    const restoreCheckpoint = vi.fn(() =>
+      Effect.fail(
+        new CheckpointInvariantError({
+          operation: "test.restoreCheckpoint",
+          detail: "restore failed",
+        }),
+      ),
+    );
+    const checkpointStore: CheckpointStoreShape = {
+      isGitRepository: () => Effect.succeed(true),
+      captureCheckpoint: () => Effect.void,
+      hasCheckpointRef: () => Effect.succeed(true),
+      restoreCheckpoint,
+      diffCheckpoints: () => Effect.succeed(""),
+      deleteCheckpointRefs: () => Effect.void,
+    };
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      checkpointStore,
+    });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-rollback-restore-fail-turn-1"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("msg-user-1"),
+          role: "user",
+          text: "第一轮",
+          attachments: [],
+        },
+        runtimeMode: "approval-required",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.make("cmd-rollback-restore-fail-assistant-1"),
+        threadId: ThreadId.make("thread-1"),
+        messageId: MessageId.make("msg-assistant-1"),
+        turnId: asTurnId("turn-1"),
+        createdAt: "2026-01-01T00:00:00.500Z",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-rollback-restore-fail-diff-1"),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-1"),
+        completedAt: "2026-01-01T00:00:00.500Z",
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+        status: "ready",
+        files: [],
+        checkpointTurnCount: 1,
+        createdAt: "2026-01-01T00:00:00.500Z",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-rollback-restore-fail-turn-2"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: MessageId.make("msg-user-2"),
+          role: "user",
+          text: "第二轮",
+          attachments: [],
+        },
+        runtimeMode: "approval-required",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        createdAt: "2026-01-01T00:00:01.000Z",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.make("cmd-rollback-restore-fail-assistant-2"),
+        threadId: ThreadId.make("thread-1"),
+        messageId: MessageId.make("msg-assistant-2"),
+        turnId: asTurnId("turn-2"),
+        createdAt: "2026-01-01T00:00:02.000Z",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-rollback-restore-fail-diff-2"),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-2"),
+        completedAt: "2026-01-01T00:00:02.000Z",
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+        status: "ready",
+        files: [],
+        checkpointTurnCount: 2,
+        createdAt: "2026-01-01T00:00:02.000Z",
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.conversation.rollback",
+        commandId: CommandId.make("cmd-rollback-restore-fail"),
+        threadId: ThreadId.make("thread-1"),
+        numTurns: 1,
+        createdAt: "2026-01-01T00:00:03.000Z",
+      }),
+    );
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    await harness.drain();
+
+    expect(restoreCheckpoint).toHaveBeenCalled();
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
+      threadId: ThreadId.make("thread-1"),
+      numTurns: 1,
+    });
+    const snapshot = await harness.readModel();
+    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.messages.map((message) => message.id)).toEqual([
+      MessageId.make("msg-user-1"),
+      MessageId.make("msg-assistant-1"),
+    ]);
+    expect(
+      thread?.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    ).toBe(false);
   });
 
   it("executes provider revert and emits thread.reverted for claude sessions", async () => {

@@ -769,29 +769,42 @@ const make = Effect.gen(function* () {
             )?.checkpointRef;
 
       if (checkpointCwd && targetCheckpointRef) {
-        const restored = yield* checkpointStore.restoreCheckpoint({
-          cwd: checkpointCwd,
-          checkpointRef: targetCheckpointRef,
-          fallbackToHead: targetTurnCount === 0,
-        });
-        if (restored) {
-          yield* workspaceEntries.invalidate(checkpointCwd);
-        } else {
-          yield* Effect.logWarning("conversation rollback skipped missing filesystem checkpoint", {
-            threadId: event.payload.threadId,
-            targetTurnCount,
-          });
-        }
-
-        const staleCheckpointRefs = thread.checkpoints
-          .filter((checkpoint) => checkpoint.checkpointTurnCount > targetTurnCount)
-          .map((checkpoint) => checkpoint.checkpointRef);
-        if (staleCheckpointRefs.length > 0) {
-          yield* checkpointStore.deleteCheckpointRefs({
+        yield* Effect.gen(function* () {
+          const restored = yield* checkpointStore.restoreCheckpoint({
             cwd: checkpointCwd,
-            checkpointRefs: staleCheckpointRefs,
+            checkpointRef: targetCheckpointRef,
+            fallbackToHead: targetTurnCount === 0,
           });
-        }
+          if (restored) {
+            yield* workspaceEntries.invalidate(checkpointCwd);
+          } else {
+            yield* Effect.logWarning(
+              "conversation rollback skipped missing filesystem checkpoint",
+              {
+                threadId: event.payload.threadId,
+                targetTurnCount,
+              },
+            );
+          }
+
+          const staleCheckpointRefs = thread.checkpoints
+            .filter((checkpoint) => checkpoint.checkpointTurnCount > targetTurnCount)
+            .map((checkpoint) => checkpoint.checkpointRef);
+          if (staleCheckpointRefs.length > 0) {
+            yield* checkpointStore.deleteCheckpointRefs({
+              cwd: checkpointCwd,
+              checkpointRefs: staleCheckpointRefs,
+            });
+          }
+        }).pipe(
+          Effect.catch((error: CheckpointStoreError) =>
+            Effect.logWarning("conversation rollback skipped filesystem checkpoint restore", {
+              threadId: event.payload.threadId,
+              targetTurnCount,
+              detail: error.message,
+            }),
+          ),
+        );
       }
 
       yield* orchestrationEngine
