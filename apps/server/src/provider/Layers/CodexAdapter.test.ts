@@ -625,7 +625,10 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
   it.effect("maps completed agent message items to canonical item.completed events", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
-      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
+        Effect.timeoutOption("50 millis"),
+        Effect.forkChild,
+      );
 
       const event: ProviderEvent = {
         id: asEventId("evt-msg-complete"),
@@ -1053,7 +1056,10 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
   it.effect("suppresses command stderr timing summary lines", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
-      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
+        Effect.timeoutOption("50 millis"),
+        Effect.forkChild,
+      );
 
       yield* runtime.emit({
         id: asEventId("evt-process-stderr-wall-time"),
@@ -1083,10 +1089,50 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
 
       for (const [index, message] of messages.entries()) {
         const { adapter, runtime } = yield* startLifecycleRuntime();
-        const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+        const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
+          Effect.timeoutOption("50 millis"),
+          Effect.forkChild,
+        );
 
         yield* runtime.emit({
           id: asEventId(`evt-process-stderr-powershell-${index}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-1"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "process/stderr",
+          turnId: asTurnId("turn-1"),
+          message,
+        } satisfies ProviderEvent);
+
+        const firstEvent = yield* Fiber.join(firstEventFiber);
+        assert.equal(firstEvent._tag, "None");
+      }
+    }),
+  );
+
+  it.effect("suppresses split command output fragments from process stderr", () =>
+    Effect.gen(function* () {
+      const messages = [
+        "Variable reference is not valid. ':' was not followed by a valid variable name character. Consider using ${} to delimit",
+        "the name.",
+        'apps\\api\\api.log:52:INFO: 127.0.0.1:5758 - "GET /api/v1/connectors/apps HTTP/1.1" 200 OK',
+        '> apps\\api\\connectors.py:279:@connectors_router.patch("/triggers/{trigger_id}")',
+        "186:6  warning  React Hook useEffect has a missing dependency: 'resolveActiveFrame'. Either include it or remove the dependency array  react-hooks/exhaustive-deps",
+        "7:54  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any",
+        "✖ 118 problems (44 errors, 74 warnings)",
+        "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\.pytest_cache' is denied.",
+      ];
+
+      for (const [index, message] of messages.entries()) {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
+          Effect.timeoutOption("50 millis"),
+          Effect.forkChild,
+        );
+
+        yield* runtime.emit({
+          id: asEventId(`evt-process-stderr-command-output-${index}`),
           kind: "notification",
           provider: ProviderDriverKind.make("codex"),
           threadId: asThreadId("thread-1"),

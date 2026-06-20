@@ -101,9 +101,12 @@ const COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS = [
   /^~+\s*$/i,
   /^cat\s*:/i,
   /^get-content\s*:/i,
+  /^at line:\d+\s+char:\d+/i,
   /^fullyqualifiederrorid\s*:/i,
   /^categoryinfo\s*:/i,
   /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=exit code:\s*\d+/i,
+  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=unsupported call:/i,
+  /^total output lines:\s*\d+/i,
 ];
 
 const COMMAND_RUNTIME_WARNING_BODY_PATTERNS = [
@@ -111,7 +114,14 @@ const COMMAND_RUNTIME_WARNING_BODY_PATTERNS = [
   /^cat\s*:\s.+/i,
   /^get-content\s*:\s.+/i,
   /^select-string\s*:\s.+/i,
+  /^variable reference is not valid\./i,
+  /^the name\.$/i,
   /^warning:\s.+/i,
+  /^\d+:\d+\s+(?:warning|error)\s+/i,
+  /^✖\s+\d+\s+problems?\s+\(\d+\s+errors?,\s+\d+\s+warnings?\)/i,
+  /^(?:>\s*)?(?:[a-z]:\\|\.{1,2}[\\/]|[\w.-]+[\\/]).+:\d+(?::|$)/i,
+  /^[a-z]:\\.+$/i,
+  /(?:^|['"`\s])(?:[a-z]:)?\\?[\w .-]+(?:\\[\w .-]+)+['"`]?\s+is denied\.$/i,
   /filtered by the -include or -exclude parameter\./i,
   /cannot be bound to any parameters for the command/i,
   /parameterbindingexception/i,

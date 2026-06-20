@@ -1451,6 +1451,108 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.output).toContain("FullyQualifiedErrorId");
   });
 
+  it("drops Select-String output fragments split into runtime warnings", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "tool.completed",
+        summary: "Ran command",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          itemType: "command_execution",
+          requestKind: "command",
+          data: {
+            item: {
+              command:
+                'Select-String -LiteralPath "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\connectors.py" -Pattern "trigger" -Context 2,20',
+              aggregatedOutput:
+                "apps\\api\\api.log:52:INFO: 127.0.0.1:5758 - \"GET /api/v1/connectors/apps HTTP/1.1\" 200 OK\n" +
+                "> apps\\api\\connectors.py:279:@connectors_router.patch(\"/triggers/{trigger_id}\")\n" +
+                "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\.pytest_cache' is denied.",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-exit",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "2026-06-19T12:07:47.681Z ERROR codex_core::tools::router: error=Exit code: 1",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-wall-time",
+        createdAt: "2026-01-01T00:00:02.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Wall time: 8.8 seconds",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-total-lines",
+        createdAt: "2026-01-01T00:00:03.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Total output lines: 140",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-output",
+        createdAt: "2026-01-01T00:00:04.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Output:",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-log-line",
+        createdAt: "2026-01-01T00:00:05.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message:
+            'apps\\api\\api.log:52:INFO: 127.0.0.1:5758 - "GET /api/v1/connectors/apps HTTP/1.1" 200 OK',
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-code-line",
+        createdAt: "2026-01-01T00:00:06.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: '> apps\\api\\connectors.py:279:@connectors_router.patch("/triggers/{trigger_id}")',
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-denied",
+        createdAt: "2026-01-01T00:00:07.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\.pytest_cache' is denied.",
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.requestKind).toBe("command");
+    expect(entries[0]?.label).toBe("Ran command");
+  });
+
   it("drops duplicated tool detail when it only repeats the title", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

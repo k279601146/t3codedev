@@ -879,6 +879,123 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  it("turns split Select-String stderr output into one command output row", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "runtime-warning-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "runtime-warning-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Runtime warning",
+            detail:
+              "2026-06-19T12:07:47.681Z ERROR codex_core::tools::router: error=Exit code: 1",
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "runtime-warning-2",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Runtime warning",
+            detail: "Wall time: 8.8 seconds",
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-3",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:02Z",
+          entry: {
+            id: "runtime-warning-3",
+            createdAt: "2026-01-01T00:00:02Z",
+            label: "Runtime warning",
+            detail: "Total output lines: 140",
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-4",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:03Z",
+          entry: {
+            id: "runtime-warning-4",
+            createdAt: "2026-01-01T00:00:03Z",
+            label: "Runtime warning",
+            detail: "Output:",
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-5",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:04Z",
+          entry: {
+            id: "runtime-warning-5",
+            createdAt: "2026-01-01T00:00:04Z",
+            label: "Runtime warning",
+            detail:
+              'apps\\api\\api.log:52:INFO: 127.0.0.1:5758 - "GET /api/v1/connectors/apps HTTP/1.1" 200 OK',
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-6",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "runtime-warning-6",
+            createdAt: "2026-01-01T00:00:05Z",
+            label: "Runtime warning",
+            detail: '> apps\\api\\connectors.py:279:@connectors_router.patch("/triggers/{trigger_id}")',
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-7",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:06Z",
+          entry: {
+            id: "runtime-warning-7",
+            createdAt: "2026-01-01T00:00:06Z",
+            label: "Runtime warning",
+            detail: "D:\\workspace\\dev2_OpenHarness_SaaS\\apps\\api\\.pytest_cache' is denied.",
+            tone: "info",
+            status: "completed",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe("work");
+    if (rows[0]?.kind !== "work") return;
+    expect(rows[0].groupedEntries).toHaveLength(1);
+    expect(rows[0].groupedEntries[0]).toMatchObject({
+      label: "Ran command",
+      itemType: "command_execution",
+      requestKind: "command",
+    });
+    expect(rows[0].groupedEntries[0]?.output).toContain("apps\\api\\api.log:52:INFO");
+    expect(rows[0].groupedEntries[0]?.output).toContain("is denied.");
+  });
+
   it("keeps actionable runtime warnings separate from command entries", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
