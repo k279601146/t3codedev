@@ -41,6 +41,13 @@ const buildSourcemap =
       ? "hidden"
       : true;
 
+const eagerChatRouteIds = new Set([
+  "/_chat",
+  "/_chat/",
+  "/_chat/$environmentId/$threadId",
+  "/_chat/draft/$draftId",
+]);
+
 function resolveDevProxyTarget(wsUrl: string | undefined): string | undefined {
   if (!wsUrl) {
     return undefined;
@@ -68,6 +75,14 @@ export default defineConfig({
   plugins: [
     tanstackRouter({
       autoCodeSplitting: true,
+      codeSplittingOptions: {
+        splitBehavior: ({ routeId }) => {
+          if (eagerChatRouteIds.has(routeId)) {
+            return [];
+          }
+          return undefined;
+        },
+      },
     }),
     monacoEditorPlugin({
       languageWorkers: ["editorWorkerService", "typescript", "json", "css", "html"],
