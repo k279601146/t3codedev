@@ -28,6 +28,7 @@ import {
   resolveSendEnvMode,
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
+  waitForThreadRevertedAfter,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 
@@ -612,42 +613,38 @@ describe("shouldWriteThreadErrorToCurrentServerThread", () => {
   });
 });
 
-const makeThread = (input?: {
-  id?: ThreadId;
-  latestTurn?: {
-    turnId: TurnId;
-    state: "running" | "completed";
-    requestedAt: string;
-    startedAt: string | null;
-    completedAt: string | null;
-  } | null;
-}): Thread => ({
-  id: input?.id ?? ThreadId.make("thread-1"),
-  environmentId: localEnvironmentId,
-  codexThreadId: null,
-  projectId: ProjectId.make("project-1"),
-  title: "Thread",
-  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-  runtimeMode: "full-access" as const,
-  interactionMode: "default" as const,
-  session: null,
-  messages: [],
-  proposedPlans: [],
-  error: null,
-  createdAt: "2026-03-29T00:00:00.000Z",
-  archivedAt: null,
-  updatedAt: "2026-03-29T00:00:00.000Z",
-  latestTurn: input?.latestTurn
+const makeThread = (input: Partial<Thread> = {}): Thread => {
+  const latestTurn = input.latestTurn
     ? {
         ...input.latestTurn,
-        assistantMessageId: null,
+        assistantMessageId: input.latestTurn.assistantMessageId ?? null,
       }
-    : null,
-  branch: null,
-  worktreePath: null,
-  turnDiffSummaries: [],
-  activities: [],
-});
+    : null;
+  return {
+    id: input.id ?? ThreadId.make("thread-1"),
+    environmentId: localEnvironmentId,
+    codexThreadId: null,
+    projectId: ProjectId.make("project-1"),
+    title: "Thread",
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+    runtimeMode: "full-access" as const,
+    interactionMode: "default" as const,
+    session: null,
+    messages: [],
+    proposedPlans: [],
+    error: null,
+    createdAt: "2026-03-29T00:00:00.000Z",
+    archivedAt: null,
+    updatedAt: "2026-03-29T00:00:00.000Z",
+    latestTurn,
+    branch: null,
+    worktreePath: null,
+    turnDiffSummaries: [],
+    activities: [],
+    ...input,
+    latestTurn,
+  };
+};
 
 function setStoreThreads(threads: ReadonlyArray<ReturnType<typeof makeThread>>) {
   const projectId = ProjectId.make("project-1");
@@ -848,6 +845,66 @@ describe("waitForStartedServerThread", () => {
   });
 });
 
+describe("waitForThreadRevertedAfter", () => {
+  it("waits for a revert update that clears the previous latest turn", async () => {
+    const threadId = ThreadId.make("thread-revert-wait");
+    const turnId = TurnId.make("turn-before-revert");
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:00.000Z",
+        latestTurn: {
+          turnId,
+          state: "completed",
+          requestedAt: "2026-03-29T00:00:00.000Z",
+          startedAt: "2026-03-29T00:00:01.000Z",
+          completedAt: "2026-03-29T00:00:02.000Z",
+          assistantMessageId: null,
+        },
+      }),
+    ]);
+
+    const promise = waitForThreadRevertedAfter(
+      scopeThreadRef(localEnvironmentId, threadId),
+      { previousUpdatedAt: "2026-03-29T00:00:00.000Z" },
+      500,
+    );
+
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:03.000Z",
+        latestTurn: null,
+      }),
+    ]);
+
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it("returns false when no revert update arrives", async () => {
+    vi.useFakeTimers();
+
+    const threadId = ThreadId.make("thread-revert-timeout");
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:00.000Z",
+        latestTurn: null,
+      }),
+    ]);
+    const promise = waitForThreadRevertedAfter(
+      scopeThreadRef(localEnvironmentId, threadId),
+      { previousUpdatedAt: "2026-03-29T00:00:00.000Z" },
+      500,
+    );
+
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
+
+    await expect(promise).resolves.toBe(false);
+  });
+});
+
 describe("hasServerAcknowledgedLocalDispatch", () => {
   const projectId = ProjectId.make("project-1");
   const previousLatestTurn = {
@@ -983,6 +1040,47 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         phase: "ready",
         latestTurn: null,
         session: previousSession,
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps edit resend busy while an empty latestTurn session is only starting", () => {
+    const localDispatch = createLocalDispatchSnapshot({
+      id: ThreadId.make("thread-1"),
+      environmentId: localEnvironmentId,
+      codexThreadId: null,
+      projectId,
+      title: "Thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      session: previousSession,
+      messages: [],
+      proposedPlans: [],
+      error: "old error",
+      createdAt: "2026-03-29T00:00:00.000Z",
+      archivedAt: null,
+      updatedAt: "2026-03-29T00:00:10.000Z",
+      latestTurn: null,
+      branch: null,
+      worktreePath: null,
+      turnDiffSummaries: [],
+      activities: [],
+    });
+
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch,
+        phase: "ready",
+        latestTurn: null,
+        session: {
+          ...previousSession,
+          orchestrationStatus: "starting",
+          updatedAt: "2026-03-29T00:01:00.000Z",
+        },
         hasPendingApproval: false,
         hasPendingUserInput: false,
         threadError: null,

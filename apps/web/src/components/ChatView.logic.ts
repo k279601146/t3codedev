@@ -696,6 +696,61 @@ export async function waitForThreadMessageRemoval(
   });
 }
 
+export async function waitForThreadRevertedAfter(
+  threadRef: ScopedThreadRef,
+  baseline: {
+    previousUpdatedAt: string;
+  },
+  timeoutMs = 10_000,
+): Promise<boolean> {
+  const hasReverted = (thread: Thread | null | undefined) => {
+    if (!thread) {
+      return false;
+    }
+    return (
+      thread.updatedAt !== baseline.previousUpdatedAt &&
+      thread.updatedAt.localeCompare(baseline.previousUpdatedAt) >= 0
+    );
+  };
+
+  const getThread = () => selectThreadByRef(useStore.getState(), threadRef);
+  if (hasReverted(getThread())) {
+    return true;
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+    const finish = (result: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== null) {
+        globalThis.clearTimeout(timeoutId);
+      }
+      unsubscribe();
+      resolve(result);
+    };
+
+    const unsubscribe = useStore.subscribe((state) => {
+      if (!hasReverted(selectThreadByRef(state, threadRef))) {
+        return;
+      }
+      finish(true);
+    });
+
+    if (hasReverted(getThread())) {
+      finish(true);
+      return;
+    }
+
+    timeoutId = globalThis.setTimeout(() => {
+      finish(false);
+    }, timeoutMs);
+  });
+}
+
 export interface LocalDispatchSnapshot {
   startedAt: string;
   preparingWorktree: boolean;
@@ -771,6 +826,17 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     if (!orchestrationEnded) {
       return false;
     }
+  }
+
+  if (
+    !latestTurnChanged &&
+    input.localDispatch.latestTurnTurnId === null &&
+    latestTurn === null &&
+    session !== null &&
+    input.localDispatch.sessionUpdatedAt !== (session.updatedAt ?? null) &&
+    !orchestrationEnded
+  ) {
+    return false;
   }
 
   if (input.phase === "running") {

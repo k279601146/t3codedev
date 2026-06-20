@@ -1532,47 +1532,43 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
-  it.effect(
-    "reports elevated setup as started without treating pending readiness as failure",
-    () =>
-      Effect.gen(function* () {
-        const { adapter, runtime } = yield* startLifecycleRuntime();
-        runtime.setWindowsSandboxReadinessStatus("updateRequired");
+  it.effect("reports elevated setup as started without treating pending readiness as failure", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      runtime.setWindowsSandboxReadinessStatus("updateRequired");
 
-        const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+      const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
 
-        assert.equal(runtime.windowsSandboxSetupStartImpl.mock.calls.at(-1)?.[0].mode, "elevated");
-        assert.equal(result.started, true);
-        assert.equal(result.windowsSandbox.mode, "elevated");
-        assert.equal(result.windowsSandbox.readiness, "updateRequired");
+      assert.equal(runtime.windowsSandboxSetupStartImpl.mock.calls.at(-1)?.[0].mode, "elevated");
+      assert.equal(result.started, true);
+      assert.equal(result.windowsSandbox.mode, "elevated");
+      assert.equal(result.windowsSandbox.readiness, "updateRequired");
 
-        const readinessAfterSetupStart = yield* adapter.windowsSandboxReadiness!({
-          mode: "elevated",
-        });
-        assert.equal(readinessAfterSetupStart.mode, "elevated");
-        assert.equal(readinessAfterSetupStart.readiness, "updateRequired");
-      }),
+      const readinessAfterSetupStart = yield* adapter.windowsSandboxReadiness!({
+        mode: "elevated",
+      });
+      assert.equal(readinessAfterSetupStart.mode, "elevated");
+      assert.equal(readinessAfterSetupStart.readiness, "updateRequired");
+    }),
   );
 
-  it.effect(
-    "keeps elevated mode selected when elevated setupStart fails",
-    () =>
-      Effect.gen(function* () {
-        const { adapter, runtime } = yield* startLifecycleRuntime();
-        runtime.setWindowsSandboxSetupStartFailure(
-          new CodexErrors.CodexAppServerRequestError({
-            code: -32000,
-            errorMessage: "helper setup failed",
-          }),
-        );
+  it.effect("keeps elevated mode selected when elevated setupStart fails", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      runtime.setWindowsSandboxSetupStartFailure(
+        new CodexErrors.CodexAppServerRequestError({
+          code: -32000,
+          errorMessage: "helper setup failed",
+        }),
+      );
 
-        const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
+      const result = yield* adapter.windowsSandboxSetupStart!({ mode: "elevated" });
 
-        assert.equal(result.started, false);
-        assert.equal(result.windowsSandbox.mode, "elevated");
-        assert.equal(result.windowsSandbox.readiness, "error");
-        assert.match(result.windowsSandbox.lastError ?? "", /helper setup failed/);
-      }),
+      assert.equal(result.started, false);
+      assert.equal(result.windowsSandbox.mode, "elevated");
+      assert.equal(result.windowsSandbox.readiness, "error");
+      assert.match(result.windowsSandbox.lastError ?? "", /helper setup failed/);
+    }),
   );
 
   it.effect("reports elevated as ready after setup completes and readiness refresh succeeds", () =>
@@ -1748,6 +1744,36 @@ const scopedLifecycleLayer = it.layer(
 );
 
 scopedLifecycleLayer("CodexAdapterLive scoped lifecycle", (it) => {
+  it.effect("serializes concurrent startSession calls for the same thread", () =>
+    Effect.gen(function* () {
+      scopedLifecycleRuntimeFactory.releasedThreadIds.length = 0;
+      scopedLifecycleRuntimeFactory.factory.mockClear();
+      const adapter = yield* CodexAdapter;
+
+      yield* Effect.all(
+        [
+          adapter.startSession({
+            provider: ProviderDriverKind.make("codex"),
+            threadId: asThreadId("thread-concurrent-start"),
+            runtimeMode: "full-access",
+          }),
+          adapter.startSession({
+            provider: ProviderDriverKind.make("codex"),
+            threadId: asThreadId("thread-concurrent-start"),
+            runtimeMode: "full-access",
+          }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      assert.equal(scopedLifecycleRuntimeFactory.factory.mock.calls.length, 2);
+      assert.deepStrictEqual(scopedLifecycleRuntimeFactory.releasedThreadIds, [
+        asThreadId("thread-concurrent-start"),
+      ]);
+      assert.equal(yield* adapter.hasSession(asThreadId("thread-concurrent-start")), true);
+    }),
+  );
+
   it.effect("closes the externally owned session scope on stopSession", () =>
     Effect.gen(function* () {
       scopedLifecycleRuntimeFactory.releasedThreadIds.length = 0;

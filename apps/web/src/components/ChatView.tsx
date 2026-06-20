@@ -208,7 +208,7 @@ import {
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   threadHasStarted,
-  waitForThreadMessageRemoval,
+  waitForThreadRevertedAfter,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -2902,7 +2902,17 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     setIsRevertingCheckpoint(false);
+    setIsResubmittingEditedMessage(false);
   }, [activeThread?.id]);
+
+  useEffect(() => {
+    if (!isResubmittingEditedMessage) {
+      return;
+    }
+    if (activeLatestTurn?.startedAt || activeThread?.error) {
+      setIsResubmittingEditedMessage(false);
+    }
+  }, [activeLatestTurn?.startedAt, activeThread?.error, isResubmittingEditedMessage]);
 
   useEffect(() => {
     if (!activeThread?.id || terminalState.terminalOpen) return;
@@ -3414,8 +3424,17 @@ export default function ChatView(props: ChatViewProps) {
       setThreadError(threadIdForSend, null);
       setIsResubmittingEditedMessage(true);
       setIsRevertingCheckpoint(true);
+      setOptimisticUserMessages((existing) => [
+        ...existing.filter((message) => message.id !== messageIdForSend),
+        {
+          id: messageIdForSend,
+          role: "user",
+          text: outgoingMessageText,
+          createdAt: messageCreatedAt,
+          streaming: false,
+        },
+      ]);
 
-      let optimisticMessageAdded = false;
       let turnStartSucceeded = false;
       try {
         await api.orchestration.dispatchCommand({
@@ -3425,9 +3444,9 @@ export default function ChatView(props: ChatViewProps) {
           numTurns: 1,
           createdAt: messageCreatedAt,
         });
-        const reverted = await waitForThreadMessageRemoval(
+        const reverted = await waitForThreadRevertedAfter(
           scopeThreadRef(activeThread.environmentId, threadIdForSend),
-          messageId,
+          { previousUpdatedAt: activeThread.updatedAt },
         );
         if (!reverted) {
           throw new Error("等待消息回退超时，请稍后重试。");
@@ -3439,18 +3458,6 @@ export default function ChatView(props: ChatViewProps) {
         showScrollDebouncer.current.cancel();
         setShowScrollToBottom(false);
         await legendListRef.current?.scrollToEnd?.({ animated: false });
-
-        setOptimisticUserMessages((existing) => [
-          ...existing,
-          {
-            id: messageIdForSend,
-            role: "user",
-            text: outgoingMessageText,
-            createdAt: messageCreatedAt,
-            streaming: false,
-          },
-        ]);
-        optimisticMessageAdded = true;
 
         await persistThreadSettingsForNextTurn({
           threadId: threadIdForSend,
@@ -3477,9 +3484,8 @@ export default function ChatView(props: ChatViewProps) {
           createdAt: messageCreatedAt,
         });
         turnStartSucceeded = true;
-        setIsResubmittingEditedMessage(false);
       } catch (err) {
-        if (optimisticMessageAdded && !turnStartSucceeded) {
+        if (!turnStartSucceeded) {
           setOptimisticUserMessages((existing) =>
             existing.filter((message) => message.id !== messageIdForSend),
           );

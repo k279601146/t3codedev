@@ -118,6 +118,46 @@ it.layer(GitContractLayer)("GitVcsDriver checkpoint capture ignores Office lock 
   );
 });
 
+it.layer(GitContractLayer)(
+  "GitVcsDriver restores empty checkpoints without pathspec failure",
+  (it) => {
+    it.effect("treats an empty checkpoint tree as a valid restore target", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        const cwd = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-git-vcs-empty-checkpoint-",
+        });
+        const driver = yield* VcsDriver.VcsDriver;
+        const checkpoints = driver.checkpoints;
+        if (!checkpoints) {
+          throw new Error("Git driver checkpoint operations are unavailable.");
+        }
+        const checkpointRef = CheckpointRef.make("refs/t3/checkpoints/git-empty/0");
+
+        yield* runGit(cwd, ["init"]);
+        yield* runGit(cwd, ["config", "user.email", "test@test.com"]);
+        yield* runGit(cwd, ["config", "user.name", "Test"]);
+        yield* checkpoints.captureCheckpoint({
+          cwd,
+          checkpointRef,
+        });
+
+        yield* fileSystem.writeFileString(pathService.join(cwd, "scratch.txt"), "temporary\n");
+
+        const restored = yield* checkpoints.restoreCheckpoint({
+          cwd,
+          checkpointRef,
+          fallbackToHead: false,
+        });
+
+        assert.equal(restored, true);
+        assert.isFalse(yield* fileSystem.exists(pathService.join(cwd, "scratch.txt")));
+      }),
+    );
+  },
+);
+
 it.effect("GitVcsDriver forwards execute env to the VCS process", () => {
   let observedEnv: NodeJS.ProcessEnv | undefined;
   let observedAppendTruncationMarker: boolean | undefined;

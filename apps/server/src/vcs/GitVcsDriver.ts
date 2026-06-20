@@ -590,6 +590,13 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       }),
     );
 
+  const checkpointCommitHasFiles = (cwd: string, commitOid: string) =>
+    execute({
+      operation: "GitVcsDriver.checkpoints.checkpointCommitHasFiles",
+      cwd,
+      args: ["ls-tree", "-r", "--name-only", commitOid],
+    }).pipe(Effect.map((result) => result.stdout.trim().length > 0));
+
   const resolveGitCommonDir = (cwd: string) =>
     Effect.gen(function* () {
       const result = yield* execute({
@@ -698,11 +705,20 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         return false;
       }
 
-      yield* execute({
-        operation,
-        cwd: input.cwd,
-        args: ["restore", "--source", commitOid, "--worktree", "--staged", "--", "."],
-      });
+      const commitHasFiles = yield* checkpointCommitHasFiles(input.cwd, commitOid);
+      if (commitHasFiles) {
+        yield* execute({
+          operation,
+          cwd: input.cwd,
+          args: ["restore", "--source", commitOid, "--worktree", "--staged", "--", "."],
+        });
+      } else {
+        yield* execute({
+          operation,
+          cwd: input.cwd,
+          args: ["rm", "-r", "--quiet", "--ignore-unmatch", "--", "."],
+        });
+      }
       yield* execute({
         operation,
         cwd: input.cwd,

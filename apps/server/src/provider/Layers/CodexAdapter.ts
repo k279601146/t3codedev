@@ -47,8 +47,10 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as Layer from "effect/Layer";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexErrors from "effect-codex-app-server/errors";
@@ -229,7 +231,9 @@ function toRuntimeThreadSettingsUpdateInput(
           ? { serviceTier: "fast" }
           : {}),
       ...(input.approvalPolicy !== undefined ? { approvalPolicy: input.approvalPolicy } : {}),
-      ...(input.permissionProfileId !== undefined ? { permissions: input.permissionProfileId } : {}),
+      ...(input.permissionProfileId !== undefined
+        ? { permissions: input.permissionProfileId }
+        : {}),
       ...(input.permissionProfileId === undefined && input.sandboxPolicy !== undefined
         ? { sandboxPolicy: input.sandboxPolicy }
         : {}),
@@ -1711,6 +1715,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const warmProcessRef = yield* Ref.make<Option.Option<CodexWarmProcess>>(Option.none());
   const windowsSandboxSetupErrorRef = yield* Ref.make<string | null>(null);
   const sessions = new Map<ThreadId, CodexAdapterSessionContext>();
+  const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
 
   const closeWarmProcess = (warmProcess: CodexWarmProcess): Effect.Effect<void> =>
     warmProcess.child
@@ -1948,9 +1953,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
       const result = yield* withTemporaryClient((client) =>
         Effect.gen(function* () {
-          const setupCompleted = yield* Deferred.make<
-            EffectCodexSchema.V2WindowsSandboxSetupCompletedNotification
-          >();
+          const setupCompleted =
+            yield* Deferred.make<EffectCodexSchema.V2WindowsSandboxSetupCompletedNotification>();
           yield* client.handleServerNotification("windowsSandbox/setupCompleted", (payload) =>
             Deferred.succeed(setupCompleted, payload).pipe(Effect.asVoid),
           );
@@ -2009,145 +2013,169 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
   yield* warmStandby(defaultCwd).pipe(Effect.forkScoped, Effect.asVoid);
 
+  const getThreadSemaphore = (threadId: string) =>
+    SynchronizedRef.modifyEffect(threadLocksRef, (current) => {
+      const existing: Option.Option<Semaphore.Semaphore> = Option.fromNullishOr(
+        current.get(threadId),
+      );
+      return Option.match(existing, {
+        onNone: () =>
+          Semaphore.make(1).pipe(
+            Effect.map((semaphore) => {
+              const next = new Map(current);
+              next.set(threadId, semaphore);
+              return [semaphore, next] as const;
+            }),
+          ),
+        onSome: (semaphore) => Effect.succeed([semaphore, current] as const),
+      });
+    });
+
+  const withThreadLock = <A, E, R>(threadId: string, effect: Effect.Effect<A, E, R>) =>
+    Effect.flatMap(getThreadSemaphore(threadId), (semaphore) => semaphore.withPermit(effect));
+
   const startSession: CodexAdapterShape["startSession"] = (input) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        if (input.provider !== undefined && input.provider !== PROVIDER) {
-          return yield* new ProviderAdapterValidationError({
-            provider: PROVIDER,
-            operation: "startSession",
-            issue: `Expected provider '${PROVIDER}' but received '${input.provider}'.`,
-          });
-        }
+    withThreadLock(
+      input.threadId,
+      Effect.scoped(
+        Effect.gen(function* () {
+          if (input.provider !== undefined && input.provider !== PROVIDER) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "startSession",
+              issue: `Expected provider '${PROVIDER}' but received '${input.provider}'.`,
+            });
+          }
 
-        const existing = sessions.get(input.threadId);
-        if (existing && !existing.stopped) {
-          yield* Effect.suspend(() => stopSessionInternal(existing));
-        }
+          const existing = sessions.get(input.threadId);
+          if (existing && !existing.stopped) {
+            yield* Effect.suspend(() => stopSessionInternal(existing));
+          }
 
-        const runtimeEnvironment = yield* effectiveEnvironment;
-        const runtimeInput: CodexSessionRuntimeOptions = {
-          threadId: input.threadId,
-          providerInstanceId: boundInstanceId,
-          cwd: input.cwd ?? defaultCwd,
-          binaryPath: codexConfig.binaryPath,
-          ...(runtimeEnvironment !== undefined ? { environment: runtimeEnvironment } : {}),
-          ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),
-          ...(isCodexResumeCursorSchema(input.resumeCursor)
-            ? { resumeCursor: input.resumeCursor }
-            : {}),
-          runtimeMode: input.runtimeMode,
-          ...(input.modelSelection?.instanceId === boundInstanceId
-            ? { model: input.modelSelection.model }
-            : {}),
-          ...(input.modelSelection?.instanceId === boundInstanceId &&
-          getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
-            ? { serviceTier: "fast" }
-            : {}),
-          jsonRpcLogPath,
-        };
-        const sessionScope = yield* Scope.make("sequential");
-        let sessionScopeTransferred = false;
-        yield* Effect.addFinalizer(() =>
-          sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
-        );
-        const createRuntime =
-          options?.makeRuntime ??
-          ((runtimeOptions: CodexSessionRuntimeOptions) =>
-            makeCodexSessionRuntime(runtimeOptions).pipe(
-              Effect.provide(
-                Layer.mergeAll(
-                  BrowserToolServiceLayer.layer,
-                  BrowserExternalToolServiceLayer.layer,
-                  ComputerToolServiceLayer.layer,
+          const runtimeEnvironment = yield* effectiveEnvironment;
+          const runtimeInput: CodexSessionRuntimeOptions = {
+            threadId: input.threadId,
+            providerInstanceId: boundInstanceId,
+            cwd: input.cwd ?? defaultCwd,
+            binaryPath: codexConfig.binaryPath,
+            ...(runtimeEnvironment !== undefined ? { environment: runtimeEnvironment } : {}),
+            ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),
+            ...(isCodexResumeCursorSchema(input.resumeCursor)
+              ? { resumeCursor: input.resumeCursor }
+              : {}),
+            runtimeMode: input.runtimeMode,
+            ...(input.modelSelection?.instanceId === boundInstanceId
+              ? { model: input.modelSelection.model }
+              : {}),
+            ...(input.modelSelection?.instanceId === boundInstanceId &&
+            getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
+              ? { serviceTier: "fast" }
+              : {}),
+            jsonRpcLogPath,
+          };
+          const sessionScope = yield* Scope.make("sequential");
+          let sessionScopeTransferred = false;
+          yield* Effect.addFinalizer(() =>
+            sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
+          );
+          const createRuntime =
+            options?.makeRuntime ??
+            ((runtimeOptions: CodexSessionRuntimeOptions) =>
+              makeCodexSessionRuntime(runtimeOptions).pipe(
+                Effect.provide(
+                  Layer.mergeAll(
+                    BrowserToolServiceLayer.layer,
+                    BrowserExternalToolServiceLayer.layer,
+                    ComputerToolServiceLayer.layer,
+                  ),
                 ),
-              ),
-            ));
-        const prewarmedChild = yield* acquireWarmProcess(runtimeInput.cwd);
-        const runtime = yield* createRuntime({
-          ...runtimeInput,
-          ...(prewarmedChild ? { prewarmedChild } : {}),
-        }).pipe(
-          Effect.provideService(Scope.Scope, sessionScope),
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
-          Effect.mapError(
-            (cause) =>
-              new ProviderAdapterProcessError({
-                provider: PROVIDER,
-                threadId: input.threadId,
-                detail: cause.message,
-                cause,
-              }),
-          ),
-        );
-
-        const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
-          Effect.gen(function* () {
-            yield* writeNativeEvent(event);
-            if (event.method === "windowsSandbox/setupCompleted") {
-              const payload = readPayload(
-                EffectCodexSchema.V2WindowsSandboxSetupCompletedNotification,
-                event.payload,
-              );
-              if (payload?.success === false) {
-                yield* Ref.set(
-                  windowsSandboxSetupErrorRef,
-                  payload.error ?? "Windows sandbox setup failed.",
-                );
-              } else if (payload?.success === true) {
-                yield* Ref.set(windowsSandboxSetupErrorRef, null);
-                yield* resetWarmProcessAfterWindowsSandboxConfigChange(
-                  `windows sandbox setup completed for ${payload.mode}`,
-                );
-              }
-            }
-            if (shouldCleanupWindowsSandboxArtifacts(event)) {
-              yield* cleanupWindowsSandboxWorkspaceArtifacts(runtimeInput.cwd);
-            }
-            const runtimeEvents = mapToRuntimeEvents(event, event.threadId);
-            if (runtimeEvents.length === 0) {
-              yield* Effect.logDebug("ignoring unhandled Codex provider event", {
-                method: event.method,
-                threadId: event.threadId,
-                turnId: event.turnId,
-                itemId: event.itemId,
-              });
-              return;
-            }
-            yield* Queue.offerAll(runtimeEventQueue, runtimeEvents);
-          }),
-        ).pipe(Effect.forkChild);
-
-        const started = yield* runtime.start().pipe(
-          Effect.mapError(
-            (cause) =>
-              new ProviderAdapterProcessError({
-                provider: PROVIDER,
-                threadId: input.threadId,
-                detail: cause.message,
-                cause,
-              }),
-          ),
-          Effect.onError(() =>
-            runtime.close.pipe(
-              Effect.andThen(Effect.ignore(Scope.close(sessionScope, Exit.void))),
-              Effect.andThen(Fiber.interrupt(eventFiber)),
-              Effect.ignore,
+              ));
+          const prewarmedChild = yield* acquireWarmProcess(runtimeInput.cwd);
+          const runtime = yield* createRuntime({
+            ...runtimeInput,
+            ...(prewarmedChild ? { prewarmedChild } : {}),
+          }).pipe(
+            Effect.provideService(Scope.Scope, sessionScope),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapterProcessError({
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  detail: cause.message,
+                  cause,
+                }),
             ),
-          ),
-        );
+          );
 
-        sessions.set(input.threadId, {
-          threadId: input.threadId,
-          scope: sessionScope,
-          runtime,
-          eventFiber,
-          stopped: false,
-        });
-        sessionScopeTransferred = true;
+          const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
+            Effect.gen(function* () {
+              yield* writeNativeEvent(event);
+              if (event.method === "windowsSandbox/setupCompleted") {
+                const payload = readPayload(
+                  EffectCodexSchema.V2WindowsSandboxSetupCompletedNotification,
+                  event.payload,
+                );
+                if (payload?.success === false) {
+                  yield* Ref.set(
+                    windowsSandboxSetupErrorRef,
+                    payload.error ?? "Windows sandbox setup failed.",
+                  );
+                } else if (payload?.success === true) {
+                  yield* Ref.set(windowsSandboxSetupErrorRef, null);
+                  yield* resetWarmProcessAfterWindowsSandboxConfigChange(
+                    `windows sandbox setup completed for ${payload.mode}`,
+                  );
+                }
+              }
+              if (shouldCleanupWindowsSandboxArtifacts(event)) {
+                yield* cleanupWindowsSandboxWorkspaceArtifacts(runtimeInput.cwd);
+              }
+              const runtimeEvents = mapToRuntimeEvents(event, event.threadId);
+              if (runtimeEvents.length === 0) {
+                yield* Effect.logDebug("ignoring unhandled Codex provider event", {
+                  method: event.method,
+                  threadId: event.threadId,
+                  turnId: event.turnId,
+                  itemId: event.itemId,
+                });
+                return;
+              }
+              yield* Queue.offerAll(runtimeEventQueue, runtimeEvents);
+            }),
+          ).pipe(Effect.forkChild);
 
-        return started;
-      }),
+          const started = yield* runtime.start().pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapterProcessError({
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  detail: cause.message,
+                  cause,
+                }),
+            ),
+            Effect.onError(() =>
+              runtime.close.pipe(
+                Effect.andThen(Effect.ignore(Scope.close(sessionScope, Exit.void))),
+                Effect.andThen(Fiber.interrupt(eventFiber)),
+                Effect.ignore,
+              ),
+            ),
+          );
+
+          sessions.set(input.threadId, {
+            threadId: input.threadId,
+            scope: sessionScope,
+            runtime,
+            eventFiber,
+            stopped: false,
+          });
+          sessionScopeTransferred = true;
+
+          return started;
+        }),
+      ),
     );
 
   const isImageMimeType = (mimeType: string): boolean => {
@@ -2501,13 +2529,16 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   });
 
   const stopSession: CodexAdapterShape["stopSession"] = (threadId) =>
-    Effect.gen(function* () {
-      const session = sessions.get(threadId);
-      if (!session) {
-        return;
-      }
-      yield* stopSessionInternal(session);
-    });
+    withThreadLock(
+      threadId,
+      Effect.gen(function* () {
+        const session = sessions.get(threadId);
+        if (!session) {
+          return;
+        }
+        yield* stopSessionInternal(session);
+      }),
+    );
 
   const listSessions: CodexAdapterShape["listSessions"] = () =>
     Effect.forEach(
