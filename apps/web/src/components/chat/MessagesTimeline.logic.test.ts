@@ -572,7 +572,8 @@ describe("deriveMessagesTimelineRows", () => {
             id: "runtime-warning-1",
             createdAt: "2026-01-01T00:00:01Z",
             label: "Runtime warning",
-            detail: "2026-06-19T08:31:29.783179Z ERROR codex_core::tools::router: error=Exit code: 1",
+            detail:
+              "2026-06-19T08:31:29.783179Z ERROR codex_core::tools::router: error=Exit code: 1",
             tone: "info",
             status: "completed",
           },
@@ -636,7 +637,8 @@ describe("deriveMessagesTimelineRows", () => {
             id: "command-1",
             createdAt: "2026-01-01T00:00:00Z",
             label: "Ran command",
-            command: 'cat "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx"',
+            command:
+              'cat "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx"',
             tone: "tool",
             itemType: "command_execution",
             requestKind: "command",
@@ -678,7 +680,8 @@ describe("deriveMessagesTimelineRows", () => {
             id: "runtime-warning-3",
             createdAt: "2026-01-01T00:00:03Z",
             label: "Runtime warning",
-            detail: '+ cat "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx"',
+            detail:
+              '+ cat "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx"',
             tone: "info",
             status: "completed",
           },
@@ -691,7 +694,8 @@ describe("deriveMessagesTimelineRows", () => {
             id: "runtime-warning-4",
             createdAt: "2026-01-01T00:00:04Z",
             label: "Runtime warning",
-            detail: "CategoryInfo          : ObjectNotFound: (System.String[]:String[]) [Get-Content], Exception",
+            detail:
+              "CategoryInfo          : ObjectNotFound: (System.String[]:String[]) [Get-Content], Exception",
             tone: "info",
             status: "completed",
           },
@@ -704,7 +708,8 @@ describe("deriveMessagesTimelineRows", () => {
             id: "runtime-warning-5",
             createdAt: "2026-01-01T00:00:05Z",
             label: "Runtime warning",
-            detail: "FullyQualifiedErrorId : ItemNotFound,Microsoft.PowerShell.Commands.GetContentCommand",
+            detail:
+              "FullyQualifiedErrorId : ItemNotFound,Microsoft.PowerShell.Commands.GetContentCommand",
             tone: "info",
             status: "completed",
           },
@@ -890,8 +895,7 @@ describe("deriveMessagesTimelineRows", () => {
             id: "runtime-warning-1",
             createdAt: "2026-01-01T00:00:00Z",
             label: "Runtime warning",
-            detail:
-              "2026-06-19T12:07:47.681Z ERROR codex_core::tools::router: error=Exit code: 1",
+            detail: "2026-06-19T12:07:47.681Z ERROR codex_core::tools::router: error=Exit code: 1",
             tone: "info",
             status: "completed",
           },
@@ -957,7 +961,8 @@ describe("deriveMessagesTimelineRows", () => {
             id: "runtime-warning-6",
             createdAt: "2026-01-01T00:00:05Z",
             label: "Runtime warning",
-            detail: '> apps\\api\\connectors.py:279:@connectors_router.patch("/triggers/{trigger_id}")',
+            detail:
+              '> apps\\api\\connectors.py:279:@connectors_router.patch("/triggers/{trigger_id}")',
             tone: "info",
             status: "completed",
           },
@@ -1491,6 +1496,60 @@ describe("deriveMessagesTimelineRows", () => {
     expect(userRow?.revertTurnCount).toBe(1);
     expect(userRow?.canEditUserMessage).toBe(true);
     expect(assistantRow?.assistantTurnDiffSummary).toBe(assistantTurnDiffSummary);
+  });
+
+  it("把后续 assistant 的 diff summary 关联到前面的文件变更 work 行", () => {
+    const assistantTurnDiffSummary = {
+      turnId: "turn-1" as never,
+      completedAt: "2026-01-01T00:00:30Z",
+      assistantMessageId: "assistant-1" as never,
+      checkpointTurnCount: 1,
+      checkpointRef: "refs/t3/checkpoints/thread-1/turn/1" as never,
+      files: [{ path: "src/index.ts", additions: 3, deletions: 1 }],
+    };
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:10Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:10Z",
+            label: "Updated files",
+            tone: "tool",
+            changedFiles: ["C:/repo/src/index.ts"],
+          },
+        },
+        {
+          id: "assistant-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:20Z",
+          message: {
+            id: "assistant-1" as never,
+            role: "assistant",
+            text: "Done",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:20Z",
+            streaming: false,
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map([
+        ["assistant-1" as never, assistantTurnDiffSummary],
+      ]),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const workRow = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "work" }> => row.kind === "work",
+    );
+
+    expect(workRow?.turnDiffSummary).toBe(assistantTurnDiffSummary);
   });
 
   it("只允许最后一条用户消息显示编辑入口", () => {

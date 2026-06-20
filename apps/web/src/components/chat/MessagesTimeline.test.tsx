@@ -147,7 +147,9 @@ function buildAssistantTimelineEntry(input: {
 describe("MessagesTimeline", () => {
   it("does not render the legacy empty conversation prompt for an empty timeline", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
-    const markup = renderToStaticMarkup(<MessagesTimeline {...buildProps()} timelineEntries={[]} />);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[]} />,
+    );
 
     expect(markup).toContain('data-timeline-empty-placeholder="true"');
     expect(markup).not.toContain(LEGACY_EMPTY_TIMELINE_PROMPT);
@@ -435,7 +437,10 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("已编辑");
-    expect(markup).toContain("t3code/apps/web/src/session-logic.ts");
+    expect(markup).toContain("1 个文件");
+    expect(markup).not.toContain("session-logic.ts");
+    expect(markup).not.toContain("+0");
+    expect(markup).not.toContain(">-0<");
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
   });
 
@@ -464,12 +469,14 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("apps/web/src/App.tsx");
-    expect(markup).toContain("+2");
-    expect(markup).toContain("-1");
+    expect(markup).toContain("已编辑");
+    expect(markup).toContain("1 个文件");
+    expect(markup).not.toContain("+2");
+    expect(markup).not.toContain(">-1<");
+    expect(markup).not.toContain("console.log(&#x27;new&#x27;)");
   });
 
-  it("renders changed file paths as open-file buttons when the side panel handler is available", async () => {
+  it("在文件变更行展开前隐藏已变更文件路径", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -496,8 +503,10 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("<button");
-    expect(markup).toContain("apps/web/src/App.tsx");
-    expect(markup).toContain("hover:text-[#0F66D0]");
+    expect(markup).toContain("已编辑");
+    expect(markup).toContain("1 个文件");
+    expect(markup).not.toContain("apps/web/src/App.tsx");
+    expect(markup).not.toContain("hover:text-[#0F66D0]");
   });
 
   it("labels synthetic new-file diffs as creating file work", async () => {
@@ -527,9 +536,10 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("正在创建");
-    expect(markup).toContain("hello.py");
-    expect(markup).toContain("+1");
-    expect(markup).toContain("-0");
+    expect(markup).toContain("1 个文件");
+    expect(markup).not.toContain("hello.py");
+    expect(markup).not.toContain("+1");
+    expect(markup).not.toContain(">-0<");
   });
 
   it("shows running command work with shimmer styling", async () => {
@@ -753,9 +763,10 @@ describe("MessagesTimeline", () => {
       expect(markup).toContain("textShimmerMoving");
       expect(markup).toContain('aria-busy="true"');
     } else {
-      expect(markup).toContain("App.tsx");
-      expect(markup).toContain("+0");
-      expect(markup).toContain("-0");
+      expect(markup).toContain("1 个文件");
+      expect(markup).not.toContain("App.tsx");
+      expect(markup).not.toContain("+0");
+      expect(markup).not.toContain(">-0<");
     }
   });
 

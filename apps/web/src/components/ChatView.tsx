@@ -336,8 +336,8 @@ async function resolveMarkdownPreviewTargetFromKnownProjects(input: {
 
   await Promise.all(
     input.projects.map(async (project) => {
-      const result = await input.api!.projects
-        .searchEntries({
+      const result = await input
+        .api!.projects.searchEntries({
           cwd: project.cwd,
           query: basename,
           limit: 50,
@@ -927,12 +927,12 @@ export default function ChatView(props: ChatViewProps) {
         const summary = environmentState.sidebarThreadSummaryById[routeThreadRef.threadId];
         return Boolean(
           summary &&
-            (summary.latestUserMessageAt ||
-              summary.latestTurn !== null ||
-              summary.session !== null ||
-              summary.hasPendingApprovals ||
-              summary.hasPendingUserInput ||
-              summary.hasActionableProposedPlan),
+          (summary.latestUserMessageAt ||
+            summary.latestTurn !== null ||
+            summary.session !== null ||
+            summary.hasPendingApprovals ||
+            summary.hasPendingUserInput ||
+            summary.hasActionableProposedPlan),
         );
       },
       [routeKind, routeThreadRef],
@@ -5203,8 +5203,11 @@ export default function ChatView(props: ChatViewProps) {
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
                   turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
+                  turnDiffSummaries={turnDiffSummaries}
                   activeThreadEnvironmentId={activeThread.environmentId}
                   routeThreadKey={routeThreadKey}
+                  threadId={activeThread.id}
+                  inferredCheckpointTurnCountByTurnId={inferredCheckpointTurnCountByTurnId}
                   onOpenTurnDiff={onOpenTurnDiff}
                   onOpenMarkdownFile={onOpenMarkdownFile}
                   onOpenUrl={onOpenMessageUrl}

@@ -1,6 +1,6 @@
 import "../../index.css";
 
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { createRef } from "react";
 import type { LegendListRef } from "@legendapp/list/react";
 import { page } from "vitest/browser";
@@ -9,6 +9,8 @@ import { render } from "vitest-browser-react";
 
 const scrollToEndSpy = vi.fn();
 const getStateSpy = vi.fn(() => ({ isAtEnd: true }));
+const getTurnDiffSpy = vi.fn();
+const getFullThreadDiffSpy = vi.fn();
 
 vi.mock("@legendapp/list/react", async () => {
   const React = await import("react");
@@ -44,6 +46,15 @@ vi.mock("@legendapp/list/react", async () => {
   return { LegendList };
 });
 
+vi.mock("../../environmentApi", () => ({
+  readEnvironmentApi: () => ({
+    orchestration: {
+      getTurnDiff: getTurnDiffSpy,
+      getFullThreadDiff: getFullThreadDiffSpy,
+    },
+  }),
+}));
+
 import { MessagesTimeline } from "./MessagesTimeline";
 
 const MESSAGE_CREATED_AT = "2026-04-13T12:00:00.000Z";
@@ -60,6 +71,7 @@ function buildProps() {
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: new Map(),
     routeThreadKey: "environment-local:thread-1",
+    threadId: "thread-1" as never,
     onOpenTurnDiff: vi.fn(),
     revertTurnCountByUserMessageId: new Map(),
     onRevertUserMessage: vi.fn(),
@@ -99,6 +111,8 @@ describe("MessagesTimeline", () => {
   afterEach(() => {
     scrollToEndSpy.mockReset();
     getStateSpy.mockClear();
+    getTurnDiffSpy.mockReset();
+    getFullThreadDiffSpy.mockReset();
     vi.restoreAllMocks();
     document.body.innerHTML = "";
   });
@@ -125,9 +139,7 @@ describe("MessagesTimeline", () => {
     );
 
     try {
-      await expect
-        .element(page.getByText(LEGACY_EMPTY_TIMELINE_PROMPT))
-        .not.toBeInTheDocument();
+      await expect.element(page.getByText(LEGACY_EMPTY_TIMELINE_PROMPT)).not.toBeInTheDocument();
       await expect.element(page.getByText("Thinking - Inspecting repository state")).toBeVisible();
     } finally {
       await screen.unmount();
@@ -147,12 +159,8 @@ describe("MessagesTimeline", () => {
     const screen = await render(<MessagesTimeline {...props} timelineEntries={[]} />);
 
     try {
-      await expect
-        .element(page.getByTestId("timeline-empty-placeholder"))
-        .toBeInTheDocument();
-      await expect
-        .element(page.getByText(LEGACY_EMPTY_TIMELINE_PROMPT))
-        .not.toBeInTheDocument();
+      await expect.element(page.getByTestId("timeline-empty-placeholder")).toBeInTheDocument();
+      await expect.element(page.getByText(LEGACY_EMPTY_TIMELINE_PROMPT)).not.toBeInTheDocument();
 
       await screen.rerender(
         <MessagesTimeline
@@ -261,6 +269,100 @@ describe("MessagesTimeline", () => {
 
       const messageBody = document.querySelector("[data-user-message-body='true']");
       expect(messageBody?.getAttribute("data-user-message-collapsed")).toBe("true");
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("将已编辑文件摘要展开为文件行和内联 diff", async () => {
+    getTurnDiffSpy.mockResolvedValue({
+      diff: "diff --git a/apps/web/src/localApi.test.ts b/apps/web/src/localApi.test.ts\n--- a/apps/web/src/localApi.test.ts\n+++ b/apps/web/src/localApi.test.ts\n@@ -1,2 +1,2 @@\n-old value\n+new value",
+    });
+    const screen = await render(
+      <MessagesTimeline
+        {...buildProps()}
+        onOpenMarkdownFile={vi.fn()}
+        workspaceRoot="C:/repo"
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              MessageId.make("assistant-1"),
+              {
+                turnId: TurnId.make("turn-1"),
+                completedAt: "2026-04-13T12:00:00.000Z",
+                files: [
+                  {
+                    path: "apps/web/src/api/admin/settings.ts",
+                    kind: "modified",
+                    additions: 0,
+                    deletions: 0,
+                  },
+                  {
+                    path: "apps/web/src/localApi.test.ts",
+                    kind: "modified",
+                    additions: 4,
+                    deletions: 0,
+                  },
+                ],
+                checkpointTurnCount: 2,
+              },
+            ],
+          ])
+        }
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-04-13T12:00:00.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-04-13T12:00:00.000Z",
+              label: "Updated files",
+              tone: "tool",
+              changedFiles: [
+                "C:/repo/apps/web/src/api/admin/settings.ts",
+                "C:/repo/apps/web/src/localApi.test.ts",
+              ],
+            },
+          },
+          {
+            id: "assistant-entry-1",
+            kind: "message",
+            createdAt: "2026-04-13T12:00:01.000Z",
+            message: {
+              id: MessageId.make("assistant-1"),
+              role: "assistant",
+              text: "",
+              turnId: TurnId.make("turn-1"),
+              createdAt: "2026-04-13T12:00:01.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+      />,
+    );
+
+    try {
+      const summaryToggle = page.getByRole("button", { name: /已编辑 1 个文件/ });
+      await expect.element(summaryToggle).toBeVisible();
+      await expect.element(page.getByText("localApi.test.ts")).not.toBeInTheDocument();
+
+      await summaryToggle.click();
+      await expect.element(page.getByText("settings.ts")).not.toBeInTheDocument();
+      await expect.element(page.getByText("localApi.test.ts")).toBeVisible();
+      await expect.element(page.getByText("+4")).toBeVisible();
+      await expect.element(page.getByText("-0")).toBeVisible();
+      await expect.element(page.getByText("new value")).not.toBeInTheDocument();
+
+      await page.getByRole("button", { name: "展开文件 diff" }).click();
+      expect(getTurnDiffSpy).toHaveBeenCalledWith({
+        threadId: "thread-1",
+        fromTurnCount: 1,
+        toTurnCount: 2,
+        ignoreWhitespace: false,
+      });
+      await expect.element(page.getByText("new value")).toBeVisible();
+      await expect.element(page.getByText("old value")).toBeVisible();
     } finally {
       await screen.unmount();
     }

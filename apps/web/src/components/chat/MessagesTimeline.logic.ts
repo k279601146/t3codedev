@@ -23,6 +23,7 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       groupedEntries: WorkLogEntry[];
+      turnDiffSummary?: TurnDiffSummary | undefined;
     }
   | {
       kind: "message";
@@ -84,9 +85,7 @@ export function isCommandWorkEntry(
   );
 }
 
-function isRuntimeWarningLikeEntry(
-  entry: Pick<WorkLogEntry, "label">,
-): boolean {
+function isRuntimeWarningLikeEntry(entry: Pick<WorkLogEntry, "label">): boolean {
   const normalizedLabel = entry.label.trim().toLowerCase();
   return normalizedLabel === "runtime warning" || normalizedLabel === "runtime error";
 }
@@ -128,9 +127,7 @@ const COMMAND_RUNTIME_WARNING_BODY_PATTERNS = [
   /unrecognized file type:/i,
 ];
 
-function isCommandSummaryRuntimeWarning(
-  entry: Pick<WorkLogEntry, "label" | "detail">,
-): boolean {
+function isCommandSummaryRuntimeWarning(entry: Pick<WorkLogEntry, "label" | "detail">): boolean {
   if (!isRuntimeWarningLikeEntry(entry)) {
     return false;
   }
@@ -141,9 +138,7 @@ function isCommandSummaryRuntimeWarning(
   return COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS.some((pattern) => pattern.test(detail));
 }
 
-function isCommandRelatedRuntimeWarning(
-  entry: Pick<WorkLogEntry, "label" | "detail">,
-): boolean {
+function isCommandRelatedRuntimeWarning(entry: Pick<WorkLogEntry, "label" | "detail">): boolean {
   if (!isRuntimeWarningLikeEntry(entry)) {
     return false;
   }
@@ -163,10 +158,52 @@ function hasCommandSummaryEnvelope(
   return entries.some((entry) => isCommandSummaryRuntimeWarning(entry));
 }
 
-function shouldKeepSeparateFromAdjacentCommand(
-  current: WorkLogEntry,
-  next: WorkLogEntry,
-): boolean {
+function workEntrySourceTurnId(entry: WorkLogEntry): TurnId | null {
+  const sourceTurnId = (entry as { sourceTurnId?: TurnId | null }).sourceTurnId;
+  return sourceTurnId ?? null;
+}
+
+function resolveWorkRowTurnDiffSummary(
+  groupedEntries: ReadonlyArray<WorkLogEntry>,
+  nextTimelineEntry: TimelineEntry | undefined,
+  workRowCreatedAt: string,
+  turnDiffSummaryByTurnId: ReadonlyMap<TurnId, TurnDiffSummary>,
+  turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>,
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>,
+): TurnDiffSummary | undefined {
+  const sourceTurnId = groupedEntries.map(workEntrySourceTurnId).find(Boolean) ?? null;
+  if (sourceTurnId !== null) {
+    const sourceTurnSummary = turnDiffSummaryByTurnId.get(sourceTurnId);
+    if (sourceTurnSummary) {
+      return sourceTurnSummary;
+    }
+  }
+
+  if (nextTimelineEntry?.kind !== "message" || nextTimelineEntry.message.role !== "assistant") {
+    return turnDiffSummaries
+      .filter((summary) => summary.completedAt >= workRowCreatedAt)
+      .toSorted((left, right) => left.completedAt.localeCompare(right.completedAt))[0];
+  }
+
+  const assistantSummary =
+    turnDiffSummaryByAssistantMessageId.get(nextTimelineEntry.message.id) ??
+    (nextTimelineEntry.message.turnId
+      ? turnDiffSummaryByTurnId.get(nextTimelineEntry.message.turnId)
+      : undefined);
+  if (assistantSummary) {
+    return assistantSummary;
+  }
+
+  const nextAssistantCreatedAt = nextTimelineEntry.message.createdAt;
+  return turnDiffSummaries
+    .filter(
+      (summary) =>
+        summary.completedAt >= workRowCreatedAt && summary.completedAt >= nextAssistantCreatedAt,
+    )
+    .toSorted((left, right) => left.completedAt.localeCompare(right.completedAt))[0];
+}
+
+function shouldKeepSeparateFromAdjacentCommand(current: WorkLogEntry, next: WorkLogEntry): boolean {
   return (
     (isCommandWorkEntry(current) && isRuntimeWarningLikeEntry(next)) ||
     (isRuntimeWarningLikeEntry(current) && isCommandWorkEntry(next))
@@ -194,6 +231,7 @@ function toSyntheticCommandSummaryEntry(
   source: Pick<WorkLogEntry, "id" | "createdAt" | "status">,
   runtimeMessages: ReadonlyArray<string>,
 ): WorkLogEntry {
+  const output = mergeCommandOutput(undefined, runtimeMessages);
   return {
     id: source.id,
     createdAt: source.createdAt,
@@ -202,7 +240,7 @@ function toSyntheticCommandSummaryEntry(
     itemType: "command_execution",
     requestKind: "command",
     status: source.status ?? "completed",
-    output: mergeCommandOutput(undefined, runtimeMessages),
+    ...(output ? { output } : {}),
   };
 }
 
@@ -454,10 +492,7 @@ const FILE_CHANGE_KIND_TO_ACTION: Record<string, FileChangeAction | undefined> =
   updated: "edit",
 };
 
-const FILE_CHANGE_VERB_LABELS: Record<
-  FileChangeAction,
-  Record<FileChangeTense, string>
-> = {
+const FILE_CHANGE_VERB_LABELS: Record<FileChangeAction, Record<FileChangeTense, string>> = {
   create: {
     running: "正在创建",
     completed: "已创建",
@@ -489,9 +524,7 @@ function normalizeFileChangeKind(kind: string | undefined): string {
   return kind?.trim().toLowerCase().replace(/_/g, "-") ?? "";
 }
 
-export function resolveFileChangeActionFromKind(
-  kind: string | undefined,
-): FileChangeAction | null {
+export function resolveFileChangeActionFromKind(kind: string | undefined): FileChangeAction | null {
   const normalized = normalizeFileChangeKind(kind);
   if (!normalized) {
     return null;
@@ -691,6 +724,10 @@ export function deriveMessagesTimelineRows(input: {
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
+  const turnDiffSummaryByTurnId = new Map<TurnId, TurnDiffSummary>();
+  for (const summary of input.turnDiffSummaryByAssistantMessageId.values()) {
+    turnDiffSummaryByTurnId.set(summary.turnId, summary);
+  }
   const durationStartByMessageId = computeMessageDurationStart(
     input.timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
   );
@@ -771,9 +808,7 @@ export function deriveMessagesTimelineRows(input: {
             kind: "work",
             id: timelineEntry.id,
             createdAt: timelineEntry.createdAt,
-            groupedEntries: [
-              toSyntheticCommandSummaryEntry(timelineEntry.entry, runtimeMessages),
-            ],
+            groupedEntries: [toSyntheticCommandSummaryEntry(timelineEntry.entry, runtimeMessages)],
           });
           index = warningCursor - 1;
           continue;
@@ -795,9 +830,10 @@ export function deriveMessagesTimelineRows(input: {
           absorptionCursor += 1;
         }
         if (absorbedWarnings.length > 0) {
+          const output = mergeCommandOutput(timelineEntry.entry.output, absorbedWarnings);
           groupedEntries[0] = {
             ...timelineEntry.entry,
-            output: mergeCommandOutput(timelineEntry.entry.output, absorbedWarnings),
+            ...(output ? { output } : {}),
           };
           cursor = absorptionCursor;
         }
@@ -806,17 +842,31 @@ export function deriveMessagesTimelineRows(input: {
         const nextEntry = input.timelineEntries[cursor];
         if (!nextEntry || nextEntry.kind !== "work") break;
         if (isImageGenerationWorkEntry(nextEntry.entry)) break;
-        if (shouldKeepSeparateFromAdjacentCommand(groupedEntries[groupedEntries.length - 1]!, nextEntry.entry)) {
+        if (
+          shouldKeepSeparateFromAdjacentCommand(
+            groupedEntries[groupedEntries.length - 1]!,
+            nextEntry.entry,
+          )
+        ) {
           break;
         }
         groupedEntries.push(nextEntry.entry);
         cursor += 1;
       }
+      const turnDiffSummary = resolveWorkRowTurnDiffSummary(
+        groupedEntries,
+        input.timelineEntries[cursor],
+        timelineEntry.createdAt,
+        turnDiffSummaryByTurnId,
+        input.turnDiffSummaryByAssistantMessageId,
+        [...input.turnDiffSummaryByAssistantMessageId.values()],
+      );
       nextRows.push({
         kind: "work",
         id: timelineEntry.id,
         createdAt: timelineEntry.createdAt,
         groupedEntries,
+        ...(turnDiffSummary ? { turnDiffSummary } : {}),
       });
       index = cursor - 1;
       continue;
@@ -963,8 +1013,13 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return true;
     }
 
-    case "work":
-      return Equal.equals(a.groupedEntries, (b as typeof a).groupedEntries);
+    case "work": {
+      const bm = b as typeof a;
+      return (
+        Equal.equals(a.groupedEntries, bm.groupedEntries) &&
+        a.turnDiffSummary === bm.turnDiffSummary
+      );
+    }
 
     case "message": {
       const bm = b as typeof a;

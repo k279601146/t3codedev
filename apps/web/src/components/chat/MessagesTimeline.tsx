@@ -27,6 +27,7 @@ import {
   BotIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   CopyIcon,
   FilePlus2Icon,
@@ -108,6 +109,9 @@ import {
 interface TimelineRowSharedState {
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
+  threadId: ThreadId;
+  inferredCheckpointTurnCountByTurnId: Readonly<Record<TurnId, number | undefined>>;
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   markdownCwd: string | undefined;
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
@@ -167,7 +171,10 @@ interface MessagesTimelineProps {
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
+  turnDiffSummaries?: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
+  threadId: ThreadId;
+  inferredCheckpointTurnCountByTurnId?: Readonly<Record<TurnId, number | undefined>>;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onOpenMarkdownFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   onOpenUrl?: ((url: string, mode: "preview" | "external") => void) | undefined;
@@ -201,7 +208,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   completionDividerBeforeEntryId,
   completionSummary,
   turnDiffSummaryByAssistantMessageId,
+  turnDiffSummaries = [],
   routeThreadKey,
+  threadId,
+  inferredCheckpointTurnCountByTurnId = {},
   onOpenTurnDiff,
   onOpenMarkdownFile,
   onOpenUrl,
@@ -379,6 +389,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => ({
       timestampFormat,
       routeThreadKey,
+      threadId,
+      inferredCheckpointTurnCountByTurnId,
+      turnDiffSummaries,
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
@@ -402,6 +415,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [
       timestampFormat,
       routeThreadKey,
+      threadId,
+      inferredCheckpointTurnCountByTurnId,
+      turnDiffSummaries,
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
@@ -560,7 +576,12 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       data-message-id={row.kind === "message" ? row.message.id : undefined}
       data-message-role={row.kind === "message" ? row.message.role : undefined}
     >
-      {row.kind === "work" ? <WorkGroupSection groupedEntries={row.groupedEntries} /> : null}
+      {row.kind === "work" ? (
+        <WorkGroupSection
+          groupedEntries={row.groupedEntries}
+          turnDiffSummary={row.turnDiffSummary}
+        />
+      ) : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1104,9 +1125,7 @@ function UrlPreviewCard({ url }: { url: string }) {
           onClick={() => onOpenUrl(url, "preview")}
           title={url}
         >
-          <div
-            className="chat-text truncate text-[14px] font-medium leading-5 text-foreground"
-          >
+          <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground">
             网页预览
           </div>
           <div className="truncate text-[13px] leading-5 text-muted-foreground">网站</div>
@@ -1540,8 +1559,10 @@ function LiveMessageMeta({
  *  State resets on unmount which is fine — work groups start collapsed. */
 const WorkGroupSection = memo(function WorkGroupSection({
   groupedEntries,
+  turnDiffSummary,
 }: {
   groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
+  turnDiffSummary: TurnDiffSummary | undefined;
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -1560,7 +1581,11 @@ const WorkGroupSection = memo(function WorkGroupSection({
   if (groupedEntries.length === 1 && isFileChangeWorkEntry(groupedEntries[0]!)) {
     return (
       <div className="pt-2 pb-3 pl-1">
-        <SimpleWorkEntryRow workEntry={groupedEntries[0]!} workspaceRoot={workspaceRoot} />
+        <SimpleWorkEntryRow
+          workEntry={groupedEntries[0]!}
+          workspaceRoot={workspaceRoot}
+          turnDiffSummary={turnDiffSummary}
+        />
       </div>
     );
   }
@@ -1591,12 +1616,11 @@ const WorkGroupSection = memo(function WorkGroupSection({
         ) : (
           <span className="min-w-0 truncate">{summary.label}</span>
         )}
-        <ChevronDownIcon
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/work-summary:text-muted-foreground/70",
-            isExpanded && "rotate-180",
-          )}
-        />
+        {isExpanded ? (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/52 transition-colors group-hover/work-summary:text-muted-foreground/75" />
+        ) : (
+          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/42 transition-colors group-hover/work-summary:text-muted-foreground/70" />
+        )}
       </button>
       {isExpanded ? (
         <div className="mt-1 space-y-0.5 pl-4" data-work-group-details="true">
@@ -1608,6 +1632,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
                 key={`work-row:${workEntry.id}`}
                 workEntry={workEntry}
                 workspaceRoot={workspaceRoot}
+                turnDiffSummary={turnDiffSummary}
               />
             ))
           )}
@@ -1827,9 +1852,7 @@ function AssistantChangedFilesSectionInner({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <div
-                className="chat-text truncate text-[14px] font-medium leading-5 text-foreground"
-              >
+              <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground">
                 {isSingleFile
                   ? `已编辑 ${singleFileTitle}`
                   : `已编辑 ${checkpointFiles.length} 个文件`}
@@ -1924,6 +1947,10 @@ function formatChangedFilePath(filePath: string, workspaceRoot: string | undefin
   return displayedPath;
 }
 
+function formatChangedFileListLabel(filePath: string): string {
+  return basenameOfChangedFile(filePath);
+}
+
 function buildChangedFileLinkMeta(filePath: string, displayPath: string): MarkdownFileLinkMeta {
   return {
     filePath,
@@ -1937,19 +1964,21 @@ function buildChangedFileLinkMeta(filePath: string, displayPath: string): Markdo
 function ChangedFileOpenButton({
   filePath,
   displayPath,
+  title,
   className,
   onOpenFile,
   stopPropagation = false,
 }: {
   filePath: string;
   displayPath: string;
+  title?: string | undefined;
   className?: string | undefined;
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   stopPropagation?: boolean | undefined;
 }) {
   if (!onOpenFile || isBareMarkdownPreviewPath(filePath)) {
     return (
-      <span className={className} title={displayPath}>
+      <span className={className} title={title ?? displayPath}>
         {displayPath}
       </span>
     );
@@ -1969,7 +1998,7 @@ function ChangedFileOpenButton({
         "min-w-0 truncate text-left font-mono text-[#147DFF] underline-offset-2 transition-colors hover:text-[#0F66D0] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,
       )}
-      title={displayPath}
+      title={title ?? displayPath}
       onClick={handleClick}
     >
       {displayPath}
@@ -1980,8 +2009,10 @@ function ChangedFileOpenButton({
 interface InlineDiffFileSummary {
   path: string;
   displayPath: string;
+  listLabel: string;
   additions: number;
   deletions: number;
+  hasStats: boolean;
   kind?: string | undefined;
   patch: ReturnType<typeof parseUnifiedDiff>[number] | null;
 }
@@ -2024,17 +2055,30 @@ function AnimatedDiffNumber(props: { value: number; tone: "add" | "delete" }) {
 
 function InlineChangedFilesDiff(props: { files: ReadonlyArray<InlineDiffFileSummary> }) {
   const renderableFiles = props.files.filter((file) => file.patch);
+  if (renderableFiles.length === 0) {
+    return null;
+  }
+
   return (
-    <div className="mt-1 max-h-[360px] overflow-y-auto rounded-lg border border-border/55 bg-card shadow-sm">
-      {renderableFiles.length > 0 ? (
-        renderableFiles.map((file) =>
-          file.patch ? <InlineDiffFile key={file.path} file={file} patch={file.patch} /> : null,
-        )
-      ) : (
-        <div className="px-3 py-2 text-[12px] text-muted-foreground/65">
-          当前工具事件只提供了文件路径，暂未包含可展示的 diff 内容。
-        </div>
+    <div className="mt-1 max-h-[264px] overflow-y-auto rounded-md border border-border/70 bg-card shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
+      {renderableFiles.map((file) =>
+        file.patch ? <InlineDiffFile key={file.path} file={file} patch={file.patch} /> : null,
       )}
+    </div>
+  );
+}
+
+function InlineDiffPlaceholder(props: { fileName: string; state: "loading" | "empty" }) {
+  return (
+    <div className="mt-1 rounded-md border border-border/70 bg-card shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
+      <div className="flex min-w-0 items-center gap-2 border-b border-border/55 bg-muted/35 px-3 py-1.5">
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-[12px] leading-4 text-muted-foreground">
+          {props.fileName}
+        </span>
+      </div>
+      <div className="px-3 py-2 text-[12px] leading-5 text-muted-foreground/70">
+        {props.state === "loading" ? "正在加载 diff..." : "暂未获取到可展示的 diff 内容。"}
+      </div>
     </div>
   );
 }
@@ -2060,12 +2104,12 @@ function InlineDiffFile(props: {
 
   return (
     <div className="border-b border-border/45 last:border-b-0">
-      <div className="flex min-w-0 items-center gap-2 bg-muted/45 px-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-2 border-b border-border/55 bg-muted/35 px-3 py-1.5">
         <span
-          className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-muted-foreground/90 hover:text-foreground"
+          className="min-w-0 flex-1 truncate text-left font-mono text-[12px] leading-4 text-muted-foreground"
           title={props.file.displayPath}
         >
-          {props.file.displayPath}
+          {props.file.listLabel}
         </span>
         <AnimatedDiffStatLabel additions={props.file.additions} deletions={props.file.deletions} />
         <button
@@ -2120,10 +2164,16 @@ function InlineDiffLine(props: {
 }) {
   const lineClassName =
     props.line.type === "add"
-      ? "border-l-2 border-emerald-500 bg-emerald-500/12 text-emerald-700"
+      ? "border-l-2 border-emerald-600 bg-emerald-500/13 text-foreground"
       : props.line.type === "remove"
-        ? "border-l-2 border-red-500 bg-red-500/10 text-red-600"
-        : "border-l-2 border-transparent text-foreground/80";
+        ? "border-l-2 border-red-500 bg-red-500/11 text-foreground"
+        : "border-l-2 border-transparent text-foreground/86";
+  const lineNumberClassName =
+    props.line.type === "add"
+      ? "text-emerald-600"
+      : props.line.type === "remove"
+        ? "text-red-500"
+        : "text-muted-foreground/78";
   const displayLineNumber = props.newLineNumber ?? props.oldLineNumber ?? "";
 
   return (
@@ -2133,10 +2183,10 @@ function InlineDiffLine(props: {
         lineClassName,
       )}
     >
-      <span className="select-none px-3 text-right text-muted-foreground/70">
+      <span className={cn("select-none bg-background/35 px-3 text-right", lineNumberClassName)}>
         {displayLineNumber}
       </span>
-      <code className="whitespace-pre px-3">
+      <code className="whitespace-pre px-3 text-[12px]">
         {props.line.text.length > 0 ? props.line.text : " "}
       </code>
     </div>
@@ -2285,9 +2335,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div
-            className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95"
-          >
+          <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
             {inlineNodes}
           </div>
         );
@@ -2319,9 +2367,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div
-        className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95"
-      >
+      <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
         {inlineNodes}
       </div>
     );
@@ -2332,9 +2378,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div
-      className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95"
-    >
+    <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
       <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
     </div>
   );
@@ -2599,25 +2643,37 @@ function findPatchForChangedFile(
   patches: ReadonlyArray<ReturnType<typeof parseUnifiedDiff>[number]>,
 ): ReturnType<typeof parseUnifiedDiff>[number] | null {
   const comparableFilePath = normalizeComparablePath(filePath);
-  return (
-    patches.find((patch) => {
-      const displayPath = getPatchDisplayPath(patch);
-      if (!displayPath) {
-        return false;
-      }
-      const comparablePatchPath = normalizeComparablePath(displayPath);
-      return (
-        comparablePatchPath === comparableFilePath ||
-        comparableFilePath.endsWith(`/${comparablePatchPath}`) ||
-        comparablePatchPath.endsWith(`/${comparableFilePath}`)
-      );
-    }) ?? null
-  );
+  const exactMatch = patches.find((patch) => {
+    const displayPath = getPatchDisplayPath(patch);
+    if (!displayPath) {
+      return false;
+    }
+    const comparablePatchPath = normalizeComparablePath(displayPath);
+    return (
+      comparablePatchPath === comparableFilePath ||
+      comparableFilePath.endsWith(`/${comparablePatchPath}`) ||
+      comparablePatchPath.endsWith(`/${comparableFilePath}`)
+    );
+  });
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const fileBasename = basenameOfChangedFile(comparableFilePath);
+  if (!fileBasename) {
+    return null;
+  }
+  const basenameMatches = patches.filter((patch) => {
+    const displayPath = getPatchDisplayPath(patch);
+    return displayPath ? basenameOfChangedFile(displayPath) === fileBasename : false;
+  });
+  return basenameMatches.length === 1 ? basenameMatches[0]! : null;
 }
 
 function buildFileChangeSummaries(
   workEntry: TimelineWorkEntry,
   workspaceRoot: string | undefined,
+  turnDiffSummary: TurnDiffSummary | undefined,
 ): InlineDiffFileSummary[] {
   const patches = workEntry.detail ? parseUnifiedDiff(workEntry.detail) : [];
   const patchPaths = new Set<string>();
@@ -2625,7 +2681,9 @@ function buildFileChangeSummaries(
 
   for (const filePath of workEntry.changedFiles ?? []) {
     const patch = findPatchForChangedFile(filePath, patches);
+    const summaryFile = findTurnDiffSummaryFile(filePath, turnDiffSummary);
     const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
+    const listLabel = formatChangedFileListLabel(filePath);
     if (patch) {
       const patchPath = getPatchDisplayPath(patch);
       if (patchPath) {
@@ -2635,9 +2693,11 @@ function buildFileChangeSummaries(
     summaries.push({
       path: filePath,
       displayPath,
-      additions: patch ? countPatchLines(patch, "add") : 0,
-      deletions: patch ? countPatchLines(patch, "remove") : 0,
-      kind: resolvePatchFileChangeKind(patch),
+      listLabel,
+      additions: patch ? countPatchLines(patch, "add") : (summaryFile?.additions ?? 0),
+      deletions: patch ? countPatchLines(patch, "remove") : (summaryFile?.deletions ?? 0),
+      hasStats: true,
+      kind: resolvePatchFileChangeKind(patch) ?? summaryFile?.kind,
       patch,
     });
   }
@@ -2650,14 +2710,60 @@ function buildFileChangeSummaries(
     summaries.push({
       path: patchPath,
       displayPath: formatWorkspaceRelativePath(patchPath, workspaceRoot),
+      listLabel: formatChangedFileListLabel(patchPath),
       additions: countPatchLines(patch, "add"),
       deletions: countPatchLines(patch, "remove"),
+      hasStats: true,
       kind: resolvePatchFileChangeKind(patch),
       patch,
     });
   }
 
   return summaries;
+}
+
+function findTurnDiffSummaryFile(
+  filePath: string,
+  turnDiffSummary: TurnDiffSummary | undefined,
+): TurnDiffSummary["files"][number] | null {
+  if (!turnDiffSummary) {
+    return null;
+  }
+  const comparableFilePath = normalizeComparablePath(filePath);
+  return (
+    turnDiffSummary.files.find((file) => {
+      const comparableSummaryPath = normalizeComparablePath(file.path);
+      return (
+        comparableSummaryPath === comparableFilePath ||
+        comparableFilePath.endsWith(`/${comparableSummaryPath}`) ||
+        comparableSummaryPath.endsWith(`/${comparableFilePath}`)
+      );
+    }) ?? null
+  );
+}
+
+function findTurnDiffSummaryForChangedFiles(
+  filePaths: ReadonlyArray<string>,
+  summaries: ReadonlyArray<TurnDiffSummary>,
+): TurnDiffSummary | undefined {
+  const comparablePaths = filePaths.map(normalizeComparablePath);
+  const basenames = new Set(comparablePaths.map(basenameOfChangedFile).filter(Boolean));
+  return summaries.find((summary) =>
+    summary.files.some((file) => {
+      const comparableSummaryPath = normalizeComparablePath(file.path);
+      if (
+        comparablePaths.some(
+          (path) =>
+            comparableSummaryPath === path ||
+            path.endsWith(`/${comparableSummaryPath}`) ||
+            comparableSummaryPath.endsWith(`/${path}`),
+        )
+      ) {
+        return true;
+      }
+      return basenames.has(basenameOfChangedFile(comparableSummaryPath));
+    }),
+  );
 }
 
 function resolvePatchFileChangeKind(
@@ -2680,98 +2786,213 @@ function resolvePatchFileChangeKind(
 
 function fileChangeVerb(workEntry: TimelineWorkEntry, files: ReadonlyArray<InlineDiffFileSummary>) {
   const isRunning = workEntry.status === "running";
-  return fileChangeVerbLabel(resolveAggregateFileChangeAction(files), isRunning ? "running" : "completed");
+  return fileChangeVerbLabel(
+    resolveAggregateFileChangeAction(files),
+    isRunning ? "running" : "completed",
+  );
 }
 
 const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
+  turnDiffSummary: TurnDiffSummary | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
-  const { workEntry, workspaceRoot } = props;
+  const { workEntry, workspaceRoot, turnDiffSummary } = props;
   const [isExpanded, setIsExpanded] = useState(false);
-  const files = useMemo(
-    () => buildFileChangeSummaries(workEntry, workspaceRoot),
-    [workEntry, workspaceRoot],
+  const [diffFilePath, setDiffFilePath] = useState<string | null>(null);
+  const [loadedTurnPatch, setLoadedTurnPatch] = useState<string | null>(null);
+  const [loadingDiffFilePath, setLoadingDiffFilePath] = useState<string | null>(null);
+  const resolvedTurnDiffSummary = useMemo(
+    () =>
+      turnDiffSummary ??
+      findTurnDiffSummaryForChangedFiles(workEntry.changedFiles ?? [], ctx.turnDiffSummaries),
+    [ctx.turnDiffSummaries, turnDiffSummary, workEntry.changedFiles],
   );
-  const summaryStat = files.reduce(
-    (stat, file) => ({
-      additions: stat.additions + file.additions,
-      deletions: stat.deletions + file.deletions,
-    }),
-    { additions: 0, deletions: 0 },
+  const files = useMemo(() => {
+    const detail =
+      loadedTurnPatch !== null
+        ? loadedTurnPatch
+        : workEntry.detail && workEntry.detail.trim().length > 0
+          ? workEntry.detail
+          : undefined;
+    return buildFileChangeSummaries(
+      { ...workEntry, ...(detail ? { detail } : {}) },
+      workspaceRoot,
+      resolvedTurnDiffSummary,
+    );
+  }, [loadedTurnPatch, resolvedTurnDiffSummary, workEntry, workspaceRoot]);
+  const visibleFiles = useMemo(() => {
+    const meaningfulFiles = files.filter(
+      (file) => file.patch !== null || file.additions > 0 || file.deletions > 0,
+    );
+    return meaningfulFiles.length > 0 ? meaningfulFiles : files;
+  }, [files]);
+  const verb = fileChangeVerb(workEntry, visibleFiles.length > 0 ? visibleFiles : files);
+  const fileCount = visibleFiles.length;
+  const title = `${verb} ${fileCount} 个文件`;
+  const visibleDiffFiles =
+    diffFilePath === null ? [] : visibleFiles.filter((file) => file.path === diffFilePath);
+  const workEntryTurnId = (workEntry as { sourceTurnId?: TurnId | null }).sourceTurnId ?? null;
+  const diffTurnId = resolvedTurnDiffSummary?.turnId ?? workEntryTurnId;
+  const checkpointTurnCount =
+    resolvedTurnDiffSummary?.checkpointTurnCount ??
+    (diffTurnId ? ctx.inferredCheckpointTurnCountByTurnId[diffTurnId] : undefined);
+  const hasParsedFilePatch = files.some((file) => file.patch !== null);
+  const canLoadTurnDiff =
+    !hasParsedFilePatch && loadedTurnPatch === null && typeof checkpointTurnCount === "number";
+
+  useEffect(() => {
+    if (!isExpanded) {
+      setDiffFilePath(null);
+      return;
+    }
+    if (diffFilePath !== null && !visibleFiles.some((file) => file.path === diffFilePath)) {
+      setDiffFilePath(null);
+    }
+  }, [diffFilePath, isExpanded, visibleFiles]);
+
+  const loadTurnDiffPatch = useCallback(async () => {
+    if (!canLoadTurnDiff || !diffTurnId) {
+      return;
+    }
+    if (typeof checkpointTurnCount !== "number") {
+      return;
+    }
+    const api = readEnvironmentApi(ctx.activeThreadEnvironmentId);
+    if (!api) {
+      return;
+    }
+    try {
+      const fromTurnCount = Math.max(0, checkpointTurnCount - 1);
+      const result =
+        fromTurnCount === 0
+          ? await api.orchestration.getFullThreadDiff({
+              threadId: ctx.threadId,
+              toTurnCount: checkpointTurnCount,
+              ignoreWhitespace: false,
+            })
+          : await api.orchestration.getTurnDiff({
+              threadId: ctx.threadId,
+              fromTurnCount,
+              toTurnCount: checkpointTurnCount,
+              ignoreWhitespace: false,
+            });
+      setLoadedTurnPatch(result.diff);
+    } catch {
+      setLoadedTurnPatch("");
+    }
+  }, [
+    canLoadTurnDiff,
+    checkpointTurnCount,
+    ctx.activeThreadEnvironmentId,
+    ctx.threadId,
+    diffTurnId,
+  ]);
+
+  const toggleFileDiff = useCallback(
+    async (file: InlineDiffFileSummary) => {
+      if (diffFilePath === file.path) {
+        setDiffFilePath(null);
+        return;
+      }
+      setDiffFilePath(file.path);
+      if (!file.patch && canLoadTurnDiff) {
+        setLoadingDiffFilePath(file.path);
+        await loadTurnDiffPatch();
+        setLoadingDiffFilePath(null);
+      }
+    },
+    [canLoadTurnDiff, diffFilePath, loadTurnDiffPatch],
   );
-  const verb = fileChangeVerb(workEntry, files);
-  const firstFile = files[0] ?? null;
-  const title =
-    files.length === 1 && firstFile
-      ? `${verb} ${firstFile.displayPath}`
-      : `${verb} ${files.length} 个文件`;
+
+  if (visibleFiles.length === 0) {
+    return null;
+  }
 
   return (
     <div className="chat-text rounded-md px-1 py-0.5">
-      <div
-        className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/68 transition-colors hover:bg-muted/15 hover:text-foreground/82"
+      <button
+        type="button"
+        className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/68 transition-colors hover:text-foreground/80"
         aria-expanded={isExpanded}
         title={title}
+        onClick={() => setIsExpanded((value) => !value)}
       >
         <SquarePenIcon className="size-3.5 shrink-0 text-muted-foreground/65" />
         <span className="shrink-0">{verb}</span>
-        {files.length === 1 && firstFile ? (
-          <ChangedFileOpenButton
-            filePath={firstFile.path}
-            displayPath={firstFile.displayPath}
-            className="flex-1"
-            onOpenFile={ctx.onOpenMarkdownFile}
-            stopPropagation
-          />
+        <span className="shrink-0">{fileCount} 个文件</span>
+        {isExpanded ? (
+          <ChevronDownIcon className="ml-auto size-3.5 shrink-0 text-muted-foreground/52 transition-colors group-hover/file-change:text-muted-foreground/75" />
         ) : (
-          <span className="shrink-0">{files.length} 个文件</span>
+          <ChevronRightIcon className="ml-auto size-3.5 shrink-0 text-muted-foreground/42 transition-colors group-hover/file-change:text-muted-foreground/70" />
         )}
-        <AnimatedDiffStatLabel
-          additions={summaryStat.additions}
-          deletions={summaryStat.deletions}
-        />
-        <button
-          type="button"
-          className="ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/45 transition-colors hover:bg-muted/30 hover:text-muted-foreground/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          aria-label={isExpanded ? "收起文件变更详情" : "展开文件变更详情"}
-          aria-expanded={isExpanded}
-          onClick={() => setIsExpanded((value) => !value)}
-        >
-          <ChevronDownIcon
-            className={cn("size-3.5 transition-transform duration-150", isExpanded && "rotate-180")}
-          />
-        </button>
-      </div>
-      {files.length > 1 ? (
+      </button>
+      {isExpanded ? (
         <div className="mt-0.5 space-y-0.5 pl-6">
-          {files.slice(0, isExpanded ? files.length : 2).map((file) => (
-            <div
-              key={`${workEntry.id}:${file.path}`}
-              className="flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-muted-foreground/68"
-              title={file.displayPath}
-            >
-              <span className="shrink-0">
-                {fileChangeVerbLabel(resolveFileChangeActionFromKind(file.kind) ?? "edit", "completed")}
-              </span>
-              <ChangedFileOpenButton
-                filePath={file.path}
-                displayPath={file.displayPath}
-                className="flex-1"
-                onOpenFile={ctx.onOpenMarkdownFile}
-              />
-              <AnimatedDiffStatLabel additions={file.additions} deletions={file.deletions} />
-            </div>
-          ))}
-          {!isExpanded && files.length > 2 ? (
-            <div className="px-0.5 text-[12px] leading-5 text-muted-foreground/55">
-              +{files.length - 2} 个文件
-            </div>
-          ) : null}
+          {visibleFiles.map((file) => {
+            const fileHasDiff = file.patch !== null;
+            const isDiffVisible = diffFilePath === file.path;
+            const visibleDiffForFile = isDiffVisible ? visibleDiffFiles : [];
+            const hasVisiblePatch = visibleDiffForFile.some((diffFile) => diffFile.patch !== null);
+            const showDiffPlaceholder = isDiffVisible && !hasVisiblePatch;
+            const placeholderState =
+              loadingDiffFilePath === file.path || (canLoadTurnDiff && loadedTurnPatch === null)
+                ? "loading"
+                : "empty";
+
+            return (
+              <div key={`${workEntry.id}:${file.path}`} className="space-y-0.5">
+                <div
+                  className="group/file-row flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-foreground/86 transition-colors hover:text-foreground"
+                  title={file.displayPath}
+                >
+                  <span className="shrink-0 text-muted-foreground/74">
+                    {fileChangeVerbLabel(
+                      resolveFileChangeActionFromKind(file.kind) ?? "edit",
+                      "completed",
+                    )}
+                  </span>
+                  <ChangedFileOpenButton
+                    filePath={file.path}
+                    displayPath={file.listLabel}
+                    title={file.displayPath}
+                    className="min-w-0 max-w-[min(42ch,60vw)] flex-none"
+                    onOpenFile={ctx.onOpenMarkdownFile}
+                  />
+                  <AnimatedDiffStatLabel additions={file.additions} deletions={file.deletions} />
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/46 opacity-0 transition-[opacity,color] hover:text-muted-foreground/82 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/file-row:opacity-100",
+                      isDiffVisible && "opacity-100 text-muted-foreground/70",
+                    )}
+                    aria-label={isDiffVisible ? "收起文件 diff" : "展开文件 diff"}
+                    aria-expanded={isDiffVisible}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void toggleFileDiff(file);
+                    }}
+                  >
+                    {loadingDiffFilePath === file.path ? (
+                      <span className="size-1.5 rounded-full bg-current opacity-70" />
+                    ) : isDiffVisible ? (
+                      <ChevronDownIcon className="size-3.5" />
+                    ) : (
+                      <ChevronRightIcon className="size-3.5" />
+                    )}
+                  </button>
+                </div>
+                {hasVisiblePatch ? (
+                  <InlineChangedFilesDiff files={visibleDiffForFile} />
+                ) : showDiffPlaceholder ? (
+                  <InlineDiffPlaceholder fileName={file.listLabel} state={placeholderState} />
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
-      {isExpanded ? <InlineChangedFilesDiff files={files} /> : null}
     </div>
   );
 });
@@ -2779,14 +3000,21 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
+  turnDiffSummary?: TurnDiffSummary | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
-  const { workEntry, workspaceRoot } = props;
+  const { workEntry, workspaceRoot, turnDiffSummary } = props;
   if (workEntry.userInputSummary) {
     return <UserInputSummaryTimelineRow workEntry={workEntry} compact />;
   }
   if (isFileChangeWorkEntry(workEntry)) {
-    return <FileChangeWorkEntryRow workEntry={workEntry} workspaceRoot={workspaceRoot} />;
+    return (
+      <FileChangeWorkEntryRow
+        workEntry={workEntry}
+        workspaceRoot={workspaceRoot}
+        turnDiffSummary={turnDiffSummary}
+      />
+    );
   }
   if (isCommandWorkEntry(workEntry)) {
     return <CommandWorkEntryRow workEntry={workEntry} />;
@@ -2920,14 +3148,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               </Tooltip>
             )}
           </div>
-          {hasDetail && (
-            <ChevronDownIcon
-              className={cn(
-                "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150",
-                isDetailExpanded && "rotate-180",
-              )}
-            />
-          )}
+          {hasDetail ? (
+            isDetailExpanded ? (
+              <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/52" />
+            ) : (
+              <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/42" />
+            )
+          ) : null}
         </div>
       </div>
       {hasChangedFiles && !previewIsChangedFiles && (
@@ -3045,12 +3272,11 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
         ) : (
           <span className="min-w-0 truncate">{summaryText}</span>
         )}
-        <ChevronDownIcon
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/45 transition-transform duration-150 group-hover/command-summary:text-muted-foreground/70",
-            isExpanded && "rotate-180",
-          )}
-        />
+        {isExpanded ? (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/52 transition-colors group-hover/command-summary:text-muted-foreground/75" />
+        ) : (
+          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/42 transition-colors group-hover/command-summary:text-muted-foreground/70" />
+        )}
       </button>
 
       {isExpanded ? (
