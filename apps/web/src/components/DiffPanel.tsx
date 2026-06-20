@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LegendList } from "@legendapp/list/react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { projectScriptCwd } from "@t3tools/shared/projectScripts";
@@ -52,8 +53,8 @@ import { readEnvironmentApi } from "../environmentApi";
 import { resolvePathLinkTarget } from "../terminal-links";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
-import { selectProjectByRef, useStore } from "../store";
-import { createThreadSelectorByRef } from "../storeSelectors";
+import { useStore } from "../store";
+import { createProjectCwdSelectorByRef, createThreadSelectorByRef } from "../storeSelectors";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { useSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
@@ -64,6 +65,12 @@ import {
   type UnifiedDiffHunk,
   type UnifiedDiffLine,
 } from "../lib/unifiedDiff";
+import {
+  buildDiffRenderRows,
+  buildFileDiffRenderKey,
+  countExpandedDiffLines,
+  type DiffRenderRow,
+} from "./DiffPanel.logic";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { Button } from "./ui/button";
 import {
@@ -83,6 +90,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { resolveQuickAction } from "./GitActionsControl.logic";
 
 type DiffScope = "unstaged" | "staged" | "commit" | "turn";
+
+const DIFF_VIRTUALIZATION_LINE_THRESHOLD = 800;
 
 const DIFF_SCOPE_LABELS = {
   unstaged: "未暂存",
@@ -181,10 +190,6 @@ function getRenderablePatch(patch: string | undefined): RenderablePatch | null {
 
 function resolveFileDiffPath(fileDiff: UnifiedDiffFilePatch): string {
   return getPatchDisplayPath(fileDiff) ?? "未知文件";
-}
-
-function buildFileDiffRenderKey(fileDiff: UnifiedDiffFilePatch): string {
-  return `${fileDiff.oldPath ?? "none"}:${fileDiff.newPath ?? "none"}`;
 }
 
 function buildFileOperationInput(
@@ -300,10 +305,52 @@ function DiffHunkView(props: { hunk: UnifiedDiffHunk; index: number; wrap: boole
   );
 }
 
+function DiffHunkHeaderRow(props: { hunk: UnifiedDiffHunk; index: number }) {
+  const hiddenLineCount = getHunkHiddenLineCount(props.hunk, props.index);
+  return (
+    <div className="grid min-w-max grid-cols-[3.2rem_1fr] bg-muted/70 text-[11px] text-muted-foreground">
+      <span className="select-none border-r border-border/50 px-2 text-center leading-8">
+        <ChevronDownIcon className="mx-auto size-3.5" />
+      </span>
+      <span className="px-3 leading-8">{hiddenLineCount} 琛屾湭鍙樻洿</span>
+    </div>
+  );
+}
+
+function VirtualizedDiffFileBody(props: { file: UnifiedDiffFilePatch; wrap: boolean }) {
+  const rows = useMemo(() => buildDiffRenderRows(props.file), [props.file]);
+  const renderRow = useCallback(
+    ({ item }: { item: DiffRenderRow }) =>
+      item.kind === "hunk" ? (
+        <DiffHunkHeaderRow hunk={item.hunk} index={item.index} />
+      ) : (
+        <DiffCodeLine
+          line={item.line}
+          oldLineNumber={item.oldLineNumber}
+          newLineNumber={item.newLineNumber}
+          wrap={props.wrap}
+        />
+      ),
+    [props.wrap],
+  );
+  const keyExtractor = useCallback((item: DiffRenderRow) => item.id, []);
+
+  return (
+    <LegendList<DiffRenderRow>
+      data={rows}
+      keyExtractor={keyExtractor}
+      renderItem={renderRow}
+      estimatedItemSize={20}
+      className="max-h-[72vh] min-w-max overflow-auto"
+    />
+  );
+}
+
 function DiffFileRow(props: {
   file: UnifiedDiffFilePatch;
   expanded: boolean;
   wrap: boolean;
+  virtualized: boolean;
   diffScope: DiffScope;
   operationPending?: boolean | undefined;
   onToggle: () => void;
@@ -382,14 +429,18 @@ function DiffFileRow(props: {
       {props.expanded ? (
         <div className="overflow-x-auto px-2 pb-2">
           <div className="overflow-hidden rounded-md bg-background font-mono shadow-[inset_0_0_0_1px_var(--border)]">
-            {props.file.hunks.map((hunk, index) => (
-              <DiffHunkView
-                key={`${hunk.oldStart}:${hunk.newStart}:${index}`}
-                hunk={hunk}
-                index={index}
-                wrap={props.wrap}
-              />
-            ))}
+            {props.virtualized ? (
+              <VirtualizedDiffFileBody file={props.file} wrap={props.wrap} />
+            ) : (
+              props.file.hunks.map((hunk, index) => (
+                <DiffHunkView
+                  key={`${hunk.oldStart}:${hunk.newStart}:${index}`}
+                  hunk={hunk}
+                  index={index}
+                  wrap={props.wrap}
+                />
+              ))
+            )}
           </div>
         </div>
       ) : null}
@@ -436,17 +487,16 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
     useMemo(() => createThreadSelectorByRef(routeThreadRef), [routeThreadRef]),
   );
   const activeProjectId = activeThread?.projectId ?? null;
-  const activeProject = useStore((store) =>
+  const activeProjectRef =
     activeThread && activeProjectId
-      ? selectProjectByRef(store, {
-          environmentId: activeThread.environmentId,
-          projectId: activeProjectId,
-        })
-      : undefined,
+      ? { environmentId: activeThread.environmentId, projectId: activeProjectId }
+      : null;
+  const activeProjectCwd = useStore(
+    useMemo(() => createProjectCwdSelectorByRef(activeProjectRef), [activeProjectRef]),
   );
-  const activeCwd = activeProject
+  const activeCwd = activeProjectCwd
     ? projectScriptCwd({
-        project: { cwd: activeProject.cwd },
+        project: { cwd: activeProjectCwd },
         worktreePath: activeThread?.worktreePath ?? null,
       })
     : null;
@@ -789,6 +839,12 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const totalDeletions =
     renderableFiles.length > 0 ? countPatchLines(renderableFiles, "remove") : 0;
   const fileCount = renderableFiles.length > 0 ? renderableFiles.length : 0;
+  const expandedDiffLineCount = useMemo(
+    () => countExpandedDiffLines(renderableFiles, collapsedDiffFileKeys),
+    [collapsedDiffFileKeys, renderableFiles],
+  );
+  const shouldVirtualizeDiffRows =
+    expandedDiffLineCount > DIFF_VIRTUALIZATION_LINE_THRESHOLD;
   const patchError =
     diffScope === "turn"
       ? checkpointDiffError
@@ -1347,6 +1403,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                       file={fileDiff}
                       expanded={expanded}
                       wrap={diffWordWrap}
+                      virtualized={shouldVirtualizeDiffRows}
                       diffScope={diffScope}
                       operationPending={operationPending}
                       onToggle={() => toggleDiffFileCollapsed(fileKey)}

@@ -10,6 +10,13 @@ export function createProjectSelectorByRef(
     ref ? selectEnvironmentState(state, ref.environmentId).projectById[ref.projectId] : undefined;
 }
 
+export function createProjectCwdSelectorByRef(
+  ref: ScopedProjectRef | null | undefined,
+): (state: AppState) => string | undefined {
+  return (state) =>
+    ref ? selectEnvironmentState(state, ref.environmentId).projectById[ref.projectId]?.cwd : undefined;
+}
+
 function createScopedThreadSelector(
   resolveRef: (state: AppState) => ScopedThreadRef | null | undefined,
 ): (state: AppState) => Thread | undefined {

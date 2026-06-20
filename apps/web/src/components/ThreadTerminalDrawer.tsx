@@ -8,6 +8,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { Terminal, type ITheme } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
 import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,

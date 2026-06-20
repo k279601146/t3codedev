@@ -15,6 +15,8 @@ import { type Thread } from "../types";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildTurnDiffSummaryByAssistantMessageId,
+  buildRightPanelArtifacts,
+  createChatTimelineDerivedStateCache,
   buildExpiredTerminalContextToastCopy,
   buildRevertTurnCountByUserMessageId,
   createLocalDispatchSnapshot,
@@ -29,6 +31,87 @@ import {
 } from "./ChatView.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("buildRightPanelArtifacts", () => {
+  it("dedupes generated artifacts and changed files", () => {
+    const artifacts = buildRightPanelArtifacts({
+      timelineMessages: [
+        {
+          id: MessageId.make("user-1"),
+          role: "user",
+          text: "",
+          createdAt: "2026-03-17T12:00:00.000Z",
+          streaming: false,
+          attachments: [
+            {
+              id: "attachment-1",
+              name: "image.png",
+              type: "image",
+              mimeType: "image/png",
+              previewUrl: "blob:image",
+              sizeBytes: 123,
+            },
+          ],
+        },
+      ],
+      workLogEntries: [
+        {
+          id: "work-1",
+          createdAt: "2026-03-17T12:00:01.000Z",
+          label: "Edited",
+          tone: "tool",
+          changedFiles: ["src/a.ts", "src/a.ts"],
+        },
+      ],
+      turnDiffSummaries: [
+        {
+          turnId: TurnId.make("turn-1"),
+          completedAt: "2026-03-17T12:00:02.000Z",
+          status: "ready",
+          files: [{ path: "src/a.ts", additions: 1, deletions: 0 }],
+        },
+      ],
+    });
+
+    expect(artifacts.map((artifact) => artifact.id)).toEqual([
+      "attachment:attachment-1",
+      "file:src/a.ts",
+    ]);
+  });
+});
+
+describe("createChatTimelineDerivedStateCache", () => {
+  it("reuses the derived result while input references are unchanged", () => {
+    const cache = createChatTimelineDerivedStateCache();
+    const input = {
+      threadKey: "thread-1",
+      timelineMessages: [],
+      proposedPlans: [],
+      workLogEntries: [],
+      turnDiffSummaries: [],
+      inferredCheckpointTurnCountByTurnId: {},
+    };
+
+    expect(cache(input)).toBe(cache(input));
+  });
+
+  it("recomputes when the thread key changes", () => {
+    const cache = createChatTimelineDerivedStateCache();
+    const input = {
+      threadKey: "thread-1",
+      timelineMessages: [],
+      proposedPlans: [],
+      workLogEntries: [],
+      turnDiffSummaries: [],
+      inferredCheckpointTurnCountByTurnId: {},
+    };
+
+    const first = cache(input);
+    const second = cache({ ...input, threadKey: "thread-2" });
+
+    expect(second).not.toBe(first);
+  });
+});
 
 describe("buildTurnDiffSummaryByAssistantMessageId", () => {
   it("falls back to the terminal assistant message for a turn when the summary lacks message id", () => {

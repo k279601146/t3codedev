@@ -44,7 +44,7 @@ import {
   normalizeGoalObjective,
 } from "@t3tools/shared/goal";
 import { Debouncer } from "@tanstack/react-pacer";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
@@ -117,7 +117,6 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
-import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { ChevronDownIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
 import { cn, randomUUID } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -190,9 +189,8 @@ import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
-  buildRevertTurnCountByUserMessageId,
-  buildTurnDiffSummaryByAssistantMessageId,
   collectUserMessageBlobPreviewUrls,
+  createChatTimelineDerivedStateCache,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
@@ -213,7 +211,6 @@ import {
   waitForThreadMessageRemoval,
   waitForStartedServerThread,
 } from "./ChatView.logic";
-import { isImageGenerationWorkEntry, pickGeneratedImagePath } from "./chat/MessagesTimeline.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
 import { appendComposerPluginLaunchContext } from "../composerPluginLaunch";
@@ -229,7 +226,7 @@ import {
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { RightPanelSheet } from "./RightPanelSheet";
-import ThreadRightPanel, { type RightPanelArtifact } from "./ThreadRightPanel";
+import type { RightPanelArtifact } from "./ThreadRightPanel";
 import { Button } from "./ui/button";
 import {
   formatUsageLimitResetHint,
@@ -245,6 +242,30 @@ import {
 
 const ATTACHMENT_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more files without additional text. Respond using the conversation context and the attached files.]";
+
+const LazyThreadTerminalDrawer = lazy(() => import("./ThreadTerminalDrawer"));
+const LazyThreadRightPanel = lazy(() => import("./ThreadRightPanel"));
+
+function ThreadTerminalDrawerFallback({ height }: { height: number }) {
+  return (
+    <aside
+      className="thread-terminal-drawer relative flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background"
+      style={{ height }}
+    >
+      <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-xs text-muted-foreground">
+        正在加载终端...
+      </div>
+    </aside>
+  );
+}
+
+function ThreadRightPanelFallback() {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center border-l border-border/70 bg-background px-4 text-xs text-muted-foreground">
+      正在加载面板...
+    </div>
+  );
+}
 
 function normalizeComparableFilePath(value: string): string {
   return value.replaceAll("\\", "/").replace(/^\/([A-Za-z]:\/)/, "$1");
@@ -410,7 +431,6 @@ function resolveMarkdownPreviewTarget(
     filePath: filePath.replace(/^\.?[\\/]+/, ""),
   };
 }
-const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -854,30 +874,32 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
 
   return (
     <div className={visible ? undefined : "hidden"}>
-      <ThreadTerminalDrawer
-        threadRef={threadRef}
-        threadId={threadId}
-        cwd={cwd}
-        worktreePath={effectiveWorktreePath}
-        runtimeEnv={runtimeEnv}
-        visible={visible}
-        height={terminalState.terminalHeight}
-        terminalIds={terminalState.terminalIds}
-        activeTerminalId={terminalState.activeTerminalId}
-        terminalGroups={terminalState.terminalGroups}
-        activeTerminalGroupId={terminalState.activeTerminalGroupId}
-        focusRequestId={focusRequestId + localFocusRequestId + (visible ? 1 : 0)}
-        onSplitTerminal={splitTerminal}
-        onNewTerminal={createNewTerminal}
-        splitShortcutLabel={visible ? splitShortcutLabel : undefined}
-        newShortcutLabel={visible ? newShortcutLabel : undefined}
-        closeShortcutLabel={visible ? closeShortcutLabel : undefined}
-        keybindings={keybindings}
-        onActiveTerminalChange={activateTerminal}
-        onCloseTerminal={closeTerminal}
-        onHeightChange={setTerminalHeight}
-        onAddTerminalContext={handleAddTerminalContext}
-      />
+      <Suspense fallback={<ThreadTerminalDrawerFallback height={terminalState.terminalHeight} />}>
+        <LazyThreadTerminalDrawer
+          threadRef={threadRef}
+          threadId={threadId}
+          cwd={cwd}
+          worktreePath={effectiveWorktreePath}
+          runtimeEnv={runtimeEnv}
+          visible={visible}
+          height={terminalState.terminalHeight}
+          terminalIds={terminalState.terminalIds}
+          activeTerminalId={terminalState.activeTerminalId}
+          terminalGroups={terminalState.terminalGroups}
+          activeTerminalGroupId={terminalState.activeTerminalGroupId}
+          focusRequestId={focusRequestId + localFocusRequestId + (visible ? 1 : 0)}
+          onSplitTerminal={splitTerminal}
+          onNewTerminal={createNewTerminal}
+          splitShortcutLabel={visible ? splitShortcutLabel : undefined}
+          newShortcutLabel={visible ? newShortcutLabel : undefined}
+          closeShortcutLabel={visible ? closeShortcutLabel : undefined}
+          keybindings={keybindings}
+          onActiveTerminalChange={activateTerminal}
+          onCloseTerminal={closeTerminal}
+          onHeightChange={setTerminalHeight}
+          onAddTerminalContext={handleAddTerminalContext}
+        />
+      </Suspense>
     </div>
   );
 });
@@ -2126,11 +2148,7 @@ export default function ChatView(props: ChatViewProps) {
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
   }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
-  const timelineEntries = useMemo(
-    () =>
-      deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
-    [activeThread?.proposedPlans, timelineMessages, workLogEntries],
-  );
+  const timelineDerivedStateCacheRef = useRef(createChatTimelineDerivedStateCache());
   const goalMessageIds = useMemo(() => {
     const ids = new Set<MessageId>(
       activeThreadKey ? (goalMessageIdsByThreadKey[activeThreadKey] ?? []) : [],
@@ -2160,93 +2178,31 @@ export default function ChatView(props: ChatViewProps) {
   ]);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
-  const rightPanelArtifacts = useMemo<RightPanelArtifact[]>(() => {
-    const artifacts: RightPanelArtifact[] = [];
-    const seen = new Set<string>();
-
-    const addArtifact = (artifact: RightPanelArtifact) => {
-      if (seen.has(artifact.id)) return;
-      seen.add(artifact.id);
-      artifacts.push(artifact);
-    };
-
-    const toFileArtifact = (filePath: string): RightPanelArtifact => {
-      const segments = filePath.split(/[\\/]/);
-      const isImage = IMAGE_ARTIFACT_EXTENSION_PATTERN.test(filePath);
-      return {
-        id: `file:${filePath}`,
-        name: segments.at(-1) || filePath,
-        type: isImage ? "image" : "file",
-        filePath,
-        ...(isImage ? { previewUrl: filePath } : {}),
-      };
-    };
-
-    for (const message of timelineMessages) {
-      for (const attachment of message.attachments ?? []) {
-        if (!attachment.previewUrl) continue;
-        addArtifact({
-          id: `attachment:${attachment.id}`,
-          name: attachment.name,
-          type: attachment.type,
-          previewUrl: attachment.previewUrl,
-          mimeType: attachment.mimeType,
-        });
-      }
-    }
-
-    for (const entry of workLogEntries) {
-      if (isImageGenerationWorkEntry(entry)) {
-        const imagePath = pickGeneratedImagePath(entry);
-        if (imagePath) {
-          const segments = imagePath.split(/[\\/]/);
-          addArtifact({
-            id: `generated-image:${imagePath}`,
-            name: segments.at(-1) || entry.label || "Generated image",
-            type: "image",
-            previewUrl: imagePath,
-            filePath:
-              imagePath.startsWith("data:") || /^https?:\/\//i.test(imagePath)
-                ? undefined
-                : imagePath,
-            mimeType: "image/png",
-          });
-        }
-      }
-
-      for (const filePath of entry.changedFiles ?? []) {
-        addArtifact(toFileArtifact(filePath));
-      }
-    }
-
-    for (const summary of turnDiffSummaries) {
-      for (const file of summary.files) {
-        addArtifact(toFileArtifact(file.path));
-      }
-    }
-
-    return artifacts;
-  }, [timelineMessages, turnDiffSummaries, workLogEntries]);
-  const hasArtifactPanelContent = rightPanelArtifacts.length > 0;
-  const turnDiffSummaryByAssistantMessageId = useMemo(
-    () => buildTurnDiffSummaryByAssistantMessageId({ timelineEntries, turnDiffSummaries }),
-    [timelineEntries, turnDiffSummaries],
-  );
-  const revertTurnCountByUserMessageId = useMemo(
+  const {
+    timelineEntries,
+    rightPanelArtifacts,
+    turnDiffSummaryByAssistantMessageId,
+    revertTurnCountByUserMessageId,
+  } = useMemo(
     () =>
-      buildRevertTurnCountByUserMessageId({
-        timelineEntries,
+      timelineDerivedStateCacheRef.current({
+        threadKey: activeThreadKey,
+        timelineMessages,
+        proposedPlans: activeThread?.proposedPlans ?? EMPTY_PROPOSED_PLANS,
+        workLogEntries,
         turnDiffSummaries,
-        turnDiffSummaryByAssistantMessageId,
         inferredCheckpointTurnCountByTurnId,
       }),
     [
+      activeThread?.proposedPlans,
+      activeThreadKey,
       inferredCheckpointTurnCountByTurnId,
-      timelineEntries,
+      timelineMessages,
       turnDiffSummaries,
-      turnDiffSummaryByAssistantMessageId,
+      workLogEntries,
     ],
   );
+  const hasArtifactPanelContent = rightPanelArtifacts.length > 0;
 
   const completionSummary = useMemo(() => {
     if (!latestTurnSettled) return null;
@@ -4964,24 +4920,26 @@ export default function ChatView(props: ChatViewProps) {
           onPointerUp={onRightPanelResizePointerUp}
           onPointerCancel={onRightPanelResizePointerUp}
         />
-        <ThreadRightPanel
-          activePlan={activePlan}
-          activeProposedPlan={sidebarProposedPlan}
-          activeSurface={rightPanelSurface}
-          environmentId={environmentId}
-          hasArtifacts={hasArtifactPanelContent}
-          markdownCwd={markdownCwd}
-          mode="sidebar"
-          planLabel={planSidebarLabel}
-          selectedFilePath={rightPanelFilePath}
-          selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
-          selectedBrowserUrl={rightPanelBrowserUrl}
-          artifacts={rightPanelArtifacts}
-          timestampFormat={timestampFormat}
-          workspaceRoot={activeWorkspaceRoot}
-          onClose={closeThreadRightPanel}
-          onSurfaceChange={selectRightPanelSurface}
-        />
+        <Suspense fallback={<ThreadRightPanelFallback />}>
+          <LazyThreadRightPanel
+            activePlan={activePlan}
+            activeProposedPlan={sidebarProposedPlan}
+            activeSurface={rightPanelSurface}
+            environmentId={environmentId}
+            hasArtifacts={hasArtifactPanelContent}
+            markdownCwd={markdownCwd}
+            mode="sidebar"
+            planLabel={planSidebarLabel}
+            selectedFilePath={rightPanelFilePath}
+            selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
+            selectedBrowserUrl={rightPanelBrowserUrl}
+            artifacts={rightPanelArtifacts}
+            timestampFormat={timestampFormat}
+            workspaceRoot={activeWorkspaceRoot}
+            onClose={closeThreadRightPanel}
+            onSurfaceChange={selectRightPanelSurface}
+          />
+        </Suspense>
       </div>
     ) : null;
   const emptyNewThreadFooter = isConversationNewThread ? null : isGitRepo ? (
@@ -5322,26 +5280,28 @@ export default function ChatView(props: ChatViewProps) {
           onAddTerminalContext={addTerminalContextToDraft}
         />
       ))}
-      {shouldUseRightPanelSheet ? (
+      {shouldUseRightPanelSheet && rightPanelOpen ? (
         <RightPanelSheet open={rightPanelOpen} onClose={closeThreadRightPanel}>
-          <ThreadRightPanel
-            activePlan={activePlan}
-            activeProposedPlan={sidebarProposedPlan}
-            activeSurface={rightPanelSurface}
-            environmentId={environmentId}
-            hasArtifacts={hasArtifactPanelContent}
-            markdownCwd={markdownCwd}
-            mode="sheet"
-            planLabel={planSidebarLabel}
-            selectedFilePath={rightPanelFilePath}
-            selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
-            selectedBrowserUrl={rightPanelBrowserUrl}
-            artifacts={rightPanelArtifacts}
-            timestampFormat={timestampFormat}
-            workspaceRoot={activeWorkspaceRoot}
-            onClose={closeThreadRightPanel}
-            onSurfaceChange={selectRightPanelSurface}
-          />
+          <Suspense fallback={<ThreadRightPanelFallback />}>
+            <LazyThreadRightPanel
+              activePlan={activePlan}
+              activeProposedPlan={sidebarProposedPlan}
+              activeSurface={rightPanelSurface}
+              environmentId={environmentId}
+              hasArtifacts={hasArtifactPanelContent}
+              markdownCwd={markdownCwd}
+              mode="sheet"
+              planLabel={planSidebarLabel}
+              selectedFilePath={rightPanelFilePath}
+              selectedFileWorkspaceRoot={rightPanelFileWorkspaceRoot}
+              selectedBrowserUrl={rightPanelBrowserUrl}
+              artifacts={rightPanelArtifacts}
+              timestampFormat={timestampFormat}
+              workspaceRoot={activeWorkspaceRoot}
+              onClose={closeThreadRightPanel}
+              onSurfaceChange={selectRightPanelSurface}
+            />
+          </Suspense>
         </RightPanelSheet>
       ) : null}
 

@@ -66,7 +66,9 @@ const devProxyTarget = resolveDevProxyTarget(configuredWsUrl);
 
 export default defineConfig({
   plugins: [
-    tanstackRouter(),
+    tanstackRouter({
+      autoCodeSplitting: true,
+    }),
     monacoEditorPlugin({
       languageWorkers: ["editorWorkerService", "typescript", "json", "css", "html"],
     }),

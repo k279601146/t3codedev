@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import ChatView from "../components/ChatView";
-import { CursorLayout } from "../components/layout/CursorLayout";
+import { LazyCursorLayout } from "../components/layout/LazyCursorLayout";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
@@ -56,7 +56,7 @@ function ChatIndexRouteView() {
   }
 
   if (layoutMode === "cursor") {
-    return <CursorLayout />;
+    return <LazyCursorLayout />;
   }
 
   if (!conversationDraftSession) {

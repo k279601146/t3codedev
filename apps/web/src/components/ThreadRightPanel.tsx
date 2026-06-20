@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -44,11 +46,17 @@ import { readLocalApi } from "../localApi";
 import { rewriteMarkdownFileUriHref } from "../markdown-links";
 import type { ActivePlanState, LatestProposedPlanState } from "../session-logic";
 import type { RightPanelSurface } from "../rightPanelStore";
-import DiffPanel, { DiffWorkerPoolProvider } from "./DiffPanel";
-import PlanSidebar from "./PlanSidebar";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
+
+const LazyDiffPanel = lazy(() => import("./DiffPanel"));
+const LazyDiffWorkerPoolProvider = lazy(() =>
+  import("./DiffWorkerPoolProvider").then((module) => ({
+    default: module.DiffWorkerPoolProvider,
+  })),
+);
+const LazyPlanSidebar = lazy(() => import("./PlanSidebar"));
 
 export type RightPanelArtifact = {
   id: string;
@@ -860,6 +868,14 @@ function ArtifactList(props: {
   );
 }
 
+function RightPanelContentLoading(props: { label: string }) {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center px-4 text-xs text-muted-foreground">
+      {props.label}
+    </div>
+  );
+}
+
 export function ThreadRightPanel({
   activePlan,
   activeProposedPlan,
@@ -1097,9 +1113,11 @@ export function ThreadRightPanel({
         </div>
       </ScrollArea>
     ) : activeTab.surface === "review" ? (
-      <DiffWorkerPoolProvider>
-        <DiffPanel mode={mode} />
-      </DiffWorkerPoolProvider>
+      <Suspense fallback={<RightPanelContentLoading label="正在加载审查面板..." />}>
+        <LazyDiffWorkerPoolProvider>
+          <LazyDiffPanel mode={mode} />
+        </LazyDiffWorkerPoolProvider>
+      </Suspense>
     ) : activeTab.surface === "file" ? (
       <FilePanel
         environmentId={environmentId}
@@ -1130,17 +1148,19 @@ export function ThreadRightPanel({
     ) : activeTab.surface === "computer" ? (
       <ComputerPanel />
     ) : activeTab.surface === "summary" ? (
-      <PlanSidebar
-        activePlan={activePlan}
-        activeProposedPlan={activeProposedPlan}
-        label={planLabel}
-        environmentId={environmentId}
-        markdownCwd={markdownCwd}
-        workspaceRoot={workspaceRoot}
-        timestampFormat={timestampFormat}
-        mode={mode}
-        onClose={onClose}
-      />
+      <Suspense fallback={<RightPanelContentLoading label="正在加载侧边聊天..." />}>
+        <LazyPlanSidebar
+          activePlan={activePlan}
+          activeProposedPlan={activeProposedPlan}
+          label={planLabel}
+          environmentId={environmentId}
+          markdownCwd={markdownCwd}
+          workspaceRoot={workspaceRoot}
+          timestampFormat={timestampFormat}
+          mode={mode}
+          onClose={onClose}
+        />
+      </Suspense>
     ) : (
       <EmptyState
         icon={<SquareTerminalIcon className="size-7" />}

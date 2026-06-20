@@ -15,7 +15,9 @@ import {
   type Thread,
   type ThreadSession,
   type TurnDiffSummary,
+  type ProposedPlan,
 } from "../types";
+import { deriveTimelineEntries, type WorkLogEntry } from "../session-logic";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import * as Schema from "effect/Schema";
 import { selectThreadByRef, useStore } from "../store";
@@ -25,11 +27,154 @@ import {
   type TerminalContextDraft,
 } from "../lib/terminalContext";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
+import type { RightPanelArtifact } from "./ThreadRightPanel";
+import { isImageGenerationWorkEntry, pickGeneratedImagePath } from "./chat/MessagesTimeline.logic";
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
+
+const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
+
+export function buildRightPanelArtifacts(input: {
+  timelineMessages: ReadonlyArray<ChatMessage>;
+  workLogEntries: ReadonlyArray<WorkLogEntry>;
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
+}): RightPanelArtifact[] {
+  const artifacts: RightPanelArtifact[] = [];
+  const seen = new Set<string>();
+
+  const addArtifact = (artifact: RightPanelArtifact) => {
+    if (seen.has(artifact.id)) return;
+    seen.add(artifact.id);
+    artifacts.push(artifact);
+  };
+
+  const toFileArtifact = (filePath: string): RightPanelArtifact => {
+    const segments = filePath.split(/[\\/]/);
+    const isImage = IMAGE_ARTIFACT_EXTENSION_PATTERN.test(filePath);
+    return {
+      id: `file:${filePath}`,
+      name: segments.at(-1) || filePath,
+      type: isImage ? "image" : "file",
+      filePath,
+      ...(isImage ? { previewUrl: filePath } : {}),
+    };
+  };
+
+  for (const message of input.timelineMessages) {
+    for (const attachment of message.attachments ?? []) {
+      if (!attachment.previewUrl) continue;
+      addArtifact({
+        id: `attachment:${attachment.id}`,
+        name: attachment.name,
+        type: attachment.type,
+        previewUrl: attachment.previewUrl,
+        mimeType: attachment.mimeType,
+      });
+    }
+  }
+
+  for (const entry of input.workLogEntries) {
+    if (isImageGenerationWorkEntry(entry)) {
+      const imagePath = pickGeneratedImagePath(entry);
+      if (imagePath) {
+        const segments = imagePath.split(/[\\/]/);
+        addArtifact({
+          id: `generated-image:${imagePath}`,
+          name: segments.at(-1) || entry.label || "Generated image",
+          type: "image",
+          previewUrl: imagePath,
+          filePath:
+            imagePath.startsWith("data:") || /^https?:\/\//i.test(imagePath)
+              ? undefined
+              : imagePath,
+          mimeType: "image/png",
+        });
+      }
+    }
+
+    for (const filePath of entry.changedFiles ?? []) {
+      addArtifact(toFileArtifact(filePath));
+    }
+  }
+
+  for (const summary of input.turnDiffSummaries) {
+    for (const file of summary.files) {
+      addArtifact(toFileArtifact(file.path));
+    }
+  }
+
+  return artifacts;
+}
+
+export interface ChatTimelineDerivedState {
+  timelineEntries: ReturnType<typeof deriveTimelineEntries>;
+  rightPanelArtifacts: RightPanelArtifact[];
+  turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
+  revertTurnCountByUserMessageId: Map<MessageId, number>;
+}
+
+export interface ChatTimelineDerivedCacheInput {
+  threadKey: string | null;
+  timelineMessages: ReadonlyArray<ChatMessage>;
+  proposedPlans: ReadonlyArray<ProposedPlan>;
+  workLogEntries: ReadonlyArray<WorkLogEntry>;
+  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
+  inferredCheckpointTurnCountByTurnId: Readonly<Record<TurnId, number | undefined>>;
+}
+
+export function createChatTimelineDerivedStateCache(): (
+  input: ChatTimelineDerivedCacheInput,
+) => ChatTimelineDerivedState {
+  let previousInput: ChatTimelineDerivedCacheInput | null = null;
+  let previousResult: ChatTimelineDerivedState | null = null;
+
+  return (input) => {
+    if (
+      previousInput &&
+      previousResult &&
+      previousInput.threadKey === input.threadKey &&
+      previousInput.timelineMessages === input.timelineMessages &&
+      previousInput.proposedPlans === input.proposedPlans &&
+      previousInput.workLogEntries === input.workLogEntries &&
+      previousInput.turnDiffSummaries === input.turnDiffSummaries &&
+      previousInput.inferredCheckpointTurnCountByTurnId ===
+        input.inferredCheckpointTurnCountByTurnId
+    ) {
+      return previousResult;
+    }
+
+    const timelineEntries = deriveTimelineEntries(
+      [...input.timelineMessages],
+      [...input.proposedPlans],
+      [...input.workLogEntries],
+    );
+    const turnDiffSummaryByAssistantMessageId = buildTurnDiffSummaryByAssistantMessageId({
+      timelineEntries,
+      turnDiffSummaries: input.turnDiffSummaries,
+    });
+    const result: ChatTimelineDerivedState = {
+      timelineEntries,
+      rightPanelArtifacts: buildRightPanelArtifacts({
+        timelineMessages: input.timelineMessages,
+        workLogEntries: input.workLogEntries,
+        turnDiffSummaries: input.turnDiffSummaries,
+      }),
+      turnDiffSummaryByAssistantMessageId,
+      revertTurnCountByUserMessageId: buildRevertTurnCountByUserMessageId({
+        timelineEntries,
+        turnDiffSummaries: input.turnDiffSummaries,
+        turnDiffSummaryByAssistantMessageId,
+        inferredCheckpointTurnCountByTurnId: input.inferredCheckpointTurnCountByTurnId,
+      }),
+    };
+    previousInput = input;
+    previousResult = result;
+    return result;
+  };
+}
 
 export function buildLocalDraftThread(
   threadId: ThreadId,

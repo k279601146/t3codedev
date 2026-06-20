@@ -13,7 +13,7 @@ import { useSettings } from "../hooks/useSettings";
 import { selectEnvironmentState, selectThreadExistsByRef, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
 import { resolveThreadRouteRef } from "../threadRoutes";
-import { CursorLayout } from "../components/layout/CursorLayout";
+import { LazyCursorLayout } from "../components/layout/LazyCursorLayout";
 import { SidebarInset } from "~/components/ui/sidebar";
 
 function ChatThreadRouteView() {
@@ -71,7 +71,7 @@ function ChatThreadRouteView() {
   }
 
   if (layoutMode === "cursor") {
-    return <CursorLayout />;
+    return <LazyCursorLayout />;
   }
 
   return (
