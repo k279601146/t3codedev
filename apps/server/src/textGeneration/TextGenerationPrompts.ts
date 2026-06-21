@@ -203,6 +203,7 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
     rules: [
       "Title should summarize the user's request, not restate it verbatim.",
       "Keep it short and specific (3-8 words).",
+      "Write the title in the user's working language; if the message is mostly Chinese or the language is ambiguous, use Simplified Chinese.",
       "Avoid quotes, filler, prefixes, and trailing punctuation.",
       "If images are attached, use them as primary context for visual/UI issues.",
     ],

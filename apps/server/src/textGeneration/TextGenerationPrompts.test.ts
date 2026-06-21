@@ -112,6 +112,8 @@ describe("buildThreadTitlePrompt", () => {
 
     expect(result.prompt).toContain("User message:");
     expect(result.prompt).toContain("Investigate reconnect regressions after session restore");
+    expect(result.prompt).toContain("Write the title in the user's working language");
+    expect(result.prompt).toContain("use Simplified Chinese");
     expect(result.prompt).not.toContain("Attachment metadata:");
   });
 
