@@ -48,6 +48,9 @@ import {
 import { WorkspaceFileSystem } from "../../workspace/Services/WorkspaceFileSystem.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
+const providerThreadKey = (threadId: ThreadId) => `${threadId}:__thread__`;
+const imagePathRewriteKey = (threadId: ThreadId, turnId: TurnId | undefined) =>
+  turnId ? providerTurnKey(threadId, turnId) : providerThreadKey(threadId);
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
   CommandId.make(`provider:${event.eventId}:${tag}:${crypto.randomUUID()}`);
 
@@ -57,12 +60,19 @@ interface AssistantSegmentState {
   activeMessageId: MessageId | null;
 }
 
+interface ImagePathRewrite {
+  readonly from: string;
+  readonly to: string;
+}
+
 const TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY = 10_000;
 const TURN_MESSAGE_IDS_BY_TURN_TTL = Duration.minutes(120);
 const BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_CACHE_CAPACITY = 20_000;
 const BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_TTL = Duration.minutes(120);
 const BUFFERED_PROPOSED_PLAN_BY_ID_CACHE_CAPACITY = 10_000;
 const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
+const IMAGE_PATH_REWRITE_BY_TURN_CACHE_CAPACITY = 10_000;
+const IMAGE_PATH_REWRITE_BY_TURN_TTL = Duration.minutes(120);
 const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 const GENERATED_IMAGES_WORKSPACE_DIR = "generated-images";
@@ -131,6 +141,42 @@ function decodeImageResultBase64(result: string | undefined): Uint8Array | null 
   } catch {
     return null;
   }
+}
+
+function joinPathText(separator: "\\" | "/", parts: ReadonlyArray<string>): string {
+  return parts
+    .map((part, index) =>
+      index === 0 ? part.replace(/[\\/]+$/g, "") : part.replace(/^[\\/]+|[\\/]+$/g, ""),
+    )
+    .filter((part) => part.length > 0)
+    .join(separator);
+}
+
+function buildGeneratedImageDefaultPathCandidates(input: {
+  readonly rawThreadId?: string | undefined;
+  readonly itemId?: string | undefined;
+  readonly extension: string;
+}): ReadonlyArray<string> {
+  if (!input.rawThreadId || !input.itemId) {
+    return [];
+  }
+  const relativeParts = [
+    "agent-data",
+    "generated_images",
+    input.rawThreadId,
+    `${input.itemId}.${input.extension}`,
+  ];
+  const rootCandidates = [process.env.BAHEW_HOME, process.env.USERPROFILE, process.env.HOME]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((root) =>
+      root.endsWith(".bahew") || root.endsWith(".bahew/") || root.endsWith(".bahew\\")
+        ? root
+        : joinPathText("\\", [root, ".bahew"]),
+    );
+  return [...new Set(rootCandidates)].flatMap((root) => [
+    joinPathText("\\", [root.replace(/\//g, "\\"), ...relativeParts]),
+    joinPathText("/", [root.replace(/\\/g, "/"), ...relativeParts]),
+  ]);
 }
 
 function buildImagePersistenceFailureEvent(
@@ -748,6 +794,12 @@ const make = Effect.gen(function* () {
     lookup: () => Effect.succeed({ text: "", createdAt: "" }),
   });
 
+  const imagePathRewritesByTurnKey = yield* Cache.make<string, ImagePathRewrite[]>({
+    capacity: IMAGE_PATH_REWRITE_BY_TURN_CACHE_CAPACITY,
+    timeToLive: IMAGE_PATH_REWRITE_BY_TURN_TTL,
+    lookup: () => Effect.succeed([]),
+  });
+
   const resolveThreadDetail = Effect.fn("resolveThreadDetail")(function* (threadId: ThreadId) {
     return yield* projectionSnapshotQuery
       .getThreadDetailById(threadId)
@@ -787,6 +839,71 @@ const make = Effect.gen(function* () {
     }
     return decodeImageResultBase64(input.result);
   });
+
+  const rememberImagePathRewrites = (input: {
+    threadId: ThreadId;
+    turnId?: TurnId;
+    rewrites: ReadonlyArray<ImagePathRewrite>;
+  }) =>
+    Effect.gen(function* () {
+      if (input.rewrites.length === 0) {
+        return;
+      }
+      const keys = [imagePathRewriteKey(input.threadId, input.turnId)];
+      if (input.turnId !== undefined) {
+        keys.push(imagePathRewriteKey(input.threadId, undefined));
+      }
+      yield* Effect.forEach(
+        keys,
+        (key) =>
+          Cache.getOption(imagePathRewritesByTurnKey, key).pipe(
+            Effect.flatMap((existingRewrites) => {
+              const bySource = new Map<string, ImagePathRewrite>();
+              for (const rewrite of Option.getOrElse(
+                existingRewrites,
+                (): ImagePathRewrite[] => [],
+              )) {
+                bySource.set(rewrite.from, rewrite);
+              }
+              for (const rewrite of input.rewrites) {
+                bySource.set(rewrite.from, rewrite);
+              }
+              return Cache.set(imagePathRewritesByTurnKey, key, [...bySource.values()]);
+            }),
+          ),
+        { concurrency: 1, discard: true },
+      );
+    });
+
+  const rewriteGeneratedImagePathsInText = (input: {
+    threadId: ThreadId;
+    turnId?: TurnId;
+    text: string;
+  }) =>
+    Effect.gen(function* () {
+      const keys = [
+        imagePathRewriteKey(input.threadId, input.turnId),
+        imagePathRewriteKey(input.threadId, undefined),
+      ];
+      const rewrites = yield* Effect.forEach(
+        [...new Set(keys)],
+        (key) =>
+          Cache.getOption(imagePathRewritesByTurnKey, key).pipe(
+            Effect.map((entry) => Option.getOrElse(entry, (): ImagePathRewrite[] => [])),
+          ),
+        { concurrency: 1 },
+      );
+      let nextText = input.text;
+      const seen = new Set<string>();
+      for (const rewrite of rewrites.flat()) {
+        if (seen.has(rewrite.from)) {
+          continue;
+        }
+        seen.add(rewrite.from);
+        nextText = nextText.split(rewrite.from).join(rewrite.to);
+      }
+      return nextText;
+    });
 
   const persistGeneratedImageToWorkspace = Effect.fn("persistGeneratedImageToWorkspace")(function* (
     event: ItemCompletedRuntimeEvent,
@@ -848,6 +965,24 @@ const make = Effect.gen(function* () {
 
     const persisted = writeResult.result;
     const existingFiles = Array.isArray(data.files) ? data.files : [];
+    const turnId = toTurnId(event.turnId);
+    const rawThreadId = asNonEmptyString(asRecord(event.raw?.payload)?.threadId);
+    const pathRewriteSources = [
+      ...(originalSavedPath ? [originalSavedPath] : []),
+      ...buildGeneratedImageDefaultPathCandidates({
+        rawThreadId,
+        itemId: asNonEmptyString(item.id) ?? event.itemId,
+        extension,
+      }),
+    ];
+    yield* rememberImagePathRewrites({
+      threadId: thread.id,
+      ...(turnId ? { turnId } : {}),
+      rewrites: [...new Set(pathRewriteSources)].map((from) => ({
+        from,
+        to: persisted.absolutePath,
+      })),
+    });
     return {
       ...event,
       payload: {
@@ -1068,13 +1203,18 @@ const make = Effect.gen(function* () {
       if (!hasRenderableAssistantText(bufferedText)) {
         return false;
       }
+      const rewrittenText = yield* rewriteGeneratedImagePathsInText({
+        threadId: input.threadId,
+        ...(input.turnId ? { turnId: input.turnId } : {}),
+        text: bufferedText,
+      });
 
       yield* orchestrationEngine.dispatch({
         type: "thread.message.assistant.delta",
         commandId: providerCommandId(input.event, input.commandTag),
         threadId: input.threadId,
         messageId: input.messageId,
-        delta: bufferedText,
+        delta: rewrittenText,
         ...(input.turnId ? { turnId: input.turnId } : {}),
         createdAt: input.createdAt,
       });
@@ -1134,6 +1274,13 @@ const make = Effect.gen(function* () {
             ? input.fallbackText!
             : "";
       const hasRenderableText = hasRenderableAssistantText(text);
+      const rewrittenText = hasRenderableText
+        ? yield* rewriteGeneratedImagePathsInText({
+            threadId: input.threadId,
+            ...(input.turnId ? { turnId: input.turnId } : {}),
+            text,
+          })
+        : text;
 
       if (hasRenderableText) {
         yield* orchestrationEngine.dispatch({
@@ -1141,7 +1288,7 @@ const make = Effect.gen(function* () {
           commandId: providerCommandId(input.event, input.finalDeltaCommandTag),
           threadId: input.threadId,
           messageId: input.messageId,
-          delta: text,
+          delta: rewrittenText,
           ...(input.turnId ? { turnId: input.turnId } : {}),
           createdAt: input.createdAt,
         });
@@ -1615,23 +1762,33 @@ const make = Effect.gen(function* () {
         if (assistantDeliveryMode === "buffered") {
           const spillChunk = yield* appendBufferedAssistantText(assistantMessageId, assistantDelta);
           if (spillChunk.length > 0) {
+            const rewrittenSpillChunk = yield* rewriteGeneratedImagePathsInText({
+              threadId: thread.id,
+              ...(turnId ? { turnId } : {}),
+              text: spillChunk,
+            });
             yield* orchestrationEngine.dispatch({
               type: "thread.message.assistant.delta",
               commandId: providerCommandId(event, "assistant-delta-buffer-spill"),
               threadId: thread.id,
               messageId: assistantMessageId,
-              delta: spillChunk,
+              delta: rewrittenSpillChunk,
               ...(turnId ? { turnId } : {}),
               createdAt: now,
             });
           }
         } else {
+          const rewrittenAssistantDelta = yield* rewriteGeneratedImagePathsInText({
+            threadId: thread.id,
+            ...(turnId ? { turnId } : {}),
+            text: assistantDelta,
+          });
           yield* orchestrationEngine.dispatch({
             type: "thread.message.assistant.delta",
             commandId: providerCommandId(event, "assistant-delta"),
             threadId: thread.id,
             messageId: assistantMessageId,
-            delta: assistantDelta,
+            delta: rewrittenAssistantDelta,
             ...(turnId ? { turnId } : {}),
             createdAt: now,
           });

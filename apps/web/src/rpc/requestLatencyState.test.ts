@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   acknowledgeRpcRequest,
+  getPendingRpcAckRequests,
   getSlowRpcAckRequests,
   resetRequestLatencyStateForTests,
   trackRpcRequestSent,
@@ -21,10 +22,19 @@ describe("requestLatencyState", () => {
 
   it("marks unary requests as slow when the ack threshold is exceeded", () => {
     trackRpcRequestSent("1", "server.getConfig");
+    expect(getPendingRpcAckRequests()).toMatchObject([
+      {
+        requestId: "1",
+        tag: "server.getConfig",
+        thresholdMs: SLOW_RPC_ACK_THRESHOLD_MS,
+      },
+    ]);
+
     vi.advanceTimersByTime(SLOW_RPC_ACK_THRESHOLD_MS - 1);
     expect(getSlowRpcAckRequests()).toEqual([]);
 
     vi.advanceTimersByTime(1);
+    expect(getPendingRpcAckRequests()).toEqual([]);
     expect(getSlowRpcAckRequests()).toMatchObject([
       {
         requestId: "1",
@@ -36,10 +46,24 @@ describe("requestLatencyState", () => {
 
   it("clears the slow request once the server acknowledges it", () => {
     trackRpcRequestSent("1", "git.status");
+    expect(getPendingRpcAckRequests()).toHaveLength(1);
+
     vi.advanceTimersByTime(SLOW_RPC_ACK_THRESHOLD_MS);
+    expect(getPendingRpcAckRequests()).toEqual([]);
     expect(getSlowRpcAckRequests()).toHaveLength(1);
 
     acknowledgeRpcRequest("1");
+    expect(getSlowRpcAckRequests()).toEqual([]);
+  });
+
+  it("clears pending requests when the server acknowledges before the slow threshold", () => {
+    trackRpcRequestSent("1", "server.refreshProviders");
+    expect(getPendingRpcAckRequests()).toHaveLength(1);
+
+    acknowledgeRpcRequest("1");
+    vi.advanceTimersByTime(SLOW_RPC_ACK_THRESHOLD_MS);
+
+    expect(getPendingRpcAckRequests()).toEqual([]);
     expect(getSlowRpcAckRequests()).toEqual([]);
   });
 
@@ -47,6 +71,7 @@ describe("requestLatencyState", () => {
     trackRpcRequestSent("1", "subscribeServerConfig");
     vi.advanceTimersByTime(SLOW_RPC_ACK_THRESHOLD_MS * 2);
 
+    expect(getPendingRpcAckRequests()).toEqual([]);
     expect(getSlowRpcAckRequests()).toEqual([]);
   });
 

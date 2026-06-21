@@ -15,6 +15,10 @@ export interface SlowRpcAckRequest {
   readonly thresholdMs: number;
 }
 
+export type PendingRpcAckRequestSnapshot = Omit<SlowRpcAckRequest, "thresholdMs"> & {
+  readonly thresholdMs: number;
+};
+
 interface PendingRpcAckRequest {
   readonly request: SlowRpcAckRequest;
   readonly timeoutId: ReturnType<typeof setTimeout>;
@@ -26,6 +30,10 @@ const slowRpcAckRequestsAtom = Atom.make<ReadonlyArray<SlowRpcAckRequest>>([]).p
   Atom.keepAlive,
   Atom.withLabel("slow-rpc-ack-requests"),
 );
+const pendingRpcAckRequestsAtom = Atom.make<ReadonlyArray<PendingRpcAckRequestSnapshot>>([]).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("pending-rpc-ack-requests"),
+);
 
 function setSlowRpcAckRequests(requests: ReadonlyArray<SlowRpcAckRequest>) {
   appAtomRegistry.set(slowRpcAckRequestsAtom, [...requests]);
@@ -35,12 +43,23 @@ function getSlowRpcAckRequestsValue(): ReadonlyArray<SlowRpcAckRequest> {
   return appAtomRegistry.get(slowRpcAckRequestsAtom);
 }
 
+function syncPendingRpcAckRequests(): void {
+  appAtomRegistry.set(
+    pendingRpcAckRequestsAtom,
+    [...pendingRpcAckRequests.values()].map((pending) => pending.request),
+  );
+}
+
 function shouldTrackRpcAck(tag: string): boolean {
   return !tag.includes("subscribe");
 }
 
 export function getSlowRpcAckRequests(): ReadonlyArray<SlowRpcAckRequest> {
   return getSlowRpcAckRequestsValue();
+}
+
+export function getPendingRpcAckRequests(): ReadonlyArray<PendingRpcAckRequestSnapshot> {
+  return appAtomRegistry.get(pendingRpcAckRequestsAtom);
 }
 
 export function trackRpcRequestSent(requestId: string, tag: string): void {
@@ -61,6 +80,7 @@ export function trackRpcRequestSent(requestId: string, tag: string): void {
   };
   const timeoutId = setTimeout(() => {
     pendingRpcAckRequests.delete(requestId);
+    syncPendingRpcAckRequests();
     appendSlowRpcAckRequest(request);
   }, slowRpcAckThresholdMs);
 
@@ -68,6 +88,7 @@ export function trackRpcRequestSent(requestId: string, tag: string): void {
     request,
     timeoutId,
   });
+  syncPendingRpcAckRequests();
 }
 
 export function acknowledgeRpcRequest(requestId: string): void {
@@ -85,6 +106,7 @@ export function clearAllTrackedRpcRequests(): void {
     clearTimeout(pending.timeoutId);
   }
   pendingRpcAckRequests.clear();
+  syncPendingRpcAckRequests();
   setSlowRpcAckRequests([]);
 }
 
@@ -96,6 +118,7 @@ function clearTrackedRpcRequest(requestId: string): void {
 
   clearTimeout(pending.timeoutId);
   pendingRpcAckRequests.delete(requestId);
+  syncPendingRpcAckRequests();
 }
 
 function appendSlowRpcAckRequest(request: SlowRpcAckRequest): void {
@@ -130,4 +153,8 @@ export function setSlowRpcAckThresholdMsForTests(thresholdMs: number): void {
 
 export function useSlowRpcAckRequests(): ReadonlyArray<SlowRpcAckRequest> {
   return useAtomValue(slowRpcAckRequestsAtom);
+}
+
+export function usePendingRpcAckRequests(): ReadonlyArray<PendingRpcAckRequestSnapshot> {
+  return useAtomValue(pendingRpcAckRequestsAtom);
 }

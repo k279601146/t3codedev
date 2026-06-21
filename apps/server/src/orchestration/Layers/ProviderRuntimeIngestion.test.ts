@@ -1079,6 +1079,97 @@ describe("ProviderRuntimeIngestion", () => {
     expect([...fs.readFileSync(savedPath)]).toEqual([137, 80, 78, 71]);
   });
 
+  it("rewrites generated image cache paths in assistant replies to workspace paths", async () => {
+    const previousBahewHome = process.env.BAHEW_HOME;
+    const harness = await createHarness();
+    const bahewHome = path.join(harness.workspaceRoot, ".bahew");
+    const rawThreadId = "provider-thread-image-rewrite";
+    const itemId = "ig_rewrite";
+    const originalPath = path.join(
+      bahewHome,
+      "agent-data",
+      "generated_images",
+      rawThreadId,
+      `${itemId}.png`,
+    );
+    const now = "2026-01-01T00:00:00.000Z";
+
+    process.env.BAHEW_HOME = bahewHome;
+    try {
+      harness.emit({
+        type: "item.completed",
+        eventId: asEventId("evt-image-completed-rewrite"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-image-rewrite"),
+        itemId: asItemId(itemId),
+        raw: {
+          source: "codex.app-server.notification",
+          method: "item/completed",
+          payload: { threadId: rawThreadId },
+        },
+        payload: {
+          itemType: "image_view",
+          status: "completed",
+          title: "Image view",
+          data: {
+            item: {
+              id: itemId,
+              result: "iVBORw==",
+              status: "completed",
+              type: "imageGeneration",
+            },
+          },
+        },
+      });
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-image-rewrite-message-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-image-rewrite"),
+        itemId: asItemId("assistant-image-rewrite"),
+        payload: {
+          streamKind: "assistant_text",
+          delta: `图片路径： ${originalPath}`,
+        },
+      });
+      harness.emit({
+        type: "item.completed",
+        eventId: asEventId("evt-image-rewrite-message-completed"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-image-rewrite"),
+        itemId: asItemId("assistant-image-rewrite"),
+        payload: {
+          itemType: "assistant_message",
+          status: "completed",
+        },
+      });
+
+      const expectedPath = path.join(harness.workspaceRoot, "generated-images", `${itemId}.png`);
+      const thread = await waitForThread(harness.readModel, (entry) =>
+        entry.messages.some(
+          (message: ProviderRuntimeTestMessage) =>
+            message.id === "assistant:assistant-image-rewrite" && !message.streaming,
+        ),
+      );
+      const message = thread.messages.find(
+        (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:assistant-image-rewrite",
+      );
+      expect(message?.text).toBe(`图片路径： ${expectedPath}`);
+    } finally {
+      if (previousBahewHome === undefined) {
+        delete process.env.BAHEW_HOME;
+      } else {
+        process.env.BAHEW_HOME = previousBahewHome;
+      }
+    }
+  });
+
   it("normalizes command execution activities to ran-command summaries", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
