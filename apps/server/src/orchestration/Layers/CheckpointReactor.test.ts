@@ -665,7 +665,7 @@ describe("CheckpointReactor", () => {
     ).toBe(true);
   });
 
-  it("appends capture failure activity when turn diff summary cannot be derived", async () => {
+  it("falls back to HEAD when turn completion is missing its pre-turn baseline", async () => {
     const harness = await createHarness({ seedFilesystemCheckpoints: false });
     const createdAt = "2026-01-01T00:00:00.000Z";
 
@@ -703,13 +703,13 @@ describe("CheckpointReactor", () => {
       harness.readModel,
       (entry) =>
         entry.checkpoints.length === 1 &&
-        entry.activities.some((activity) => activity.kind === "checkpoint.capture.failed"),
+        entry.activities.some((activity) => activity.kind === "checkpoint.captured"),
     );
 
     expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
     expect(
       thread.activities.some((activity) => activity.kind === "checkpoint.capture.failed"),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("captures pre-turn baseline from project workspace root when thread worktree is unset", async () => {

@@ -17,7 +17,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
-import { VcsProcessExitError, VcsProcessSpawnError, type VcsError } from "@t3tools/contracts";
+import {
+  CheckpointRef,
+  VcsProcessExitError,
+  VcsProcessSpawnError,
+  type VcsError,
+} from "@t3tools/contracts";
 import type { VcsCheckpointOps } from "../../vcs/VcsDriver.ts";
 import { CHECKPOINT_GIT_ADD_ARGS } from "../../vcs/CheckpointGitArgs.ts";
 import { VcsProcess, type VcsProcessOutput } from "../../vcs/VcsProcess.ts";
@@ -42,6 +47,12 @@ const DEFAULT_EXCLUDES = [
 ].join("\n");
 
 export interface ShadowGitCheckpointsShape {
+  readonly hasCheckpointRef: (
+    input: {
+      readonly cwd: string;
+      readonly checkpointRef: CheckpointRef;
+    },
+  ) => Effect.Effect<boolean, VcsError>;
   readonly resolve: (cwd: string) => Effect.Effect<VcsCheckpointOps, VcsError>;
 }
 
@@ -90,6 +101,23 @@ export const make = Effect.gen(function* () {
       ...(options?.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
     });
   }
+
+  const hasCheckpointRef: ShadowGitCheckpointsShape["hasCheckpointRef"] = (input) =>
+    Effect.gen(function* () {
+      const gitDir = shadowGitDir(input.cwd);
+      const exists = yield* fileSystem.exists(gitDir).pipe(Effect.orElseSucceed(() => false));
+      if (!exists) {
+        return false;
+      }
+
+      const result = yield* gitShadow(
+        "ShadowGitCheckpoints.hasCheckpointRef",
+        input.cwd,
+        ["rev-parse", "--quiet", "--verify", input.checkpointRef],
+        { allowNonZeroExit: true },
+      );
+      return result.exitCode === 0;
+    });
 
   const ensureShadowRepo = Effect.fn("ShadowGitCheckpoints.ensureShadowRepo")(function* (
     cwd: string,
@@ -210,13 +238,7 @@ export const make = Effect.gen(function* () {
           }).pipe(Effect.ensuring(cleanupTempIndex));
         }),
 
-        hasCheckpointRef: (input) =>
-          gitShadow(
-            "ShadowGitCheckpoints.hasCheckpointRef",
-            input.cwd,
-            ["rev-parse", "--quiet", "--verify", input.checkpointRef],
-            { allowNonZeroExit: true },
-          ).pipe(Effect.map((result) => result.exitCode === 0)),
+        hasCheckpointRef,
 
         restoreCheckpoint: Effect.fn("ShadowGitCheckpoints.restoreCheckpoint")(function* (input) {
           const operation = "ShadowGitCheckpoints.restoreCheckpoint";
@@ -342,7 +364,7 @@ export const make = Effect.gen(function* () {
       return checkpoints;
     });
 
-  return ShadowGitCheckpoints.of({ resolve });
+  return ShadowGitCheckpoints.of({ hasCheckpointRef, resolve });
 });
 
 export const layer = Layer.effect(ShadowGitCheckpoints, make);

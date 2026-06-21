@@ -61,6 +61,14 @@ const NON_REPOSITORY_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitStatusDetail
   aheadOfDefaultCount: 0,
 });
 
+function summarizeBackgroundGitError(error: { readonly message: string }): string {
+  const firstLine = error.message.split(/\r?\n/u)[0]?.trim();
+  if (!firstLine || firstLine.length === 0) {
+    return "Git background status refresh failed.";
+  }
+  return firstLine.replace(/\s+at\s.+$/u, "").trim();
+}
+
 type TraceTailState = {
   processedChars: number;
   remainder: string;
@@ -1342,7 +1350,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     function* (cwd) {
       yield* refreshStatusUpstreamIfStale(cwd).pipe(
         Effect.catchIf(isMissingGitCwdError, () => Effect.void),
-        Effect.ignoreCause({ log: true }),
+        Effect.catch((error) =>
+          Effect.logDebug("git remote status refresh skipped", {
+            cwd,
+            detail: summarizeBackgroundGitError(error),
+          }),
+        ),
       );
       return yield* readStatusDetailsLocal(cwd);
     },

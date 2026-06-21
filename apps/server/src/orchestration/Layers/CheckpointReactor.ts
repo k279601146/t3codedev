@@ -263,7 +263,7 @@ const make = Effect.gen(function* () {
         cwd: input.cwd,
         fromCheckpointRef,
         toCheckpointRef: targetCheckpointRef,
-        fallbackFromToHead: false,
+        fallbackFromToHead: !fromCheckpointExists,
         ignoreWhitespace: false,
       })
       .pipe(
@@ -276,12 +276,14 @@ const make = Effect.gen(function* () {
           })),
         ),
         Effect.tapError((error) =>
-          appendCaptureFailureActivity({
-            threadId: input.threadId,
-            turnId: input.turnId,
-            detail: `Checkpoint captured, but turn diff summary is unavailable: ${error.message}`,
-            createdAt: input.createdAt,
-          }),
+          fromCheckpointExists
+            ? appendCaptureFailureActivity({
+                threadId: input.threadId,
+                turnId: input.turnId,
+                detail: `Checkpoint captured, but turn diff summary is unavailable: ${error.message}`,
+                createdAt: input.createdAt,
+              })
+            : Effect.void,
         ),
         Effect.catch((error) =>
           Effect.logWarning("failed to derive checkpoint file summary", {

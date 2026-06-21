@@ -77,6 +77,7 @@ import { newCommandId, randomUUID } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { readEnvironmentApi } from "~/environmentApi";
+import { useI18n } from "~/i18n";
 import { readLocalApi } from "~/localApi";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useStore } from "~/store";
@@ -300,10 +301,6 @@ function getMenuActionDisabledReason({
   return `Create ${terminology.singular} is currently unavailable.`;
 }
 
-const COMMIT_DIALOG_TITLE = "Commit changes";
-const COMMIT_DIALOG_DESCRIPTION =
-  "Review and confirm your commit. Leave the message blank to auto-generate one.";
-
 function GitActionItemIcon({
   icon,
   SourceControlIcon,
@@ -336,6 +333,32 @@ function GitQuickActionIcon({
   }
   if (quickAction.label === "Commit") return <GitCommitIcon className={iconClassName} />;
   return <InfoIcon className={iconClassName} />;
+}
+
+function translateGitActionLabel(label: string, t: ReturnType<typeof useI18n>["t"]): string {
+  if (label === "Commit") return t("git.action.commit");
+  if (label === "Commit & push") return t("git.action.commitPush");
+  if (label === "Push") return t("git.action.push");
+  if (label === "Publish repository") return t("git.action.publishRepository");
+  if (label === "Pull") return t("git.action.pull");
+  if (label === "Sync ref") return t("git.action.syncRef");
+  if (label.startsWith("Commit, push & ")) {
+    return t("git.action.commitPushChangeRequest", {
+      label: label.slice("Commit, push & ".length),
+    });
+  }
+  if (label.startsWith("Push & create ")) {
+    return t("git.action.pushCreateChangeRequest", {
+      label: label.slice("Push & create ".length),
+    });
+  }
+  if (label.startsWith("Create ")) {
+    return t("git.action.createChangeRequest", { label: label.slice("Create ".length) });
+  }
+  if (label.startsWith("View ")) {
+    return t("git.action.viewChangeRequest", { label: label.slice("View ".length) });
+  }
+  return label;
 }
 
 interface PublishRepositoryDialogProps {
@@ -950,6 +973,7 @@ export default function GitActionsControl({
   activeThreadRef,
   draftId,
 }: GitActionsControlProps) {
+  const { t } = useI18n();
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
   const threadToastData = useMemo(
     () => (activeThreadRef ? { threadRef: activeThreadRef } : undefined),
@@ -1625,10 +1649,10 @@ export default function GitActionsControl({
           disabled={initMutation.isPending}
           onClick={() => initMutation.mutate()}
         >
-          {initMutation.isPending ? "Initializing..." : "Initialize Git"}
+          {initMutation.isPending ? t("git.initializing") : t("git.initialize")}
         </Button>
       ) : (
-        <Group aria-label="Git actions" className="shrink-0">
+        <Group aria-label={t("git.actionsGroup")} className="shrink-0">
           {quickActionDisabledReason ? (
             <Popover>
               <PopoverTrigger
@@ -1647,7 +1671,7 @@ export default function GitActionsControl({
                   SourceControlIcon={SourceControlIcon}
                 />
                 <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-                  {quickAction.label}
+                  {translateGitActionLabel(quickAction.label, t)}
                 </span>
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="bottom" align="start">
@@ -1663,7 +1687,7 @@ export default function GitActionsControl({
             >
               <GitQuickActionIcon quickAction={quickAction} SourceControlIcon={SourceControlIcon} />
               <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-                {quickAction.label}
+                {translateGitActionLabel(quickAction.label, t)}
               </span>
             </Button>
           )}
@@ -1679,7 +1703,7 @@ export default function GitActionsControl({
             }}
           >
             <MenuTrigger
-              render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
+              render={<Button aria-label={t("git.options")} size="icon-xs" variant="outline" />}
               disabled={isGitActionRunning}
             >
               <ChevronDownIcon aria-hidden="true" className="size-4" />
@@ -1705,7 +1729,7 @@ export default function GitActionsControl({
                             icon={item.icon}
                             SourceControlIcon={SourceControlIcon}
                           />
-                          {item.label}
+                          {translateGitActionLabel(item.label, t)}
                         </MenuItem>
                       </PopoverTrigger>
                       <PopoverPopup tooltipStyle side="left" align="center">
@@ -1724,7 +1748,7 @@ export default function GitActionsControl({
                     }}
                   >
                     <GitActionItemIcon icon={item.icon} SourceControlIcon={SourceControlIcon} />
-                    {item.label}
+                    {translateGitActionLabel(item.label, t)}
                   </MenuItem>
                 );
               })}
@@ -1736,7 +1760,7 @@ export default function GitActionsControl({
                   }}
                 >
                   <CloudUploadIcon />
-                  Publish repository...
+                  {t("git.publishRepositoryEllipsis")}
                 </MenuItem>
               ) : null}
               {gitStatusForActions?.refName === null && (
@@ -1775,20 +1799,20 @@ export default function GitActionsControl({
       >
         <DialogPopup>
           <DialogHeader>
-            <DialogTitle>{COMMIT_DIALOG_TITLE}</DialogTitle>
-            <DialogDescription>{COMMIT_DIALOG_DESCRIPTION}</DialogDescription>
+            <DialogTitle>{t("git.commitDialog.title")}</DialogTitle>
+            <DialogDescription>{t("git.commitDialog.description")}</DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-4">
             <div className="space-y-3 rounded-lg border border-input bg-muted/40 p-3 text-xs">
               <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1">
-                <span className="text-muted-foreground">Branch</span>
+                <span className="text-muted-foreground">{t("git.commitDialog.branch")}</span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">
-                    {gitStatusForActions?.refName ?? "(detached HEAD)"}
+                    {gitStatusForActions?.refName ?? t("git.commitDialog.detachedHead")}
                   </span>
                   {isDefaultRef && (
                     <span className="text-right text-warning text-xs">
-                      Warning: default refName
+                      {t("git.commitDialog.defaultRefWarning")}
                     </span>
                   )}
                 </span>
@@ -1807,10 +1831,13 @@ export default function GitActionsControl({
                         }}
                       />
                     )}
-                    <span className="text-muted-foreground">Files</span>
+                    <span className="text-muted-foreground">{t("git.commitDialog.files")}</span>
                     {!allSelected && !isEditingFiles && (
                       <span className="text-muted-foreground">
-                        ({selectedFiles.length} of {allFiles.length})
+                        {t("git.commitDialog.selectedCount", {
+                          selected: selectedFiles.length,
+                          total: allFiles.length,
+                        })}
                       </span>
                     )}
                   </div>
@@ -1820,12 +1847,12 @@ export default function GitActionsControl({
                       size="xs"
                       onClick={() => setIsEditingFiles((prev) => !prev)}
                     >
-                      {isEditingFiles ? "Done" : "Edit"}
+                      {isEditingFiles ? t("git.commitDialog.done") : t("git.commitDialog.edit")}
                     </Button>
                   )}
                 </div>
                 {!gitStatusForActions || allFiles.length === 0 ? (
-                  <p className="font-medium">none</p>
+                  <p className="font-medium">{t("git.commitDialog.none")}</p>
                 ) : (
                   <div className="space-y-2">
                     <ScrollArea className="h-44 rounded-md border border-input bg-background">
@@ -1865,7 +1892,9 @@ export default function GitActionsControl({
                                 </span>
                                 <span className="shrink-0">
                                   {isExcluded ? (
-                                    <span className="text-muted-foreground">Excluded</span>
+                                    <span className="text-muted-foreground">
+                                      {t("git.commitDialog.excluded")}
+                                    </span>
                                   ) : (
                                     <>
                                       <span className="text-success">+{file.insertions}</span>
@@ -1894,11 +1923,11 @@ export default function GitActionsControl({
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-medium">Commit message (optional)</p>
+              <p className="text-xs font-medium">{t("git.commitDialog.messageOptional")}</p>
               <Textarea
                 value={dialogCommitMessage}
                 onChange={(event) => setDialogCommitMessage(event.target.value)}
-                placeholder="Leave empty to auto-generate"
+                placeholder={t("git.commitDialog.messagePlaceholder")}
                 size="sm"
               />
             </div>
@@ -1914,7 +1943,7 @@ export default function GitActionsControl({
                 setIsEditingFiles(false);
               }}
             >
-              Cancel
+              {t("git.commitDialog.cancel")}
             </Button>
             <Button
               variant="outline"
@@ -1922,10 +1951,10 @@ export default function GitActionsControl({
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
-              Commit on new refName
+              {t("git.commitDialog.commitOnNewRef")}
             </Button>
             <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
-              Commit
+              {t("git.commitDialog.commit")}
             </Button>
           </DialogFooter>
         </DialogPopup>
