@@ -568,7 +568,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   mockUpdateServerPort: number | undefined,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.t3code",
+    appId: "com.bahew.bahew",
     productName: resolveDesktopProductName(version),
     artifactName: "Bahew-${version}-${arch}.${ext}",
     directories: {
@@ -616,12 +616,12 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   if (platform === "linux") {
     buildConfig.linux = {
       target: [target],
-      executableName: "t3code",
+      executableName: "bahew",
       icon: "icon.png",
       category: "Development",
       desktop: {
         entry: {
-          StartupWMClass: "t3code",
+          StartupWMClass: "bahew",
         },
       },
     };
@@ -631,6 +631,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     buildConfig.npmRebuild = false;
     const winConfig: Record<string, unknown> = {
       target: [target],
+      executableName: "Bahew",
       icon: "icon.ico",
     };
     if (signed) {

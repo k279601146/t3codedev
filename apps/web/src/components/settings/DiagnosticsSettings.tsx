@@ -27,6 +27,7 @@ import {
   useProcessResourceHistory,
 } from "../../lib/processDiagnosticsState";
 import { useTraceDiagnostics } from "../../lib/traceDiagnosticsState";
+import { formatBrandedRuntimeText } from "../../branding";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -55,8 +56,7 @@ const DIAGNOSTICS_COPY = {
       "The process is not a child of the Bahew Server. It might already have exited.",
     signalFailedTitle: "Could not send {signal}",
     signalFailedFallback: "Failed to send {signal}.",
-    confirmKill:
-      "Send SIGKILL to process {pid}? This cannot be handled by the process.",
+    confirmKill: "Send SIGKILL to process {pid}? This cannot be handled by the process.",
     processTypes: {
       agent: "Agent",
       process: "Process",
@@ -126,16 +126,7 @@ const DIAGNOSTICS_COPY = {
       collecting: "Collecting process resource samples...",
       empty:
         "No process resource samples found for this window. Wait a few seconds or refresh after starting a task.",
-      headers: [
-        "Process",
-        "CPU Time",
-        "Current",
-        "Average",
-        "Peak",
-        "Max Mem",
-        "Command",
-        "PID",
-      ],
+      headers: ["Process", "CPU Time", "Current", "Average", "Peak", "Max Mem", "Command", "PID"],
       rootProcess: "Root process {name}",
       childProcess: "Child process {name}",
       cpuTooltip: "Avg {avg}%, peak {peak}%",
@@ -150,8 +141,7 @@ const DIAGNOSTICS_COPY = {
       parseErrors: "Parse Errors",
       slowSpansTooltip: "Spans with a duration of {duration} or longer.",
       slowSpansFallback: "Spans at or above the configured slow-span threshold.",
-      partial:
-        "Some trace files could not be read, so diagnostics may be incomplete. {message}",
+      partial: "Some trace files could not be read, so diagnostics may be incomplete. {message}",
       details: "Trace Details",
       emptyDetails:
         "No trace spans have been recorded yet. Run a chat turn or provider operation, then refresh diagnostics.",
@@ -201,8 +191,7 @@ const DIAGNOSTICS_COPY = {
     openLogsNoEditor: "未找到可用编辑器。",
     openLogsFailed: "无法打开日志文件夹。",
     processAlreadyExitedTitle: "进程已退出",
-    processAlreadyExitedDescription:
-      "该进程已不是 Bahew Server 的子进程，可能已经退出。",
+    processAlreadyExitedDescription: "该进程已不是 Bahew Server 的子进程，可能已经退出。",
     signalFailedTitle: "无法发送 {signal}",
     signalFailedFallback: "发送 {signal} 失败。",
     confirmKill: "确定向进程 {pid} 发送 SIGKILL 吗？该信号不能被进程自行处理。",
@@ -246,10 +235,8 @@ const DIAGNOSTICS_COPY = {
       refresh: "刷新进程诊断",
       childProcesses: "子进程",
       memory: "内存",
-      cpuTooltip:
-        "当前 server 进程的存活子进程 CPU 合计，不包含桌面壳层和其他父进程。",
-      memoryTooltip:
-        "当前 server 进程的存活子进程常驻内存合计，不包含桌面壳层和其他父进程。",
+      cpuTooltip: "当前 server 进程的存活子进程 CPU 合计，不包含桌面壳层和其他父进程。",
+      memoryTooltip: "当前 server 进程的存活子进程常驻内存合计，不包含桌面壳层和其他父进程。",
       serverPid: "Server PID",
       loading: "正在加载实时进程...",
       empty: "暂无存活子进程。尚未启动智能体或模型服务进程时这是正常状态。",
@@ -288,8 +275,7 @@ const DIAGNOSTICS_COPY = {
       slowSpansFallback: "达到或超过当前慢 span 阈值的 span。",
       partial: "部分 trace 文件无法读取，诊断结果可能不完整。{message}",
       details: "Trace 明细",
-      emptyDetails:
-        "当前还没有记录到 trace span。执行一次对话或模型服务操作后，再刷新诊断。",
+      emptyDetails: "当前还没有记录到 trace span。执行一次对话或模型服务操作后，再刷新诊断。",
     },
     tables: {
       latestFailures: "最近失败",
@@ -333,10 +319,7 @@ type WidenDiagnosticsCopy<T> = T extends readonly (infer Item)[]
 
 type DiagnosticsCopy = WidenDiagnosticsCopy<(typeof DIAGNOSTICS_COPY)["en"]>;
 
-function formatCopy(
-  template: string,
-  values: Readonly<Record<string, string | number>>,
-): string {
+function formatCopy(template: string, values: Readonly<Record<string, string | number>>): string {
   let text = template;
   for (const [name, value] of Object.entries(values)) {
     text = text.replaceAll(`{${name}}`, String(value));
@@ -606,17 +589,18 @@ function TraceIdCell({ traceId }: { traceId: string }) {
 }
 
 function formatProcessName(command: string): string {
-  const firstToken = command.trim().split(/\s+/)[0];
+  const firstToken = formatBrandedRuntimeText(command).trim().split(/\s+/)[0];
   if (!firstToken) return command;
   const normalized = firstToken.replace(/^['"]|['"]$/g, "");
   const segments = normalized.split(/[\\/]/).filter(Boolean);
   return segments.at(-1) ?? normalized;
 }
 
-function formatProcessType(
-  process: ServerProcessDiagnosticsEntry,
-  copy: DiagnosticsCopy,
-): string {
+function formatProcessCommand(command: string): string {
+  return formatBrandedRuntimeText(command);
+}
+
+function formatProcessType(process: ServerProcessDiagnosticsEntry, copy: DiagnosticsCopy): string {
   if (process.depth > 0) return copy.processTypes.subprocess;
   if (/\b(codex|claude|opencode|cursor)\b/i.test(process.command)) {
     return copy.processTypes.agent;
@@ -634,6 +618,7 @@ function ProcessNameCell({
   onToggle: (pid: number) => void;
 }) {
   const name = formatProcessName(process.command);
+  const command = formatProcessCommand(process.command);
   const copy = useDiagnosticsCopy();
   const hasChildren = process.childPids.length > 0;
   const ChevronIcon = isExpanded ? ChevronDownIcon : ChevronRightIcon;
@@ -646,7 +631,7 @@ function ProcessNameCell({
       {hasChildren ? (
         <button
           type="button"
-                  className="inline-flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="inline-flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label={formatCopy(isExpanded ? copy.live.collapse : copy.live.expand, { name })}
           onClick={() => onToggle(process.pid)}
         >
@@ -664,7 +649,7 @@ function ProcessNameCell({
           side="top"
           className="max-w-[min(440px,calc(100vw-2rem))] whitespace-normal break-words text-left font-mono text-[11px] leading-relaxed text-wrap"
         >
-          {process.command}
+          {command}
         </TooltipPopup>
       </Tooltip>
     </div>
@@ -815,13 +800,17 @@ function ProcessDiagnosticsTable({
               <td className="px-3 py-2 align-middle text-muted-foreground">
                 <Tooltip>
                   <TooltipTrigger
-                    render={<span className="block truncate">{process.command}</span>}
+                    render={
+                      <span className="block truncate">
+                        {formatProcessCommand(process.command)}
+                      </span>
+                    }
                   />
                   <TooltipPopup
                     side="top"
                     className="max-w-[min(440px,calc(100vw-2rem))] whitespace-normal break-words text-left font-mono text-[11px] leading-relaxed text-wrap"
                   >
-                    {process.command}
+                    {formatProcessCommand(process.command)}
                   </TooltipPopup>
                 </Tooltip>
               </td>
@@ -873,6 +862,7 @@ function ResourceHistoryProcessNameCell({
   visualDepth: number;
 }) {
   const name = formatShortProcessName(process.command);
+  const command = formatProcessCommand(process.command);
   const copy = useDiagnosticsCopy();
 
   return (
@@ -899,7 +889,7 @@ function ResourceHistoryProcessNameCell({
           side="top"
           className="max-w-[min(440px,calc(100vw-2rem))] whitespace-normal break-words text-left font-mono text-[11px] leading-relaxed text-wrap"
         >
-          {process.command}
+          {command}
         </TooltipPopup>
       </Tooltip>
     </div>
@@ -1071,13 +1061,17 @@ function ProcessResourceHistoryTable({
               <td className="px-3 py-2 align-middle text-muted-foreground">
                 <Tooltip>
                   <TooltipTrigger
-                    render={<span className="block truncate">{process.command}</span>}
+                    render={
+                      <span className="block truncate">
+                        {formatProcessCommand(process.command)}
+                      </span>
+                    }
                   />
                   <TooltipPopup
                     side="top"
                     className="max-w-[min(440px,calc(100vw-2rem))] whitespace-normal break-words text-left font-mono text-[11px] leading-relaxed text-wrap"
                   >
-                    {process.command}
+                    {formatProcessCommand(process.command)}
                   </TooltipPopup>
                 </Tooltip>
               </td>
@@ -1109,7 +1103,9 @@ function DiagnosticsLastChecked({ checkedAt }: { checkedAt: DateTime.Utc | null 
           {relative.suffix}
         </>
       ) : (
-        <>{copy.checked} {relative.value}</>
+        <>
+          {copy.checked} {relative.value}
+        </>
       )}
     </span>
   );
@@ -1166,9 +1162,7 @@ function ProtocolDiagnosticsOverview() {
             <td className="px-4 py-3 align-top font-mono text-[11px] text-muted-foreground">
               {row.signal}
             </td>
-            <td className="px-4 py-3 align-top text-muted-foreground last:sm:pr-5">
-              {row.check}
-            </td>
+            <td className="px-4 py-3 align-top text-muted-foreground last:sm:pr-5">{row.check}</td>
           </tr>
         ))}
       </DiagnosticsTable>
@@ -1222,23 +1216,23 @@ export function DiagnosticsSettingsPanel() {
     void ensureLocalApi()
       .shell.openInEditor(logsDirectoryPath, editor)
       .catch((error: unknown) => {
-        setOpenLogsDirectoryError(
-          error instanceof Error ? error.message : copy.openLogsFailed,
-        );
+        setOpenLogsDirectoryError(error instanceof Error ? error.message : copy.openLogsFailed);
       })
       .finally(() => {
         setIsOpeningLogsDirectory(false);
       });
-  }, [availableEditors, copy.openLogsFailed, copy.openLogsNoEditor, observability?.logsDirectoryPath]);
+  }, [
+    availableEditors,
+    copy.openLogsFailed,
+    copy.openLogsNoEditor,
+    observability?.logsDirectoryPath,
+  ]);
 
   const isInitialLoading = isPending && data === null;
   const isProcessInitialLoading = isProcessPending && processData === null;
   const signalProcess = useCallback(
     (pid: number, signal: ServerProcessSignal) => {
-      if (
-        signal === "SIGKILL" &&
-        !window.confirm(formatCopy(copy.confirmKill, { pid }))
-      ) {
+      if (signal === "SIGKILL" && !window.confirm(formatCopy(copy.confirmKill, { pid }))) {
         return;
       }
 
@@ -1269,13 +1263,13 @@ export function DiagnosticsSettingsPanel() {
         })
         .catch((error: unknown) => {
           toastManager.add({
-          type: "error",
-          title: formatCopy(copy.signalFailedTitle, { signal }),
-          description:
-            error instanceof Error
-              ? error.message
-              : formatCopy(copy.signalFailedFallback, { signal }),
-        });
+            type: "error",
+            title: formatCopy(copy.signalFailedTitle, { signal }),
+            description:
+              error instanceof Error
+                ? error.message
+                : formatCopy(copy.signalFailedFallback, { signal }),
+          });
         })
         .finally(() => {
           setSignalingPid(null);
@@ -1356,11 +1350,7 @@ export function DiagnosticsSettingsPanel() {
           processes={processData?.processes ?? []}
           signalingPid={signalingPid}
           onSignal={signalProcess}
-          emptyLabel={
-            isProcessInitialLoading
-              ? copy.live.loading
-              : copy.live.empty
-          }
+          emptyLabel={isProcessInitialLoading ? copy.live.loading : copy.live.empty}
         />
       </SettingsSection>
 
@@ -1459,7 +1449,10 @@ export function DiagnosticsSettingsPanel() {
         }
       >
         <StatsGrid>
-          <StatBlock label={copy.trace.spans} value={data ? formatCount(data.recordCount) : "..."} />
+          <StatBlock
+            label={copy.trace.spans}
+            value={data ? formatCount(data.recordCount) : "..."}
+          />
           <StatBlock
             label={copy.trace.failures}
             value={data ? formatCount(data.failureCount) : "..."}
@@ -1520,228 +1513,230 @@ export function DiagnosticsSettingsPanel() {
 
       {hasTraceDetails ? (
         <>
-      <SettingsSection title={copy.tables.latestFailures}>
-        {data && data.latestFailures.length > 0 ? (
-          <DiagnosticsTable
-            headers={[
-              copy.tables.span,
-              copy.tables.cause,
-              copy.tables.duration,
-              copy.tables.ended,
-            ]}
-          >
-            {data.latestFailures.map((failure) => (
-              <tr key={`${failure.traceId}:${failure.spanId}`}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
-                  {failure.name}
-                </td>
-                <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
-                  <ExpandableText text={failure.cause} />
-                </td>
-                <td className="px-4 py-3 align-top font-mono tabular-nums">
-                  {formatDuration(failure.durationMs)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
-                  {formatRelativeNoWrap(failure.endedAt, copy)}
-                </td>
-              </tr>
-            ))}
-          </DiagnosticsTable>
-        ) : (
-          <EmptyRows
-            label={isInitialLoading ? copy.tables.loadingFailures : copy.tables.noFailures}
-          />
-        )}
-      </SettingsSection>
-
-      <SettingsSection title={copy.tables.commonFailures}>
-        {data && data.commonFailures.length > 0 ? (
-          <DiagnosticsTable
-            headers={[
-              copy.tables.span,
-              copy.tables.count,
-              copy.tables.cause,
-              copy.tables.lastSeen,
-            ]}
-            minTableWidth="min-w-[760px]"
-          >
-            {data.commonFailures.map((failure) => (
-              <tr key={`${failure.name}:${failure.cause}`}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
-                  {failure.name}
-                </td>
-                <td className="px-4 py-3 align-top font-mono tabular-nums">
-                  {formatCount(failure.count)}
-                </td>
-                <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
-                  <ExpandableText text={failure.cause} />
-                </td>
-                <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
-                  {formatRelativeNoWrap(failure.lastSeenAt, copy)}
-                </td>
-              </tr>
-            ))}
-          </DiagnosticsTable>
-        ) : (
-          <EmptyRows
-            label={
-              isInitialLoading
-                ? copy.tables.loadingFailureGroups
-                : copy.tables.noRepeatedFailures
-            }
-          />
-        )}
-      </SettingsSection>
-
-      <SettingsSection title={copy.tables.slowestSpans}>
-        {data && data.slowestSpans.length > 0 ? (
-          <DiagnosticsTable
-            headers={[
-              copy.tables.span,
-              copy.tables.duration,
-              copy.tables.ended,
-              copy.tables.trace,
-            ]}
-            minTableWidth="min-w-[900px]"
-            columnWidths={["w-[44%]", "w-[14%]", "w-[12%]", "w-[30%]"]}
-          >
-            {data.slowestSpans.map((span) => (
-              <tr key={`${span.traceId}:${span.spanId}`}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
-                  {span.name}
-                </td>
-                <td className="px-4 py-3 align-top font-mono tabular-nums">
-                  {formatDuration(span.durationMs)}
-                </td>
-                <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground">
-                  {formatRelativeNoWrap(span.endedAt, copy)}
-                </td>
-                <td className="min-w-0 whitespace-nowrap px-4 py-3 align-top text-muted-foreground last:sm:pr-5">
-                  <TraceIdCell traceId={span.traceId} />
-                </td>
-              </tr>
-            ))}
-          </DiagnosticsTable>
-        ) : (
-          <EmptyRows
-            label={isInitialLoading ? copy.tables.loadingSlowSpans : copy.tables.noSpans}
-          />
-        )}
-      </SettingsSection>
-
-      <SettingsSection title={copy.tables.spanLogs}>
-        {data && data.latestWarningAndErrorLogs.length > 0 ? (
-          <ScrollArea
-            chainVerticalScroll
-            scrollFade
-            hideScrollbars
-            className="w-full max-w-full rounded-none"
-          >
-            <table className="w-full min-w-[920px] table-fixed text-left text-xs">
-              <colgroup>
-                <col className="w-[11%]" />
-                <col className="w-[9%]" />
-                <col className="w-[24%]" />
-                <col className="w-[26%]" />
-                <col className="w-[30%]" />
-              </colgroup>
-              <thead className="border-b border-border/60 text-[11px] uppercase tracking-[0.08em] text-muted-foreground/70">
-                <tr>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold sm:pl-5">
-                    {copy.tables.time}
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold">
-                    {copy.tables.level}
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold">
-                    {copy.tables.span}
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold">
-                    {copy.tables.message}
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold sm:pr-5">
-                    {copy.tables.trace}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {data.latestWarningAndErrorLogs.map((event) => (
-                  <tr
-                    key={`${event.traceId}:${event.spanId}:${DateTime.formatIso(event.seenAt)}:${event.message}`}
-                    className="hover:bg-muted/15"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground sm:pl-5">
-                      {formatRelativeNoWrap(event.seenAt, copy)}
+          <SettingsSection title={copy.tables.latestFailures}>
+            {data && data.latestFailures.length > 0 ? (
+              <DiagnosticsTable
+                headers={[
+                  copy.tables.span,
+                  copy.tables.cause,
+                  copy.tables.duration,
+                  copy.tables.ended,
+                ]}
+              >
+                {data.latestFailures.map((failure) => (
+                  <tr key={`${failure.traceId}:${failure.spanId}`}>
+                    <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                      {failure.name}
                     </td>
-                    <td className="px-4 py-3 align-top">
-                      <span className="inline-flex rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium uppercase text-foreground/80">
-                        {event.level}
-                      </span>
+                    <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
+                      <ExpandableText text={failure.cause} />
                     </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="truncate font-medium text-foreground">{event.spanName}</div>
+                    <td className="px-4 py-3 align-top font-mono tabular-nums">
+                      {formatDuration(failure.durationMs)}
                     </td>
-                    <td className="px-4 py-3 align-top text-muted-foreground">
-                      <ExpandableText
-                        collapsedClassName="line-clamp-2"
-                        expandLabel={copy.showFullMessage}
-                        text={event.message}
-                      />
-                    </td>
-                    <td className="min-w-0 whitespace-nowrap px-4 py-3 align-top text-muted-foreground sm:pr-5">
-                      <TraceIdCell traceId={event.traceId} />
+                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
+                      {formatRelativeNoWrap(failure.endedAt, copy)}
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </ScrollArea>
-        ) : (
-          <EmptyRows
-            label={isInitialLoading ? copy.tables.loadingLogs : copy.tables.noWarnings}
-          />
-        )}
-      </SettingsSection>
+              </DiagnosticsTable>
+            ) : (
+              <EmptyRows
+                label={isInitialLoading ? copy.tables.loadingFailures : copy.tables.noFailures}
+              />
+            )}
+          </SettingsSection>
 
-      <SettingsSection title={copy.tables.topSpanNames}>
-        {data && data.topSpansByCount.length > 0 ? (
-          <DiagnosticsTable
-            headers={[
-              copy.tables.span,
-              copy.tables.count,
-              copy.tables.failures,
-              copy.tables.average,
-              copy.tables.max,
-            ]}
-            minTableWidth="min-w-[760px]"
-            columnWidths={["w-[48%]", "w-[13%]", "w-[13%]", "w-[13%]", "w-[13%]"]}
-          >
-            {data.topSpansByCount.map((span) => (
-              <tr key={span.name}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
-                  {span.name}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
-                  {formatCount(span.count)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
-                  {formatCount(span.failureCount)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
-                  {formatDuration(span.averageDurationMs)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums last:sm:pr-5">
-                  {formatDuration(span.maxDurationMs)}
-                </td>
-              </tr>
-            ))}
-          </DiagnosticsTable>
-        ) : (
-          <EmptyRows
-            label={isInitialLoading ? copy.tables.loadingSpanNames : copy.tables.noSpans}
-          />
-        )}
-      </SettingsSection>
+          <SettingsSection title={copy.tables.commonFailures}>
+            {data && data.commonFailures.length > 0 ? (
+              <DiagnosticsTable
+                headers={[
+                  copy.tables.span,
+                  copy.tables.count,
+                  copy.tables.cause,
+                  copy.tables.lastSeen,
+                ]}
+                minTableWidth="min-w-[760px]"
+              >
+                {data.commonFailures.map((failure) => (
+                  <tr key={`${failure.name}:${failure.cause}`}>
+                    <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                      {failure.name}
+                    </td>
+                    <td className="px-4 py-3 align-top font-mono tabular-nums">
+                      {formatCount(failure.count)}
+                    </td>
+                    <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
+                      <ExpandableText text={failure.cause} />
+                    </td>
+                    <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
+                      {formatRelativeNoWrap(failure.lastSeenAt, copy)}
+                    </td>
+                  </tr>
+                ))}
+              </DiagnosticsTable>
+            ) : (
+              <EmptyRows
+                label={
+                  isInitialLoading
+                    ? copy.tables.loadingFailureGroups
+                    : copy.tables.noRepeatedFailures
+                }
+              />
+            )}
+          </SettingsSection>
+
+          <SettingsSection title={copy.tables.slowestSpans}>
+            {data && data.slowestSpans.length > 0 ? (
+              <DiagnosticsTable
+                headers={[
+                  copy.tables.span,
+                  copy.tables.duration,
+                  copy.tables.ended,
+                  copy.tables.trace,
+                ]}
+                minTableWidth="min-w-[900px]"
+                columnWidths={["w-[44%]", "w-[14%]", "w-[12%]", "w-[30%]"]}
+              >
+                {data.slowestSpans.map((span) => (
+                  <tr key={`${span.traceId}:${span.spanId}`}>
+                    <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                      {span.name}
+                    </td>
+                    <td className="px-4 py-3 align-top font-mono tabular-nums">
+                      {formatDuration(span.durationMs)}
+                    </td>
+                    <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground">
+                      {formatRelativeNoWrap(span.endedAt, copy)}
+                    </td>
+                    <td className="min-w-0 whitespace-nowrap px-4 py-3 align-top text-muted-foreground last:sm:pr-5">
+                      <TraceIdCell traceId={span.traceId} />
+                    </td>
+                  </tr>
+                ))}
+              </DiagnosticsTable>
+            ) : (
+              <EmptyRows
+                label={isInitialLoading ? copy.tables.loadingSlowSpans : copy.tables.noSpans}
+              />
+            )}
+          </SettingsSection>
+
+          <SettingsSection title={copy.tables.spanLogs}>
+            {data && data.latestWarningAndErrorLogs.length > 0 ? (
+              <ScrollArea
+                chainVerticalScroll
+                scrollFade
+                hideScrollbars
+                className="w-full max-w-full rounded-none"
+              >
+                <table className="w-full min-w-[920px] table-fixed text-left text-xs">
+                  <colgroup>
+                    <col className="w-[11%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[26%]" />
+                    <col className="w-[30%]" />
+                  </colgroup>
+                  <thead className="border-b border-border/60 text-[11px] uppercase tracking-[0.08em] text-muted-foreground/70">
+                    <tr>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-semibold sm:pl-5">
+                        {copy.tables.time}
+                      </th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-semibold">
+                        {copy.tables.level}
+                      </th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-semibold">
+                        {copy.tables.span}
+                      </th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-semibold">
+                        {copy.tables.message}
+                      </th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-semibold sm:pr-5">
+                        {copy.tables.trace}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {data.latestWarningAndErrorLogs.map((event) => (
+                      <tr
+                        key={`${event.traceId}:${event.spanId}:${DateTime.formatIso(event.seenAt)}:${event.message}`}
+                        className="hover:bg-muted/15"
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground sm:pl-5">
+                          {formatRelativeNoWrap(event.seenAt, copy)}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <span className="inline-flex rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium uppercase text-foreground/80">
+                            {event.level}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="truncate font-medium text-foreground">
+                            {event.spanName}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">
+                          <ExpandableText
+                            collapsedClassName="line-clamp-2"
+                            expandLabel={copy.showFullMessage}
+                            text={event.message}
+                          />
+                        </td>
+                        <td className="min-w-0 whitespace-nowrap px-4 py-3 align-top text-muted-foreground sm:pr-5">
+                          <TraceIdCell traceId={event.traceId} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ScrollArea>
+            ) : (
+              <EmptyRows
+                label={isInitialLoading ? copy.tables.loadingLogs : copy.tables.noWarnings}
+              />
+            )}
+          </SettingsSection>
+
+          <SettingsSection title={copy.tables.topSpanNames}>
+            {data && data.topSpansByCount.length > 0 ? (
+              <DiagnosticsTable
+                headers={[
+                  copy.tables.span,
+                  copy.tables.count,
+                  copy.tables.failures,
+                  copy.tables.average,
+                  copy.tables.max,
+                ]}
+                minTableWidth="min-w-[760px]"
+                columnWidths={["w-[48%]", "w-[13%]", "w-[13%]", "w-[13%]", "w-[13%]"]}
+              >
+                {data.topSpansByCount.map((span) => (
+                  <tr key={span.name}>
+                    <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                      {span.name}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                      {formatCount(span.count)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                      {formatCount(span.failureCount)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                      {formatDuration(span.averageDurationMs)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums last:sm:pr-5">
+                      {formatDuration(span.maxDurationMs)}
+                    </td>
+                  </tr>
+                ))}
+              </DiagnosticsTable>
+            ) : (
+              <EmptyRows
+                label={isInitialLoading ? copy.tables.loadingSpanNames : copy.tables.noSpans}
+              />
+            )}
+          </SettingsSection>
         </>
       ) : (
         <SettingsSection title={copy.trace.details}>

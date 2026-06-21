@@ -91,7 +91,8 @@ export class DesktopEnvironment extends Context.Service<
   DesktopEnvironmentShape
 >()("t3/desktop/Environment") {}
 
-const APP_BASE_NAME = "Bahew";
+export const DESKTOP_APP_BASE_NAME = "Bahew";
+export const DESKTOP_APP_ID = "com.bahew.bahew";
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -110,9 +111,9 @@ function resolveDesktopAppBranding(input: {
 }): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
   return {
-    baseName: APP_BASE_NAME,
+    baseName: DESKTOP_APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName: `${DESKTOP_APP_BASE_NAME} (${stageLabel})`,
   };
 }
 
@@ -212,9 +213,9 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     otlpExportIntervalMs: config.otlpExportIntervalMs,
     branding,
     displayName,
-    appUserModelId: isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
-    linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
-    linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
+    appUserModelId: isDevelopment ? `${DESKTOP_APP_ID}.dev` : DESKTOP_APP_ID,
+    linuxDesktopEntryName: isDevelopment ? "bahew-dev.desktop" : "bahew.desktop",
+    linuxWmClass: isDevelopment ? "bahew-dev" : "bahew",
     userDataDirName,
     legacyUserDataDirName,
     defaultDesktopSettings: resolveDefaultDesktopSettings(input.appVersion),

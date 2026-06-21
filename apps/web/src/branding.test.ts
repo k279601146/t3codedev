@@ -54,4 +54,13 @@ describe("branding", () => {
     expect(branding.HOSTED_APP_CHANNEL).toBeNull();
     expect(branding.HOSTED_APP_CHANNEL_LABEL).toBeNull();
   });
+
+  it("brands Electron runtime labels for user-facing display", async () => {
+    const branding = await import("./branding");
+
+    expect(branding.formatBrandedRuntimeLabel("Electron")).toBe("Bahew");
+    expect(branding.formatBrandedRuntimeText("C:\\tools\\electron.exe --inspect")).toBe(
+      "C:\\tools\\Bahew.exe --inspect",
+    );
+  });
 });

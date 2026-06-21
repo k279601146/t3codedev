@@ -23,3 +23,13 @@ export const APP_STAGE_LABEL =
 export const APP_DISPLAY_NAME =
   injectedDesktopAppBranding?.displayName ?? `${APP_BASE_NAME} (${APP_STAGE_LABEL})`;
 export const APP_VERSION = import.meta.env.APP_VERSION || "0.0.0";
+
+export function formatBrandedRuntimeLabel(value: string): string {
+  return value.trim().toLowerCase() === "electron" ? APP_BASE_NAME : value;
+}
+
+export function formatBrandedRuntimeText(value: string): string {
+  return value.replace(/\belectron(?:\.exe)?\b/giu, (match) =>
+    match.toLowerCase().endsWith(".exe") ? `${APP_BASE_NAME}.exe` : APP_BASE_NAME,
+  );
+}

@@ -55,6 +55,9 @@ import * as DesktopInstallationIdentity from "./telemetry/DesktopInstallationIde
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
 
+process.title = DesktopEnvironment.DESKTOP_APP_BASE_NAME;
+Electron.app.setName(DesktopEnvironment.DESKTOP_APP_BASE_NAME);
+
 const desktopEnvironmentLayer = Layer.unwrap(
   Effect.gen(function* () {
     const metadata = yield* Effect.service(ElectronApp.ElectronApp).pipe(
@@ -240,8 +243,7 @@ const desktopComputerAutomationIpcLayer = Layer.effectDiscard(
 const desktopBrowserExternalAutomationIpcLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     const ipc = yield* DesktopIpc.DesktopIpc;
-    const host =
-      yield* DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHost;
+    const host = yield* DesktopBrowserExternalAutomationHost.DesktopBrowserExternalAutomationHost;
     yield* ipc.handle({
       channel: IpcChannels.BROWSER_EXTERNAL_AUTOMATION_GET_STATE_CHANNEL,
       handler: () => host.state,

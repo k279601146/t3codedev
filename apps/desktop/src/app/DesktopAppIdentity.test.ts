@@ -224,7 +224,7 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         yield* identity.configure;
 
-        assert.deepEqual(calls.setAppUserModelId, ["com.t3tools.t3code.dev"]);
+        assert.deepEqual(calls.setAppUserModelId, ["com.bahew.bahew.dev"]);
         assert.equal(calls.writeShortcutLink.length, 1);
         assert.equal(
           slash(calls.writeShortcutLink[0]?.shortcutPath ?? ""),
@@ -232,10 +232,7 @@ describe("DesktopAppIdentity", () => {
         );
         assert.equal(calls.writeShortcutLink[0]?.operation, "replace");
         assert.equal(calls.writeShortcutLink[0]?.options.target, process.execPath);
-        assert.equal(
-          calls.writeShortcutLink[0]?.options.appUserModelId,
-          "com.t3tools.t3code.dev",
-        );
+        assert.equal(calls.writeShortcutLink[0]?.options.appUserModelId, "com.bahew.bahew.dev");
         assert.equal(calls.writeShortcutLink[0]?.options.description, "Bahew (Dev)");
       }),
       {

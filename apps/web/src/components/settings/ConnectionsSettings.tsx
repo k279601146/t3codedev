@@ -98,6 +98,7 @@ import {
 import { useUiStateStore } from "~/uiStateStore";
 import { resolveServerConfigVersionMismatch } from "~/versionSkew";
 import { useServerConfig } from "~/rpc/serverState";
+import { formatBrandedRuntimeLabel, formatBrandedRuntimeText } from "~/branding";
 
 const DEFAULT_TAILSCALE_SERVE_PORT = 443;
 
@@ -895,18 +896,22 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
       ? `Last connected at ${formatAccessTimestamp(lastConnectedAt)}`
       : "Not connected yet.";
   const roleLabel = clientSession.role === "owner" ? "Owner" : "Client";
+  const browserLabel = clientSession.client.browser
+    ? formatBrandedRuntimeLabel(clientSession.client.browser)
+    : null;
   const deviceInfoBits = [
     clientSession.client.deviceType !== "unknown"
       ? clientSession.client.deviceType[0]?.toUpperCase() + clientSession.client.deviceType.slice(1)
       : null,
     clientSession.client.os ?? null,
-    clientSession.client.browser ?? null,
+    browserLabel,
     clientSession.client.ipAddress ?? null,
   ].filter((value): value is string => value !== null);
   const primaryLabel =
     clientSession.client.label ??
     ([clientSession.client.os, clientSession.client.browser].filter(Boolean).join(" · ") ||
       clientSession.subject);
+  const brandedPrimaryLabel = formatBrandedRuntimeText(primaryLabel);
 
   return (
     <div className={accessRowClassName(presentation)}>
@@ -918,7 +923,7 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
               dotClassName={isLive ? "bg-success" : "bg-muted-foreground/30"}
               pingClassName={isLive ? "bg-success/60 duration-2000" : null}
             />
-            <h3 className="text-sm font-medium text-foreground">{primaryLabel}</h3>
+            <h3 className="text-sm font-medium text-foreground">{brandedPrimaryLabel}</h3>
             {clientSession.current ? (
               <span className="text-[10px] text-muted-foreground/80 rounded-md border border-border/50 bg-muted/50 px-1 py-0.5">
                 This device
