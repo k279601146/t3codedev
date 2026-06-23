@@ -22,9 +22,11 @@ const APP_BUNDLE_ID = isDevelopment ? "com.bahew.bahew.dev" : "com.bahew.bahew";
 const LAUNCHER_VERSION = 2;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const launcherRequire = createRequire(import.meta.url);
 export const desktopDir = resolve(__dirname, "..");
 const repoRoot = resolve(desktopDir, "..", "..");
 const defaultIconPath = join(desktopDir, "resources", "icon.icns");
+const windowsIconPath = join(desktopDir, "resources", "icon.ico");
 const developmentMacIconPngPath = join(repoRoot, "assets", "dev", "blueprint-macos-1024.png");
 
 function setPlistString(plistPath, key, value) {
@@ -162,9 +164,116 @@ function buildMacLauncher(electronBinaryPath) {
   return targetBinaryPath;
 }
 
+function patchWindowsExecutableMetadata(targetBinaryPath) {
+  let rceditEntrypointPath;
+  try {
+    rceditEntrypointPath = launcherRequire.resolve("rcedit");
+  } catch (error) {
+    console.warn(
+      "[desktop-launcher] rcedit is not available, so Windows executable metadata was not patched.",
+      error,
+    );
+    return false;
+  }
+
+  const rceditPackageDir = resolve(rceditEntrypointPath, "..", "..");
+  const rceditExePath = join(
+    rceditPackageDir,
+    "bin",
+    process.arch === "ia32" ? "rcedit.exe" : "rcedit-x64.exe",
+  );
+  const args = [
+    targetBinaryPath,
+    "--set-version-string",
+    "FileDescription",
+    "Bahew",
+    "--set-version-string",
+    "ProductName",
+    "Bahew",
+    "--set-version-string",
+    "InternalName",
+    "Bahew",
+    "--set-version-string",
+    "OriginalFilename",
+    "Bahew.exe",
+  ];
+
+  if (existsSync(windowsIconPath)) {
+    args.push("--set-icon", windowsIconPath);
+  }
+
+  const result = spawnSync(rceditExePath, args, { encoding: "utf8" });
+  if (result.status === 0) {
+    return true;
+  }
+
+  const details = [result.error?.message, result.stdout, result.stderr]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  console.warn(
+    `[desktop-launcher] Failed to patch Windows executable metadata. ` +
+      `Task Manager may still show Electron until rcedit is available.${details ? `\n${details}` : ""}`,
+  );
+  return false;
+}
+
+function buildWindowsLauncher(electronBinaryPath) {
+  const sourceElectronDir = dirname(electronBinaryPath);
+  const runtimeDir = join(desktopDir, ".electron-runtime", "win32");
+  const targetElectronDir = join(runtimeDir, "electron");
+  const targetElectronExePath = join(targetElectronDir, "electron.exe");
+  const targetBinaryPath = join(targetElectronDir, "Bahew.exe");
+  const metadataPath = join(runtimeDir, "metadata.json");
+  const iconMtimeMs = existsSync(windowsIconPath) ? statSync(windowsIconPath).mtimeMs : null;
+  const sourceExeStat = statSync(electronBinaryPath);
+
+  mkdirSync(runtimeDir, { recursive: true });
+
+  const expectedMetadata = {
+    launcherVersion: LAUNCHER_VERSION,
+    sourceElectronDir,
+    sourceElectronExeMtimeMs: sourceExeStat.mtimeMs,
+    sourceElectronExeSize: sourceExeStat.size,
+    iconMtimeMs,
+    executableName: "Bahew.exe",
+    fileDescription: "Bahew",
+    productName: "Bahew",
+    resourcePatchStatus: "patched",
+  };
+
+  const currentMetadata = readJson(metadataPath);
+  if (
+    existsSync(targetBinaryPath) &&
+    currentMetadata &&
+    JSON.stringify(currentMetadata) === JSON.stringify(expectedMetadata)
+  ) {
+    return targetBinaryPath;
+  }
+
+  rmSync(targetElectronDir, { recursive: true, force: true });
+  cpSync(sourceElectronDir, targetElectronDir, { recursive: true });
+  rmSync(targetBinaryPath, { force: true });
+  copyFileSync(targetElectronExePath, targetBinaryPath);
+  rmSync(targetElectronExePath, { force: true });
+
+  const resourcePatchStatus = patchWindowsExecutableMetadata(targetBinaryPath)
+    ? "patched"
+    : "failed";
+  writeFileSync(
+    metadataPath,
+    `${JSON.stringify({ ...expectedMetadata, resourcePatchStatus }, null, 2)}\n`,
+  );
+
+  return targetBinaryPath;
+}
+
 export function resolveElectronPath() {
-  const require = createRequire(import.meta.url);
-  const electronBinaryPath = require("electron");
+  const electronBinaryPath = launcherRequire("electron");
+
+  if (process.platform === "win32") {
+    return buildWindowsLauncher(electronBinaryPath);
+  }
 
   if (process.platform !== "darwin") {
     return electronBinaryPath;

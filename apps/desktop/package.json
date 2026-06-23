@@ -28,6 +28,7 @@
     "@effect/language-service": "catalog:",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
+    "rcedit": "^5.0.2",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
