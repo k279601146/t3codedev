@@ -1,7 +1,14 @@
-import { CheckpointRef, ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  CheckpointRef,
+  CONVERSATION_PROJECT_ID,
+  ProjectId,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,6 +19,11 @@ import { checkpointRefForThreadTurn } from "../Utils.ts";
 import { CheckpointDiffQueryLive } from "./CheckpointDiffQuery.ts";
 import { CheckpointStore, type CheckpointStoreShape } from "../Services/CheckpointStore.ts";
 import { CheckpointDiffQuery } from "../Services/CheckpointDiffQuery.ts";
+import { ServerConfig } from "../../config.ts";
+
+const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
+  prefix: "t3-checkpoint-diff-query-test-",
+}).pipe(Layer.provide(NodeServices.layer));
 
 function makeThreadCheckpointContext(input: {
   readonly projectId: ProjectId;
@@ -74,6 +86,7 @@ describe("CheckpointDiffQueryLive", () => {
 
     const layer = CheckpointDiffQueryLive.pipe(
       Layer.provideMerge(Layer.succeed(CheckpointStore, checkpointStore)),
+      Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery, {
           getCommandReadModel: () =>
@@ -181,6 +194,7 @@ describe("CheckpointDiffQueryLive", () => {
 
     const layer = CheckpointDiffQueryLive.pipe(
       Layer.provideMerge(Layer.succeed(CheckpointStore, checkpointStore)),
+      Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery, {
           getCommandReadModel: () =>
@@ -233,6 +247,97 @@ describe("CheckpointDiffQueryLive", () => {
     });
   });
 
+  it("uses isolated conversation workspace paths for conversation thread diffs", async () => {
+    const threadId = ThreadId.make("thread-conversation");
+    const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+    const diffCheckpointsCalls: Array<{
+      readonly fromCheckpointRef: CheckpointRef;
+      readonly toCheckpointRef: CheckpointRef;
+      readonly cwd: string;
+      readonly ignoreWhitespace: boolean;
+      readonly preferShadow: boolean | undefined;
+    }> = [];
+
+    const threadCheckpointContext = makeThreadCheckpointContext({
+      projectId: CONVERSATION_PROJECT_ID,
+      threadId,
+      workspaceRoot: "/tmp/ignored-conversation-root",
+      worktreePath: null,
+      checkpointTurnCount: 1,
+      checkpointRef: toCheckpointRef,
+    });
+
+    const checkpointStore: CheckpointStoreShape = {
+      isGitRepository: () => Effect.succeed(true),
+      captureCheckpoint: () => Effect.void,
+      hasCheckpointRef: () => Effect.succeed(true),
+      restoreCheckpoint: () => Effect.succeed(true),
+      diffCheckpoints: ({
+        fromCheckpointRef,
+        toCheckpointRef,
+        cwd,
+        ignoreWhitespace,
+        preferShadow,
+      }) =>
+        Effect.sync(() => {
+          diffCheckpointsCalls.push({
+            fromCheckpointRef,
+            toCheckpointRef,
+            cwd,
+            ignoreWhitespace,
+            preferShadow,
+          });
+          return "conversation diff patch";
+        }),
+      deleteCheckpointRefs: () => Effect.void,
+    };
+
+    const layer = CheckpointDiffQueryLive.pipe(
+      Layer.provideMerge(Layer.succeed(CheckpointStore, checkpointStore)),
+      Layer.provideMerge(ServerConfigLayer),
+      Layer.provideMerge(
+        Layer.succeed(ProjectionSnapshotQuery, {
+          getCommandReadModel: () =>
+            Effect.die("CheckpointDiffQuery should not request the command read model"),
+          getSnapshot: () =>
+            Effect.die("CheckpointDiffQuery should not request the full orchestration snapshot"),
+          getShellSnapshot: () =>
+            Effect.die("CheckpointDiffQuery should not request the orchestration shell snapshot"),
+          getArchivedShellSnapshot: () =>
+            Effect.die("CheckpointDiffQuery should not request archived shell snapshots"),
+          getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
+          getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
+          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+          getProjectShellById: () => Effect.succeed(Option.none()),
+          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+          getThreadCheckpointContext: () => Effect.succeed(Option.some(threadCheckpointContext)),
+          getFullThreadDiffContext: () => Effect.die("unused"),
+          getThreadShellById: () => Effect.succeed(Option.none()),
+          getThreadDetailById: () => Effect.succeed(Option.none()),
+        }),
+      ),
+    );
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery;
+        return yield* query.getTurnDiff({
+          threadId,
+          fromTurnCount: 0,
+          toTurnCount: 1,
+          ignoreWhitespace: false,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(diffCheckpointsCalls).toHaveLength(1);
+    expect(diffCheckpointsCalls[0]?.cwd.replaceAll("\\", "/")).toMatch(
+      /\/conversation-workspace\/thread-conversation$/u,
+    );
+    expect(diffCheckpointsCalls[0]?.preferShadow).toBe(true);
+    expect(diffCheckpointsCalls[0]?.ignoreWhitespace).toBe(false);
+  });
+
   it("defaults to hide whitespace changes", async () => {
     const projectId = ProjectId.make("project-default-whitespace");
     const threadId = ThreadId.make("thread-default-whitespace");
@@ -263,6 +368,7 @@ describe("CheckpointDiffQueryLive", () => {
 
     const layer = CheckpointDiffQueryLive.pipe(
       Layer.provideMerge(Layer.succeed(CheckpointStore, checkpointStore)),
+      Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery, {
           getCommandReadModel: () =>
@@ -330,6 +436,7 @@ describe("CheckpointDiffQueryLive", () => {
 
     const layer = CheckpointDiffQueryLive.pipe(
       Layer.provideMerge(Layer.succeed(CheckpointStore, checkpointStore)),
+      Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery, {
           getCommandReadModel: () =>
@@ -382,6 +489,7 @@ describe("CheckpointDiffQueryLive", () => {
 
     const layer = CheckpointDiffQueryLive.pipe(
       Layer.provideMerge(Layer.succeed(CheckpointStore, checkpointStore)),
+      Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery, {
           getCommandReadModel: () =>

@@ -179,6 +179,21 @@ function summarizeDiffFileSection(section: DiffFileSection): TurnDiffFileSummary
   let insideHunk = false;
 
   for (const line of section.lines) {
+    if (line.startsWith("@@ ")) {
+      insideHunk = true;
+      continue;
+    }
+    if (insideHunk) {
+      if (line.startsWith("\\ No newline")) {
+        continue;
+      }
+      if (line.startsWith("+")) {
+        additions += 1;
+      } else if (line.startsWith("-")) {
+        deletions += 1;
+      }
+      continue;
+    }
     if (line.startsWith("new file mode ")) {
       sawNewFileMode = true;
       continue;
@@ -204,18 +219,6 @@ function summarizeDiffFileSection(section: DiffFileSection): TurnDiffFileSummary
     if (line.startsWith("+++ ")) {
       newPath = normalizeDiffPath(line.slice(4));
       continue;
-    }
-    if (line.startsWith("@@ ")) {
-      insideHunk = true;
-      continue;
-    }
-    if (!insideHunk || line.startsWith("\\ No newline")) {
-      continue;
-    }
-    if (line.startsWith("+")) {
-      additions += 1;
-    } else if (line.startsWith("-")) {
-      deletions += 1;
     }
   }
 

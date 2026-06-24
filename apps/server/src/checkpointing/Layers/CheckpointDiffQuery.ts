@@ -12,12 +12,17 @@ import * as Schema from "effect/Schema";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { CheckpointInvariantError, CheckpointUnavailableError } from "../Errors.ts";
-import { checkpointRefForThreadTurn } from "../Utils.ts";
+import {
+  checkpointRefForThreadTurn,
+  isPathInsideConversationWorkspace,
+  resolveThreadWorkspaceCwd,
+} from "../Utils.ts";
 import { CheckpointStore } from "../Services/CheckpointStore.ts";
 import {
   CheckpointDiffQuery,
   type CheckpointDiffQueryShape,
 } from "../Services/CheckpointDiffQuery.ts";
+import { ServerConfig } from "../../config.ts";
 
 const isTurnDiffResult = Schema.is(OrchestrationGetTurnDiffResult);
 
@@ -40,6 +45,13 @@ function buildTurnDiffResult(
 const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const checkpointStore = yield* CheckpointStore;
+  const serverConfig = yield* ServerConfig;
+
+  const preferShadowForCwd = (cwd: string): boolean =>
+    isPathInsideConversationWorkspace({
+      cwd,
+      conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+    });
 
   const getTurnDiff: CheckpointDiffQueryShape["getTurnDiff"] = Effect.fn("getTurnDiff")(
     function* (input) {
@@ -90,7 +102,23 @@ const make = Effect.gen(function* () {
         });
       }
 
-      const workspaceCwd = threadContext.value.worktreePath ?? threadContext.value.workspaceRoot;
+      const workspaceCwd = resolveThreadWorkspaceCwd({
+        threadId: threadContext.value.threadId,
+        thread: {
+          projectId: threadContext.value.projectId,
+          worktreePath: threadContext.value.worktreePath,
+        },
+        conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+        projects:
+          threadContext.value.workspaceRoot === null
+            ? []
+            : [
+                {
+                  id: threadContext.value.projectId,
+                  workspaceRoot: threadContext.value.workspaceRoot,
+                },
+              ],
+      });
       if (!workspaceCwd) {
         return yield* new CheckpointInvariantError({
           operation,
@@ -130,6 +158,7 @@ const make = Effect.gen(function* () {
           toCheckpointRef,
           fallbackFromToHead: false,
           ignoreWhitespace,
+          preferShadow: preferShadowForCwd(workspaceCwd),
         })
         .pipe(Effect.withSpan("checkpoint.turnDiff.diffCheckpoints"));
 
@@ -195,7 +224,23 @@ const make = Effect.gen(function* () {
       });
     }
 
-    const workspaceCwd = threadContext.value.worktreePath ?? threadContext.value.workspaceRoot;
+    const workspaceCwd = resolveThreadWorkspaceCwd({
+      threadId: threadContext.value.threadId,
+      thread: {
+        projectId: threadContext.value.projectId,
+        worktreePath: threadContext.value.worktreePath,
+      },
+      conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+      projects:
+        threadContext.value.workspaceRoot === null
+          ? []
+          : [
+              {
+                id: threadContext.value.projectId,
+                workspaceRoot: threadContext.value.workspaceRoot,
+              },
+            ],
+    });
     if (!workspaceCwd) {
       return yield* new CheckpointInvariantError({
         operation,
@@ -218,6 +263,7 @@ const make = Effect.gen(function* () {
         toCheckpointRef: threadContext.value.toCheckpointRef as CheckpointRef,
         fallbackFromToHead: false,
         ignoreWhitespace,
+        preferShadow: preferShadowForCwd(workspaceCwd),
       })
       .pipe(Effect.withSpan("checkpoint.fullThread.diffCheckpoints"));
 

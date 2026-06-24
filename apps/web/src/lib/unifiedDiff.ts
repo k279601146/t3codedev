@@ -57,16 +57,6 @@ export function parseUnifiedDiff(diff: string): UnifiedDiffFilePatch[] {
       continue;
     }
 
-    if (line.startsWith("--- ")) {
-      current.oldPath = normalizeDiffPath(line.slice(4).trim());
-      continue;
-    }
-
-    if (line.startsWith("+++ ")) {
-      current.newPath = normalizeDiffPath(line.slice(4).trim());
-      continue;
-    }
-
     const hunkMatch = HUNK_HEADER_PATTERN.exec(line);
     if (hunkMatch) {
       currentHunk = {
@@ -80,18 +70,30 @@ export function parseUnifiedDiff(diff: string): UnifiedDiffFilePatch[] {
       continue;
     }
 
-    if (!currentHunk || line.startsWith("\\ No newline")) {
+    if (currentHunk) {
+      if (line.startsWith("\\ No newline")) {
+        continue;
+      }
+      const marker = line[0];
+      const text = line.slice(1);
+      if (marker === " ") {
+        currentHunk.lines.push({ type: "context", text });
+      } else if (marker === "+") {
+        currentHunk.lines.push({ type: "add", text });
+      } else if (marker === "-") {
+        currentHunk.lines.push({ type: "remove", text });
+      }
       continue;
     }
 
-    const marker = line[0];
-    const text = line.slice(1);
-    if (marker === " ") {
-      currentHunk.lines.push({ type: "context", text });
-    } else if (marker === "+") {
-      currentHunk.lines.push({ type: "add", text });
-    } else if (marker === "-") {
-      currentHunk.lines.push({ type: "remove", text });
+    if (line.startsWith("--- ")) {
+      current.oldPath = normalizeDiffPath(line.slice(4).trim());
+      continue;
+    }
+
+    if (line.startsWith("+++ ")) {
+      current.newPath = normalizeDiffPath(line.slice(4).trim());
+      continue;
     }
   }
 

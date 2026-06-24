@@ -1124,6 +1124,32 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.detail).toContain('+print("你好")');
   });
 
+  it("extracts PowerShell Out-File targets after long here-strings", () => {
+    const command =
+      "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -Command \"@'\n# \u300a\u4e5e\u8ba8\u6b66\u6797\u300b\u521b\u4f5c\u63d0\u793a\u8bcd\n\n- **\u4e3b\u7c7b\u578b**\uff1a\u4f20\u7edf\u6b66\u4fa0\n'@ | Out-File -FilePath \\\"output/\u63d0\u793a\u8bcd.md\\\" -Encoding UTF8; Write-Output \\\"\u63d0\u793a\u8bcd\u5df2\u751f\u6210\\\"\"";
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-here-string-file",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command,
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.requestKind).toBe("file-change");
+    expect(entry?.changedFiles).toEqual(["output/\u63d0\u793a\u8bcd.md"]);
+    expect(entry?.detail).toContain("+++ b/output/\u63d0\u793a\u8bcd.md");
+    expect(entry?.detail).toContain("+# \u300a\u4e5e\u8ba8\u6b66\u6797\u300b\u521b\u4f5c\u63d0\u793a\u8bcd");
+  });
+
   it("treats PowerShell Set-Content commands as file edit work", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

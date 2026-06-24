@@ -1700,6 +1700,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const serverConfig = yield* Effect.service(ServerConfig);
   const defaultCwd = serverConfig.conversationWorkspaceDir;
   yield* fileSystem.makeDirectory(defaultCwd, { recursive: true }).pipe(Effect.ignore);
+  const defaultCwdForThread = (threadId: ThreadId): string => path.join(defaultCwd, threadId);
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -2053,10 +2054,12 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           }
 
           const runtimeEnvironment = yield* effectiveEnvironment;
+          const runtimeCwd = input.cwd ?? defaultCwdForThread(input.threadId);
+          yield* fileSystem.makeDirectory(runtimeCwd, { recursive: true }).pipe(Effect.ignore);
           const runtimeInput: CodexSessionRuntimeOptions = {
             threadId: input.threadId,
             providerInstanceId: boundInstanceId,
-            cwd: input.cwd ?? defaultCwd,
+            cwd: runtimeCwd,
             binaryPath: codexConfig.binaryPath,
             ...(runtimeEnvironment !== undefined ? { environment: runtimeEnvironment } : {}),
             ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),

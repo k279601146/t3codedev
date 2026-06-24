@@ -27,7 +27,10 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
-import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
+import {
+  isPathInsideConversationWorkspace,
+  resolveThreadWorkspaceCwd,
+} from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
@@ -223,6 +226,7 @@ const make = Effect.gen(function* () {
   const threadModelSelections = new Map<string, ModelSelection>();
 
   const resolveProviderWorkspaceCwd = Effect.fn("resolveProviderWorkspaceCwd")(function* (input: {
+    readonly threadId: ThreadId;
     readonly thread: {
       readonly projectId: ProjectId;
       readonly worktreePath: string | null;
@@ -233,7 +237,13 @@ const make = Effect.gen(function* () {
       ...input,
       conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
     });
-    if (cwd === serverConfig.conversationWorkspaceDir) {
+    if (
+      cwd &&
+      isPathInsideConversationWorkspace({
+        cwd,
+        conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+      })
+    ) {
       yield* fileSystem.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
     }
 
@@ -437,6 +447,7 @@ const make = Effect.gen(function* () {
     }
     const project = yield* resolveProject(thread.projectId);
     const effectiveCwd = yield* resolveProviderWorkspaceCwd({
+      threadId,
       thread,
       projects: project ? [project] : [],
     });
@@ -577,6 +588,7 @@ const make = Effect.gen(function* () {
     }
     const project = yield* resolveProject(thread.projectId);
     const effectiveCwd = yield* resolveProviderWorkspaceCwd({
+      threadId: input.threadId,
       thread,
       projects: project ? [project] : [],
     });
@@ -768,6 +780,7 @@ const make = Effect.gen(function* () {
       const project = yield* resolveProject(thread.projectId);
       const generationCwd =
         (yield* resolveProviderWorkspaceCwd({
+          threadId: event.payload.threadId,
           thread,
           projects: project ? [project] : [],
         })) ?? serverConfig.cwd;

@@ -323,7 +323,9 @@ describe("CheckpointReactor", () => {
       cwd,
       options?.hasSession ?? true,
       options?.providerSessionCwd ??
-        (projectId === CONVERSATION_PROJECT_ID ? conversationWorkspaceDir : cwd),
+        (projectId === CONVERSATION_PROJECT_ID
+          ? path.join(conversationWorkspaceDir, "thread-1")
+          : cwd),
       options?.providerName ?? ProviderDriverKind.make("codex"),
     );
     const orchestrationLayer = OrchestrationEngineLive.pipe(
@@ -572,11 +574,16 @@ describe("CheckpointReactor", () => {
     });
     await harness.drain();
 
-    const outputDir = path.join(harness.conversationWorkspaceDir, "output");
+    const threadWorkspaceDir = path.join(harness.conversationWorkspaceDir, "thread-1");
+    const outputDir = path.join(threadWorkspaceDir, "output");
     fs.mkdirSync(outputDir, { recursive: true });
     const fileName = "\u63d0\u793a\u8bcd.md";
     const expectedPath = `output/${fileName}`;
-    fs.writeFileSync(path.join(outputDir, fileName), "# \u63d0\u793a\u8bcd\n", "utf8");
+    fs.writeFileSync(
+      path.join(outputDir, fileName),
+      "# \u63d0\u793a\u8bcd\n\n+++ \u9686\u51ac\u814a\u6708\uff0c\u5927\u96ea\u7eb7\u98de\n",
+      "utf8",
+    );
 
     harness.provider.emit({
       type: "turn.completed",
@@ -600,6 +607,8 @@ describe("CheckpointReactor", () => {
         event.payload.turnId === asTurnId("turn-conversation"),
     );
     expect(diffEvent?.payload.files.map((file) => file.path)).toEqual([expectedPath]);
+    expect(diffEvent?.payload.files[0]?.additions).toBe(3);
+    expect(diffEvent?.payload.files[0]?.deletions).toBe(0);
 
     const thread = await waitForThread(
       harness.readModel,

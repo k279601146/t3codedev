@@ -11,15 +11,16 @@ import {
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
   checkpointRefForThreadTurn,
+  isPathInsideConversationWorkspace,
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
@@ -103,7 +104,7 @@ const make = Effect.gen(function* () {
   const workspaceEntries = yield* WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const serverConfig = yield* ServerConfig;
-  const path = yield* Path.Path;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   const appendRevertFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -186,12 +187,16 @@ const make = Effect.gen(function* () {
   // workspace capabilities.
   const resolveCheckpointCwd = Effect.fn("resolveCheckpointCwd")(function* (input: {
     readonly threadId: ThreadId;
-    readonly thread: { readonly projectId: ProjectId; readonly worktreePath: string | null };
+    readonly thread: {
+      readonly projectId: ProjectId;
+      readonly worktreePath: string | null;
+    };
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
   }): Effect.fn.Return<string | undefined> {
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
+      threadId: input.threadId,
       thread: input.thread,
       projects: input.projects,
       conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
@@ -215,7 +220,15 @@ const make = Effect.gen(function* () {
   });
 
   const shouldUseIsolatedCheckpointStore = (cwd: string): boolean =>
-    path.resolve(cwd) === path.resolve(serverConfig.conversationWorkspaceDir);
+    isPathInsideConversationWorkspace({
+      cwd,
+      conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+    });
+
+  const ensureConversationWorkspaceCwd = (cwd: string): Effect.Effect<void> =>
+    shouldUseIsolatedCheckpointStore(cwd)
+      ? fileSystem.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore)
+      : Effect.void;
 
   // Shared tail for both capture paths: creates the git checkpoint ref, diffs
   // it against the previous turn, then dispatches the domain events to update
@@ -239,6 +252,8 @@ const make = Effect.gen(function* () {
     const fromTurnCount = Math.max(0, input.turnCount - 1);
     const fromCheckpointRef = checkpointRefForThreadTurn(input.threadId, fromTurnCount);
     const targetCheckpointRef = checkpointRefForThreadTurn(input.threadId, input.turnCount);
+
+    yield* ensureConversationWorkspaceCwd(input.cwd);
 
     const fromCheckpointExists = yield* checkpointStore.hasCheckpointRef({
       cwd: input.cwd,
@@ -508,6 +523,7 @@ const make = Effect.gen(function* () {
 
       const currentTurnCount = maxCheckpointTurnCount(thread.checkpoints);
       const baselineCheckpointRef = checkpointRefForThreadTurn(thread.id, currentTurnCount);
+      yield* ensureConversationWorkspaceCwd(checkpointCwd);
       const baselineExists = yield* checkpointStore.hasCheckpointRef({
         cwd: checkpointCwd,
         checkpointRef: baselineCheckpointRef,
@@ -589,6 +605,7 @@ const make = Effect.gen(function* () {
 
     const currentTurnCount = maxCheckpointTurnCount(thread.checkpoints);
     const baselineCheckpointRef = checkpointRefForThreadTurn(threadId, currentTurnCount);
+    yield* ensureConversationWorkspaceCwd(checkpointCwd);
     const baselineExists = yield* checkpointStore.hasCheckpointRef({
       cwd: checkpointCwd,
       checkpointRef: baselineCheckpointRef,

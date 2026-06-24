@@ -82,4 +82,23 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
       { path: "output/提示词.md", kind: "added", additions: 1, deletions: 0 },
     ]);
   });
+
+  it("does not treat added file content beginning with plus markers as a file path", () => {
+    const diff = [
+      "diff --git a/output/outline.md b/output/outline.md",
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "--- /dev/null",
+      "+++ b/output/outline.md",
+      "@@ -0,0 +1,3 @@",
+      "+# Title",
+      "+++\u0020\u9686\u51ac\u814a\u6708\uff0c\u5927\u96ea\u7eb7\u98de",
+      "+Body",
+      "",
+    ].join("\n");
+
+    expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
+      { path: "output/outline.md", kind: "added", additions: 3, deletions: 0 },
+    ]);
+  });
 });

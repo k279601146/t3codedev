@@ -1220,6 +1220,12 @@ function buildSyntheticCommandFileDiff(input: {
 function unquoteCommandToken(value: string): string {
   const trimmed = value.trim();
   if (
+    (trimmed.startsWith('\\"') && trimmed.endsWith('\\"')) ||
+    (trimmed.startsWith("\\'") && trimmed.endsWith("\\'"))
+  ) {
+    return trimmed.slice(2, -2);
+  }
+  if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {

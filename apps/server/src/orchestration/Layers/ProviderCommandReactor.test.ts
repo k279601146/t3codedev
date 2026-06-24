@@ -590,7 +590,7 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      cwd: path.join(harness.stateDir, "conversation-workspace"),
+      cwd: path.join(harness.stateDir, "conversation-workspace", "thread-1"),
     });
   });
 

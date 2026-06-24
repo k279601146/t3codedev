@@ -123,7 +123,7 @@ const ProjectionThreadIdLookupRowSchema = Schema.Struct({
 const ProjectionThreadCheckpointContextThreadRowSchema = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
-  workspaceRoot: Schema.String,
+  workspaceRoot: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
 });
 const FullThreadDiffContextLookupInput = Schema.Struct({
@@ -133,7 +133,7 @@ const FullThreadDiffContextLookupInput = Schema.Struct({
 const ProjectionFullThreadDiffContextRowSchema = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
-  workspaceRoot: Schema.String,
+  workspaceRoot: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   latestCheckpointTurnCount: Schema.NullOr(NonNegativeInt),
   toCheckpointRef: Schema.NullOr(CheckpointRef),
@@ -730,7 +730,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           projects.workspace_root AS "workspaceRoot",
           threads.worktree_path AS "worktreePath"
         FROM projection_threads AS threads
-        INNER JOIN projection_projects AS projects
+        LEFT JOIN projection_projects AS projects
           ON projects.project_id = threads.project_id
         WHERE threads.thread_id = ${threadId}
           AND threads.deleted_at IS NULL
@@ -926,7 +926,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             LIMIT 1
           ) AS "toCheckpointRef"
         FROM projection_threads AS threads
-        INNER JOIN projection_projects AS projects
+        LEFT JOIN projection_projects AS projects
           ON projects.project_id = threads.project_id
         WHERE threads.thread_id = ${threadId}
           AND threads.deleted_at IS NULL
