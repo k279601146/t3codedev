@@ -69,6 +69,8 @@ const asEventId = (value: string): EventId => EventId.make(value);
 const asItemId = (value: string): ProviderItemId => ProviderItemId.make(value);
 const testConversationWorkspace = () =>
   path.join(process.cwd(), "userdata", "conversation-workspace");
+const testConversationWorkspaceForThread = (threadId: string | ThreadId) =>
+  path.join(testConversationWorkspace(), String(threadId));
 type WindowsSandboxReadinessStatus = "ready" | "notConfigured" | "updateRequired";
 
 class FakeCodexRuntime implements CodexSessionRuntimeShape {
@@ -411,7 +413,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
 
       assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
         binaryPath: "codex",
-        cwd: testConversationWorkspace(),
+        cwd: testConversationWorkspaceForThread("thread-1"),
         jsonRpcLogPath: path.join(process.cwd(), "userdata", "logs", "provider", "jsonrpc.log"),
         model: "gpt-5.3-codex",
         providerInstanceId: ProviderInstanceId.make("codex"),
