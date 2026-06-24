@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { countExpandedDiffLines } from "./DiffPanel.logic";
+import {
+  countExpandedDiffLines,
+  countFileDiffRenderLines,
+  parseRenderableUnifiedDiff,
+} from "./DiffPanel.logic";
 import type { UnifiedDiffFilePatch } from "../lib/unifiedDiff";
 
 function filePatch(path: string, lineCount: number): UnifiedDiffFilePatch {
@@ -36,5 +40,31 @@ describe("countExpandedDiffLines", () => {
         new Set(["src/a.ts:src/a.ts"]),
       ),
     ).toBe(3);
+  });
+});
+
+describe("parseRenderableUnifiedDiff", () => {
+  it("reuses parsed file objects for the same patch text", () => {
+    const patch = [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "",
+    ].join("\n");
+
+    const first = parseRenderableUnifiedDiff(patch);
+    const second = parseRenderableUnifiedDiff(patch);
+
+    expect(first).toBe(second);
+    expect(first).toHaveLength(1);
+  });
+});
+
+describe("countFileDiffRenderLines", () => {
+  it("counts hunk headers and lines for one file", () => {
+    expect(countFileDiffRenderLines(filePatch("src/a.ts", 4))).toBe(5);
   });
 });

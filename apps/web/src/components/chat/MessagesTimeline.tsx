@@ -68,6 +68,7 @@ import {
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
+import { parseRenderableUnifiedDiff } from "../DiffPanel.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShimmerScanText } from "../ui/shimmer-scan-text";
@@ -1194,25 +1195,20 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
-  const shouldRenderLiteMarkdown = ctx.isScrolling && messageText.length > 1200;
+  const shouldDeferHeavyMarkdown = ctx.isScrolling && messageText.length > 1200;
 
   return (
     <>
       {row.showSteerMarkerBefore ? <SteerConversationMarker /> : null}
       <div className="min-w-0 py-0.5">
-        {shouldRenderLiteMarkdown ? (
-          <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
-            {messageText}
-          </div>
-        ) : (
-          <ChatMarkdown
-            text={messageText}
-            cwd={ctx.markdownCwd}
-            isStreaming={Boolean(row.message.streaming)}
-            skills={ctx.skills}
-            onOpenFile={ctx.onOpenMarkdownFile}
-          />
-        )}
+        <ChatMarkdown
+          text={messageText}
+          cwd={ctx.markdownCwd}
+          isStreaming={Boolean(row.message.streaming)}
+          deferHeavyRendering={shouldDeferHeavyMarkdown}
+          skills={ctx.skills}
+          onOpenFile={ctx.onOpenMarkdownFile}
+        />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           workspaceRoot={ctx.workspaceRoot}
@@ -2730,7 +2726,7 @@ function buildFileChangeSummaries(
   workspaceRoot: string | undefined,
   turnDiffSummary: TurnDiffSummary | undefined,
 ): InlineDiffFileSummary[] {
-  const patches = workEntry.detail ? parseUnifiedDiff(workEntry.detail) : [];
+  const patches = workEntry.detail ? parseRenderableUnifiedDiff(workEntry.detail) : [];
   const patchPaths = new Set<string>();
   const summaryPaths = new Set<string>();
   const summaries: InlineDiffFileSummary[] = [];

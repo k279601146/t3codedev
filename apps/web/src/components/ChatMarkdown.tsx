@@ -62,13 +62,67 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   isStreaming?: boolean;
+  deferHeavyRendering?: boolean;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+const MARKDOWN_RENDER_CACHE_LIMIT = 160;
 
 const CODE_FENCE_LANGUAGE_REGEX = /(?:^|\s)language-([^\s]+)/;
+type MarkdownFileLinkMetaValue = NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>;
+type MarkdownRenderCacheEntry = {
+  renderedText: string;
+  markdownFileLinkMetaByHref: Map<string, MarkdownFileLinkMetaValue>;
+  fileLinkParentSuffixByPath: Map<string, string>;
+};
+const markdownRenderCache = new Map<string, MarkdownRenderCacheEntry>();
+
+function markdownRenderCacheKey(text: string, cwd: string | undefined): string {
+  return `${cwd ?? ""}\u0000${text}`;
+}
+
+function rememberMarkdownRenderCacheEntry(
+  key: string,
+  entry: MarkdownRenderCacheEntry,
+): MarkdownRenderCacheEntry {
+  markdownRenderCache.set(key, entry);
+  if (markdownRenderCache.size > MARKDOWN_RENDER_CACHE_LIMIT) {
+    const oldestKey = markdownRenderCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      markdownRenderCache.delete(oldestKey);
+    }
+  }
+  return entry;
+}
+
+function getMarkdownRenderCacheEntry(text: string, cwd: string | undefined): MarkdownRenderCacheEntry {
+  const key = markdownRenderCacheKey(text, cwd);
+  const cached = markdownRenderCache.get(key);
+  if (cached) {
+    markdownRenderCache.delete(key);
+    markdownRenderCache.set(key, cached);
+    return cached;
+  }
+  const renderedText = linkifyPlainFilePaths(text, cwd);
+  const markdownFileLinkMetaByHref = new Map<string, MarkdownFileLinkMetaValue>();
+  for (const href of extractMarkdownLinkHrefs(renderedText)) {
+    const normalizedHref = normalizeMarkdownLinkHrefKey(href);
+    if (markdownFileLinkMetaByHref.has(normalizedHref)) continue;
+    const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd);
+    if (meta) {
+      markdownFileLinkMetaByHref.set(normalizedHref, meta);
+    }
+  }
+  const filePaths = [...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath);
+  return rememberMarkdownRenderCacheEntry(key, {
+    renderedText,
+    markdownFileLinkMetaByHref,
+    fileLinkParentSuffixByPath: buildFileLinkParentSuffixByPath(filePaths),
+  });
+}
 
 function extractFenceLanguage(className: string | undefined): string {
   const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
@@ -850,31 +904,16 @@ function ChatMarkdown({
   text,
   cwd,
   isStreaming = false,
+  deferHeavyRendering = false,
   skills = EMPTY_MARKDOWN_SKILLS,
   onOpenFile,
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
-  const renderedText = useMemo(() => linkifyPlainFilePaths(text, cwd), [cwd, text]);
-  const markdownFileLinkMetaByHref = useMemo(() => {
-    const metaByHref = new Map<
-      string,
-      NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
-    >();
-    for (const href of extractMarkdownLinkHrefs(renderedText)) {
-      const normalizedHref = normalizeMarkdownLinkHrefKey(href);
-      if (metaByHref.has(normalizedHref)) continue;
-      const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd);
-      if (meta) {
-        metaByHref.set(normalizedHref, meta);
-      }
-    }
-    return metaByHref;
-  }, [cwd, renderedText]);
-  const fileLinkParentSuffixByPath = useMemo(() => {
-    const filePaths = [...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath);
-    return buildFileLinkParentSuffixByPath(filePaths);
-  }, [markdownFileLinkMetaByHref]);
+  const { renderedText, markdownFileLinkMetaByHref, fileLinkParentSuffixByPath } = useMemo(
+    () => getMarkdownRenderCacheEntry(text, cwd),
+    [cwd, text],
+  );
   const markdownUrlTransform = useCallback((href: string) => {
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
@@ -952,7 +991,7 @@ function ChatMarkdown({
           return <pre {...props}>{children}</pre>;
         }
 
-        if (isStreaming) {
+        if (isStreaming || deferHeavyRendering) {
           return (
             <MarkdownCodeBlock
               code={codeBlock.code}
@@ -984,6 +1023,7 @@ function ChatMarkdown({
     }),
     [
       diffThemeName,
+      deferHeavyRendering,
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
@@ -996,7 +1036,7 @@ function ChatMarkdown({
   return (
     <div className="chat-markdown w-full min-w-0">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={MARKDOWN_REMARK_PLUGINS}
         components={markdownComponents}
         urlTransform={markdownUrlTransform}
       >

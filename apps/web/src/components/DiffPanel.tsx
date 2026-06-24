@@ -69,6 +69,7 @@ import {
   buildDiffRenderRows,
   buildFileDiffRenderKey,
   countExpandedDiffLines,
+  parseRenderableUnifiedDiff,
   type DiffRenderRow,
 } from "./DiffPanel.logic";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
@@ -176,7 +177,7 @@ function getRenderablePatch(patch: string | undefined): RenderablePatch | null {
   const normalizedPatch = patch.trim();
   if (normalizedPatch.length === 0) return null;
 
-  const files = parseUnifiedDiff(normalizedPatch).filter((file) => file.hunks.length > 0);
+  const files = parseRenderableUnifiedDiff(normalizedPatch);
   if (files.length > 0) {
     return { kind: "files", files };
   }
