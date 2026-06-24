@@ -252,6 +252,43 @@ describe("retainThreadDetailSubscription", () => {
     await resetEnvironmentServiceForTests();
   });
 
+  it("upgrades a cached shell detail subscription to recent when the chat opens", async () => {
+    const {
+      retainThreadDetailSubscription,
+      startEnvironmentConnectionService,
+      resetEnvironmentServiceForTests,
+    } = await import("./service");
+
+    const stop = startEnvironmentConnectionService(new QueryClient());
+    const environmentId = EnvironmentId.make("env-1");
+    const threadId = ThreadId.make("thread-1");
+
+    const releaseShell = retainThreadDetailSubscription(environmentId, threadId, {
+      initialDetailMode: "shell",
+    });
+    expect(mockSubscribeThread).toHaveBeenCalledTimes(1);
+    expect(mockSubscribeThread.mock.calls[0]?.[0]).toEqual({
+      threadId,
+      initialDetailMode: "shell",
+    });
+
+    releaseShell();
+    const releaseRecent = retainThreadDetailSubscription(environmentId, threadId, {
+      initialDetailMode: "recent",
+    });
+
+    expect(mockThreadUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockSubscribeThread).toHaveBeenCalledTimes(2);
+    expect(mockSubscribeThread.mock.calls[1]?.[0]).toEqual({
+      threadId,
+      initialDetailMode: "recent",
+    });
+
+    releaseRecent();
+    stop();
+    await resetEnvironmentServiceForTests();
+  });
+
   it("does not start the primary connection until the known environment has an id", async () => {
     mockGetPrimaryKnownEnvironment.mockReturnValue({
       id: "env-1",

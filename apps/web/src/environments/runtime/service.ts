@@ -399,11 +399,12 @@ function upgradeThreadDetailSubscription(
   entry: ThreadDetailSubscriptionEntry,
   detailMode: "full" | "shell" | "recent",
 ): void {
-  if (entry.detailMode === "full" || detailMode !== "full") {
+  const modeRank = { shell: 0, recent: 1, full: 2 } as const;
+  if (modeRank[entry.detailMode] >= modeRank[detailMode]) {
     return;
   }
 
-  entry.detailMode = "full";
+  entry.detailMode = detailMode;
   entry.unsubscribe();
   entry.unsubscribe = NOOP;
   if (!attachThreadDetailSubscription(entry)) {
