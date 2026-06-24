@@ -140,7 +140,6 @@ interface TimelineRowSharedState {
   /** Resolves the LegendList scroll container — used by the summary
    *  toggle to keep the button visually pinned across expand/collapse. */
   getScrollContainer: () => HTMLElement | null;
-  isScrolling: boolean;
 }
 
 interface TimelineRowActivityState {
@@ -324,8 +323,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const [isScrolling, setIsScrolling] = useState(false);
+  const isScrollingRef = useRef(false);
   const scrollingEndTimerRef = useRef<number | null>(null);
+  const scrollMeasureFrameRef = useRef<number | null>(null);
 
   const getScrollContainer = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -344,29 +344,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const handleScroll = useCallback(() => {
     const target = getScrollContainer();
     if (!target) return;
-    setIsScrolling(true);
+    if (!isScrollingRef.current) {
+      isScrollingRef.current = true;
+      setPerformanceModeActive("scrolling", true);
+    }
     if (scrollingEndTimerRef.current !== null) {
       window.clearTimeout(scrollingEndTimerRef.current);
     }
     scrollingEndTimerRef.current = window.setTimeout(() => {
       scrollingEndTimerRef.current = null;
-      setIsScrolling(false);
+      if (isScrollingRef.current) {
+        isScrollingRef.current = false;
+        setPerformanceModeActive("scrolling", false);
+      }
     }, 160);
-    const isAtEnd = target.scrollHeight - target.scrollTop - target.clientHeight < 10;
-    onIsAtEndChange(isAtEnd);
+    if (scrollMeasureFrameRef.current === null) {
+      scrollMeasureFrameRef.current = window.requestAnimationFrame(() => {
+        scrollMeasureFrameRef.current = null;
+        const scrollEl = getScrollContainer();
+        if (!scrollEl) return;
+        const isAtEnd = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 10;
+        onIsAtEndChange(isAtEnd);
+      });
+    }
   }, [onIsAtEndChange, getScrollContainer]);
-
-  useEffect(() => {
-    setPerformanceModeActive("scrolling", isScrolling);
-    return () => {
-      setPerformanceModeActive("scrolling", false);
-    };
-  }, [isScrolling]);
 
   useEffect(
     () => () => {
       if (scrollingEndTimerRef.current !== null) {
         window.clearTimeout(scrollingEndTimerRef.current);
+      }
+      if (scrollMeasureFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollMeasureFrameRef.current);
+        scrollMeasureFrameRef.current = null;
+      }
+      if (isScrollingRef.current) {
+        isScrollingRef.current = false;
+        setPerformanceModeActive("scrolling", false);
       }
     },
     [],
@@ -440,7 +454,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
       getScrollContainer,
-      isScrolling,
     }),
     [
       timestampFormat,
@@ -467,7 +480,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
       getScrollContainer,
-      isScrolling,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1195,7 +1207,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
-  const shouldDeferHeavyMarkdown = ctx.isScrolling && messageText.length > 1200;
 
   return (
     <>
@@ -1205,7 +1216,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           text={messageText}
           cwd={ctx.markdownCwd}
           isStreaming={Boolean(row.message.streaming)}
-          deferHeavyRendering={shouldDeferHeavyMarkdown}
           skills={ctx.skills}
           onOpenFile={ctx.onOpenMarkdownFile}
         />

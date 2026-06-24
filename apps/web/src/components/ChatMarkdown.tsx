@@ -62,7 +62,6 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   isStreaming?: boolean;
-  deferHeavyRendering?: boolean;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }
@@ -299,6 +298,39 @@ function MarkdownCodeBlock({
   );
 }
 
+function useIdleHydration(): boolean {
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setIsHydrated(true);
+      return;
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const hydrate = () => {
+      timeoutId = null;
+      setIsHydrated(true);
+    };
+
+    if ("requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(hydrate, { timeout: 800 });
+      return () => {
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    timeoutId = globalThis.setTimeout(hydrate, 120);
+    return () => {
+      if (timeoutId !== null) {
+        globalThis.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
+  return isHydrated;
+}
+
 interface SuspenseShikiCodeBlockProps {
   className: string | undefined;
   code: string;
@@ -312,7 +344,11 @@ function SuspenseShikiCodeBlock({
   themeName,
   isStreaming,
 }: SuspenseShikiCodeBlockProps) {
+  const shouldHydrate = useIdleHydration();
   const language = extractFenceLanguage(className);
+  if (!shouldHydrate) {
+    return <pre className={className}>{code}</pre>;
+  }
   return (
     <LazyChatMarkdownHighlighter
       code={code}
@@ -904,7 +940,6 @@ function ChatMarkdown({
   text,
   cwd,
   isStreaming = false,
-  deferHeavyRendering = false,
   skills = EMPTY_MARKDOWN_SKILLS,
   onOpenFile,
 }: ChatMarkdownProps) {
@@ -991,7 +1026,7 @@ function ChatMarkdown({
           return <pre {...props}>{children}</pre>;
         }
 
-        if (isStreaming || deferHeavyRendering) {
+        if (isStreaming) {
           return (
             <MarkdownCodeBlock
               code={codeBlock.code}
@@ -1023,7 +1058,6 @@ function ChatMarkdown({
     }),
     [
       diffThemeName,
-      deferHeavyRendering,
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
