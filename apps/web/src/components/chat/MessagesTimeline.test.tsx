@@ -121,6 +121,48 @@ function buildAssistantTimelineEntry(input: {
 }
 
 describe("MessagesTimeline", () => {
+  it("adds a clickable deliverable link from a single checkpoint file", async () => {
+    const { buildAssistantMessageTextWithDeliverableLinks } = await import("./MessagesTimeline");
+
+    const text = buildAssistantMessageTextWithDeliverableLinks({
+      text: "测试文件已创建并验证通过，输出 `hello world`。",
+      markdownCwd:
+        "C:/Users/Administrator/.bahew/userdata/conversation-workspace/773f6836-4748-4b66-9ef5-4f4f8a2d0ab7",
+      workspaceRoot: undefined,
+      turnSummary: {
+        turnId: TurnId.make("turn-1"),
+        completedAt: "2026-06-24T14:23:45.000Z",
+        status: "ready",
+        files: [{ path: "test_hello.py", kind: "added", additions: 1, deletions: 0 }],
+      },
+    });
+
+    expect(text).toContain("已创建文件：");
+    expect(text).toContain(
+      "[test_hello.py](C:/Users/Administrator/.bahew/userdata/conversation-workspace/773f6836-4748-4b66-9ef5-4f4f8a2d0ab7/test_hello.py)",
+    );
+  }, 20_000);
+
+  it("keeps assistant-authored deliverable links unchanged", async () => {
+    const { buildAssistantMessageTextWithDeliverableLinks } = await import("./MessagesTimeline");
+    const originalText =
+      "已创建测试文件：[test_hello_word.py](C:/Users/Administrator/Documents/Codex/2026-06-24/hello-word/outputs/test_hello_word.py)";
+
+    const text = buildAssistantMessageTextWithDeliverableLinks({
+      text: originalText,
+      markdownCwd: "C:/Users/Administrator/Documents/Codex/2026-06-24/hello-word",
+      workspaceRoot: undefined,
+      turnSummary: {
+        turnId: TurnId.make("turn-1"),
+        completedAt: "2026-06-24T02:01:45.000Z",
+        status: "ready",
+        files: [{ path: "outputs/test_hello_word.py", kind: "added", additions: 1, deletions: 0 }],
+      },
+    });
+
+    expect(text).toBe(originalText);
+  }, 20_000);
+
   it("does not render the legacy empty conversation prompt for an empty timeline", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

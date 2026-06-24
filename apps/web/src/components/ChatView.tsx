@@ -48,6 +48,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
+import { resolveConversationWorkspacePath } from "~/lib/conversationWorkspace";
 import { setPerformanceModeActive } from "~/performanceMode";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
@@ -463,17 +464,6 @@ function resolveMarkdownPreviewTarget(
   };
 }
 
-function joinConversationWorkspacePath(
-  conversationWorkspaceDir: string | null | undefined,
-  threadId: ThreadId | string | null | undefined,
-): string | undefined {
-  const normalizedRoot = conversationWorkspaceDir?.trim().replace(/[\\/]+$/u, "");
-  if (!normalizedRoot || !threadId) {
-    return undefined;
-  }
-  const separator = normalizedRoot.includes("\\") ? "\\" : "/";
-  return `${normalizedRoot}${separator}${String(threadId)}`;
-}
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -2426,10 +2416,11 @@ export default function ChatView(props: ChatViewProps) {
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeConversationWorkspaceRoot =
     isConversationThread && activeThread
-      ? joinConversationWorkspacePath(serverConfig?.conversationWorkspaceDir, activeThread.id)
+      ? resolveConversationWorkspacePath(serverConfig?.conversationWorkspaceDir, activeThread.id)
       : undefined;
-  const activeWorkspaceRoot =
-    activeThreadWorktreePath ?? activeProjectCwd ?? activeConversationWorkspaceRoot ?? undefined;
+  const activeWorkspaceRoot = isConversationThread
+    ? (activeThreadWorktreePath ?? activeConversationWorkspaceRoot ?? activeProjectCwd ?? undefined)
+    : (activeThreadWorktreePath ?? activeProjectCwd ?? undefined);
   const activeTerminalLaunchContext =
     terminalLaunchContext?.threadId === activeThreadId
       ? terminalLaunchContext

@@ -58,7 +58,9 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   type CommercialAccountUsageSchema,
   type ContextMenuItem,
+  CONVERSATION_PROJECT_ID,
   type DesktopUpdateState,
+  EnvironmentId,
   ProjectId,
   type ServerProvider,
   type ScopedThreadRef,
@@ -85,6 +87,7 @@ import { isElectron } from "../env";
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { cn, isMacPlatform, newCommandId } from "../lib/utils";
+import { resolveConversationWorkspacePath } from "../lib/conversationWorkspace";
 import {
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
@@ -110,6 +113,7 @@ import { readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
+import { useServerConfig } from "../rpc/serverState";
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import {
@@ -938,6 +942,7 @@ interface SidebarProjectItemProps {
   activeRouteThreadKey: string | null;
   pendingOpenThreadKey: string | null;
   pinnedThreadKeySet: ReadonlySet<string>;
+  conversationWorkspaceDirByEnvironmentId: ReadonlyMap<EnvironmentId, string>;
   newThreadShortcutLabel: string | null;
   handleNewThread: ReturnType<typeof useNewThreadHandler>["handleNewThread"];
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
@@ -1071,6 +1076,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     activeRouteThreadKey,
     pendingOpenThreadKey,
     pinnedThreadKeySet,
+    conversationWorkspaceDirByEnvironmentId,
     newThreadShortcutLabel,
     handleNewThread,
     archiveThread,
@@ -2014,7 +2020,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const threadProject = memberProjectByScopedKey.get(
         scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
       );
-      const threadWorkspacePath = thread.worktreePath ?? threadProject?.cwd ?? project.cwd ?? null;
+      const threadConversationWorkspacePath =
+        thread.projectId === CONVERSATION_PROJECT_ID
+          ? resolveConversationWorkspacePath(
+              conversationWorkspaceDirByEnvironmentId.get(thread.environmentId),
+              thread.id,
+            )
+          : undefined;
+      const threadWorkspacePath =
+        thread.projectId === CONVERSATION_PROJECT_ID
+          ? (thread.worktreePath ?? threadConversationWorkspacePath ?? null)
+          : (thread.worktreePath ?? threadProject?.cwd ?? project.cwd ?? null);
       const isPinned = pinnedThreadKeySet.has(threadKey);
       const clicked = await api.contextMenu.show(
         [
@@ -2124,6 +2140,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [
       appSettingsConfirmThreadArchive,
       archiveThread,
+      conversationWorkspaceDirByEnvironmentId,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       markThreadUnread,
@@ -3080,6 +3097,7 @@ interface SidebarProjectsContentProps {
   projectsLength: number;
   pinnedThreads: readonly SidebarThreadSummary[];
   pinnedThreadKeySet: ReadonlySet<string>;
+  conversationWorkspaceDirByEnvironmentId: ReadonlyMap<EnvironmentId, string>;
   globalThreads: readonly SidebarThreadSummary[];
   isProjectsSectionExpanded: boolean;
   isPinnedSectionExpanded: boolean;
@@ -3224,6 +3242,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     projectsLength,
     pinnedThreads,
     pinnedThreadKeySet,
+    conversationWorkspaceDirByEnvironmentId,
     globalThreads,
     isProjectsSectionExpanded,
     isPinnedSectionExpanded,
@@ -3485,12 +3504,21 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       const threadKey = scopedThreadKey(threadRef);
       const thread = conversationThreadByKey.get(threadKey);
       if (!thread) return;
+      const threadConversationWorkspacePath =
+        thread.projectId === CONVERSATION_PROJECT_ID
+          ? resolveConversationWorkspacePath(
+              conversationWorkspaceDirByEnvironmentId.get(thread.environmentId),
+              thread.id,
+            )
+          : undefined;
       const threadWorkspacePath =
-        thread.worktreePath ??
-        projectCwdByScopedProjectKey.get(
-          scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
-        ) ??
-        null;
+        thread.projectId === CONVERSATION_PROJECT_ID
+          ? (thread.worktreePath ?? threadConversationWorkspacePath ?? null)
+          : (thread.worktreePath ??
+            projectCwdByScopedProjectKey.get(
+              scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
+            ) ??
+            null);
       const isPinned = pinnedThreadKeySet.has(threadKey);
 
       const clicked = await api.contextMenu.show(
@@ -3601,6 +3629,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     [
       archiveThread,
       confirmThreadArchive,
+      conversationWorkspaceDirByEnvironmentId,
       conversationThreadByKey,
       copyPathToClipboard,
       copyThreadIdToClipboard,
@@ -3893,6 +3922,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                               }
                               pendingOpenThreadKey={pendingOpenThreadKey}
                               pinnedThreadKeySet={pinnedThreadKeySet}
+                              conversationWorkspaceDirByEnvironmentId={
+                                conversationWorkspaceDirByEnvironmentId
+                              }
                               newThreadShortcutLabel={newThreadShortcutLabel}
                               handleNewThread={handleNewThread}
                               archiveThread={archiveThread}
@@ -3928,6 +3960,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                       }
                       pendingOpenThreadKey={pendingOpenThreadKey}
                       pinnedThreadKeySet={pinnedThreadKeySet}
+                      conversationWorkspaceDirByEnvironmentId={
+                        conversationWorkspaceDirByEnvironmentId
+                      }
                       newThreadShortcutLabel={newThreadShortcutLabel}
                       handleNewThread={handleNewThread}
                       archiveThread={archiveThread}
@@ -4155,8 +4190,26 @@ export default function Sidebar() {
   const shortcutModifiers = useShortcutModifierState();
   const modelPickerOpen = useModelPickerOpen();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const primaryServerConfig = useServerConfig();
   const savedEnvironmentRegistry = useSavedEnvironmentRegistryStore((s) => s.byId);
   const savedEnvironmentRuntimeById = useSavedEnvironmentRuntimeStore((s) => s.byId);
+  const conversationWorkspaceDirByEnvironmentId = useMemo(() => {
+    const entries: Array<readonly [EnvironmentId, string]> = [];
+    for (const [environmentId, runtime] of Object.entries(savedEnvironmentRuntimeById)) {
+      const conversationWorkspaceDir = runtime.serverConfig?.conversationWorkspaceDir;
+      if (conversationWorkspaceDir) {
+        entries.push([EnvironmentId.make(environmentId), conversationWorkspaceDir]);
+      }
+    }
+    if (primaryEnvironmentId && primaryServerConfig?.conversationWorkspaceDir) {
+      entries.push([primaryEnvironmentId, primaryServerConfig.conversationWorkspaceDir]);
+    }
+    return new Map(entries);
+  }, [
+    primaryEnvironmentId,
+    primaryServerConfig?.conversationWorkspaceDir,
+    savedEnvironmentRuntimeById,
+  ]);
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
       items: projects,
@@ -4872,6 +4925,7 @@ export default function Sidebar() {
             projectsLength={projects.length}
             pinnedThreads={pinnedThreads}
             pinnedThreadKeySet={pinnedThreadKeySet}
+            conversationWorkspaceDirByEnvironmentId={conversationWorkspaceDirByEnvironmentId}
             globalThreads={globalThreads}
             isProjectsSectionExpanded={isProjectsSectionExpanded}
             isPinnedSectionExpanded={isPinnedSectionExpanded}
