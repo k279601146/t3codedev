@@ -298,9 +298,17 @@ export function isContextMenuPointerDown(input: {
 export function resolveThreadRowClassName(input: {
   isActive: boolean;
   isSelected: boolean;
+  isPendingOpen?: boolean;
 }): string {
   const baseClassName =
     "t3-sidebar-thread-row h-7.5 w-full translate-x-0 cursor-pointer justify-start rounded-[7px] px-2 text-left text-[13px] font-normal select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+
+  if (input.isPendingOpen) {
+    return cn(
+      baseClassName,
+      "bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] text-foreground/88 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground after:absolute after:inset-y-1 after:left-0 after:w-0.5 after:rounded-full after:bg-foreground/45 after:content-['']",
+    );
+  }
 
   if (input.isSelected && input.isActive) {
     return cn(

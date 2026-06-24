@@ -293,6 +293,7 @@ interface SidebarThreadRowProps {
   projectCwd: string | null;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
+  isPendingOpen: boolean;
   jumpLabel: string | null;
   appSettingsConfirmThreadArchive: boolean;
   renamingThreadKey: string | null;
@@ -329,6 +330,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const {
     orderedProjectThreadKeys,
     isActive,
+    isPendingOpen,
     jumpLabel,
     appSettingsConfirmThreadArchive,
     renamingThreadKey,
@@ -564,6 +566,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
+          isPendingOpen,
         })} relative isolate font-normal`}
         onClick={handleRowClick}
         onKeyDown={handleRowKeyDown}
@@ -713,9 +716,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       isHighlighted ? "text-muted-foreground/62" : "text-muted-foreground/50"
                     }`}
                   >
-                    {formatSidebarThreadTimeLabel(
-                      thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
-                    )}
+                    {isPendingOpen
+                      ? "打开中"
+                      : formatSidebarThreadTimeLabel(
+                          thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
+                        )}
                   </span>
                 )}
               </span>
@@ -739,6 +744,7 @@ interface SidebarProjectThreadListProps {
   isThreadListExpanded: boolean;
   projectCwd: string;
   activeRouteThreadKey: string | null;
+  pendingOpenThreadKey: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   appSettingsConfirmThreadArchive: boolean;
   renamingThreadKey: string | null;
@@ -823,6 +829,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     isThreadListExpanded,
     projectCwd,
     activeRouteThreadKey,
+    pendingOpenThreadKey,
     threadJumpLabelByKey,
     appSettingsConfirmThreadArchive,
     renamingThreadKey,
@@ -865,13 +872,15 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
       {shouldShowThreadPanel &&
         renderedThreads.map((thread) => {
           const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+          const isActive = activeRouteThreadKey === threadKey;
           return (
             <SidebarThreadRow
               key={threadKey}
               thread={thread}
               projectCwd={projectCwd}
               orderedProjectThreadKeys={orderedProjectThreadKeys}
-              isActive={activeRouteThreadKey === threadKey}
+              isActive={isActive}
+              isPendingOpen={!isActive && pendingOpenThreadKey === threadKey}
               jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
               appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
               renamingThreadKey={renamingThreadKey}
@@ -927,11 +936,13 @@ interface SidebarProjectItemProps {
   project: SidebarProjectSnapshot;
   isThreadListExpanded: boolean;
   activeRouteThreadKey: string | null;
+  pendingOpenThreadKey: string | null;
   pinnedThreadKeySet: ReadonlySet<string>;
   newThreadShortcutLabel: string | null;
   handleNewThread: ReturnType<typeof useNewThreadHandler>["handleNewThread"];
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
+  navigateToThread: (threadRef: ScopedThreadRef) => void;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
@@ -1058,11 +1069,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     project,
     isThreadListExpanded,
     activeRouteThreadKey,
+    pendingOpenThreadKey,
     pinnedThreadKeySet,
     newThreadShortcutLabel,
     handleNewThread,
     archiveThread,
     deleteThread,
+    navigateToThread,
     threadJumpLabelByKey,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
@@ -1638,23 +1651,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [suppressProjectClickForContextMenuRef],
   );
 
-  const navigateToThread = useCallback(
-    (threadRef: ScopedThreadRef) => {
-      if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
-        clearSelection();
-      }
-      setSelectionAnchor(scopedThreadKey(threadRef));
-      if (isMobile) {
-        setOpenMobile(false);
-      }
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
-    },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
-  );
-
   const handleThreadClick = useCallback(
     (
       event: React.MouseEvent,
@@ -1686,16 +1682,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      navigateToThread(threadRef);
     },
     [
       clearSelection,
       isMobile,
+      navigateToThread,
       rangeSelectTo,
-      router,
       setOpenMobile,
       setSelectionAnchor,
       toggleThreadSelection,
@@ -2244,6 +2237,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         isThreadListExpanded={isThreadListExpanded}
         projectCwd={project.cwd}
         activeRouteThreadKey={activeRouteThreadKey}
+        pendingOpenThreadKey={pendingOpenThreadKey}
         threadJumpLabelByKey={threadJumpLabelByKey}
         appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
         renamingThreadKey={renamingThreadKey}
@@ -3068,10 +3062,12 @@ interface SidebarProjectsContentProps {
   handleNewThread: ReturnType<typeof useNewThreadHandler>["handleNewThread"];
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
+  navigateToThread: (threadRef: ScopedThreadRef) => void;
   sortedProjects: readonly SidebarProjectSnapshot[];
   expandedThreadListsByProject: ReadonlySet<string>;
   activeRouteProjectKey: string | null;
   routeThreadKey: string | null;
+  pendingOpenThreadKey: string | null;
   newThreadShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
@@ -3210,10 +3206,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     handleNewThread,
     archiveThread,
     deleteThread,
+    navigateToThread,
     sortedProjects,
     expandedThreadListsByProject,
     activeRouteProjectKey,
     routeThreadKey,
+    pendingOpenThreadKey,
     newThreadShortcutLabel,
     threadJumpLabelByKey,
     attachThreadListAutoAnimateRef,
@@ -3382,12 +3380,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
       clearSelection();
       setSelectionAnchor(threadKey);
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      navigateToThread(threadRef);
     },
-    [navigate, clearSelection, rangeSelectTo, setSelectionAnchor, toggleThreadSelection],
+    [clearSelection, navigateToThread, rangeSelectTo, setSelectionAnchor, toggleThreadSelection],
   );
 
   const [renamingThreadKey, setRenamingThreadKey] = useState<string | null>(null);
@@ -3896,11 +3891,13 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                               activeRouteThreadKey={
                                 activeRouteProjectKey === project.projectKey ? routeThreadKey : null
                               }
+                              pendingOpenThreadKey={pendingOpenThreadKey}
                               pinnedThreadKeySet={pinnedThreadKeySet}
                               newThreadShortcutLabel={newThreadShortcutLabel}
                               handleNewThread={handleNewThread}
                               archiveThread={archiveThread}
                               deleteThread={deleteThread}
+                              navigateToThread={navigateToThread}
                               threadJumpLabelByKey={threadJumpLabelByKey}
                               attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                               expandThreadListForProject={expandThreadListForProject}
@@ -3929,11 +3926,13 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                       activeRouteThreadKey={
                         activeRouteProjectKey === project.projectKey ? routeThreadKey : null
                       }
+                      pendingOpenThreadKey={pendingOpenThreadKey}
                       pinnedThreadKeySet={pinnedThreadKeySet}
                       newThreadShortcutLabel={newThreadShortcutLabel}
                       handleNewThread={handleNewThread}
                       archiveThread={archiveThread}
                       deleteThread={deleteThread}
+                      navigateToThread={navigateToThread}
                       threadJumpLabelByKey={threadJumpLabelByKey}
                       attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                       expandThreadListForProject={expandThreadListForProject}
@@ -3974,13 +3973,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             <SidebarMenu ref={attachThreadListAutoAnimateRef}>
               {pinnedThreadVisibility.visibleThreads.map((thread) => {
                 const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+                const isActive = routeThreadKey === threadKey;
                 return (
                   <SidebarThreadRow
                     key={threadKey}
                     thread={thread}
                     projectCwd={null}
                     orderedProjectThreadKeys={pinnedThreadKeys}
-                    isActive={routeThreadKey === threadKey}
+                    isActive={isActive}
+                    isPendingOpen={!isActive && pendingOpenThreadKey === threadKey}
                     jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
                     appSettingsConfirmThreadArchive={confirmThreadArchive}
                     renamingThreadKey={renamingThreadKey}
@@ -3992,14 +3993,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                     setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
                     confirmArchiveButtonRefs={confirmArchiveButtonRefs}
                     handleThreadClick={handleGlobalThreadClick}
-                    navigateToThread={(ref) => {
-                      clearSelection();
-                      setSelectionAnchor(scopedThreadKey(ref));
-                      void navigate({
-                        to: "/$environmentId/$threadId",
-                        params: buildThreadRouteParams(ref),
-                      });
-                    }}
+                    navigateToThread={navigateToThread}
                     handleMultiSelectContextMenu={async () => {}}
                     handleThreadContextMenu={handleGlobalThreadContextMenu}
                     clearSelection={clearSelection}
@@ -4066,13 +4060,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           <SidebarMenu ref={attachThreadListAutoAnimateRef}>
             {globalThreadVisibility.visibleThreads.map((thread) => {
               const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+              const isActive = routeThreadKey === threadKey;
               return (
                 <SidebarThreadRow
                   key={threadKey}
                   thread={thread}
                   projectCwd={null}
                   orderedProjectThreadKeys={globalThreadKeys}
-                  isActive={routeThreadKey === threadKey}
+                  isActive={isActive}
+                  isPendingOpen={!isActive && pendingOpenThreadKey === threadKey}
                   jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
                   appSettingsConfirmThreadArchive={confirmThreadArchive}
                   renamingThreadKey={renamingThreadKey}
@@ -4084,14 +4080,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
                   confirmArchiveButtonRefs={confirmArchiveButtonRefs}
                   handleThreadClick={handleGlobalThreadClick}
-                  navigateToThread={(ref) => {
-                    clearSelection();
-                    setSelectionAnchor(scopedThreadKey(ref));
-                    void navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(ref),
-                    });
-                  }}
+                  navigateToThread={navigateToThread}
                   handleMultiSelectContextMenu={async () => {}}
                   handleThreadContextMenu={handleGlobalThreadContextMenu}
                   clearSelection={clearSelection}
@@ -4149,6 +4138,7 @@ export default function Sidebar() {
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [pendingOpenThreadKey, setPendingOpenThreadKey] = useState<string | null>(null);
   const [isProjectsSectionExpanded, setProjectsSectionExpanded] = useState(true);
   const [isPinnedSectionExpanded, setPinnedSectionExpanded] = useState(true);
   const [isConversationsSectionExpanded, setConversationsSectionExpanded] = useState(true);
@@ -4287,18 +4277,36 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.newLocal", newThreadShortcutLabelOptions) ??
     shortcutLabelForCommand(keybindings, "chat.new", newThreadShortcutLabelOptions);
 
+  useEffect(() => {
+    if (pendingOpenThreadKey !== null && pendingOpenThreadKey === routeThreadKey) {
+      setPendingOpenThreadKey(null);
+    }
+  }, [pendingOpenThreadKey, routeThreadKey]);
+
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef) => {
+      const threadKey = scopedThreadKey(threadRef);
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
-      setSelectionAnchor(scopedThreadKey(threadRef));
+      setPendingOpenThreadKey(threadKey);
+      setSelectionAnchor(threadKey);
       if (isMobile) {
         setOpenMobile(false);
       }
+      const releasePreload = retainThreadDetailSubscription(
+        threadRef.environmentId,
+        threadRef.threadId,
+        {
+          initialDetailMode: "full",
+        },
+      );
       void navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
+      }).finally(() => {
+        releasePreload();
+        setPendingOpenThreadKey((current) => (current === threadKey ? null : current));
       });
     },
     [clearSelection, isMobile, navigate, setOpenMobile, setSelectionAnchor],
@@ -4834,10 +4842,12 @@ export default function Sidebar() {
             handleNewThread={handleNewThread}
             archiveThread={archiveThread}
             deleteThread={deleteThread}
+            navigateToThread={navigateToThread}
             sortedProjects={sortedProjects}
             expandedThreadListsByProject={expandedThreadListsByProject}
             activeRouteProjectKey={activeRouteProjectKey}
             routeThreadKey={routeThreadKey}
+            pendingOpenThreadKey={pendingOpenThreadKey}
             newThreadShortcutLabel={newThreadShortcutLabel}
             threadJumpLabelByKey={visibleThreadJumpLabelByKey}
             attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}

@@ -106,6 +106,7 @@ import {
   type ChatMessage,
   type ChatAttachment,
   type Project,
+  type SidebarThreadSummary,
   type SessionPhase,
   type Thread,
 } from "../types";
@@ -266,6 +267,35 @@ function ThreadRightPanelFallback() {
       正在加载面板...
     </div>
   );
+}
+
+function buildLoadingThreadFromSidebarSummary(summary: SidebarThreadSummary): Thread {
+  return {
+    id: summary.id,
+    environmentId: summary.environmentId,
+    codexThreadId: null,
+    projectId: summary.projectId,
+    title: summary.title,
+    modelSelection: createModelSelection(
+      defaultInstanceIdForDriver(ProviderDriverKind.make("codex")),
+      DEFAULT_MODEL,
+    ),
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    interactionMode: summary.interactionMode,
+    session: summary.session,
+    messages: [],
+    error: null,
+    createdAt: summary.createdAt,
+    archivedAt: summary.archivedAt,
+    updatedAt: summary.updatedAt,
+    latestTurn: summary.latestTurn,
+    goal: summary.goal ?? null,
+    branch: summary.branch,
+    worktreePath: summary.worktreePath,
+    turnDiffSummaries: [],
+    activities: [],
+    proposedPlans: [],
+  };
 }
 
 function normalizeComparableFilePath(value: string): string {
@@ -945,6 +975,19 @@ export default function ChatView(props: ChatViewProps) {
       [routeKind, routeThreadRef],
     ),
   );
+  const sidebarThreadSummary = useStore(
+    useMemo(
+      () => (state: AppState) => {
+        if (routeKind !== "server") {
+          return undefined;
+        }
+        return selectEnvironmentState(state, routeThreadRef.environmentId).sidebarThreadSummaryById[
+          routeThreadRef.threadId
+        ];
+      },
+      [routeKind, routeThreadRef],
+    ),
+  );
   const serverThreadDetailLoaded = useStore(
     useMemo(
       () => (state: AppState) => {
@@ -1319,14 +1362,23 @@ export default function ChatView(props: ChatViewProps) {
         : undefined,
     [draftThread, fallbackDraftProject?.defaultModelSelection, localDraftError, threadId],
   );
+  const loadingServerThread = useMemo(
+    () =>
+      routeKind === "server" && !serverThread && sidebarThreadSummary
+        ? buildLoadingThreadFromSidebarSummary(sidebarThreadSummary)
+        : undefined,
+    [routeKind, serverThread, sidebarThreadSummary],
+  );
   const activeServerThread =
     routeKind === "server"
-      ? serverThread
+      ? (serverThread ?? loadingServerThread)
       : threadHasStarted(promotedServerThread)
         ? promotedServerThread
         : undefined;
   const isServerThread = activeServerThread !== undefined;
   const activeThread = activeServerThread ?? localDraftThread;
+  const isThreadOpening = routeKind === "server" && !serverThreadDetailLoaded;
+  const isComposerConnecting = isConnecting || isThreadOpening;
   const activeThreadRuntimeMode =
     !isServerThread && activeThread?.runtimeMode === "full-access"
       ? DEFAULT_RUNTIME_MODE
@@ -1975,7 +2027,8 @@ export default function ChatView(props: ChatViewProps) {
     activePendingUserInput: activePendingUserInput?.requestId ?? null,
     threadError: activeThread?.error,
   });
-  const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
+  const isWorking =
+    phase === "running" || isSendBusy || isComposerConnecting || isRevertingCheckpoint;
   const timelineIsWorking = isWorking || isResubmittingEditedMessage;
   const visibleThreadError = isSendBusy ? null : (activeThread?.error ?? null);
   const canSteerActiveTurn =
@@ -3325,7 +3378,7 @@ export default function ChatView(props: ChatViewProps) {
         );
         return;
       }
-      if (phase === "running" || isSendBusy || isConnecting) {
+      if (phase === "running" || isSendBusy || isComposerConnecting) {
         setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
         return;
       }
@@ -3363,7 +3416,7 @@ export default function ChatView(props: ChatViewProps) {
       activeEnvironmentUnavailable,
       activeEnvironmentUnavailableLabel,
       environmentId,
-      isConnecting,
+      isComposerConnecting,
       isRevertingCheckpoint,
       isSendBusy,
       phase,
@@ -3376,7 +3429,7 @@ export default function ChatView(props: ChatViewProps) {
     if (
       !pending ||
       isSendBusy ||
-      isConnecting ||
+      isComposerConnecting ||
       activeEnvironmentUnavailable ||
       sendInFlightRef.current
     ) {
@@ -3481,7 +3534,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     beginLocalDispatch,
     environmentId,
-    isConnecting,
+    isComposerConnecting,
     isSendBusy,
     pendingSteerMessage,
     phase,
@@ -3499,7 +3552,7 @@ export default function ChatView(props: ChatViewProps) {
         !isServerThread ||
         phase === "running" ||
         isSendBusy ||
-        isConnecting ||
+        isComposerConnecting ||
         activeEnvironmentUnavailable ||
         sendInFlightRef.current
       ) {
@@ -3638,7 +3691,7 @@ export default function ChatView(props: ChatViewProps) {
       beginLocalDispatch,
       environmentId,
       interactionMode,
-      isConnecting,
+      isComposerConnecting,
       isSendBusy,
       isServerThread,
       persistThreadSettingsForNextTurn,
@@ -3659,7 +3712,7 @@ export default function ChatView(props: ChatViewProps) {
       !api ||
       !activeThread ||
       isSendBusy ||
-      isConnecting ||
+      isComposerConnecting ||
       activeEnvironmentUnavailable ||
       sendInFlightRef.current
     )
@@ -4322,7 +4375,7 @@ export default function ChatView(props: ChatViewProps) {
         !activeThread ||
         !isServerThread ||
         isSendBusy ||
-        isConnecting ||
+        isComposerConnecting ||
         sendInFlightRef.current
       ) {
         return;
@@ -4437,7 +4490,7 @@ export default function ChatView(props: ChatViewProps) {
       activeThread,
       activeProposedPlan,
       beginLocalDispatch,
-      isConnecting,
+      isComposerConnecting,
       isSendBusy,
       isServerThread,
       persistThreadSettingsForNextTurn,
@@ -4462,7 +4515,7 @@ export default function ChatView(props: ChatViewProps) {
       !activeProposedPlan ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
+      isComposerConnecting ||
       activeEnvironmentUnavailable ||
       sendInFlightRef.current
     ) {
@@ -4580,7 +4633,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThread,
     beginLocalDispatch,
     activeEnvironmentUnavailable,
-    isConnecting,
+    isComposerConnecting,
     isSendBusy,
     isServerThread,
     navigate,
@@ -5039,7 +5092,9 @@ export default function ChatView(props: ChatViewProps) {
   const isLoadingThreadHistory =
     routeKind === "server" &&
     !serverThreadDetailLoaded &&
-    (threadHasStarted(activeThread) || serverThreadHasSidebarHistory);
+    (activeThread === loadingServerThread ||
+      threadHasStarted(activeThread) ||
+      serverThreadHasSidebarHistory);
   const markdownCwd = gitCwd ?? activeWorkspaceRoot ?? undefined;
   const inlineRightPanel =
     rightPanelOpen && !shouldUseRightPanelSheet ? (
@@ -5120,7 +5175,7 @@ export default function ChatView(props: ChatViewProps) {
       isLocalDraftThread={isLocalDraftThread}
       phase={phase}
       canSteerRunningTurn={canSteerActiveTurn}
-      isConnecting={isConnecting}
+      isConnecting={isComposerConnecting}
       isSendBusy={isSendBusy}
       isInterruptPending={isInterruptPending}
       isUsageLimitReached={usageLimitBlock !== null}

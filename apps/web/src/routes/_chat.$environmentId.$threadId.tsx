@@ -10,7 +10,12 @@ import {
 } from "../composerDraftStore";
 import { type DiffRouteSearch, parseDiffRouteSearch } from "../diffRouteSearch";
 import { useSettings } from "../hooks/useSettings";
-import { selectEnvironmentState, selectThreadExistsByRef, useStore } from "../store";
+import {
+  selectEnvironmentState,
+  selectSidebarThreadSummaryByRef,
+  selectThreadExistsByRef,
+  useStore,
+} from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { LazyCursorLayout } from "../components/layout/LazyCursorLayout";
@@ -27,6 +32,9 @@ function ChatThreadRouteView() {
   );
   const serverThread = useStore(useMemo(() => createThreadSelectorByRef(threadRef), [threadRef]));
   const threadExists = useStore((store) => selectThreadExistsByRef(store, threadRef));
+  const sidebarThreadExists = useStore(
+    (store) => selectSidebarThreadSummaryByRef(store, threadRef) !== undefined,
+  );
   const environmentHasServerThreads = useStore(
     (store) => selectEnvironmentState(store, threadRef?.environmentId ?? null).threadIds.length > 0,
   );
@@ -43,7 +51,7 @@ function ChatThreadRouteView() {
     }
     return store.hasDraftThreadsInEnvironment(threadRef.environmentId);
   });
-  const routeThreadExists = threadExists || draftThreadExists;
+  const routeThreadExists = threadExists || sidebarThreadExists || draftThreadExists;
   const serverThreadStarted = threadHasStarted(serverThread);
   const canRenderDraftFallback = draftThread !== null && !serverThreadStarted;
   const environmentHasAnyThreads = environmentHasServerThreads || environmentHasDraftThreads;

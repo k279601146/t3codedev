@@ -171,6 +171,19 @@ describe("shouldClearThreadSelectionOnMouseDown", () => {
   });
 });
 
+describe("resolveThreadRowClassName", () => {
+  it("uses the active visual treatment while a thread is opening", () => {
+    const className = resolveThreadRowClassName({
+      isActive: false,
+      isSelected: false,
+      isPendingOpen: true,
+    });
+
+    expect(className).toContain("text-foreground/88");
+    expect(className).toContain("after:bg-foreground/45");
+  });
+});
+
 describe("resolveSidebarNewThreadEnvMode", () => {
   it("uses the app default when the caller does not request a specific mode", () => {
     expect(
