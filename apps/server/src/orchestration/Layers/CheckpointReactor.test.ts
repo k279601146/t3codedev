@@ -11,9 +11,12 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import {
+  CONVERSATION_PROJECT_ID,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
+  type OrchestrationCheckpointFile,
+  type OrchestrationEvent,
   MessageId,
   ProjectId,
   ThreadId,
@@ -155,13 +158,19 @@ async function waitForThread(
     readonly threads: ReadonlyArray<{
       readonly id: ThreadId;
       readonly latestTurn: { readonly turnId: string } | null;
-      readonly checkpoints: ReadonlyArray<{ readonly checkpointTurnCount: number }>;
+      readonly checkpoints: ReadonlyArray<{
+        readonly checkpointTurnCount: number;
+        readonly files: ReadonlyArray<OrchestrationCheckpointFile>;
+      }>;
       readonly activities: ReadonlyArray<{ readonly kind: string }>;
     }>;
   }>,
   predicate: (thread: {
     latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
+    checkpoints: ReadonlyArray<{
+      checkpointTurnCount: number;
+      readonly files: ReadonlyArray<OrchestrationCheckpointFile>;
+    }>;
     activities: ReadonlyArray<{ kind: string }>;
   }) => boolean,
   timeoutMs = 15_000,
@@ -169,7 +178,10 @@ async function waitForThread(
   const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   const poll = async (): Promise<{
     latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
+    checkpoints: ReadonlyArray<{
+      checkpointTurnCount: number;
+      readonly files: ReadonlyArray<OrchestrationCheckpointFile>;
+    }>;
     activities: ReadonlyArray<{ kind: string }>;
   }> => {
     const snapshot = await readModel();
@@ -188,7 +200,7 @@ async function waitForThread(
 
 async function waitForEvent(
   engine: OrchestrationEngineShape,
-  predicate: (event: { type: string }) => boolean,
+  predicate: (event: OrchestrationEvent) => boolean,
   timeoutMs = 15_000,
 ) {
   const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
@@ -284,6 +296,7 @@ describe("CheckpointReactor", () => {
     readonly hasSession?: boolean;
     readonly seedFilesystemCheckpoints?: boolean;
     readonly projectWorkspaceRoot?: string;
+    readonly projectId?: ProjectId;
     readonly threadWorktreePath?: string | null;
     readonly providerSessionCwd?: string;
     readonly providerName?: ProviderDriverKind;
@@ -292,10 +305,25 @@ describe("CheckpointReactor", () => {
   }) {
     const cwd = createGitRepository();
     tempDirs.push(cwd);
+    const serverBaseDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3-checkpoint-reactor-server-"));
+    tempDirs.push(serverBaseDir);
+    const conversationWorkspaceDir = path.join(
+      serverBaseDir,
+      "userdata",
+      "conversation-workspace",
+    );
+    const projectId = options?.projectId ?? asProjectId("project-1");
+    const threadWorktreePath =
+      options?.threadWorktreePath !== undefined
+        ? options.threadWorktreePath
+        : projectId === CONVERSATION_PROJECT_ID
+          ? null
+          : cwd;
     const provider = createProviderServiceHarness(
       cwd,
       options?.hasSession ?? true,
-      options?.providerSessionCwd ?? cwd,
+      options?.providerSessionCwd ??
+        (projectId === CONVERSATION_PROJECT_ID ? conversationWorkspaceDir : cwd),
       options?.providerName ?? ProviderDriverKind.make("codex"),
     );
     const orchestrationLayer = OrchestrationEngineLive.pipe(
@@ -311,9 +339,7 @@ describe("CheckpointReactor", () => {
       Layer.provide(SqlitePersistenceMemory),
     );
 
-    const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3-checkpoint-reactor-test-",
-    });
+    const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), serverBaseDir);
     const vcsStatusBroadcasterLayer = Layer.succeed(VcsStatusBroadcaster, {
       getStatus: () => Effect.die("getStatus should not be called in this test"),
       refreshLocalStatus: (cwd: string) =>
@@ -388,7 +414,7 @@ describe("CheckpointReactor", () => {
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-create"),
         threadId: ThreadId.make("thread-1"),
-        projectId: asProjectId("project-1"),
+        projectId,
         title: "Thread",
         modelSelection: {
           instanceId: ProviderInstanceId.make("codex"),
@@ -397,7 +423,7 @@ describe("CheckpointReactor", () => {
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         branch: null,
-        worktreePath: options?.threadWorktreePath ?? cwd,
+        worktreePath: threadWorktreePath,
         createdAt,
       }),
     );
@@ -430,6 +456,7 @@ describe("CheckpointReactor", () => {
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       provider,
       cwd,
+      conversationWorkspaceDir,
       drain,
     };
   }
@@ -508,6 +535,82 @@ describe("CheckpointReactor", () => {
         "README.md",
       ),
     ).toBe("v2\n");
+  });
+
+  it("captures conversation workspace files on turn completion", async () => {
+    const harness = await createHarness({
+      projectId: CONVERSATION_PROJECT_ID,
+      seedFilesystemCheckpoints: false,
+    });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-conversation-capture"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-conversation-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-conversation"),
+    });
+    await harness.drain();
+
+    const outputDir = path.join(harness.conversationWorkspaceDir, "output");
+    fs.mkdirSync(outputDir, { recursive: true });
+    const fileName = "\u63d0\u793a\u8bcd.md";
+    const expectedPath = `output/${fileName}`;
+    fs.writeFileSync(path.join(outputDir, fileName), "# \u63d0\u793a\u8bcd\n", "utf8");
+
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-conversation-turn-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-conversation"),
+      payload: { state: "completed" },
+    });
+
+    const events = await waitForEvent(
+      harness.engine,
+      (event) => event.type === "thread.turn-diff-completed",
+    );
+    const diffEvent = events.find(
+      (
+        event,
+      ): event is Extract<OrchestrationEvent, { type: "thread.turn-diff-completed" }> =>
+        event.type === "thread.turn-diff-completed" &&
+        event.payload.turnId === asTurnId("turn-conversation"),
+    );
+    expect(diffEvent?.payload.files.map((file) => file.path)).toEqual([expectedPath]);
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.latestTurn?.turnId === "turn-conversation" &&
+        entry.checkpoints.some((checkpoint) =>
+          checkpoint.files.some((file) => file.path === expectedPath),
+        ),
+    );
+
+    expect(thread.checkpoints[0]?.files.map((file) => file.path)).toContain(expectedPath);
   });
 
   it("refreshes local git status state on turn completion using the session cwd", async () => {

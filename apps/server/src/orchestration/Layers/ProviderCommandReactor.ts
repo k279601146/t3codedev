@@ -1,5 +1,4 @@
 ﻿import {
-  CONVERSATION_PROJECT_ID,
   type ChatAttachment,
   CommandId,
   EventId,
@@ -24,7 +23,6 @@ import * as Equal from "effect/Equal";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
@@ -208,7 +206,6 @@ const make = Effect.gen(function* () {
   const projectWorkspaceConfig = yield* ProjectWorkspaceConfig;
   const serverConfig = yield* ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -232,13 +229,15 @@ const make = Effect.gen(function* () {
     };
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
   }) {
-    if (input.thread.projectId === CONVERSATION_PROJECT_ID && !input.thread.worktreePath) {
-      const cwd = path.join(serverConfig.stateDir, "conversation-workspace");
+    const cwd = resolveThreadWorkspaceCwd({
+      ...input,
+      conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+    });
+    if (cwd === serverConfig.conversationWorkspaceDir) {
       yield* fileSystem.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
-      return cwd;
     }
 
-    return resolveThreadWorkspaceCwd(input);
+    return cwd;
   });
 
   const appendProviderFailureActivity = (input: {

@@ -298,6 +298,44 @@ it.layer(TestLayer)("CheckpointStoreLive", (it) => {
         expect(diff).not.toContain("~$deck.pptx");
       }),
     );
+
+    it.effect("uses shadow git when preferred inside a parent git repository", () =>
+      Effect.gen(function* () {
+        const parent = yield* makeTmpDir("checkpoint-store-parent-git-test-");
+        yield* initRepoWithCommit(parent);
+        const tmp = path.join(parent, "userdata", "conversation-workspace");
+        const checkpointStore = yield* CheckpointStore;
+        const threadId = ThreadId.make("thread-checkpoint-prefer-shadow");
+        const fromCheckpointRef = checkpointRefForThreadTurn(threadId, 0);
+        const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+
+        yield* makeDirectory(path.join(tmp, "output"));
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: fromCheckpointRef,
+          preferShadow: true,
+        });
+
+        yield* writeTextFile(path.join(tmp, "output", "提示词.md"), "# 提示词\n");
+        yield* checkpointStore.captureCheckpoint({
+          cwd: tmp,
+          checkpointRef: toCheckpointRef,
+          preferShadow: true,
+        });
+
+        const diff = yield* checkpointStore.diffCheckpoints({
+          cwd: tmp,
+          fromCheckpointRef,
+          toCheckpointRef,
+          ignoreWhitespace: false,
+          preferShadow: true,
+        });
+
+        expect(diff).toContain("output/");
+        expect(diff).toContain(".md");
+        expect(diff).not.toContain("conversation-workspace/output");
+      }),
+    );
   });
 
   describe("diffCheckpoints", () => {

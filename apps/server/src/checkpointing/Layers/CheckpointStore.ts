@@ -71,6 +71,10 @@ const makeCheckpointStore = Effect.gen(function* () {
 
   const resolveCheckpointsForDiff = Effect.fn("CheckpointStore.resolveCheckpointsForDiff")(
     function* (operation: string, input: DiffCheckpointsInput) {
+      if (input.preferShadow === true) {
+        return yield* shadowGitCheckpoints.resolve(input.cwd);
+      }
+
       const nativeCheckpoints = yield* resolveNativeCheckpoints(operation, input.cwd);
       const shadowFromExists = yield* shadowGitCheckpoints.hasCheckpointRef({
         cwd: input.cwd,
@@ -90,6 +94,10 @@ const makeCheckpointStore = Effect.gen(function* () {
 
   const resolveCheckpointsForRestore = Effect.fn("CheckpointStore.resolveCheckpointsForRestore")(
     function* (operation: string, input: RestoreCheckpointInput) {
+      if (input.preferShadow === true) {
+        return yield* shadowGitCheckpoints.resolve(input.cwd);
+      }
+
       const nativeCheckpoints = yield* resolveNativeCheckpoints(operation, input.cwd);
       const shadowRefExists = yield* shadowGitCheckpoints.hasCheckpointRef({
         cwd: input.cwd,
@@ -104,6 +112,10 @@ const makeCheckpointStore = Effect.gen(function* () {
 
   const resolveCheckpointsForCapture = Effect.fn("CheckpointStore.resolveCheckpointsForCapture")(
     function* (operation: string, input: CaptureCheckpointInput) {
+      if (input.preferShadow === true) {
+        return yield* shadowGitCheckpoints.resolve(input.cwd);
+      }
+
       const nativeCheckpoints = yield* resolveNativeCheckpoints(operation, input.cwd);
       const shadowTargetExists = yield* shadowGitCheckpoints.hasCheckpointRef({
         cwd: input.cwd,
@@ -146,6 +158,10 @@ const makeCheckpointStore = Effect.gen(function* () {
 
   const hasCheckpointRef: CheckpointStoreShape["hasCheckpointRef"] = Effect.fn("hasCheckpointRef")(
     function* (input) {
+      if (input.preferShadow === true) {
+        return yield* shadowGitCheckpoints.hasCheckpointRef(input);
+      }
+
       const nativeCheckpoints = yield* resolveNativeCheckpoints(
         "CheckpointStore.hasCheckpointRef",
         input.cwd,
@@ -184,6 +200,11 @@ const makeCheckpointStore = Effect.gen(function* () {
   const deleteCheckpointRefs: CheckpointStoreShape["deleteCheckpointRefs"] = Effect.fn(
     "deleteCheckpointRefs",
   )(function* (input) {
+    if (input.preferShadow === true) {
+      const checkpoints = yield* shadowGitCheckpoints.resolve(input.cwd);
+      return yield* checkpoints.deleteCheckpointRefs(input);
+    }
+
     const checkpoints = yield* resolveCheckpoints(
       "CheckpointStore.deleteCheckpointRefs",
       input.cwd,

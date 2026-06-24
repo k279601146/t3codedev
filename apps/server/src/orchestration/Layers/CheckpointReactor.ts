@@ -1,6 +1,5 @@
 import {
   CommandId,
-  CONVERSATION_PROJECT_ID,
   EventId,
   MessageId,
   type ProjectId,
@@ -14,6 +13,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
@@ -32,6 +32,7 @@ import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { WorkspaceEntries } from "../../workspace/Services/WorkspaceEntries.ts";
+import { ServerConfig } from "../../config.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -101,6 +102,8 @@ const make = Effect.gen(function* () {
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
+  const serverConfig = yield* ServerConfig;
+  const path = yield* Path.Path;
 
   const appendRevertFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -187,14 +190,11 @@ const make = Effect.gen(function* () {
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
   }): Effect.fn.Return<string | undefined> {
-    if (input.thread.projectId === CONVERSATION_PROJECT_ID && !input.thread.worktreePath) {
-      return undefined;
-    }
-
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
       thread: input.thread,
       projects: input.projects,
+      conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
     });
 
     const cwd = input.preferSessionRuntime
@@ -213,6 +213,9 @@ const make = Effect.gen(function* () {
     }
     return cwd;
   });
+
+  const shouldUseIsolatedCheckpointStore = (cwd: string): boolean =>
+    path.resolve(cwd) === path.resolve(serverConfig.conversationWorkspaceDir);
 
   // Shared tail for both capture paths: creates the git checkpoint ref, diffs
   // it against the previous turn, then dispatches the domain events to update
@@ -240,6 +243,7 @@ const make = Effect.gen(function* () {
     const fromCheckpointExists = yield* checkpointStore.hasCheckpointRef({
       cwd: input.cwd,
       checkpointRef: fromCheckpointRef,
+      preferShadow: shouldUseIsolatedCheckpointStore(input.cwd),
     });
     if (!fromCheckpointExists) {
       yield* Effect.logWarning("checkpoint capture missing pre-turn baseline", {
@@ -252,6 +256,7 @@ const make = Effect.gen(function* () {
     yield* checkpointStore.captureCheckpoint({
       cwd: input.cwd,
       checkpointRef: targetCheckpointRef,
+      preferShadow: shouldUseIsolatedCheckpointStore(input.cwd),
     });
 
     // Invalidate the workspace entry cache so the @-mention file picker
@@ -265,6 +270,7 @@ const make = Effect.gen(function* () {
         toCheckpointRef: targetCheckpointRef,
         fallbackFromToHead: !fromCheckpointExists,
         ignoreWhitespace: false,
+        preferShadow: shouldUseIsolatedCheckpointStore(input.cwd),
       })
       .pipe(
         Effect.map((diff) =>
@@ -505,6 +511,7 @@ const make = Effect.gen(function* () {
       const baselineExists = yield* checkpointStore.hasCheckpointRef({
         cwd: checkpointCwd,
         checkpointRef: baselineCheckpointRef,
+        preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
       });
       if (baselineExists) {
         return;
@@ -513,6 +520,7 @@ const make = Effect.gen(function* () {
       yield* checkpointStore.captureCheckpoint({
         cwd: checkpointCwd,
         checkpointRef: baselineCheckpointRef,
+        preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
       });
       yield* receiptBus.publish({
         type: "checkpoint.baseline.captured",
@@ -584,6 +592,7 @@ const make = Effect.gen(function* () {
     const baselineExists = yield* checkpointStore.hasCheckpointRef({
       cwd: checkpointCwd,
       checkpointRef: baselineCheckpointRef,
+      preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
     });
     if (baselineExists) {
       return;
@@ -592,6 +601,7 @@ const make = Effect.gen(function* () {
     yield* checkpointStore.captureCheckpoint({
       cwd: checkpointCwd,
       checkpointRef: baselineCheckpointRef,
+      preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
     });
     yield* receiptBus.publish({
       type: "checkpoint.baseline.captured",
@@ -668,6 +678,7 @@ const make = Effect.gen(function* () {
       cwd: checkpointCwd,
       checkpointRef: targetCheckpointRef,
       fallbackToHead: event.payload.turnCount === 0,
+      preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
     });
     if (!restored) {
       yield* appendRevertFailureActivity({
@@ -699,6 +710,7 @@ const make = Effect.gen(function* () {
       yield* checkpointStore.deleteCheckpointRefs({
         cwd: checkpointCwd,
         checkpointRefs: staleCheckpointRefs,
+        preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
       });
     }
 
@@ -779,6 +791,7 @@ const make = Effect.gen(function* () {
             cwd: checkpointCwd,
             checkpointRef: targetCheckpointRef,
             fallbackToHead: targetTurnCount === 0,
+            preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
           });
           if (restored) {
             yield* workspaceEntries.invalidate(checkpointCwd);
@@ -799,6 +812,7 @@ const make = Effect.gen(function* () {
             yield* checkpointStore.deleteCheckpointRefs({
               cwd: checkpointCwd,
               checkpointRefs: staleCheckpointRefs,
+              preferShadow: shouldUseIsolatedCheckpointStore(checkpointCwd),
             });
           }
         }).pipe(

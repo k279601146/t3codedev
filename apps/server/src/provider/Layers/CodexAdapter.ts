@@ -1698,7 +1698,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const adapterScope = yield* Scope.Scope;
   const serverConfig = yield* Effect.service(ServerConfig);
-  const defaultCwd = path.join(serverConfig.stateDir, "conversation-workspace");
+  const defaultCwd = serverConfig.conversationWorkspaceDir;
   yield* fileSystem.makeDirectory(defaultCwd, { recursive: true }).pipe(Effect.ignore);
   const nativeEventLogger =
     options?.nativeEventLogger ??

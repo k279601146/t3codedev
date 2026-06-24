@@ -1584,7 +1584,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
     return <UserInputSummaryTimelineRow workEntry={groupedEntries[0]} />;
   }
 
-  if (groupedEntries.length === 1 && isFileChangeWorkEntry(groupedEntries[0]!)) {
+  if (groupedEntries.length === 1 && isFileChangeWorkEntry(groupedEntries[0]!, turnDiffSummary)) {
     return (
       <div className="pt-2 pb-3 pl-1">
         <SimpleWorkEntryRow
@@ -1656,11 +1656,23 @@ function isSearchWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): boolean {
   return entries.length > 0 && entries.every(isSearchWorkEntry);
 }
 
-function isFileChangeWorkEntry(entry: TimelineWorkEntry): boolean {
-  return (
+function isFileChangeWorkEntry(
+  entry: TimelineWorkEntry,
+  turnDiffSummary?: TurnDiffSummary | undefined,
+): boolean {
+  const hasStructuredFileChange =
     entry.requestKind === "file-change" ||
     entry.itemType === "file_change" ||
-    (entry.changedFiles?.length ?? 0) > 0
+    (entry.changedFiles?.length ?? 0) > 0;
+  const hasOnlyTurnDiffFileChange =
+    entry.status === "completed" &&
+    (turnDiffSummary?.files.length ?? 0) > 0 &&
+    !(entry.detail?.trim() || entry.output?.trim()) &&
+    (entry.changedFiles?.length ?? 0) === 0;
+
+  return (
+    hasStructuredFileChange ||
+    hasOnlyTurnDiffFileChange
   );
 }
 
@@ -2683,6 +2695,7 @@ function buildFileChangeSummaries(
 ): InlineDiffFileSummary[] {
   const patches = workEntry.detail ? parseUnifiedDiff(workEntry.detail) : [];
   const patchPaths = new Set<string>();
+  const summaryPaths = new Set<string>();
   const summaries: InlineDiffFileSummary[] = [];
 
   for (const filePath of workEntry.changedFiles ?? []) {
@@ -2696,6 +2709,7 @@ function buildFileChangeSummaries(
         patchPaths.add(patchPath);
       }
     }
+    summaryPaths.add(normalizeComparablePath(filePath));
     summaries.push({
       path: filePath,
       displayPath,
@@ -2713,6 +2727,7 @@ function buildFileChangeSummaries(
     if (!patchPath || patchPaths.has(patchPath)) {
       continue;
     }
+    summaryPaths.add(normalizeComparablePath(patchPath));
     summaries.push({
       path: patchPath,
       displayPath: formatWorkspaceRelativePath(patchPath, workspaceRoot),
@@ -2722,6 +2737,23 @@ function buildFileChangeSummaries(
       hasStats: true,
       kind: resolvePatchFileChangeKind(patch),
       patch,
+    });
+  }
+
+  for (const file of turnDiffSummary?.files ?? []) {
+    const comparablePath = normalizeComparablePath(file.path);
+    if (summaryPaths.has(comparablePath)) {
+      continue;
+    }
+    summaries.push({
+      path: file.path,
+      displayPath: formatWorkspaceRelativePath(file.path, workspaceRoot),
+      listLabel: formatChangedFileListLabel(file.path),
+      additions: file.additions ?? 0,
+      deletions: file.deletions ?? 0,
+      hasStats: true,
+      kind: file.kind,
+      patch: null,
     });
   }
 
@@ -3013,7 +3045,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   if (workEntry.userInputSummary) {
     return <UserInputSummaryTimelineRow workEntry={workEntry} compact />;
   }
-  if (isFileChangeWorkEntry(workEntry)) {
+  if (isFileChangeWorkEntry(workEntry, turnDiffSummary)) {
     return (
       <FileChangeWorkEntryRow
         workEntry={workEntry}

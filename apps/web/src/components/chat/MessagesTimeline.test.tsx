@@ -509,6 +509,63 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("hover:text-[#0F66D0]");
   });
 
+  it("uses turn diff files for work rows without parsed changed files", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const fileName = "\u63d0\u793a\u8bcd.md";
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        onOpenMarkdownFile={() => {}}
+        timelineEntries={[
+          {
+            id: "work-entry",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "pwsh -Command generate",
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+          {
+            id: "assistant-entry",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:40.000Z",
+            message: {
+              id: MessageId.make("assistant-1"),
+              role: "assistant",
+              text: "Done",
+              turnId: TurnId.make("turn-1"),
+              createdAt: "2026-03-17T19:12:40.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              MessageId.make("assistant-1"),
+              {
+                turnId: TurnId.make("turn-1"),
+                completedAt: "2026-03-17T19:12:45.000Z",
+                assistantMessageId: MessageId.make("assistant-1"),
+                files: [{ path: `output/${fileName}`, kind: "added", additions: 1, deletions: 0 }],
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(markup).toContain("<button");
+    expect(markup).toContain("+1");
+    expect(markup).not.toContain("pwsh -Command generate");
+  });
+
   it("labels synthetic new-file diffs as creating file work", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

@@ -29,8 +29,8 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     ].join("\n");
 
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
-      { path: "a.txt", additions: 2, deletions: 1 },
-      { path: "src/b.ts", additions: 0, deletions: 2 },
+      { path: "a.txt", kind: "modified", additions: 2, deletions: 1 },
+      { path: "src/b.ts", kind: "modified", additions: 0, deletions: 2 },
     ]);
   });
 
@@ -44,7 +44,7 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     ].join("\n");
 
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
-      { path: "src/new.ts", additions: 0, deletions: 0 },
+      { path: "src/new.ts", kind: "renamed", additions: 0, deletions: 0 },
     ]);
   });
 
@@ -62,7 +62,24 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     ].join("\r\n");
 
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
-      { path: "a.txt", additions: 2, deletions: 1 },
+      { path: "a.txt", kind: "modified", additions: 2, deletions: 1 },
+    ]);
+  });
+
+  it("decodes git quoted UTF-8 path bytes", () => {
+    const diff = [
+      'diff --git "a/output/\\346\\217\\220\\347\\244\\272\\350\\257\\215.md" "b/output/\\346\\217\\220\\347\\244\\272\\350\\257\\215.md"',
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "--- /dev/null",
+      '+++ "b/output/\\346\\217\\220\\347\\244\\272\\350\\257\\215.md"',
+      "@@ -0,0 +1 @@",
+      "+# 提示词",
+      "",
+    ].join("\n");
+
+    expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
+      { path: "output/提示词.md", kind: "added", additions: 1, deletions: 0 },
     ]);
   });
 });

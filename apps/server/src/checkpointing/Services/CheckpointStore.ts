@@ -19,12 +19,14 @@ import { CheckpointRef } from "@t3tools/contracts";
 export interface CaptureCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
+  readonly preferShadow?: boolean;
 }
 
 export interface RestoreCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
   readonly fallbackToHead?: boolean;
+  readonly preferShadow?: boolean;
 }
 
 export interface DiffCheckpointsInput {
@@ -33,11 +35,13 @@ export interface DiffCheckpointsInput {
   readonly toCheckpointRef: CheckpointRef;
   readonly fallbackFromToHead?: boolean;
   readonly ignoreWhitespace: boolean;
+  readonly preferShadow?: boolean;
 }
 
 export interface DeleteCheckpointRefsInput {
   readonly cwd: string;
   readonly checkpointRefs: ReadonlyArray<CheckpointRef>;
+  readonly preferShadow?: boolean;
 }
 
 /**
