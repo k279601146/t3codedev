@@ -165,7 +165,8 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
         : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
   const baseDir = Option.getOrElse(config.t3Home, () => path.join(homeDirectory, ".bahew"));
   const rootDir = path.resolve(input.dirname, "../../..");
-  const appRoot = input.isPackaged ? input.appPath : rootDir;
+  const usesPackagedLayout = input.isPackaged && !isDevelopment;
+  const appRoot = usesPackagedLayout ? input.appPath : rootDir;
   const branding = resolveDesktopAppBranding({
     isDevelopment,
     appVersion: input.appVersion,
@@ -200,9 +201,9 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     rootDir,
     appRoot,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),
-    backendCwd: input.isPackaged ? homeDirectory : appRoot,
+    backendCwd: usesPackagedLayout ? homeDirectory : appRoot,
     preloadPath: path.join(input.dirname, "preload.cjs"),
-    appUpdateYmlPath: input.isPackaged
+    appUpdateYmlPath: usesPackagedLayout
       ? path.join(resourcesPath, "app-update.yml")
       : path.join(input.appPath, "dev-app-update.yml"),
     devServerUrl,
@@ -257,10 +258,10 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     ],
     developmentDockIconPath: path.join(rootDir, "assets", "dev", "blueprint-macos-1024.png"),
 
-    // ── 捆绑引擎路径 ──────────────────────────────────────
+    // Bundled engine paths.
     engineBinaryPath: resolveEngineBinaryPath({
       path,
-      isPackaged: input.isPackaged,
+      usesPackagedLayout,
       resourcesPath,
       rootDir,
     }),
@@ -268,43 +269,36 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     engineVersionsPath: path.join(stateDir, "engines"),
     bundledExtensionsPath: resolveBundledExtensionsPath({
       path,
-      isPackaged: input.isPackaged,
+      usesPackagedLayout,
       resourcesPath,
       rootDir,
     }),
   });
 });
 
-/**
- * 计算捆绑 AI 引擎二进制的路径。
- * 生产环境从 resources/ 目录读取，开发环境从 apps/desktop/bin/ 读取。
- */
 function resolveEngineBinaryPath(input: {
   readonly path: Path.Path;
-  readonly isPackaged: boolean;
+  readonly usesPackagedLayout: boolean;
   readonly resourcesPath: string;
   readonly rootDir: string;
 }): string {
   const ext = process.platform === "win32" ? ".exe" : "";
   const binaryName = `ai-engine${ext}`;
 
-  if (input.isPackaged) {
-    // 生产环境：从安装包 resources/ 目录读取
+  if (input.usesPackagedLayout) {
     return input.path.join(input.resourcesPath, binaryName);
   }
 
-  // 开发环境：从项目 apps/desktop/bin/ 目录读取
-  // 文件存在性由 server 层的 BundledEngineConfig.isBundledEngineMode 检测
   return input.path.join(input.rootDir, "apps", "desktop", "bin", binaryName);
 }
 
 function resolveBundledExtensionsPath(input: {
   readonly path: Path.Path;
-  readonly isPackaged: boolean;
+  readonly usesPackagedLayout: boolean;
   readonly resourcesPath: string;
   readonly rootDir: string;
 }): string {
-  if (input.isPackaged) {
+  if (input.usesPackagedLayout) {
     return input.path.join(input.resourcesPath, "extensions");
   }
   return input.path.join(input.rootDir, "extensions");

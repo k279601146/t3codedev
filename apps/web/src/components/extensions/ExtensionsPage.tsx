@@ -4,8 +4,8 @@ import {
   PlugIcon,
   ShieldCheckIcon,
 } from "lucide-react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -34,29 +34,10 @@ function getTabFromHash(hash: string): ExtensionsTab {
   return isExtensionsTab(value) ? value : "all";
 }
 
-function replaceExtensionsHash(tab: ExtensionsTab) {
-  if (typeof window === "undefined") return;
-  const nextHash = "#" + tab;
-  if (window.location.hash === nextHash) return;
-  window.history.replaceState(
-    null,
-    "",
-    window.location.pathname + window.location.search + nextHash,
-  );
-}
-
 export function ExtensionsPage() {
-  const [activeTab, setActiveTab] = useState<ExtensionsTab>(() =>
-    typeof window !== "undefined" ? getTabFromHash(window.location.hash) : "all",
-  );
-
-  useEffect(() => {
-    const onHashChange = () => {
-      setActiveTab(getTabFromHash(window.location.hash));
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
+  const navigate = useNavigate();
+  const routeHash = useLocation({ select: (location) => location.hash });
+  const activeTab = getTabFromHash(routeHash);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
@@ -84,8 +65,7 @@ export function ExtensionsPage() {
                     : "text-muted-foreground hover:text-foreground",
                 )}
                 onClick={() => {
-                  setActiveTab(tab.id);
-                  replaceExtensionsHash(tab.id);
+                  void navigate({ to: "/extensions", hash: tab.id, replace: true });
                 }}
               >
                 <Icon className="size-3.5" />

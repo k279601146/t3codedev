@@ -115,6 +115,32 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("uses repository resources when a development launcher looks packaged", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        {
+          appPath: "/repo/apps/desktop",
+          isPackaged: true,
+          resourcesPath: "/repo/apps/desktop/.electron-runtime/win32/electron/resources",
+        },
+        {
+          VITE_DEV_SERVER_URL: "http://localhost:5173",
+        },
+      );
+
+      assert.equal(environment.isPackaged, true);
+      assert.equal(environment.isDevelopment, true);
+      assert.equal(slash(environment.appRoot), "/repo");
+      assert.equal(slash(environment.backendEntryPath), "/repo/apps/server/dist/bin.mjs");
+      assert.equal(slash(environment.backendCwd), "/repo");
+      assert.equal(
+        slash(environment.engineBinaryPath),
+        `/repo/apps/desktop/bin/ai-engine${process.platform === "win32" ? ".exe" : ""}`,
+      );
+      assert.equal(slash(environment.bundledExtensionsPath), "/repo/extensions");
+    }),
+  );
+
   it.effect("resolves picker defaults without nullish sentinels", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment();
