@@ -31,6 +31,7 @@ import {
   CopyIcon,
   FilePlus2Icon,
   FileTextIcon,
+  FolderOpenIcon,
   EyeIcon,
   GoalIcon,
   GlobeIcon,
@@ -81,7 +82,7 @@ import { cn } from "~/lib/utils";
 import { setPerformanceModeActive } from "~/performanceMode";
 import { readEnvironmentApi } from "../../environmentApi";
 import { readLocalApi } from "../../localApi";
-import { revealFileInFolder } from "../../lib/openContainingFolder";
+import { openContainingFolder, revealFileInFolder } from "../../lib/openContainingFolder";
 import { toastManager } from "../ui/toast";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -1951,6 +1952,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
     <AssistantChangedFilesSectionInner
       turnSummary={turnSummary}
       checkpointFiles={checkpointFiles}
+      directoryRoot={markdownCwd ?? workspaceRoot}
       workspaceRoot={workspaceRoot}
       onOpenFile={onOpenFile}
       onOpenTurnDiff={onOpenTurnDiff}
@@ -1963,12 +1965,14 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
 function AssistantChangedFilesSectionInner({
   turnSummary,
   checkpointFiles,
+  directoryRoot,
   workspaceRoot,
   onOpenFile,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: CheckpointFileItem[];
+  directoryRoot: string | undefined;
   workspaceRoot: string | undefined;
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -1982,17 +1986,52 @@ function AssistantChangedFilesSectionInner({
   const singleFileTitle = firstFile
     ? basenameOfChangedFile(firstFile.path)
     : `${checkpointFiles.length} 个文件`;
+  const openChangedFilesDirectory = async () => {
+    const localApi = readLocalApi();
+    if (!localApi) {
+      toastManager.add({
+        type: "error",
+        title: "无法打开目录",
+        description: "本地 API 不可用。",
+      });
+      return;
+    }
+
+    const targetFilePath =
+      isSingleFile && firstFile
+        ? (firstFile.linkMeta?.filePath ??
+          resolveCheckpointDeliverableTarget(firstFile.path, directoryRoot))
+        : null;
+
+    try {
+      if (targetFilePath) {
+        await openContainingFolder(localApi, targetFilePath);
+        return;
+      }
+      if (directoryRoot) {
+        await localApi.shell.openPath(directoryRoot);
+        return;
+      }
+      throw new Error("无法定位当前工作区目录。");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "无法打开目录",
+        description: error instanceof Error ? error.message : "打开目录失败。",
+      });
+    }
+  };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-card/70 p-3 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
-          <FilePlus2Icon className="size-5" />
+    <div className="mt-3 overflow-hidden rounded-xl border border-[#E5E5E5] bg-white shadow-[0_1px_2px_rgb(0_0_0/0.04)] dark:border-border/70 dark:bg-card">
+      <div className="flex min-h-[64px] items-center gap-3 px-3 py-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#F8F8F8] text-[#6B7280] dark:bg-muted/60 dark:text-muted-foreground">
+          <FilePlus2Icon className="size-4.5 stroke-[1.8]" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground">
+              <div className="chat-text truncate text-[14px] font-semibold leading-5 text-[#111111] dark:text-foreground">
                 {isSingleFile && firstFile ? (
                   <span className="inline-flex min-w-0 max-w-full items-baseline gap-1">
                     <span className="shrink-0">已编辑</span>
@@ -2000,7 +2039,7 @@ function AssistantChangedFilesSectionInner({
                       filePath={firstFile.linkMeta?.filePath ?? firstFile.path}
                       displayPath={singleFileTitle}
                       title={firstFile.linkMeta?.displayPath ?? singleFileTitle}
-                      className="min-w-0"
+                      className="min-w-0 font-sans text-[14px] font-semibold text-[#111111] hover:text-[#111111] hover:no-underline dark:text-foreground dark:hover:text-foreground"
                       onOpenFile={firstFile.linkMeta ? onOpenFile : undefined}
                     />
                   </span>
@@ -2009,7 +2048,7 @@ function AssistantChangedFilesSectionInner({
                 )}
               </div>
               {hasNonZeroStat(summaryStat) ? (
-                <div className="mt-0.5 font-mono text-[13px] leading-5 tabular-nums">
+                <div className="mt-0.5 font-mono text-[12px] leading-4 tabular-nums">
                   <DiffStatLabel
                     additions={summaryStat.additions}
                     deletions={summaryStat.deletions}
@@ -2022,67 +2061,71 @@ function AssistantChangedFilesSectionInner({
                 type="button"
                 size="xs"
                 variant="ghost"
-                disabled
-                title="撤销更改暂不可用"
-                className="h-8 gap-1 rounded-md px-2 text-[13px] text-foreground opacity-70"
+                title={isSingleFile ? "打开文件所在目录" : "打开当前工作区目录"}
+                aria-label={isSingleFile ? "打开文件所在目录" : "打开当前工作区目录"}
+                className="h-8 gap-1 rounded-md border-0 bg-transparent px-1.5 text-[14px] font-semibold text-[#111111] opacity-100 shadow-none before:shadow-none dark:text-foreground"
+                onClick={() => void openChangedFilesDirectory()}
               >
-                撤销
-                <Undo2Icon className="size-3.5" />
+                打开目录
+                <FolderOpenIcon className="size-3.5 stroke-[1.8]" />
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-8 rounded-lg px-3 text-[13px] font-medium"
+                className="h-8 rounded-lg border-[#E5E5E5] bg-white px-3 text-[14px] font-semibold text-[#111111] shadow-none before:shadow-none hover:bg-[#FAFAFA] dark:border-input dark:bg-popover dark:text-foreground"
                 onClick={() => onOpenTurnDiff(turnSummary.turnId, firstFile?.path)}
               >
                 审核
               </Button>
             </div>
           </div>
-          {!isSingleFile ? (
-            <div className="mt-4 space-y-3">
-              {visibleFiles.map((file) => (
+        </div>
+      </div>
+      {!isSingleFile ? (
+        <div className="border-t border-[#EDEDED] px-3 pb-3 pt-2.5 dark:border-border/70">
+          <div className="space-y-2.5">
+            {visibleFiles.map((file) => {
+              const displayPath = formatChangedFilePath(file.path, workspaceRoot);
+              return (
                 <button
                   key={`${turnSummary.turnId}:${file.path}`}
                   type="button"
-                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 hover:text-foreground"
+                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 text-[#111111] hover:text-[#111111] dark:text-foreground dark:hover:text-foreground"
                   onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
                 >
                   <ChangedFileOpenButton
                     filePath={file.linkMeta?.filePath ?? file.path}
-                    displayPath={formatChangedFilePath(file.path, workspaceRoot)}
-                    title={
-                      file.linkMeta?.displayPath ?? formatChangedFilePath(file.path, workspaceRoot)
-                    }
-                    className="min-w-0"
+                    displayPath={displayPath}
+                    title={file.linkMeta?.displayPath ?? displayPath}
+                    className="min-w-0 font-sans text-[13px] text-[#111111] hover:text-[#111111] hover:no-underline dark:text-foreground dark:hover:text-foreground"
                     onOpenFile={file.linkMeta ? onOpenFile : undefined}
                     stopPropagation
                   />
-                  <span className="shrink-0 font-mono text-[13px] tabular-nums">
+                  <span className="shrink-0 font-mono text-[12px] leading-5 tabular-nums">
                     <DiffStatLabel
                       additions={file.additions ?? 0}
                       deletions={file.deletions ?? 0}
                     />
                   </span>
                 </button>
-              ))}
-              {hiddenFileCount > 0 || showAllFiles ? (
-                <button
-                  type="button"
-                  className="inline-flex h-6 items-center gap-1 text-[13px] text-foreground/90 hover:text-foreground"
-                  onClick={() => setShowAllFiles((value) => !value)}
-                >
-                  {showAllFiles ? "收起文件" : `再显示 ${hiddenFileCount} 个文件`}
-                  <ChevronDownIcon
-                    className={cn("size-3.5 transition-transform", showAllFiles && "rotate-180")}
-                  />
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+              );
+            })}
+            {hiddenFileCount > 0 || showAllFiles ? (
+              <button
+                type="button"
+                className="inline-flex h-6 items-center gap-1 text-[13px] leading-5 text-[#111111] hover:text-[#111111] dark:text-foreground dark:hover:text-foreground"
+                onClick={() => setShowAllFiles((value) => !value)}
+              >
+                {showAllFiles ? "收起文件" : `再显示 ${hiddenFileCount} 个文件`}
+                <ChevronDownIcon
+                  className={cn("size-3.5 transition-transform", showAllFiles && "rotate-180")}
+                />
+              </button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
