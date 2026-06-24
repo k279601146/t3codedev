@@ -1179,6 +1179,7 @@ export interface ChatComposerProps {
   newThreadPlaceholder?: string;
   newThreadModeLabel?: string | null;
   onClearNewThreadMode?: () => void;
+  onComposerEmptyChange?: (isEmpty: boolean) => void;
 
   // Refs the parent needs kept in sync
   promptRef: React.MutableRefObject<string>;
@@ -1285,6 +1286,7 @@ export const ChatComposer = memo(
       newThreadPlaceholder,
       newThreadModeLabel = null,
       onClearNewThreadMode,
+      onComposerEmptyChange,
       promptRef,
       composerImagesRef,
       composerTerminalContextsRef,
@@ -1335,6 +1337,7 @@ export const ChatComposer = memo(
     const composerImages = composerDraft.images;
     const composerTerminalContexts = composerDraft.terminalContexts;
     const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
+    const promptIsEmpty = prompt.trim().length === 0;
 
     const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
     const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
@@ -1804,7 +1807,7 @@ export const ChatComposer = memo(
         return `running:${runningPrimaryActionMode}`;
       }
       if (showPlanFollowUpPrompt) {
-        return prompt.trim().length > 0 ? "plan:refine" : "plan:implement";
+        return promptIsEmpty ? "plan:implement" : "plan:refine";
       }
       return `idle:${composerSendState.hasSendableContent}:${isSendBusy}:${isConnecting}:${isPreparingWorktree}`;
     }, [
@@ -1816,7 +1819,7 @@ export const ChatComposer = memo(
       isSendBusy,
       isInterruptPending,
       phase,
-      prompt,
+      promptIsEmpty,
       runningPrimaryActionMode,
       showPlanFollowUpPrompt,
     ]);
@@ -1946,6 +1949,10 @@ export const ChatComposer = memo(
       promptRef.current = prompt;
       setComposerCursor((existing) => clampCollapsedComposerCursor(prompt, existing));
     }, [prompt, promptRef]);
+
+    useEffect(() => {
+      onComposerEmptyChange?.(promptIsEmpty);
+    }, [onComposerEmptyChange, promptIsEmpty]);
 
     useEffect(() => {
       composerImagesRef.current = composerImages;
@@ -3547,7 +3554,7 @@ export const ChatComposer = memo(
                 planSidebarOpen={planSidebarOpen}
                 pluginMentions={visiblePluginMentions}
                 preserveComposerFocusOnPointerDown={isMobileViewport}
-                promptHasText={prompt.trim().length > 0}
+                promptHasText={!promptIsEmpty}
                 runtimeMode={runtimeMode}
                 showContextWindow={showContextWindow}
                 showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}

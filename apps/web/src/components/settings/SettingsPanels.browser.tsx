@@ -221,6 +221,7 @@ function createBaseServerConfig(): ServerConfig {
       sessionCookieName: "t3_session",
     },
     cwd: "/repo/project",
+    conversationWorkspaceDir: "/repo/conversation-workspace",
     keybindingsConfigPath: "/repo/project/.t3code-keybindings.json",
     keybindings: [],
     issues: [],

@@ -127,6 +127,33 @@
   animation-duration: 0s !important;
 }
 
+body[data-performance-lite="true"] .shimmer-scan::before,
+body[data-performance-lite="true"] .image-generation-shimmer-band,
+body[data-performance-lite="true"] .running-status-shimmer::before,
+body[data-performance-lite="true"] .ultrathink-rainbow,
+body[data-performance-lite="true"] .ultrathink-chroma-shift {
+  animation-play-state: paused !important;
+}
+
+body[data-performance-lite="true"] .backdrop-blur,
+body[data-performance-lite="true"] [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+}
+
+body[data-performance-mode="window-dragging"] *,
+body[data-performance-mode="scrolling"] * {
+  transition-duration: 0s !important;
+}
+
+body[data-performance-mode="window-dragging"] .shadow-lg,
+body[data-performance-mode="window-dragging"] .shadow-md,
+body[data-performance-mode="window-dragging"] .shadow-sm,
+body[data-performance-mode="scrolling"] .shadow-lg,
+body[data-performance-mode="scrolling"] .shadow-md,
+body[data-performance-mode="scrolling"] .shadow-sm {
+  box-shadow: none !important;
+}
+
 /* =========================================================================
    Claude 设计风格主题 (Claude App UI v2.0)
    - 浅色：米白色暖色调底 (#F5F0EB)，纸张质感

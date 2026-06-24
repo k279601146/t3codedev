@@ -185,6 +185,35 @@ function mapMessage(environmentId: EnvironmentId, message: OrchestrationMessage)
   };
 }
 
+function replaceMessageAtIndex(
+  messages: ReadonlyArray<ChatMessage>,
+  index: number,
+  update: (message: ChatMessage) => ChatMessage,
+): ChatMessage[] {
+  const nextMessage = update(messages[index]!);
+  if (nextMessage === messages[index]) {
+    return messages.slice();
+  }
+  const nextMessages = messages.slice();
+  nextMessages[index] = nextMessage;
+  return nextMessages;
+}
+
+function findMessageIndexForUpdate(
+  messages: ReadonlyArray<ChatMessage>,
+  messageId: MessageId,
+): number {
+  const lastIndex = messages.length - 1;
+  if (lastIndex >= 0 && messages[lastIndex]?.id === messageId) {
+    return lastIndex;
+  }
+  return messages.findIndex((entry) => entry.id === messageId);
+}
+
+function capThreadMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.length > MAX_THREAD_MESSAGES ? messages.slice(-MAX_THREAD_MESSAGES) : messages;
+}
+
 function mapProposedPlan(proposedPlan: OrchestrationProposedPlan): ProposedPlan {
   return {
     id: proposedPlan.id,
@@ -1388,34 +1417,29 @@ function applyEnvironmentOrchestrationEvent(
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
         });
-        const existingMessage = thread.messages.find((entry) => entry.id === message.id);
-        const messages = existingMessage
-          ? thread.messages.map((entry) =>
-              entry.id !== message.id
-                ? entry
-                : {
-                    ...entry,
-                    text: message.streaming
-                      ? `${entry.text}${message.text}`
-                      : message.text.length > 0
-                        ? message.text
-                        : entry.text,
-                    streaming: message.streaming,
-                    ...(message.turnId !== undefined ? { turnId: message.turnId } : {}),
-                    ...(message.streaming
-                      ? entry.completedAt !== undefined
-                        ? { completedAt: entry.completedAt }
-                        : {}
-                      : message.completedAt !== undefined
-                        ? { completedAt: message.completedAt }
-                        : {}),
-                    ...(message.attachments !== undefined
-                      ? { attachments: message.attachments }
-                      : {}),
-                  },
-            )
-          : [...thread.messages, message];
-        const cappedMessages = messages.slice(-MAX_THREAD_MESSAGES);
+        const existingMessageIndex = findMessageIndexForUpdate(thread.messages, message.id);
+        const messages =
+          existingMessageIndex >= 0
+            ? replaceMessageAtIndex(thread.messages, existingMessageIndex, (entry) => ({
+                ...entry,
+                text: message.streaming
+                  ? `${entry.text}${message.text}`
+                  : message.text.length > 0
+                    ? message.text
+                    : entry.text,
+                streaming: message.streaming,
+                ...(message.turnId !== undefined ? { turnId: message.turnId } : {}),
+                ...(message.streaming
+                  ? entry.completedAt !== undefined
+                    ? { completedAt: entry.completedAt }
+                    : {}
+                  : message.completedAt !== undefined
+                    ? { completedAt: message.completedAt }
+                    : {}),
+                ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+              }))
+            : [...thread.messages, message];
+        const cappedMessages = capThreadMessages(messages);
         const turnDiffSummaries =
           event.payload.role === "assistant" && event.payload.turnId !== null
             ? rebindTurnDiffSummariesForAssistantMessage(

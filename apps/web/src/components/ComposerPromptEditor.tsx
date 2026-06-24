@@ -78,6 +78,7 @@ import { formatProviderSkillDisplayName } from "~/providerSkillPresentation";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).slice(2)}`;
+const EMPTY_TERMINAL_CONTEXT_IDS: string[] = [];
 const SURROUND_SYMBOLS: [string, string][] = [
   ["(", ")"],
   ["[", "]"],
@@ -1450,6 +1451,23 @@ function ComposerPromptEditorInner({
     [onRemoveTerminalContext],
   );
 
+  const readTerminalContextIdsForSnapshot = useCallback(
+    (nextValue: string, previousIds: string[]) => {
+      if (terminalContexts.length === 0 && previousIds.length === 0) {
+        return EMPTY_TERMINAL_CONTEXT_IDS;
+      }
+      if (
+        terminalContexts.length === 0 &&
+        previousIds.length > 0 &&
+        !nextValue.includes(INLINE_TERMINAL_CONTEXT_PLACEHOLDER)
+      ) {
+        return EMPTY_TERMINAL_CONTEXT_IDS;
+      }
+      return collectTerminalContextIds($getRoot());
+    },
+    [terminalContexts.length],
+  );
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -1555,7 +1573,10 @@ function ComposerPromptEditorInner({
         nextValue,
         $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
       );
-      const terminalContextIds = collectTerminalContextIds($getRoot());
+      const terminalContextIds = readTerminalContextIdsForSnapshot(
+        nextValue,
+        snapshotRef.current.terminalContextIds,
+      );
       snapshot = {
         value: nextValue,
         cursor: nextCursor,
@@ -1603,7 +1624,10 @@ function ComposerPromptEditorInner({
         nextValue,
         $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
       );
-      const terminalContextIds = collectTerminalContextIds($getRoot());
+      const terminalContextIds = readTerminalContextIdsForSnapshot(
+        nextValue,
+        snapshotRef.current.terminalContextIds,
+      );
       const previousSnapshot = snapshotRef.current;
       if (
         previousSnapshot.value === nextValue &&

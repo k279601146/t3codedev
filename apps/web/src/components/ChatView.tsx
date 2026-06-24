@@ -48,6 +48,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
+import { setPerformanceModeActive } from "~/performanceMode";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
@@ -431,6 +432,18 @@ function resolveMarkdownPreviewTarget(
     workspaceRoot,
     filePath: filePath.replace(/^\.?[\\/]+/, ""),
   };
+}
+
+function joinConversationWorkspacePath(
+  conversationWorkspaceDir: string | null | undefined,
+  threadId: ThreadId | string | null | undefined,
+): string | undefined {
+  const normalizedRoot = conversationWorkspaceDir?.trim().replace(/[\\/]+$/u, "");
+  if (!normalizedRoot || !threadId) {
+    return undefined;
+  }
+  const separator = normalizedRoot.includes("\\") ? "\\" : "/";
+  return `${normalizedRoot}${separator}${String(threadId)}`;
 }
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
@@ -990,9 +1003,6 @@ export default function ChatView(props: ChatViewProps) {
   const composerInteractionMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.interactionMode ?? null,
   );
-  const composerPrompt = useComposerDraftStore(
-    (store) => store.getComposerDraft(composerDraftTarget)?.prompt ?? "",
-  );
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
@@ -1036,6 +1046,11 @@ export default function ChatView(props: ChatViewProps) {
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isComposerEmpty, setIsComposerEmpty] = useState(
+    () =>
+      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ?? "").trim()
+        .length === 0,
+  );
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [newThreadLauncherMode, setNewThreadLauncherMode] = useState<LauncherModeId>("general");
   const [optimisticUserMessages, setOptimisticUserMessagesState] = useState<ChatMessage[]>(
@@ -1065,6 +1080,15 @@ export default function ChatView(props: ChatViewProps) {
     },
     [routeThreadKey],
   );
+  const handleComposerEmptyChange = useCallback((nextIsEmpty: boolean) => {
+    setIsComposerEmpty((current) => (current === nextIsEmpty ? current : nextIsEmpty));
+  }, []);
+  useEffect(() => {
+    handleComposerEmptyChange(
+      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ?? "").trim()
+        .length === 0,
+    );
+  }, [composerDraftTarget, handleComposerEmptyChange]);
   const clearPendingSteerMessage = useCallback((options?: { revokePreviewUrls?: boolean }) => {
     setPendingSteerMessage((current) => {
       if (options?.revokePreviewUrls) {
@@ -1183,6 +1207,46 @@ export default function ChatView(props: ChatViewProps) {
   } | null>(null);
   const lastOpenedBrowserToolSequenceRef = useRef(0);
   const lastOpenedComputerToolSequenceRef = useRef(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+    let dragTimer: number | null = null;
+    const stopWindowDraggingMode = () => {
+      if (dragTimer !== null) {
+        window.clearTimeout(dragTimer);
+        dragTimer = null;
+      }
+      setPerformanceModeActive("window-dragging", false);
+    };
+    const startWindowDraggingMode = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return;
+      if (!event.target.closest(".drag-region")) return;
+      if (event.target.closest("button,input,textarea,select,a,[data-no-drag='true']")) return;
+      setPerformanceModeActive("window-dragging", true);
+      if (dragTimer !== null) {
+        window.clearTimeout(dragTimer);
+      }
+      dragTimer = window.setTimeout(stopWindowDraggingMode, 500);
+    };
+    const handleVisibilityChange = () => {
+      setPerformanceModeActive("background", document.hidden);
+    };
+    window.addEventListener("pointerdown", startWindowDraggingMode, true);
+    window.addEventListener("pointerup", stopWindowDraggingMode, true);
+    window.addEventListener("blur", stopWindowDraggingMode);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    handleVisibilityChange();
+    return () => {
+      window.removeEventListener("pointerdown", startWindowDraggingMode, true);
+      window.removeEventListener("pointerup", stopWindowDraggingMode, true);
+      window.removeEventListener("blur", stopWindowDraggingMode);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopWindowDraggingMode();
+      setPerformanceModeActive("background", false);
+    };
+  }, []);
 
   const terminalState = useTerminalStateStore((state) =>
     selectThreadTerminalState(state.terminalStateByThreadKey, routeThreadRef),
@@ -2306,7 +2370,12 @@ export default function ChatView(props: ChatViewProps) {
   }, [usageLimitBlock]);
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
-  const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeConversationWorkspaceRoot =
+    isConversationThread && activeThread
+      ? joinConversationWorkspacePath(serverConfig?.conversationWorkspaceDir, activeThread.id)
+      : undefined;
+  const activeWorkspaceRoot =
+    activeThreadWorktreePath ?? activeProjectCwd ?? activeConversationWorkspaceRoot ?? undefined;
   const activeTerminalLaunchContext =
     terminalLaunchContext?.threadId === activeThreadId
       ? terminalLaunchContext
@@ -5085,6 +5154,7 @@ export default function ChatView(props: ChatViewProps) {
         newThreadLauncherMode === "general" ? null : getLauncherModeLabel(newThreadLauncherMode)
       }
       onClearNewThreadMode={() => setNewThreadLauncherMode("general")}
+      onComposerEmptyChange={handleComposerEmptyChange}
       promptRef={promptRef}
       composerImagesRef={composerImagesRef}
       composerTerminalContextsRef={composerTerminalContextsRef}
@@ -5188,7 +5258,7 @@ export default function ChatView(props: ChatViewProps) {
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <NewThreadLauncherView
               mode={newThreadLauncherMode}
-              isComposerEmpty={composerPrompt.trim().length === 0}
+              isComposerEmpty={isComposerEmpty}
               projectName={!isConversationThread ? activeProject?.name : undefined}
               providerSkills={inlineDisplaySkills}
               composer={

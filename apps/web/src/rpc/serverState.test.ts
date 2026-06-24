@@ -80,6 +80,7 @@ const baseServerConfig: ServerConfig = {
     sessionCookieName: "t3_session",
   },
   cwd: "/tmp/workspace",
+  conversationWorkspaceDir: "/tmp/workspace/.t3/conversation-workspace",
   keybindingsConfigPath: "/tmp/workspace/.config/keybindings.json",
   keybindings: [],
   issues: [],

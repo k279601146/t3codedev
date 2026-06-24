@@ -680,6 +680,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           environment,
           auth,
           cwd: config.cwd,
+          conversationWorkspaceDir: config.conversationWorkspaceDir,
           keybindingsConfigPath: config.keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
           issues: keybindingsConfig.issues,

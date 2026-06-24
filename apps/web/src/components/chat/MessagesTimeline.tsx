@@ -78,6 +78,7 @@ import {
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
+import { setPerformanceModeActive } from "~/performanceMode";
 import { readEnvironmentApi } from "../../environmentApi";
 import { readLocalApi } from "../../localApi";
 import { revealFileInFolder } from "../../lib/openContainingFolder";
@@ -138,6 +139,7 @@ interface TimelineRowSharedState {
   /** Resolves the LegendList scroll container — used by the summary
    *  toggle to keep the button visually pinned across expand/collapse. */
   getScrollContainer: () => HTMLElement | null;
+  isScrolling: boolean;
 }
 
 interface TimelineRowActivityState {
@@ -321,6 +323,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollingEndTimerRef = useRef<number | null>(null);
 
   const getScrollContainer = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -339,9 +343,33 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const handleScroll = useCallback(() => {
     const target = getScrollContainer();
     if (!target) return;
+    setIsScrolling(true);
+    if (scrollingEndTimerRef.current !== null) {
+      window.clearTimeout(scrollingEndTimerRef.current);
+    }
+    scrollingEndTimerRef.current = window.setTimeout(() => {
+      scrollingEndTimerRef.current = null;
+      setIsScrolling(false);
+    }, 160);
     const isAtEnd = target.scrollHeight - target.scrollTop - target.clientHeight < 10;
     onIsAtEndChange(isAtEnd);
   }, [onIsAtEndChange, getScrollContainer]);
+
+  useEffect(() => {
+    setPerformanceModeActive("scrolling", isScrolling);
+    return () => {
+      setPerformanceModeActive("scrolling", false);
+    };
+  }, [isScrolling]);
+
+  useEffect(
+    () => () => {
+      if (scrollingEndTimerRef.current !== null) {
+        window.clearTimeout(scrollingEndTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const previousRowCountRef = useRef(rows.length);
   useEffect(() => {
@@ -411,6 +439,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
       getScrollContainer,
+      isScrolling,
     }),
     [
       timestampFormat,
@@ -437,6 +466,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
       getScrollContainer,
+      isScrolling,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1164,18 +1194,25 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
+  const shouldRenderLiteMarkdown = ctx.isScrolling && messageText.length > 1200;
 
   return (
     <>
       {row.showSteerMarkerBefore ? <SteerConversationMarker /> : null}
       <div className="min-w-0 py-0.5">
-        <ChatMarkdown
-          text={messageText}
-          cwd={ctx.markdownCwd}
-          isStreaming={Boolean(row.message.streaming)}
-          skills={ctx.skills}
-          onOpenFile={ctx.onOpenMarkdownFile}
-        />
+        {shouldRenderLiteMarkdown ? (
+          <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
+            {messageText}
+          </div>
+        ) : (
+          <ChatMarkdown
+            text={messageText}
+            cwd={ctx.markdownCwd}
+            isStreaming={Boolean(row.message.streaming)}
+            skills={ctx.skills}
+            onOpenFile={ctx.onOpenMarkdownFile}
+          />
+        )}
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           workspaceRoot={ctx.workspaceRoot}
