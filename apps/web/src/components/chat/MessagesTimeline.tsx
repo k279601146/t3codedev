@@ -17,7 +17,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
 import { type TurnDiffSummary } from "../../types";
 import { getPatchDisplayPath, parseUnifiedDiff, type UnifiedDiffLine } from "../../lib/unifiedDiff";
@@ -102,9 +101,9 @@ import {
 } from "../../markdown-links";
 
 // ---------------------------------------------------------------------------
-// Context — shared state consumed by every row component via useContext.
-// Propagates through LegendList's memo boundaries for shared callbacks and
-// non-row-scoped state. `nowIso` is intentionally excluded — self-ticking
+// Context shared by transcript rows. Row-scoped data stays on the row props;
+// callbacks and non-row state live here so memoized rows are not rebuilt by
+// scroll events. `nowIso` is intentionally excluded because self-ticking
 // components (WorkingTimer, LiveElapsed) handle it.
 // ---------------------------------------------------------------------------
 
@@ -137,8 +136,7 @@ interface TimelineRowSharedState {
   /** 首个过程成员行 → 成果 owner；开关渲染在这个成员行上方。 */
   summaryButtonHostByRowId: ReadonlyMap<string, string>;
   toggleAssistantTurnCollapsed: (assistantMessageId: string) => void;
-  /** Resolves the LegendList scroll container — used by the summary
-   *  toggle to keep the button visually pinned across expand/collapse. */
+  /** Resolves the transcript scroller for viewport-pinned summary toggles. */
   getScrollContainer: () => HTMLElement | null;
 }
 
@@ -168,7 +166,7 @@ interface MessagesTimelineProps {
   activeTurnInProgress: boolean;
   activeTurnId?: TurnId | null;
   activeTurnStartedAt: string | null;
-  listRef: React.RefObject<LegendListRef | null>;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
@@ -194,6 +192,9 @@ interface MessagesTimelineProps {
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   onIsAtEndChange: (isAtEnd: boolean) => void;
   isLoadingHistory?: boolean;
+  hasMoreBefore?: boolean;
+  isLoadingBefore?: boolean;
+  onLoadMoreBefore?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +206,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnInProgress,
   activeTurnId,
   activeTurnStartedAt,
-  listRef,
+  scrollRef,
   timelineEntries,
   completionDividerBeforeEntryId,
   completionSummary,
@@ -231,6 +232,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   skills = EMPTY_TIMELINE_SKILLS,
   onIsAtEndChange,
   isLoadingHistory = false,
+  hasMoreBefore = false,
+  isLoadingBefore = false,
+  onLoadMoreBefore,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
     () =>
@@ -315,31 +319,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     summaryAssistantMessageIds,
   ]);
 
-  /** Don't filter — we let collapsed member rows stay in the row list and
-   *  animate their height to zero in CSS. Removing them entirely would
-   *  cause LegendList to recycle/re-measure rows abruptly, which is what
-   *  felt jumpy. */
+  /** Keep collapsed member rows in the DOM and animate their height to zero.
+   *  Removing them entirely would shift the transcript while the user reads. */
   const rows = stableRows;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isScrollingRef = useRef(false);
   const scrollingEndTimerRef = useRef<number | null>(null);
   const scrollMeasureFrameRef = useRef<number | null>(null);
+  const pendingPrependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
 
   const getScrollContainer = useCallback(() => {
-    if (scrollContainerRef.current) {
-      return scrollContainerRef.current;
-    }
-    if (containerRef.current) {
-      const el = containerRef.current.querySelector(".overflow-y-auto") as HTMLDivElement | null;
-      if (el) {
-        scrollContainerRef.current = el;
-      }
-      return el;
-    }
-    return null;
-  }, []);
+    return scrollRef.current;
+  }, [scrollRef]);
 
   const handleScroll = useCallback(() => {
     const target = getScrollContainer();
@@ -365,9 +357,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         if (!scrollEl) return;
         const isAtEnd = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 10;
         onIsAtEndChange(isAtEnd);
+        if (
+          hasMoreBefore &&
+          !isLoadingBefore &&
+          onLoadMoreBefore &&
+          scrollEl.scrollTop < 240
+        ) {
+          pendingPrependAnchorRef.current = {
+            scrollHeight: scrollEl.scrollHeight,
+            scrollTop: scrollEl.scrollTop,
+          };
+          onLoadMoreBefore();
+        }
       });
     }
-  }, [onIsAtEndChange, getScrollContainer]);
+  }, [hasMoreBefore, isLoadingBefore, onIsAtEndChange, onLoadMoreBefore, getScrollContainer]);
 
   useEffect(
     () => () => {
@@ -386,23 +390,47 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
+  const didInitialScrollRef = useRef(false);
   const previousRowCountRef = useRef(rows.length);
   useEffect(() => {
     const previousRowCount = previousRowCountRef.current;
     previousRowCountRef.current = rows.length;
 
-    if (previousRowCount > 0 || rows.length === 0) {
+    const shouldScrollToInitialEnd =
+      !didInitialScrollRef.current && rows.length > 0 && !pendingPrependAnchorRef.current;
+    const shouldScrollAfterEmptyLoad = previousRowCount === 0 && rows.length > 0;
+    if (!shouldScrollToInitialEnd && !shouldScrollAfterEmptyLoad) {
       return;
     }
+    didInitialScrollRef.current = true;
 
     onIsAtEndChange(true);
     const frameId = window.requestAnimationFrame(() => {
-      void listRef.current?.scrollToEnd?.({ animated: false });
+      const scrollEl = getScrollContainer();
+      if (scrollEl) {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      }
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [listRef, onIsAtEndChange, rows.length]);
+  }, [getScrollContainer, onIsAtEndChange, rows.length]);
+
+  useEffect(() => {
+    const anchor = pendingPrependAnchorRef.current;
+    if (!anchor || isLoadingBefore) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const scrollEl = getScrollContainer();
+      if (!scrollEl) return;
+      scrollEl.scrollTop = scrollEl.scrollHeight - anchor.scrollHeight + anchor.scrollTop;
+      pendingPrependAnchorRef.current = null;
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [getScrollContainer, isLoadingBefore, rows.length]);
 
   const lastRow = rows.at(-1) ?? null;
   useEffect(() => {
@@ -421,12 +449,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      void listRef.current?.scrollToEnd?.({ animated: false });
+      const nextScrollEl = getScrollContainer();
+      if (nextScrollEl) {
+        nextScrollEl.scrollTop = nextScrollEl.scrollHeight;
+      }
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeTurnInProgress, lastRow, listRef, onIsAtEndChange, getScrollContainer]);
+  }, [activeTurnInProgress, lastRow, onIsAtEndChange, getScrollContainer]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -493,20 +524,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [activeTurnInProgress, activeTurnId, completionSummary, isRevertingCheckpoint, isWorking],
   );
 
-  // Stable renderItem — no closure deps. Row components read shared state
-  // from TimelineRowCtx, which propagates through LegendList's memo.
-  const renderItem = useCallback(
-    ({ item }: { item: MessagesTimelineRow }) => (
-      <div
-        className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip"
-        data-timeline-root="true"
-      >
-        <TimelineRowContent row={item} />
-      </div>
-    ),
-    [],
-  );
-
+  // Rows read shared state from context; scroll state is kept outside rows.
   if (rows.length === 0 && isLoadingHistory) {
     return <MessagesTimelineHistorySkeleton />;
   }
@@ -529,21 +547,44 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           ref={containerRef}
           className="h-full min-h-0 w-full min-w-0 flex-1 bg-white dark:bg-background"
         >
-          <LegendList<MessagesTimelineRow>
-            ref={listRef}
-            data={rows}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            estimatedItemSize={90}
-            initialScrollAtEnd
-            maintainScrollAtEnd
-            maintainScrollAtEndThreshold={0.1}
-            maintainVisibleContentPosition
+          <div
+            ref={scrollRef}
             onScroll={handleScroll}
             className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
-            ListHeaderComponent={TIMELINE_LIST_HEADER}
-            ListFooterComponent={TIMELINE_LIST_FOOTER}
-          />
+          >
+            {TIMELINE_LIST_HEADER}
+            {hasMoreBefore ? (
+              <div className="mx-auto flex w-full max-w-[736px] justify-center py-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs transition-colors hover:border-border hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  disabled={isLoadingBefore}
+                  onClick={() => {
+                    const scrollEl = getScrollContainer();
+                    if (scrollEl) {
+                      pendingPrependAnchorRef.current = {
+                        scrollHeight: scrollEl.scrollHeight,
+                        scrollTop: scrollEl.scrollTop,
+                      };
+                    }
+                    onLoadMoreBefore?.();
+                  }}
+                >
+                  {isLoadingBefore ? "加载中..." : "加载更早记录"}
+                </button>
+              </div>
+            ) : null}
+            {rows.map((row) => (
+              <div
+                key={keyExtractor(row)}
+                className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [content-visibility:auto] [contain-intrinsic-size:120px]"
+                data-timeline-root="true"
+              >
+                <TimelineRowContent row={row} />
+              </div>
+            ))}
+            {TIMELINE_LIST_FOOTER}
+          </div>
         </div>
       </TimelineRowActivityCtx.Provider>
     </TimelineRowCtx.Provider>
@@ -670,9 +711,8 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   // Keep the toggle button visually pinned at its current viewport
   // position across the expand/collapse animation. The content grows
   // (or collapses) below it instead of pushing the button out of view.
-  // We retry the alignment for several frames because LegendList's
-  // `maintainVisibleContentPosition` runs after its own commit and can
-  // otherwise overwrite our scrollTop adjustment.
+  // We retry the alignment for several frames because async row content can
+  // settle after the first commit and otherwise move the toggle.
   const handleToggle = useCallback(() => {
     const button = buttonRef.current;
     const container = ctx.getScrollContainer();
@@ -2447,7 +2487,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
 // ---------------------------------------------------------------------------
 // Structural sharing — reuse old row references when data hasn't changed
-// so LegendList (and React) can skip re-rendering unchanged items.
+// so React can skip re-rendering unchanged transcript rows.
 // ---------------------------------------------------------------------------
 
 /** Returns a structurally-shared copy of `rows`: for each row whose content

@@ -14,6 +14,8 @@ import type {
   OrchestrationReadModel,
   OrchestrationShellSnapshot,
   OrchestrationThread,
+  OrchestrationGetThreadHistoryPageResult,
+  OrchestrationThreadHistoryWindow,
   OrchestrationThreadShell,
   ProjectId,
   ThreadId,
@@ -48,6 +50,11 @@ export interface ProjectionFullThreadDiffContext {
   readonly worktreePath: string | null;
   readonly latestCheckpointTurnCount: number;
   readonly toCheckpointRef: CheckpointRef | null;
+}
+
+export interface ProjectionThreadDetailWindow {
+  readonly thread: OrchestrationThread;
+  readonly historyWindow: OrchestrationThreadHistoryWindow;
 }
 
 /**
@@ -157,6 +164,20 @@ export interface ProjectionSnapshotQueryShape {
   readonly getThreadDetailById: (
     threadId: ThreadId,
   ) => Effect.Effect<Option.Option<OrchestrationThread>, ProjectionRepositoryError>;
+
+  readonly getThreadDetailWindowByTurns?: (
+    threadId: ThreadId,
+    limitTurns: number,
+  ) => Effect.Effect<Option.Option<ProjectionThreadDetailWindow>, ProjectionRepositoryError>;
+
+  readonly getThreadHistoryPageBeforeCursor?: (
+    threadId: ThreadId,
+    beforeCursor: string | null,
+    limitTurns: number,
+  ) => Effect.Effect<
+    Option.Option<OrchestrationGetThreadHistoryPageResult>,
+    ProjectionRepositoryError
+  >;
 }
 
 /**

@@ -306,6 +306,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               planId: "plan-1",
             },
           },
+          goal: null,
           createdAt: "2026-02-24T00:00:02.000Z",
           updatedAt: "2026-02-24T00:00:03.000Z",
           archivedAt: null,
@@ -419,6 +420,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           createdAt: "2026-02-24T00:00:02.000Z",
           updatedAt: "2026-02-24T00:00:03.000Z",
           archivedAt: null,
+          goal: null,
           session: {
             threadId: ThreadId.make("thread-1"),
             status: "running",
@@ -439,6 +441,20 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
       assert.equal(threadDetail._tag, "Some");
       if (threadDetail._tag === "Some") {
         assert.deepEqual(threadDetail.value, snapshot.threads[0]);
+      }
+      assert.ok(snapshotQuery.getThreadDetailWindowByTurns);
+      const threadWindow = yield* snapshotQuery.getThreadDetailWindowByTurns(
+        ThreadId.make("thread-1"),
+        40,
+      );
+      assert.equal(threadWindow._tag, "Some");
+      if (threadWindow._tag === "Some") {
+        assert.deepEqual(threadWindow.value.thread, snapshot.threads[0]);
+        assert.equal(threadWindow.value.historyWindow.mode, "turn-window");
+        assert.equal(threadWindow.value.historyWindow.oldestCursor?.startsWith("2026-02-24"), true);
+        assert.equal(threadWindow.value.historyWindow.hasMoreBefore, false);
+        assert.equal(threadWindow.value.historyWindow.loadedTurnCount, 1);
+        assert.equal(threadWindow.value.historyWindow.limitTurns, 40);
       }
     }),
   );
@@ -1133,6 +1149,22 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             NULL,
             NULL,
             '[]'
+          ),
+          (
+            'thread-1',
+            'turn-after-running',
+            'message-user-3',
+            NULL,
+            NULL,
+            'message-assistant-3',
+            'completed',
+            '2026-04-02T00:00:40.000Z',
+            '2026-04-02T00:00:40.000Z',
+            '2026-04-02T00:00:45.000Z',
+            NULL,
+            NULL,
+            NULL,
+            '[]'
           )
       `;
 
@@ -1150,6 +1182,21 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         assert.equal(threadDetail.value.latestTurn?.turnId, asTurnId("turn-running"));
         assert.equal(threadDetail.value.latestTurn?.state, "running");
         assert.equal(threadDetail.value.latestTurn?.startedAt, "2026-04-02T00:00:30.000Z");
+      }
+
+      assert.ok(snapshotQuery.getThreadDetailWindowByTurns);
+      const threadWindow = yield* snapshotQuery.getThreadDetailWindowByTurns(
+        ThreadId.make("thread-1"),
+        1,
+      );
+      assert.equal(threadWindow._tag, "Some");
+      if (threadWindow._tag === "Some") {
+        assert.deepEqual(
+          threadWindow.value.thread.latestTurn,
+          threadDetail._tag === "Some" ? threadDetail.value.latestTurn : null,
+        );
+        assert.equal(threadWindow.value.historyWindow.loadedTurnCount, 2);
+        assert.equal(threadWindow.value.historyWindow.oldestCursor?.startsWith("2026-04-02T00:00:40.000Z"), true);
       }
     }),
   );

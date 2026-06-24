@@ -174,6 +174,7 @@ function makeState(thread: Thread): AppState {
         thread.turnDiffSummaries.map((summary) => [summary.turnId, summary] as const),
       ) as EnvironmentState["turnDiffSummaryByThreadId"][ThreadId],
     },
+    threadHistoryStateById: {},
     sidebarThreadSummaryById: {},
     bootstrapComplete: true,
   };
@@ -199,6 +200,7 @@ function makeEmptyState(overrides: Partial<AppState & EnvironmentState> = {}): A
     proposedPlanByThreadId: {},
     turnDiffIdsByThreadId: {},
     turnDiffSummaryByThreadId: {},
+    threadHistoryStateById: {},
     sidebarThreadSummaryById: {},
     bootstrapComplete: true,
   };

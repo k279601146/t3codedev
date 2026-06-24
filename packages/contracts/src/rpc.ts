@@ -747,6 +747,15 @@ export const WsOrchestrationGetFullThreadDiffRpc = Rpc.make(
   },
 );
 
+export const WsOrchestrationGetThreadHistoryPageRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.getThreadHistoryPage,
+  {
+    payload: OrchestrationRpcSchemas.getThreadHistoryPage.input,
+    success: OrchestrationRpcSchemas.getThreadHistoryPage.output,
+    error: OrchestrationGetSnapshotError,
+  },
+);
+
 export const WsOrchestrationListThreadTurnsRpc = Rpc.make(
   ORCHESTRATION_WS_METHODS.listThreadTurns,
   {
@@ -902,6 +911,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
+  WsOrchestrationGetThreadHistoryPageRpc,
   WsOrchestrationListThreadTurnsRpc,
   WsOrchestrationListThreadTurnItemsRpc,
   WsOrchestrationReplayEventsRpc,

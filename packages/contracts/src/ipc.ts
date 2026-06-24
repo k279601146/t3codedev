@@ -82,6 +82,8 @@ import type {
   ClientOrchestrationCommand,
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetFullThreadDiffResult,
+  OrchestrationGetThreadHistoryPageInput,
+  OrchestrationGetThreadHistoryPageResult,
   OrchestrationGetTurnDiffInput,
   OrchestrationGetTurnDiffResult,
   OrchestrationListThreadTurnItemsInput,
@@ -907,6 +909,9 @@ export interface EnvironmentApi {
     getFullThreadDiff: (
       input: OrchestrationGetFullThreadDiffInput,
     ) => Promise<OrchestrationGetFullThreadDiffResult>;
+    getThreadHistoryPage: (
+      input: OrchestrationGetThreadHistoryPageInput,
+    ) => Promise<OrchestrationGetThreadHistoryPageResult>;
     listThreadTurns: (
       input: OrchestrationListThreadTurnsInput,
     ) => Promise<OrchestrationListThreadTurnsResult>;

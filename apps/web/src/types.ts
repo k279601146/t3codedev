@@ -126,6 +126,12 @@ export interface Thread {
   worktreePath: string | null;
   turnDiffSummaries: TurnDiffSummary[];
   activities: OrchestrationThreadActivity[];
+  isPartialHistory?: boolean | undefined;
+  oldestCursor?: string | null | undefined;
+  hasMoreBefore?: boolean | undefined;
+  isLoadingBefore?: boolean | undefined;
+  loadedTurnCount?: number | undefined;
+  limitTurns?: number | undefined;
 }
 
 export interface ThreadShell {

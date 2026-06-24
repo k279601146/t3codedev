@@ -107,6 +107,7 @@ const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchComma
 const isWorkspacePathOutsideRootError = Schema.is(WorkspacePathOutsideRootError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+const RECENT_THREAD_HISTORY_LIMIT_TURNS = 40;
 
 function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
   OrchestrationEvent,
@@ -818,6 +819,42 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             ),
             { "rpc.aggregate": "orchestration" },
           ),
+        [ORCHESTRATION_WS_METHODS.getThreadHistoryPage]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getThreadHistoryPage,
+            Effect.gen(function* () {
+              const getHistoryPage = projectionSnapshotQuery.getThreadHistoryPageBeforeCursor;
+              if (!getHistoryPage) {
+                return yield* new OrchestrationGetSnapshotError({
+                  message: "Projection snapshot query does not support paged thread history",
+                });
+              }
+              return yield* getHistoryPage(
+                input.threadId,
+                input.beforeCursor,
+                input.limitTurns ?? RECENT_THREAD_HISTORY_LIMIT_TURNS,
+              ).pipe(
+                Effect.flatMap((result) =>
+                  Option.isSome(result)
+                    ? Effect.succeed(result.value)
+                    : Effect.fail(
+                        new OrchestrationGetSnapshotError({
+                          message: `Thread ${input.threadId} was not found`,
+                          cause: input.threadId,
+                        }),
+                      ),
+                ),
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationGetSnapshotError({
+                      message: `Failed to load thread history page for ${input.threadId}`,
+                      cause,
+                    }),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [ORCHESTRATION_WS_METHODS.listThreadTurns]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.listThreadTurns,
@@ -936,6 +973,68 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeThread,
             Effect.gen(function* () {
+              if (input.initialDetailMode === "recent") {
+                const getThreadDetailWindow = projectionSnapshotQuery.getThreadDetailWindowByTurns;
+                if (!getThreadDetailWindow) {
+                  return yield* new OrchestrationGetSnapshotError({
+                    message: "Projection snapshot query does not support recent thread history",
+                  });
+                }
+                const [threadDetail, snapshotSequence] = yield* Effect.all([
+                  getThreadDetailWindow(input.threadId, RECENT_THREAD_HISTORY_LIMIT_TURNS).pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new OrchestrationGetSnapshotError({
+                            message: `Failed to load recent thread ${input.threadId}`,
+                            cause,
+                          }),
+                      ),
+                    ),
+                  projectionSnapshotQuery.getSnapshotSequence().pipe(
+                    Effect.map(({ snapshotSequence }) => snapshotSequence),
+                    Effect.mapError(
+                      (cause) =>
+                        new OrchestrationGetSnapshotError({
+                          message: "Failed to load orchestration snapshot sequence",
+                          cause,
+                        }),
+                    ),
+                  ),
+                ]);
+
+                if (Option.isNone(threadDetail)) {
+                  return yield* new OrchestrationGetSnapshotError({
+                    message: `Thread ${input.threadId} was not found`,
+                    cause: input.threadId,
+                  });
+                }
+
+                const liveStream = orchestrationEngine.streamDomainEvents.pipe(
+                  Stream.filter(
+                    (event) =>
+                      event.aggregateKind === "thread" &&
+                      event.aggregateId === input.threadId &&
+                      isThreadDetailEvent(event),
+                  ),
+                  Stream.map((event) => ({
+                    kind: "event" as const,
+                    event,
+                  })),
+                );
+
+                return Stream.concat(
+                  Stream.make({
+                    kind: "snapshot" as const,
+                    snapshot: {
+                      snapshotSequence,
+                      thread: threadDetail.value.thread,
+                      historyWindow: threadDetail.value.historyWindow,
+                    },
+                  }),
+                  liveStream,
+                );
+              }
+
               if (input.initialDetailMode === "shell") {
                 const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
                   Effect.mapError(

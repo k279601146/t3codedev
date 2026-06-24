@@ -88,7 +88,7 @@ type EnvironmentServiceState = {
 type ThreadDetailSubscriptionEntry = {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
-  detailMode: "full" | "shell";
+  detailMode: "full" | "shell" | "recent";
   unsubscribe: () => void;
   unsubscribeConnectionListener: (() => void) | null;
   refCount: number;
@@ -380,7 +380,13 @@ function attachThreadDetailSubscription(entry: ThreadDetailSubscriptionEntry): b
     { threadId: entry.threadId, initialDetailMode: entry.detailMode },
     (item) => {
       if (item.kind === "snapshot") {
-        useStore.getState().syncServerThreadDetail(item.snapshot.thread, entry.environmentId);
+        useStore
+          .getState()
+          .syncServerThreadDetail(
+            item.snapshot.thread,
+            entry.environmentId,
+            item.snapshot.historyWindow,
+          );
         return;
       }
       applyEnvironmentThreadDetailEvent(item.event, entry.environmentId);
@@ -391,9 +397,9 @@ function attachThreadDetailSubscription(entry: ThreadDetailSubscriptionEntry): b
 
 function upgradeThreadDetailSubscription(
   entry: ThreadDetailSubscriptionEntry,
-  detailMode: "full" | "shell",
+  detailMode: "full" | "shell" | "recent",
 ): void {
-  if (entry.detailMode === "full" || detailMode === "shell") {
+  if (entry.detailMode === "full" || detailMode !== "full") {
     return;
   }
 
@@ -552,7 +558,7 @@ function reconcileThreadDetailSubscriptionEvictionForEnvironment(
 export function retainThreadDetailSubscription(
   environmentId: EnvironmentId,
   threadId: ThreadId,
-  options: { readonly initialDetailMode?: "full" | "shell" } = {},
+  options: { readonly initialDetailMode?: "full" | "shell" | "recent" } = {},
 ): () => void {
   const key = getThreadDetailSubscriptionKey(environmentId, threadId);
   const detailMode = options.initialDetailMode ?? "full";

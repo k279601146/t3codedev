@@ -12,6 +12,8 @@ import type {
   OrchestrationSession,
   OrchestrationSessionStatus,
   OrchestrationThread,
+  OrchestrationGetThreadHistoryPageResult,
+  OrchestrationThreadHistoryWindow,
   OrchestrationThreadShell,
   OrchestrationThreadActivity,
   ProjectId,
@@ -35,6 +37,7 @@ import {
   type TurnDiffSummary,
 } from "./types";
 import { resolveEnvironmentHttpUrl } from "./environments/runtime";
+import { ensureEnvironmentApi } from "./environmentApi";
 import { sanitizeThreadErrorMessage } from "./rpc/transportError";
 import { getThreadFromEnvironmentState } from "./threadDerivation";
 const isProviderDriverKindValue = Schema.is(ProviderDriverKind);
@@ -77,6 +80,7 @@ export interface EnvironmentState {
   proposedPlanByThreadId: Record<ThreadId, Record<string, ProposedPlan>>;
   turnDiffIdsByThreadId: Record<ThreadId, TurnId[]>;
   turnDiffSummaryByThreadId: Record<ThreadId, Record<TurnId, TurnDiffSummary>>;
+  threadHistoryStateById: Record<ThreadId, ThreadHistoryState>;
 
   // ---------------------------------------------------------------------------
   // Sidebar summary — written ONLY by the shell stream
@@ -95,6 +99,15 @@ export interface AppState {
   environmentStateById: Record<string, EnvironmentState>;
 }
 
+export interface ThreadHistoryState {
+  readonly isPartialHistory: boolean;
+  readonly oldestCursor: string | null;
+  readonly hasMoreBefore: boolean;
+  readonly isLoadingBefore: boolean;
+  readonly loadedTurnCount: number;
+  readonly limitTurns: number;
+}
+
 const initialEnvironmentState: EnvironmentState = {
   projectIds: [],
   projectById: {},
@@ -111,6 +124,7 @@ const initialEnvironmentState: EnvironmentState = {
   proposedPlanByThreadId: {},
   turnDiffIdsByThreadId: {},
   turnDiffSummaryByThreadId: {},
+  threadHistoryStateById: {},
   sidebarThreadSummaryById: {},
   bootstrapComplete: false,
 };
@@ -128,6 +142,22 @@ const EMPTY_THREAD_IDS: ThreadId[] = [];
 
 function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function threadHistoryStatesEqual(
+  left: ThreadHistoryState | undefined,
+  right: ThreadHistoryState | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.isPartialHistory === right.isPartialHistory &&
+    left.oldestCursor === right.oldestCursor &&
+    left.hasMoreBefore === right.hasMoreBefore &&
+    left.isLoadingBefore === right.isLoadingBefore &&
+    left.loadedTurnCount === right.loadedTurnCount &&
+    left.limitTurns === right.limitTurns
+  );
 }
 
 // Accepts the open `instanceId` string carried on `ModelSelection`; malformed
@@ -185,6 +215,22 @@ function mapMessage(environmentId: EnvironmentId, message: OrchestrationMessage)
   };
 }
 
+function mapThreadHistoryState(
+  historyWindow: OrchestrationThreadHistoryWindow | undefined,
+): ThreadHistoryState | undefined {
+  if (!historyWindow) {
+    return undefined;
+  }
+  return {
+    isPartialHistory: true,
+    oldestCursor: historyWindow.oldestCursor,
+    hasMoreBefore: historyWindow.hasMoreBefore,
+    isLoadingBefore: false,
+    loadedTurnCount: historyWindow.loadedTurnCount,
+    limitTurns: historyWindow.limitTurns,
+  };
+}
+
 function replaceMessageAtIndex(
   messages: ReadonlyArray<ChatMessage>,
   index: number,
@@ -212,6 +258,41 @@ function findMessageIndexForUpdate(
 
 function capThreadMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.length > MAX_THREAD_MESSAGES ? messages.slice(-MAX_THREAD_MESSAGES) : messages;
+}
+
+function mergePrependById<T extends { id: string }>(older: ReadonlyArray<T>, current: ReadonlyArray<T>): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of older) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  for (const item of current) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  return result;
+}
+
+function mergePrependTurnDiffSummaries(
+  older: ReadonlyArray<TurnDiffSummary>,
+  current: ReadonlyArray<TurnDiffSummary>,
+): TurnDiffSummary[] {
+  const seen = new Set<TurnId>();
+  const result: TurnDiffSummary[] = [];
+  for (const item of older) {
+    if (seen.has(item.turnId)) continue;
+    seen.add(item.turnId);
+    result.push(item);
+  }
+  for (const item of current) {
+    if (seen.has(item.turnId)) continue;
+    seen.add(item.turnId);
+    result.push(item);
+  }
+  return result;
 }
 
 function mapProposedPlan(proposedPlan: OrchestrationProposedPlan): ProposedPlan {
@@ -259,7 +340,12 @@ function mapProject(
   };
 }
 
-function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): Thread {
+function mapThread(
+  thread: OrchestrationThread,
+  environmentId: EnvironmentId,
+  historyWindow?: OrchestrationThreadHistoryWindow,
+): Thread {
+  const historyState = mapThreadHistoryState(historyWindow);
   return {
     id: thread.id,
     environmentId,
@@ -283,6 +369,16 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     worktreePath: thread.worktreePath,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map((activity) => ({ ...activity })),
+    ...(historyState
+      ? {
+          isPartialHistory: historyState.isPartialHistory,
+          oldestCursor: historyState.oldestCursor,
+          hasMoreBefore: historyState.hasMoreBefore,
+          isLoadingBefore: historyState.isLoadingBefore,
+          loadedTurnCount: historyState.loadedTurnCount,
+          limitTurns: historyState.limitTurns,
+        }
+      : {}),
   };
 }
 
@@ -725,6 +821,34 @@ function writeThreadState(
     };
   }
 
+  const nextHistoryState =
+    nextThread.isPartialHistory !== undefined
+      ? {
+          isPartialHistory: nextThread.isPartialHistory,
+          oldestCursor: nextThread.oldestCursor ?? null,
+          hasMoreBefore: nextThread.hasMoreBefore ?? false,
+          isLoadingBefore: nextThread.isLoadingBefore ?? false,
+          loadedTurnCount: nextThread.loadedTurnCount ?? 0,
+          limitTurns: nextThread.limitTurns ?? 40,
+        }
+      : undefined;
+  const previousHistoryState = nextState.threadHistoryStateById[nextThread.id];
+  if (nextHistoryState && !threadHistoryStatesEqual(previousHistoryState, nextHistoryState)) {
+    nextState = {
+      ...nextState,
+      threadHistoryStateById: {
+        ...nextState.threadHistoryStateById,
+        [nextThread.id]: nextHistoryState,
+      },
+    };
+  } else if (!nextHistoryState && previousHistoryState) {
+    const { [nextThread.id]: _removed, ...rest } = nextState.threadHistoryStateById;
+    nextState = {
+      ...nextState,
+      threadHistoryStateById: rest,
+    };
+  }
+
   return nextState;
 }
 
@@ -1139,6 +1263,7 @@ function syncEnvironmentShellSnapshot(
       state.turnDiffSummaryByThreadId,
       nextThreadIds,
     ),
+    threadHistoryStateById: retainThreadScopedRecord(state.threadHistoryStateById, nextThreadIds),
     bootstrapComplete: true,
   };
 
@@ -1169,13 +1294,73 @@ export function syncServerThreadDetail(
   state: AppState,
   thread: OrchestrationThread,
   environmentId: EnvironmentId,
+  historyWindow?: OrchestrationThreadHistoryWindow,
 ): AppState {
   const environmentState = getStoredEnvironmentState(state, environmentId);
   const previousThread = getThreadFromEnvironmentState(environmentState, thread.id);
   return commitEnvironmentState(
     state,
     environmentId,
-    writeThreadState(environmentState, mapThread(thread, environmentId), previousThread),
+    writeThreadState(environmentState, mapThread(thread, environmentId, historyWindow), previousThread),
+  );
+}
+
+function setThreadHistoryLoadingBefore(
+  state: AppState,
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  isLoadingBefore: boolean,
+): AppState {
+  const environmentState = getStoredEnvironmentState(state, environmentId);
+  const previous = environmentState.threadHistoryStateById[threadId];
+  if (!previous || previous.isLoadingBefore === isLoadingBefore) {
+    return state;
+  }
+  return commitEnvironmentState(state, environmentId, {
+    ...environmentState,
+    threadHistoryStateById: {
+      ...environmentState.threadHistoryStateById,
+      [threadId]: {
+        ...previous,
+        isLoadingBefore,
+      },
+    },
+  });
+}
+
+export function mergeOlderThreadHistoryPage(
+  state: AppState,
+  environmentId: EnvironmentId,
+  page: OrchestrationGetThreadHistoryPageResult,
+): AppState {
+  const environmentState = getStoredEnvironmentState(state, environmentId);
+  const previousThread = getThreadFromEnvironmentState(environmentState, page.thread.id);
+  if (!previousThread) {
+    return syncServerThreadDetail(state, page.thread, environmentId, page.historyWindow);
+  }
+  const olderThread = mapThread(page.thread, environmentId, page.historyWindow);
+  const nextThread: Thread = {
+    ...previousThread,
+    messages: mergePrependById(olderThread.messages, previousThread.messages),
+    activities: mergePrependById(olderThread.activities, previousThread.activities),
+    proposedPlans: mergePrependById(olderThread.proposedPlans, previousThread.proposedPlans),
+    turnDiffSummaries: mergePrependTurnDiffSummaries(
+      olderThread.turnDiffSummaries,
+      previousThread.turnDiffSummaries,
+    ),
+    isPartialHistory: true,
+    oldestCursor: page.historyWindow.oldestCursor,
+    hasMoreBefore: page.historyWindow.hasMoreBefore,
+    isLoadingBefore: false,
+    loadedTurnCount:
+      (previousThread.loadedTurnCount ?? previousThread.messages.length) +
+      page.historyWindow.loadedTurnCount,
+    limitTurns: page.historyWindow.limitTurns,
+  };
+  return commitEnvironmentState(
+    state,
+    environmentId,
+    writeThreadState(environmentState, nextThread, previousThread),
   );
 }
 
@@ -2010,7 +2195,12 @@ interface AppStore extends AppState {
     snapshot: OrchestrationShellSnapshot,
     environmentId: EnvironmentId,
   ) => void;
-  syncServerThreadDetail: (thread: OrchestrationThread, environmentId: EnvironmentId) => void;
+  syncServerThreadDetail: (
+    thread: OrchestrationThread,
+    environmentId: EnvironmentId,
+    historyWindow?: OrchestrationThreadHistoryWindow,
+  ) => void;
+  loadOlderThreadHistory: (environmentId: EnvironmentId, threadId: ThreadId) => Promise<void>;
   applyOrchestrationEvent: (event: OrchestrationEvent, environmentId: EnvironmentId) => void;
   applyOrchestrationEvents: (
     events: ReadonlyArray<OrchestrationEvent>,
@@ -2033,8 +2223,31 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => removeEnvironmentState(state, environmentId)),
   syncServerShellSnapshot: (snapshot, environmentId) =>
     set((state) => syncServerShellSnapshot(state, snapshot, environmentId)),
-  syncServerThreadDetail: (thread, environmentId) =>
-    set((state) => syncServerThreadDetail(state, thread, environmentId)),
+  syncServerThreadDetail: (thread, environmentId, historyWindow) =>
+    set((state) => syncServerThreadDetail(state, thread, environmentId, historyWindow)),
+  loadOlderThreadHistory: async (environmentId, threadId) => {
+    const state = useStore.getState();
+    const environmentState = getStoredEnvironmentState(state, environmentId);
+    const historyState = environmentState.threadHistoryStateById[threadId];
+    if (!historyState || !historyState.hasMoreBefore || historyState.isLoadingBefore) {
+      return;
+    }
+    set((currentState) =>
+      setThreadHistoryLoadingBefore(currentState, environmentId, threadId, true),
+    );
+    try {
+      const page = await ensureEnvironmentApi(environmentId).orchestration.getThreadHistoryPage({
+        threadId,
+        beforeCursor: historyState.oldestCursor,
+        limitTurns: historyState.limitTurns,
+      });
+      set((currentState) => mergeOlderThreadHistoryPage(currentState, environmentId, page));
+    } catch {
+      set((currentState) =>
+        setThreadHistoryLoadingBefore(currentState, environmentId, threadId, false),
+      );
+    }
+  },
   applyOrchestrationEvent: (event, environmentId) =>
     set((state) => applyOrchestrationEvent(state, event, environmentId)),
   applyOrchestrationEvents: (events, environmentId) =>

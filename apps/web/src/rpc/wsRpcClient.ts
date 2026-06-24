@@ -170,6 +170,9 @@ export interface WsRpcClient {
     readonly dispatchCommand: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.dispatchCommand>;
     readonly getTurnDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getTurnDiff>;
     readonly getFullThreadDiff: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.getFullThreadDiff>;
+    readonly getThreadHistoryPage: RpcUnaryMethod<
+      typeof ORCHESTRATION_WS_METHODS.getThreadHistoryPage
+    >;
     readonly listThreadTurns: RpcUnaryMethod<typeof ORCHESTRATION_WS_METHODS.listThreadTurns>;
     readonly listThreadTurnItems: RpcUnaryMethod<
       typeof ORCHESTRATION_WS_METHODS.listThreadTurnItems
@@ -387,6 +390,10 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.getTurnDiff](input)),
       getFullThreadDiff: (input) =>
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.getFullThreadDiff](input)),
+      getThreadHistoryPage: (input) =>
+        transport.request((client) =>
+          client[ORCHESTRATION_WS_METHODS.getThreadHistoryPage](input),
+        ),
       listThreadTurns: (input) =>
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.listThreadTurns](input)),
       listThreadTurnItems: (input) =>

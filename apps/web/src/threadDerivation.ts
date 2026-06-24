@@ -29,6 +29,7 @@ const threadCache = new WeakMap<
     activities: Thread["activities"];
     proposedPlans: Thread["proposedPlans"];
     turnDiffSummaries: Thread["turnDiffSummaries"];
+    historyState: EnvironmentState["threadHistoryStateById"][ThreadId] | undefined;
     thread: Thread;
   }
 >();
@@ -113,6 +114,7 @@ export function getThreadFromEnvironmentState(
   const activities = selectThreadActivities(state, threadId);
   const proposedPlans = selectThreadProposedPlans(state, threadId);
   const turnDiffSummaries = selectThreadTurnDiffSummaries(state, threadId);
+  const historyState = state.threadHistoryStateById[threadId];
   const cached = threadCache.get(shell);
 
   if (
@@ -122,7 +124,8 @@ export function getThreadFromEnvironmentState(
     cached.messages === messages &&
     cached.activities === activities &&
     cached.proposedPlans === proposedPlans &&
-    cached.turnDiffSummaries === turnDiffSummaries
+    cached.turnDiffSummaries === turnDiffSummaries &&
+    cached.historyState === historyState
   ) {
     return cached.thread;
   }
@@ -136,6 +139,16 @@ export function getThreadFromEnvironmentState(
     activities,
     proposedPlans,
     turnDiffSummaries,
+    ...(historyState
+      ? {
+          isPartialHistory: historyState.isPartialHistory,
+          oldestCursor: historyState.oldestCursor,
+          hasMoreBefore: historyState.hasMoreBefore,
+          isLoadingBefore: historyState.isLoadingBefore,
+          loadedTurnCount: historyState.loadedTurnCount,
+          limitTurns: historyState.limitTurns,
+        }
+      : {}),
   };
 
   threadCache.set(shell, {
@@ -145,6 +158,7 @@ export function getThreadFromEnvironmentState(
     activities,
     proposedPlans,
     turnDiffSummaries,
+    historyState,
     thread,
   });
 

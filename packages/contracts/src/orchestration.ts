@@ -26,6 +26,7 @@ export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getTurnDiff: "orchestration.getTurnDiff",
   getFullThreadDiff: "orchestration.getFullThreadDiff",
+  getThreadHistoryPage: "orchestration.getThreadHistoryPage",
   listThreadTurns: "orchestration.listThreadTurns",
   listThreadTurnItems: "orchestration.listThreadTurnItems",
   replayEvents: "orchestration.replayEvents",
@@ -523,17 +524,42 @@ export type OrchestrationShellStreamItem = typeof OrchestrationShellStreamItem.T
 
 export const OrchestrationSubscribeThreadInput = Schema.Struct({
   threadId: ThreadId,
-  initialDetailMode: Schema.optionalKey(Schema.Literals(["full", "shell"])).pipe(
+  initialDetailMode: Schema.optionalKey(Schema.Literals(["full", "shell", "recent"])).pipe(
     Schema.withDecodingDefault(Effect.succeed("full" as const)),
   ),
 });
 export type OrchestrationSubscribeThreadInput = typeof OrchestrationSubscribeThreadInput.Type;
 
+export const OrchestrationThreadHistoryWindow = Schema.Struct({
+  mode: Schema.Literal("turn-window"),
+  oldestCursor: Schema.NullOr(TrimmedNonEmptyString),
+  hasMoreBefore: Schema.Boolean,
+  loadedTurnCount: NonNegativeInt,
+  limitTurns: NonNegativeInt,
+});
+export type OrchestrationThreadHistoryWindow = typeof OrchestrationThreadHistoryWindow.Type;
+
 export const OrchestrationThreadDetailSnapshot = Schema.Struct({
   snapshotSequence: NonNegativeInt,
   thread: OrchestrationThread,
+  historyWindow: Schema.optionalKey(OrchestrationThreadHistoryWindow),
 });
 export type OrchestrationThreadDetailSnapshot = typeof OrchestrationThreadDetailSnapshot.Type;
+
+export const OrchestrationGetThreadHistoryPageInput = Schema.Struct({
+  threadId: ThreadId,
+  beforeCursor: Schema.NullOr(TrimmedNonEmptyString),
+  limitTurns: Schema.optionalKey(NonNegativeInt),
+});
+export type OrchestrationGetThreadHistoryPageInput =
+  typeof OrchestrationGetThreadHistoryPageInput.Type;
+
+export const OrchestrationGetThreadHistoryPageResult = Schema.Struct({
+  thread: OrchestrationThread,
+  historyWindow: OrchestrationThreadHistoryWindow,
+});
+export type OrchestrationGetThreadHistoryPageResult =
+  typeof OrchestrationGetThreadHistoryPageResult.Type;
 
 const OrchestrationThreadTurnItemsView = Schema.Literals(["notLoaded", "summary", "full"]);
 export type OrchestrationThreadTurnItemsView = typeof OrchestrationThreadTurnItemsView.Type;
@@ -1530,6 +1556,10 @@ export const OrchestrationRpcSchemas = {
   getFullThreadDiff: {
     input: OrchestrationGetFullThreadDiffInput,
     output: OrchestrationGetFullThreadDiffResult,
+  },
+  getThreadHistoryPage: {
+    input: OrchestrationGetThreadHistoryPageInput,
+    output: OrchestrationGetThreadHistoryPageResult,
   },
   listThreadTurns: {
     input: OrchestrationListThreadTurnsInput,

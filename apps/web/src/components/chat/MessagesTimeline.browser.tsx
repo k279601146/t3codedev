@@ -2,49 +2,12 @@ import "../../index.css";
 
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { createRef } from "react";
-import type { LegendListRef } from "@legendapp/list/react";
 import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-const scrollToEndSpy = vi.fn();
-const getStateSpy = vi.fn(() => ({ isAtEnd: true }));
 const getTurnDiffSpy = vi.fn();
 const getFullThreadDiffSpy = vi.fn();
-
-vi.mock("@legendapp/list/react", async () => {
-  const React = await import("react");
-
-  function LegendList(props: {
-    data: Array<{ id: string }>;
-    keyExtractor: (item: { id: string }) => string;
-    renderItem: (args: { item: { id: string } }) => React.ReactNode;
-    ListHeaderComponent?: React.ReactNode;
-    ListFooterComponent?: React.ReactNode;
-    ref?: React.Ref<LegendListRef>;
-  }) {
-    React.useImperativeHandle(
-      props.ref,
-      () =>
-        ({
-          scrollToEnd: scrollToEndSpy,
-          getState: getStateSpy,
-        }) as unknown as LegendListRef,
-    );
-
-    return (
-      <div data-testid="legend-list">
-        {props.ListHeaderComponent}
-        {props.data.map((item) => (
-          <div key={props.keyExtractor(item)}>{props.renderItem({ item })}</div>
-        ))}
-        {props.ListFooterComponent}
-      </div>
-    );
-  }
-
-  return { LegendList };
-});
 
 vi.mock("../../environmentApi", () => ({
   readEnvironmentApi: () => ({
@@ -66,7 +29,7 @@ function buildProps() {
     activeTurnInProgress: false,
     activeTurnId: null,
     activeTurnStartedAt: null,
-    listRef: createRef<LegendListRef | null>(),
+    scrollRef: createRef<HTMLDivElement | null>(),
     completionDividerBeforeEntryId: null,
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: new Map(),
@@ -109,8 +72,6 @@ function buildUserTimelineEntry(text: string) {
 
 describe("MessagesTimeline", () => {
   afterEach(() => {
-    scrollToEndSpy.mockReset();
-    getStateSpy.mockClear();
     getTurnDiffSpy.mockReset();
     getFullThreadDiffSpy.mockReset();
     vi.restoreAllMocks();
@@ -184,7 +145,6 @@ describe("MessagesTimeline", () => {
 
       await expect.element(page.getByText("Thinking - Inspecting repository state")).toBeVisible();
       expect(props.onIsAtEndChange).toHaveBeenCalledWith(true);
-      expect(scrollToEndSpy).toHaveBeenCalledWith({ animated: false });
       expect(requestAnimationFrameSpy).toHaveBeenCalled();
     } finally {
       await screen.unmount();

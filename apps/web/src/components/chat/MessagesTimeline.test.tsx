@@ -1,31 +1,7 @@
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
-import { createRef, type ReactNode, type Ref } from "react";
+import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { LegendListRef } from "@legendapp/list/react";
-
-vi.mock("@legendapp/list/react", async () => {
-  const legendListTestId = "legend-list";
-
-  const LegendList = (props: {
-    data: Array<{ id: string }>;
-    keyExtractor: (item: { id: string }) => string;
-    renderItem: (args: { item: { id: string } }) => ReactNode;
-    ListHeaderComponent?: ReactNode;
-    ListFooterComponent?: ReactNode;
-    ref?: Ref<LegendListRef>;
-  }) => (
-    <div data-testid={legendListTestId}>
-      {props.ListHeaderComponent}
-      {props.data.map((item) => (
-        <div key={props.keyExtractor(item)}>{props.renderItem({ item })}</div>
-      ))}
-      {props.ListFooterComponent}
-    </div>
-  );
-
-  return { LegendList };
-});
 
 function matchMedia() {
   return {
@@ -78,7 +54,7 @@ function buildProps() {
     activeTurnInProgress: false,
     activeTurnId: null,
     activeTurnStartedAt: null,
-    listRef: createRef<LegendListRef | null>(),
+    scrollRef: createRef<HTMLDivElement | null>(),
     completionDividerBeforeEntryId: null,
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: new Map(),

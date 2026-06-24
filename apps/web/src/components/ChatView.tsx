@@ -77,7 +77,6 @@ import {
   isLatestTurnSettled,
   formatElapsed,
 } from "../session-logic";
-import { type LegendListRef } from "@legendapp/list/react";
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
@@ -980,6 +979,7 @@ export default function ChatView(props: ChatViewProps) {
     ),
   );
   const setStoreThreadError = useStore((store) => store.setError);
+  const loadOlderThreadHistory = useStore((store) => store.loadOlderThreadHistory);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     routeKind === "server" ? store.threadLastVisitedAtById[routeThreadKey] : undefined,
@@ -1195,7 +1195,7 @@ export default function ChatView(props: ChatViewProps) {
     {},
     LastInvokedScriptByProjectSchema,
   );
-  const legendListRef = useRef<LegendListRef | null>(null);
+  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
@@ -1454,6 +1454,7 @@ export default function ChatView(props: ChatViewProps) {
     return retainThreadDetailSubscription(
       threadDetailSubscriptionRef.environmentId,
       threadDetailSubscriptionRef.threadId,
+      { initialDetailMode: "recent" },
     );
   }, [threadDetailSubscriptionRef]);
 
@@ -2962,14 +2963,18 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, serverThread],
   );
 
-  // Scroll helpers — LegendList handles auto-scroll via maintainScrollAtEnd.
+  // Scroll helpers for the transcript document flow.
   const scrollToEnd = useCallback((animated = false) => {
-    legendListRef.current?.scrollToEnd?.({ animated });
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: animated ? "smooth" : "auto",
+    });
   }, []);
 
   // Debounce *showing* the scroll-to-bottom pill so it doesn't flash during
-  // thread switches.  LegendList fires scroll events with isAtEnd=false while
-  // initialScrollAtEnd is settling; hiding is always immediate.
+  // thread switches. Hiding is always immediate once the transcript reaches the end.
   const showScrollDebouncer = useRef(
     new Debouncer(() => setShowScrollToBottom(true), { wait: 150 }),
   );
@@ -2983,6 +2988,10 @@ export default function ChatView(props: ChatViewProps) {
       showScrollDebouncer.current.maybeExecute();
     }
   }, []);
+  const onLoadMoreBefore = useCallback(() => {
+    if (!activeThread) return;
+    void loadOlderThreadHistory(activeThread.environmentId, activeThread.id);
+  }, [activeThread, loadOlderThreadHistory]);
 
   useEffect(() => {
     setPullRequestDialogState(null);
@@ -3394,7 +3403,7 @@ export default function ChatView(props: ChatViewProps) {
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
-    await legendListRef.current?.scrollToEnd?.({ animated: false });
+    scrollToEnd(false);
 
     setOptimisticUserMessages((existing) => [
       ...existing,
@@ -3550,7 +3559,7 @@ export default function ChatView(props: ChatViewProps) {
       showScrollDebouncer.current.cancel();
       setShowScrollToBottom(false);
       window.requestAnimationFrame(() => {
-        void legendListRef.current?.scrollToEnd?.({ animated: false });
+        scrollToEnd(false);
       });
 
       let turnStartSucceeded = false;
@@ -3578,7 +3587,7 @@ export default function ChatView(props: ChatViewProps) {
         isAtEndRef.current = true;
         showScrollDebouncer.current.cancel();
         setShowScrollToBottom(false);
-        await legendListRef.current?.scrollToEnd?.({ animated: false });
+        scrollToEnd(false);
 
         await persistThreadSettingsForNextTurn({
           threadId: threadIdForSend,
@@ -3871,13 +3880,12 @@ export default function ChatView(props: ChatViewProps) {
         dataUrl: await readFileAsDataUrl(attachment.file),
       })),
     );
-    // Scroll to the current end *before* adding the optimistic message.
-    // This sets LegendList's internal isAtEnd=true so maintainScrollAtEnd
-    // automatically pins to the new item when the data changes.
+    // Scroll to the current end *before* adding the optimistic message so
+    // the transcript remains pinned when the new item commits.
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
-    await legendListRef.current?.scrollToEnd?.({ animated: false });
+    scrollToEnd(false);
 
     setOptimisticUserMessages((existing) => [
       ...existing,
@@ -4359,7 +4367,7 @@ export default function ChatView(props: ChatViewProps) {
       isAtEndRef.current = true;
       showScrollDebouncer.current.cancel();
       setShowScrollToBottom(false);
-      await legendListRef.current?.scrollToEnd?.({ animated: false });
+      scrollToEnd(false);
 
       setOptimisticUserMessages((existing) => [
         ...existing,
@@ -5283,14 +5291,14 @@ export default function ChatView(props: ChatViewProps) {
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {/* Messages Wrapper */}
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-                {/* Messages — LegendList handles virtualization and scrolling internally */}
+                {/* Messages */}
                 <MessagesTimeline
                   key={activeThread.id}
                   isWorking={timelineIsWorking}
                   activeTurnInProgress={timelineIsWorking || !latestTurnSettled}
                   activeTurnId={activeLatestTurn?.turnId ?? null}
                   activeTurnStartedAt={activeWorkStartedAt}
-                  listRef={legendListRef}
+                  scrollRef={timelineScrollRef}
                   timelineEntries={timelineEntries}
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
@@ -5316,6 +5324,9 @@ export default function ChatView(props: ChatViewProps) {
                   skills={inlineDisplaySkills}
                   onIsAtEndChange={onIsAtEndChange}
                   isLoadingHistory={isLoadingThreadHistory}
+                  hasMoreBefore={activeThread.hasMoreBefore ?? false}
+                  isLoadingBefore={activeThread.isLoadingBefore ?? false}
+                  onLoadMoreBefore={onLoadMoreBefore}
                 />
 
                 {/* scroll to bottom pill — shown when user has scrolled away from the bottom */}
