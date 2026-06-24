@@ -4138,7 +4138,9 @@ export default function Sidebar() {
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
-  const [pendingOpenThreadKey, setPendingOpenThreadKey] = useState<string | null>(null);
+  const pendingOpenThreadRef = useUiStateStore((store) => store.pendingOpenThreadRef);
+  const setPendingOpenThreadRef = useUiStateStore((store) => store.setPendingOpenThreadRef);
+  const pendingOpenThreadKey = pendingOpenThreadRef ? scopedThreadKey(pendingOpenThreadRef) : null;
   const [isProjectsSectionExpanded, setProjectsSectionExpanded] = useState(true);
   const [isPinnedSectionExpanded, setPinnedSectionExpanded] = useState(true);
   const [isConversationsSectionExpanded, setConversationsSectionExpanded] = useState(true);
@@ -4279,9 +4281,9 @@ export default function Sidebar() {
 
   useEffect(() => {
     if (pendingOpenThreadKey !== null && pendingOpenThreadKey === routeThreadKey) {
-      setPendingOpenThreadKey(null);
+      setPendingOpenThreadRef(null);
     }
-  }, [pendingOpenThreadKey, routeThreadKey]);
+  }, [pendingOpenThreadKey, routeThreadKey, setPendingOpenThreadRef]);
 
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef) => {
@@ -4289,7 +4291,7 @@ export default function Sidebar() {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
-      setPendingOpenThreadKey(threadKey);
+      setPendingOpenThreadRef(threadRef);
       setSelectionAnchor(threadKey);
       if (isMobile) {
         setOpenMobile(false);
@@ -4304,12 +4306,28 @@ export default function Sidebar() {
       void navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
-      }).finally(() => {
-        releasePreload();
-        setPendingOpenThreadKey((current) => (current === threadKey ? null : current));
-      });
+      })
+        .catch(() => {
+          const current = useUiStateStore.getState().pendingOpenThreadRef;
+          if (
+            current?.environmentId === threadRef.environmentId &&
+            current.threadId === threadRef.threadId
+          ) {
+            setPendingOpenThreadRef(null);
+          }
+        })
+        .finally(() => {
+          releasePreload();
+        });
     },
-    [clearSelection, isMobile, navigate, setOpenMobile, setSelectionAnchor],
+    [
+      clearSelection,
+      isMobile,
+      navigate,
+      setOpenMobile,
+      setPendingOpenThreadRef,
+      setSelectionAnchor,
+    ],
   );
 
   const projectDnDSensors = useSensors(

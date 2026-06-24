@@ -1,5 +1,5 @@
 import { Debouncer } from "@tanstack/react-pacer";
-import type { ScopedProjectRef } from "@t3tools/contracts";
+import type { ScopedProjectRef, ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
@@ -48,7 +48,17 @@ export interface UiNewThreadState {
   newThreadScope: NewThreadScope | null;
 }
 
-export interface UiState extends UiProjectState, UiThreadState, UiEndpointState, UiNewThreadState {}
+export interface UiPendingNavigationState {
+  pendingOpenThreadRef: ScopedThreadRef | null;
+}
+
+export interface UiState
+  extends
+    UiProjectState,
+    UiThreadState,
+    UiEndpointState,
+    UiNewThreadState,
+    UiPendingNavigationState {}
 
 export interface SyncProjectInput {
   /** Physical project key (env + cwd). Used for manual sort order. */
@@ -71,6 +81,7 @@ const initialState: UiState = {
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
   newThreadScope: null,
+  pendingOpenThreadRef: null,
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -615,6 +626,18 @@ export function setDefaultAdvertisedEndpointKey(state: UiState, key: string | nu
   };
 }
 
+export function setPendingOpenThreadRef(
+  state: UiState,
+  threadRef: ScopedThreadRef | null,
+): UiState {
+  const current = state.pendingOpenThreadRef;
+  const unchanged =
+    current === threadRef ||
+    (current?.environmentId === threadRef?.environmentId &&
+      current?.threadId === threadRef?.threadId);
+  return unchanged ? state : { ...state, pendingOpenThreadRef: threadRef };
+}
+
 export function toggleProject(state: UiState, projectId: string): UiState {
   const expanded = state.projectExpandedById[projectId] ?? true;
   return {
@@ -714,6 +737,7 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   setNewThreadScope: (scope: NewThreadScope | null) => void;
+  setPendingOpenThreadRef: (threadRef: ScopedThreadRef | null) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
@@ -750,6 +774,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
           current.projectRef.projectId === scope.projectRef.projectId);
       return unchanged ? state : { ...state, newThreadScope: scope };
     }),
+  setPendingOpenThreadRef: (threadRef) => set((state) => setPendingOpenThreadRef(state, threadRef)),
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),

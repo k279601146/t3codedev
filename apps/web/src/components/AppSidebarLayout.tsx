@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
-import { Sidebar, SidebarProvider, SidebarRail } from "./ui/sidebar";
+import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "./ui/sidebar";
 import ThreadSidebar from "./Sidebar";
 import { CursorSidebar } from "./layout/CursorSidebar";
 import {
@@ -9,15 +9,36 @@ import {
   syncShortcutModifierStateFromKeyboardEvent,
 } from "../shortcutModifierState";
 import { useSettings } from "../hooks/useSettings";
+import ChatView from "./ChatView";
+import { useUiStateStore } from "../uiStateStore";
 
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
 const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
+
+function PendingThreadOpenView() {
+  const pendingOpenThreadRef = useUiStateStore((state) => state.pendingOpenThreadRef);
+  if (!pendingOpenThreadRef) {
+    return null;
+  }
+
+  return (
+    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+      <ChatView
+        environmentId={pendingOpenThreadRef.environmentId}
+        threadId={pendingOpenThreadRef.threadId}
+        routeKind="server"
+      />
+    </SidebarInset>
+  );
+}
+
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const layoutMode = useSettings((state) => state.layoutMode);
   const isSettingsRoute = pathname.startsWith("/settings");
+  const pendingOpenThreadRef = useUiStateStore((state) => state.pendingOpenThreadRef);
 
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
@@ -80,7 +101,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         )}
         <SidebarRail />
       </Sidebar>
-      {children}
+      {pendingOpenThreadRef && !isSettingsRoute ? <PendingThreadOpenView /> : children}
     </SidebarProvider>
   );
 }

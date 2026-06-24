@@ -1,4 +1,4 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,6 +11,7 @@ import {
   persistState,
   reorderProjects,
   setDefaultAdvertisedEndpointKey,
+  setPendingOpenThreadRef,
   setProjectExpanded,
   setThreadPinned,
   setThreadChangedFilesExpanded,
@@ -28,11 +29,28 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
     newThreadScope: null,
+    pendingOpenThreadRef: null,
     ...overrides,
   };
 }
 
 describe("uiStateStore pure functions", () => {
+  it("tracks the pending thread that should replace the current chat surface", () => {
+    const threadRef = {
+      environmentId: EnvironmentId.make("environment-1"),
+      threadId: ThreadId.make("thread-1"),
+    };
+    const initialState = makeUiState();
+
+    const next = setPendingOpenThreadRef(initialState, threadRef);
+    const repeated = setPendingOpenThreadRef(next, { ...threadRef });
+    const cleared = setPendingOpenThreadRef(next, null);
+
+    expect(next.pendingOpenThreadRef).toEqual(threadRef);
+    expect(repeated).toBe(next);
+    expect(cleared.pendingOpenThreadRef).toBeNull();
+  });
+
   it("markThreadVisited stores the provided server timestamp", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState();
