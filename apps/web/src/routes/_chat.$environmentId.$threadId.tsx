@@ -10,6 +10,7 @@ import {
 } from "../composerDraftStore";
 import { type DiffRouteSearch, parseDiffRouteSearch } from "../diffRouteSearch";
 import { useSettings } from "../hooks/useSettings";
+import { useUiStateStore } from "../uiStateStore";
 import {
   selectEnvironmentState,
   selectSidebarThreadSummaryByRef,
@@ -56,6 +57,7 @@ function ChatThreadRouteView() {
   const canRenderDraftFallback = draftThread !== null && !serverThreadStarted;
   const environmentHasAnyThreads = environmentHasServerThreads || environmentHasDraftThreads;
   const markDiffOpened = useCallback(() => undefined, []);
+  const setPendingOpenThreadRef = useUiStateStore((store) => store.setPendingOpenThreadRef);
 
   useEffect(() => {
     if (!threadRef || !bootstrapComplete) {
@@ -73,6 +75,19 @@ function ChatThreadRouteView() {
     }
     finalizePromotedDraftThreadByRef(threadRef);
   }, [draftThread?.promotedTo, serverThreadStarted, threadRef]);
+
+  useEffect(() => {
+    if (!threadRef || !bootstrapComplete || !routeThreadExists) {
+      return;
+    }
+    const pending = useUiStateStore.getState().pendingOpenThreadRef;
+    if (
+      pending?.environmentId === threadRef.environmentId &&
+      pending.threadId === threadRef.threadId
+    ) {
+      setPendingOpenThreadRef(null);
+    }
+  }, [bootstrapComplete, routeThreadExists, setPendingOpenThreadRef, threadRef]);
 
   if (!threadRef || !bootstrapComplete || !routeThreadExists) {
     return null;

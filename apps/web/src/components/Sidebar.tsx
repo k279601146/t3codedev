@@ -4279,12 +4279,6 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.newLocal", newThreadShortcutLabelOptions) ??
     shortcutLabelForCommand(keybindings, "chat.new", newThreadShortcutLabelOptions);
 
-  useEffect(() => {
-    if (pendingOpenThreadKey !== null && pendingOpenThreadKey === routeThreadKey) {
-      setPendingOpenThreadRef(null);
-    }
-  }, [pendingOpenThreadKey, routeThreadKey, setPendingOpenThreadRef]);
-
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef) => {
       const threadKey = scopedThreadKey(threadRef);
