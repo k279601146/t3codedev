@@ -328,17 +328,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const scrollingEndTimerRef = useRef<number | null>(null);
   const scrollMeasureFrameRef = useRef<number | null>(null);
   const pendingPrependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const loadMoreBeforeInFlightRef = useRef(false);
 
   const getScrollContainer = useCallback(() => {
     return scrollRef.current;
   }, [scrollRef]);
 
   const handleScroll = useCallback(() => {
-    const target = getScrollContainer();
-    if (!target) return;
     if (!isScrollingRef.current) {
       isScrollingRef.current = true;
-      setPerformanceModeActive("scrolling", true);
+      window.requestAnimationFrame(() => {
+        if (isScrollingRef.current) {
+          setPerformanceModeActive("scrolling", true);
+        }
+      });
     }
     if (scrollingEndTimerRef.current !== null) {
       window.clearTimeout(scrollingEndTimerRef.current);
@@ -360,9 +363,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         if (
           hasMoreBefore &&
           !isLoadingBefore &&
+          !loadMoreBeforeInFlightRef.current &&
           onLoadMoreBefore &&
           scrollEl.scrollTop < 240
         ) {
+          loadMoreBeforeInFlightRef.current = true;
           pendingPrependAnchorRef.current = {
             scrollHeight: scrollEl.scrollHeight,
             scrollTop: scrollEl.scrollTop,
@@ -372,6 +377,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       });
     }
   }, [hasMoreBefore, isLoadingBefore, onIsAtEndChange, onLoadMoreBefore, getScrollContainer]);
+
+  useEffect(() => {
+    if (!isLoadingBefore) {
+      loadMoreBeforeInFlightRef.current = false;
+    }
+    if (!hasMoreBefore) {
+      pendingPrependAnchorRef.current = null;
+    }
+  }, [hasMoreBefore, isLoadingBefore]);
+
+  useEffect(() => {
+    const scrollEl = getScrollContainer();
+    if (!scrollEl) return;
+    scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      scrollEl.removeEventListener("scroll", handleScroll);
+    };
+  }, [getScrollContainer, handleScroll]);
 
   useEffect(
     () => () => {
@@ -549,7 +572,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         >
           <div
             ref={scrollRef}
-            onScroll={handleScroll}
             className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
           >
             {TIMELINE_LIST_HEADER}
@@ -561,6 +583,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   disabled={isLoadingBefore}
                   onClick={() => {
                     const scrollEl = getScrollContainer();
+                    if (loadMoreBeforeInFlightRef.current) {
+                      return;
+                    }
+                    loadMoreBeforeInFlightRef.current = true;
                     if (scrollEl) {
                       pendingPrependAnchorRef.current = {
                         scrollHeight: scrollEl.scrollHeight,
@@ -577,7 +603,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             {rows.map((row) => (
               <div
                 key={keyExtractor(row)}
-                className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [content-visibility:auto] [contain-intrinsic-size:120px]"
+                className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]"
                 data-timeline-root="true"
               >
                 <TimelineRowContent row={row} />

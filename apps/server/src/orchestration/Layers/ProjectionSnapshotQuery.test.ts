@@ -118,16 +118,27 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           created_at,
           updated_at
         )
-        VALUES (
-          'message-1',
-          'thread-1',
-          'turn-1',
-          'assistant',
-          'hello from projection',
-          0,
-          '2026-02-24T00:00:04.000Z',
-          '2026-02-24T00:00:05.000Z'
-        )
+        VALUES
+          (
+            'message-user-1',
+            'thread-1',
+            NULL,
+            'user',
+            'user prompt from pending message',
+            0,
+            '2026-02-24T00:00:03.000Z',
+            '2026-02-24T00:00:03.000Z'
+          ),
+          (
+            'message-1',
+            'thread-1',
+            'turn-1',
+            'assistant',
+            'hello from projection',
+            0,
+            '2026-02-24T00:00:04.000Z',
+            '2026-02-24T00:00:05.000Z'
+          )
       `;
 
       yield* sql`
@@ -221,7 +232,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         VALUES (
           'thread-1',
           'turn-1',
-          NULL,
+          'message-user-1',
           'thread-1',
           'plan-1',
           'message-1',
@@ -312,6 +323,15 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           archivedAt: null,
           deletedAt: null,
           messages: [
+            {
+              id: asMessageId("message-user-1"),
+              role: "user",
+              text: "user prompt from pending message",
+              turnId: null,
+              streaming: false,
+              createdAt: "2026-02-24T00:00:03.000Z",
+              updatedAt: "2026-02-24T00:00:03.000Z",
+            },
             {
               id: asMessageId("message-1"),
               role: "assistant",

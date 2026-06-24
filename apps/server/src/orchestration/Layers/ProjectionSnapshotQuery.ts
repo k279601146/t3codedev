@@ -1019,6 +1019,13 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           SELECT turn_id FROM selected_page
           UNION
           SELECT turn_id FROM forced_running_turn
+        ),
+        selected_message_ids AS (
+          SELECT pending_message_id AS message_id
+          FROM projection_turns
+          WHERE thread_id = ${threadId}
+            AND turn_id IN (SELECT turn_id FROM selected_turns)
+            AND pending_message_id IS NOT NULL
         )
         SELECT
           message_id AS "messageId",
@@ -1032,7 +1039,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           updated_at AS "updatedAt"
         FROM projection_thread_messages
         WHERE thread_id = ${threadId}
-          AND turn_id IN (SELECT turn_id FROM selected_turns)
+          AND (
+            turn_id IN (SELECT turn_id FROM selected_turns)
+            OR message_id IN (SELECT message_id FROM selected_message_ids)
+          )
         ORDER BY created_at ASC, message_id ASC
       `,
   });
