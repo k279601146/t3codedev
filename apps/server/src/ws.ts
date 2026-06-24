@@ -29,6 +29,7 @@ import {
   ProjectListDirectoryError,
   ProjectReadFileError,
   ProjectCreateBlankError,
+  ProjectEnsureDirectoryError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
@@ -70,7 +71,10 @@ import { AutomationService } from "./automations/Services/AutomationService.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
-import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
+import {
+  WorkspacePathOutsideRootError,
+  WorkspacePaths,
+} from "./workspace/Services/WorkspacePaths.ts";
 import { createBlankProjectDirectory } from "./workspace/BlankProjectDirectory.ts";
 import { VcsStatusBroadcaster } from "./vcs/VcsStatusBroadcaster.ts";
 import { VcsProvisioningService } from "./vcs/VcsProvisioningService.ts";
@@ -225,6 +229,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
+      const workspacePaths = yield* WorkspacePaths;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -1567,6 +1572,21 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   cause,
                 }),
             }),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsEnsureDirectory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsEnsureDirectory,
+            workspacePaths.normalizeWorkspaceRoot(input.cwd, { createIfMissing: true }).pipe(
+              Effect.map((cwd) => ({ cwd })),
+              Effect.mapError(
+                (cause) =>
+                  new ProjectEnsureDirectoryError({
+                    message: cause.message,
+                    cause,
+                  }),
+              ),
+            ),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>

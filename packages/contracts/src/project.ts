@@ -133,3 +133,21 @@ export class ProjectCreateBlankError extends Schema.TaggedErrorClass<ProjectCrea
     cause: Schema.optional(Schema.Defect),
   },
 ) {}
+
+export const ProjectEnsureDirectoryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectEnsureDirectoryInput = typeof ProjectEnsureDirectoryInput.Type;
+
+export const ProjectEnsureDirectoryResult = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectEnsureDirectoryResult = typeof ProjectEnsureDirectoryResult.Type;
+
+export class ProjectEnsureDirectoryError extends Schema.TaggedErrorClass<ProjectEnsureDirectoryError>()(
+  "ProjectEnsureDirectoryError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}

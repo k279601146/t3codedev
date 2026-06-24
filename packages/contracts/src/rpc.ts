@@ -78,6 +78,9 @@ import {
   ProjectCreateBlankError,
   ProjectCreateBlankInput,
   ProjectCreateBlankResult,
+  ProjectEnsureDirectoryError,
+  ProjectEnsureDirectoryInput,
+  ProjectEnsureDirectoryResult,
 } from "./project.ts";
 import {
   TerminalClearInput,
@@ -182,6 +185,7 @@ export const WS_METHODS = {
   projectsListDirectory: "projects.listDirectory",
   projectsWriteFile: "projects.writeFile",
   projectsCreateBlank: "projects.createBlank",
+  projectsEnsureDirectory: "projects.ensureDirectory",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -572,6 +576,12 @@ export const WsProjectsCreateBlankRpc = Rpc.make(WS_METHODS.projectsCreateBlank,
   error: ProjectCreateBlankError,
 });
 
+export const WsProjectsEnsureDirectoryRpc = Rpc.make(WS_METHODS.projectsEnsureDirectory, {
+  payload: ProjectEnsureDirectoryInput,
+  success: ProjectEnsureDirectoryResult,
+  error: ProjectEnsureDirectoryError,
+});
+
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: ExternalLauncherError,
@@ -878,6 +888,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsListDirectoryRpc,
   WsProjectsWriteFileRpc,
   WsProjectsCreateBlankRpc,
+  WsProjectsEnsureDirectoryRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeVcsStatusRpc,

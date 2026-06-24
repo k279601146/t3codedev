@@ -121,46 +121,79 @@ function buildAssistantTimelineEntry(input: {
 }
 
 describe("MessagesTimeline", () => {
-  it("adds a clickable deliverable link from a single checkpoint file", async () => {
-    const { buildAssistantMessageTextWithDeliverableLinks } = await import("./MessagesTimeline");
+  it("builds checkpoint file items with clickable metadata for multiple files", async () => {
+    const { buildCheckpointFileItems } = await import("./MessagesTimeline");
 
-    const text = buildAssistantMessageTextWithDeliverableLinks({
-      text: "测试文件已创建并验证通过，输出 `hello world`。",
-      markdownCwd:
-        "C:/Users/Administrator/.bahew/userdata/conversation-workspace/773f6836-4748-4b66-9ef5-4f4f8a2d0ab7",
+    const files = buildCheckpointFileItems({
+      markdownCwd: "C:/workspace/current-thread",
       workspaceRoot: undefined,
-      turnSummary: {
-        turnId: TurnId.make("turn-1"),
-        completedAt: "2026-06-24T14:23:45.000Z",
-        status: "ready",
-        files: [{ path: "test_hello.py", kind: "added", additions: 1, deletions: 0 }],
-      },
+      files: [
+        { path: "test_hello.py", kind: "added", additions: 1, deletions: 0 },
+        { path: "outputs/report.md", kind: "modified", additions: 3, deletions: 1 },
+      ],
     });
 
-    expect(text).toContain("已创建文件：");
-    expect(text).toContain(
-      "[test_hello.py](C:/Users/Administrator/.bahew/userdata/conversation-workspace/773f6836-4748-4b66-9ef5-4f4f8a2d0ab7/test_hello.py)",
-    );
+    expect(files.map((file) => file.path)).toEqual(["test_hello.py", "outputs/report.md"]);
+    expect(files.map((file) => file.linkMeta?.targetPath)).toEqual([
+      "C:/workspace/current-thread/test_hello.py",
+      "C:/workspace/current-thread/outputs/report.md",
+    ]);
   }, 20_000);
 
-  it("keeps assistant-authored deliverable links unchanged", async () => {
-    const { buildAssistantMessageTextWithDeliverableLinks } = await import("./MessagesTimeline");
-    const originalText =
-      "已创建测试文件：[test_hello_word.py](C:/Users/Administrator/Documents/Codex/2026-06-24/hello-word/outputs/test_hello_word.py)";
+  it("keeps deleted checkpoint files visible without open metadata", async () => {
+    const { buildCheckpointFileItems } = await import("./MessagesTimeline");
 
-    const text = buildAssistantMessageTextWithDeliverableLinks({
-      text: originalText,
-      markdownCwd: "C:/Users/Administrator/Documents/Codex/2026-06-24/hello-word",
+    const files = buildCheckpointFileItems({
+      markdownCwd: "C:/workspace/current-thread",
       workspaceRoot: undefined,
-      turnSummary: {
-        turnId: TurnId.make("turn-1"),
-        completedAt: "2026-06-24T02:01:45.000Z",
-        status: "ready",
-        files: [{ path: "outputs/test_hello_word.py", kind: "added", additions: 1, deletions: 0 }],
-      },
+      files: [
+        { path: "old.py", kind: "deleted", additions: 0, deletions: 4 },
+        { path: "new.py", kind: "added", additions: 1, deletions: 0 },
+      ],
     });
 
-    expect(text).toBe(originalText);
+    expect(files.map((file) => file.path)).toEqual(["old.py", "new.py"]);
+    expect(files.map((file) => file.linkMeta?.targetPath)).toEqual([
+      undefined,
+      "C:/workspace/current-thread/new.py",
+    ]);
+  }, 20_000);
+
+  it("renders checkpoint files as clickable buttons without changing assistant text", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const assistant = buildAssistantTimelineEntry({
+      id: "assistant-1",
+      entryId: "entry-1",
+      text: "测试文件已创建并验证通过，输出 `hello world`。",
+      turnId: TurnId.make("turn-1"),
+      createdAt: MESSAGE_CREATED_AT,
+      completedAt: MESSAGE_CREATED_AT,
+    });
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        markdownCwd="C:/workspace/current-thread"
+        timelineEntries={[assistant]}
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              MessageId.make("assistant-1"),
+              {
+                turnId: TurnId.make("turn-1"),
+                completedAt: MESSAGE_CREATED_AT,
+                status: "ready",
+                files: [{ path: "test_hello.py", kind: "added", additions: 1, deletions: 0 }],
+              },
+            ],
+          ])
+        }
+        onOpenMarkdownFile={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("测试文件已创建并验证通过");
+    expect(markup).toContain("test_hello.py");
+    expect(markup).toContain("<button");
   }, 20_000);
 
   it("does not render the legacy empty conversation prompt for an empty timeline", async () => {

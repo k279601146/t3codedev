@@ -229,6 +229,20 @@ import {
 } from "../lib/cursorExternalProjects";
 import { AddProjectMenu } from "./AddProjectMenu";
 import { startNewConversationThread } from "../lib/conversationThreadActions";
+
+async function openWorkspaceDirectoryInExplorer(input: {
+  readonly environmentId: EnvironmentId;
+  readonly path: string;
+  readonly openPath: (path: string) => Promise<void>;
+}): Promise<void> {
+  const environmentApi = readEnvironmentApi(input.environmentId);
+  if (!environmentApi) {
+    throw new Error(`Environment API not found for environment ${input.environmentId}`);
+  }
+  await environmentApi.projects.ensureDirectory({ cwd: input.path });
+  await input.openPath(input.path);
+}
+
 const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   duration: 180,
   easing: "ease-out",
@@ -2095,15 +2109,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           return;
         }
         if (clicked === "open-path") {
-          await api.shell.openPath(threadWorkspacePath).catch((error: unknown) => {
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: t("sidebar.thread.pathOpenFailed"),
-                description: error instanceof Error ? error.message : threadWorkspacePath,
-              }),
-            );
-          });
+          await openWorkspaceDirectoryInExplorer({
+            environmentId: thread.environmentId,
+            path: threadWorkspacePath,
+            openPath: api.shell.openPath,
+          })
+            .catch((error: unknown) => {
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: t("sidebar.thread.pathOpenFailed"),
+                  description: error instanceof Error ? error.message : threadWorkspacePath,
+                }),
+              );
+            });
           return;
         }
         copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
@@ -3584,15 +3603,20 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           return;
         }
         if (clicked === "open-path") {
-          await api.shell.openPath(threadWorkspacePath).catch((error: unknown) => {
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: t("sidebar.thread.pathOpenFailed"),
-                description: error instanceof Error ? error.message : threadWorkspacePath,
-              }),
-            );
-          });
+          await openWorkspaceDirectoryInExplorer({
+            environmentId: thread.environmentId,
+            path: threadWorkspacePath,
+            openPath: api.shell.openPath,
+          })
+            .catch((error: unknown) => {
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: t("sidebar.thread.pathOpenFailed"),
+                  description: error instanceof Error ? error.message : threadWorkspacePath,
+                }),
+              );
+            });
           return;
         }
         copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });

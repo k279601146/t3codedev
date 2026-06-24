@@ -156,7 +156,6 @@ const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "d
 const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 
 const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
-const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\(([^)]+)\)/g;
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -1272,13 +1271,7 @@ function UrlPreviewCard({ url }: { url: string }) {
 
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const rawMessageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
-  const messageText = buildAssistantMessageTextWithDeliverableLinks({
-    text: rawMessageText,
-    turnSummary: row.assistantTurnDiffSummary,
-    markdownCwd: ctx.markdownCwd,
-    workspaceRoot: ctx.workspaceRoot,
-  });
+  const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
 
   return (
@@ -1294,7 +1287,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
+          markdownCwd={ctx.markdownCwd}
           workspaceRoot={ctx.workspaceRoot}
+          onOpenFile={ctx.onOpenMarkdownFile}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
         {previewUrl ? <UrlPreviewCard url={previewUrl} /> : null}
@@ -1374,95 +1369,6 @@ function AssistantCompletionDivider() {
       <span className="h-px bg-border/70" />
     </div>
   );
-}
-
-export function buildAssistantMessageTextWithDeliverableLinks({
-  text,
-  turnSummary,
-  markdownCwd,
-  workspaceRoot,
-}: {
-  text: string;
-  turnSummary: TurnDiffSummary | undefined;
-  markdownCwd: string | undefined;
-  workspaceRoot: string | undefined;
-}): string {
-  if (!turnSummary || turnSummary.files.length !== 1) {
-    return text;
-  }
-
-  const file = turnSummary.files[0];
-  if (!file?.path) {
-    return text;
-  }
-
-  const intro = deliverableLinkIntroForFileKind(file.kind);
-  if (!intro) {
-    return text;
-  }
-
-  const targetPath = resolveDeliverableLinkTarget(file.path, markdownCwd ?? workspaceRoot);
-  if (!targetPath || textAlreadyLinksFile(text, file.path, targetPath)) {
-    return text;
-  }
-
-  const label = escapeMarkdownLinkLabel(basenameOfChangedFile(file.path));
-  const href = escapeMarkdownLinkDestination(targetPath);
-  const prefix = text.trim().length > 0 ? "\n\n" : "";
-  return `${text}${prefix}${intro}[${label}](${href})`;
-}
-
-function resolveDeliverableLinkTarget(
-  filePath: string,
-  rootPath: string | undefined,
-): string | null {
-  if (/^[A-Za-z]:[\\/]/.test(filePath) || /^\\\\/.test(filePath) || filePath.startsWith("/")) {
-    return filePath;
-  }
-  if (!rootPath) {
-    return null;
-  }
-  const root = rootPath.replace(/[\\/]+$/, "");
-  return `${root}/${filePath.replace(/^[\\/]+/, "").replaceAll("\\", "/")}`;
-}
-
-function deliverableLinkIntroForFileKind(kind: string | undefined): string | null {
-  const normalized = kind?.trim().toLowerCase().replace(/_/g, "-") ?? "";
-  if (normalized === "deleted" || normalized === "removed" || normalized === "delete") {
-    return null;
-  }
-  if (normalized === "added" || normalized === "created" || normalized === "new") {
-    return "已创建文件：";
-  }
-  if (normalized === "renamed" || normalized === "moved") {
-    return "已移动文件：";
-  }
-  return "已更新文件：";
-}
-
-function escapeMarkdownLinkLabel(value: string): string {
-  return value.replace(/([\\[\]])/g, "\\$1");
-}
-
-function escapeMarkdownLinkDestination(value: string): string {
-  return value.replaceAll(" ", "%20").replaceAll(")", "%29");
-}
-
-function textAlreadyLinksFile(text: string, filePath: string, targetPath: string): boolean {
-  const normalizedFilePath = normalizeComparablePath(filePath);
-  const normalizedTargetPath = normalizeComparablePath(targetPath);
-  MARKDOWN_LINK_PATTERN.lastIndex = 0;
-  for (const match of text.matchAll(MARKDOWN_LINK_PATTERN)) {
-    const href = match[1]?.trim();
-    if (!href) {
-      continue;
-    }
-    const normalizedHref = normalizeComparablePath(href);
-    if (normalizedHref === normalizedFilePath || normalizedHref === normalizedTargetPath) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function ProposedPlanTimelineRow({
@@ -2022,15 +1928,23 @@ function runningWorkEntryLabel(entry: TimelineWorkEntry): string {
  *  so toggling re-renders only this component — not the entire list. */
 const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection({
   turnSummary,
+  markdownCwd,
   workspaceRoot,
+  onOpenFile,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary | undefined;
+  markdownCwd: string | undefined;
   workspaceRoot: string | undefined;
+  onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   if (!turnSummary) return null;
-  const checkpointFiles = turnSummary.files;
+  const checkpointFiles = buildCheckpointFileItems({
+    files: turnSummary.files,
+    markdownCwd,
+    workspaceRoot,
+  });
   if (checkpointFiles.length === 0) return null;
 
   return (
@@ -2038,6 +1952,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
       turnSummary={turnSummary}
       checkpointFiles={checkpointFiles}
       workspaceRoot={workspaceRoot}
+      onOpenFile={onOpenFile}
       onOpenTurnDiff={onOpenTurnDiff}
     />
   );
@@ -2049,11 +1964,13 @@ function AssistantChangedFilesSectionInner({
   turnSummary,
   checkpointFiles,
   workspaceRoot,
+  onOpenFile,
   onOpenTurnDiff,
 }: {
   turnSummary: TurnDiffSummary;
-  checkpointFiles: TurnDiffSummary["files"];
+  checkpointFiles: CheckpointFileItem[];
   workspaceRoot: string | undefined;
+  onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const [showAllFiles, setShowAllFiles] = useState(false);
@@ -2076,9 +1993,20 @@ function AssistantChangedFilesSectionInner({
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground">
-                {isSingleFile
-                  ? `已编辑 ${singleFileTitle}`
-                  : `已编辑 ${checkpointFiles.length} 个文件`}
+                {isSingleFile && firstFile ? (
+                  <span className="inline-flex min-w-0 max-w-full items-baseline gap-1">
+                    <span className="shrink-0">已编辑</span>
+                    <ChangedFileOpenButton
+                      filePath={firstFile.linkMeta?.filePath ?? firstFile.path}
+                      displayPath={singleFileTitle}
+                      title={firstFile.linkMeta?.displayPath ?? singleFileTitle}
+                      className="min-w-0"
+                      onOpenFile={firstFile.linkMeta ? onOpenFile : undefined}
+                    />
+                  </span>
+                ) : (
+                  `已编辑 ${checkpointFiles.length} 个文件`
+                )}
               </div>
               {hasNonZeroStat(summaryStat) ? (
                 <div className="mt-0.5 font-mono text-[13px] leading-5 tabular-nums">
@@ -2121,9 +2049,16 @@ function AssistantChangedFilesSectionInner({
                   className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 hover:text-foreground"
                   onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
                 >
-                  <span className="min-w-0 truncate font-mono text-foreground/88">
-                    {formatChangedFilePath(file.path, workspaceRoot)}
-                  </span>
+                  <ChangedFileOpenButton
+                    filePath={file.linkMeta?.filePath ?? file.path}
+                    displayPath={formatChangedFilePath(file.path, workspaceRoot)}
+                    title={
+                      file.linkMeta?.displayPath ?? formatChangedFilePath(file.path, workspaceRoot)
+                    }
+                    className="min-w-0"
+                    onOpenFile={file.linkMeta ? onOpenFile : undefined}
+                    stopPropagation
+                  />
                   <span className="shrink-0 font-mono text-[13px] tabular-nums">
                     <DiffStatLabel
                       additions={file.additions ?? 0}
@@ -2150,6 +2085,71 @@ function AssistantChangedFilesSectionInner({
       </div>
     </div>
   );
+}
+
+interface CheckpointFileItem {
+  path: string;
+  kind?: string | undefined;
+  additions?: number | undefined;
+  deletions?: number | undefined;
+  linkMeta?: MarkdownFileLinkMeta | undefined;
+}
+
+export function buildCheckpointFileItems({
+  files,
+  markdownCwd,
+  workspaceRoot,
+}: {
+  files: ReadonlyArray<TurnDiffSummary["files"][number]>;
+  markdownCwd: string | undefined;
+  workspaceRoot: string | undefined;
+}): CheckpointFileItem[] {
+  const rootPath = markdownCwd ?? workspaceRoot;
+  return files.flatMap((file) => {
+    if (!file.path) {
+      return [];
+    }
+    const linkMeta = isDeletedFileKind(file.kind)
+      ? null
+      : buildCheckpointDeliverableLinkMeta(file.path, rootPath);
+    return [{ ...file, ...(linkMeta ? { linkMeta } : {}) }];
+  });
+}
+
+function buildCheckpointDeliverableLinkMeta(
+  filePath: string,
+  rootPath: string | undefined,
+): MarkdownFileLinkMeta | null {
+  const targetPath = resolveCheckpointDeliverableTarget(filePath, rootPath);
+  if (!targetPath) {
+    return null;
+  }
+  return {
+    filePath: targetPath,
+    targetPath,
+    previewPath: filePath,
+    displayPath: formatWorkspaceRelativePath(targetPath, rootPath),
+    basename: basenameOfChangedFile(targetPath),
+  };
+}
+
+function resolveCheckpointDeliverableTarget(
+  filePath: string,
+  rootPath: string | undefined,
+): string | null {
+  if (/^[A-Za-z]:[\\/]/.test(filePath) || /^\\\\/.test(filePath) || filePath.startsWith("/")) {
+    return filePath;
+  }
+  if (!rootPath) {
+    return null;
+  }
+  const root = rootPath.replace(/[\\/]+$/, "");
+  return `${root}/${filePath.replace(/^[\\/]+/, "").replaceAll("\\", "/")}`;
+}
+
+function isDeletedFileKind(kind: string | undefined): boolean {
+  const normalized = kind?.trim().toLowerCase().replace(/_/g, "-") ?? "";
+  return normalized === "deleted" || normalized === "removed" || normalized === "delete";
 }
 
 function basenameOfChangedFile(filePath: string): string {
