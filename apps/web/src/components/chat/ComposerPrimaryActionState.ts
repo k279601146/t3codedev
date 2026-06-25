@@ -9,6 +9,7 @@ export interface StandardSendButtonDisabledInput {
   isSendBusy: boolean;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
+  isProviderUnavailable?: boolean;
   hasSendableContent: boolean;
 }
 
@@ -37,6 +38,7 @@ export const isStandardSendButtonDisabled = (input: StandardSendButtonDisabledIn
   input.isSendBusy ||
   input.isConnecting ||
   input.isEnvironmentUnavailable ||
+  input.isProviderUnavailable === true ||
   !input.hasSendableContent;
 
 export const getRunningPrimaryActionMode = (

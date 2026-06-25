@@ -130,6 +130,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    */
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   modelOptionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
+  emptyMessage?: string;
   simplified?: boolean;
   terminalOpen: boolean;
   onRequestClose?: () => void;
@@ -908,7 +909,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </ComboboxList>
             </div>
             <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-              {t("composer.model.empty")}
+              {props.emptyMessage ?? t("composer.model.empty")}
             </ComboboxEmpty>
           </div>
         </Combobox>

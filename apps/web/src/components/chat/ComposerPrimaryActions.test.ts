@@ -118,6 +118,18 @@ describe("isStandardSendButtonDisabled", () => {
       }),
     ).toBe(true);
   });
+
+  it("disables the send button when the provider cannot accept model sends", () => {
+    expect(
+      isStandardSendButtonDisabled({
+        isSendBusy: false,
+        isConnecting: false,
+        isEnvironmentUnavailable: false,
+        isProviderUnavailable: true,
+        hasSendableContent: true,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("getRunningPrimaryActionMode", () => {

@@ -41,6 +41,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   modelCapabilities?: ModelCapabilities | null;
   modelOptionSelections?: ReadonlyArray<ProviderOptionSelection> | null;
+  availabilityTriggerLabel?: string | null;
+  emptyMessage?: string;
   activeProviderIconClassName?: string;
   compact?: boolean;
   simplified?: boolean;
@@ -91,12 +93,21 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const reasoningLabel = getReasoningDisplayLabel(
     reasoningDescriptor ? getProviderOptionCurrentLabel(reasoningDescriptor) : undefined,
   );
-  const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
-  const triggerTitleWithOptions = reasoningLabel ? `${triggerTitle} ${reasoningLabel}` : triggerTitle;
-  const triggerSubtitle = props.simplified ? null : selectedModel?.subProvider;
-  const triggerLabel = selectedModel
-    ? `${getTriggerDisplayModelLabel(selectedModel)}${reasoningLabel ? ` ${reasoningLabel}` : ""}`
-    : props.model;
+  const availabilityTriggerLabel = props.availabilityTriggerLabel?.trim() || null;
+  const triggerTitle =
+    availabilityTriggerLabel ??
+    (selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model);
+  const triggerTitleWithOptions =
+    availabilityTriggerLabel || !reasoningLabel
+      ? triggerTitle
+      : `${triggerTitle} ${reasoningLabel}`;
+  const triggerSubtitle =
+    props.simplified || availabilityTriggerLabel ? null : selectedModel?.subProvider;
+  const triggerLabel =
+    availabilityTriggerLabel ??
+    (selectedModel
+      ? `${getTriggerDisplayModelLabel(selectedModel)}${reasoningLabel ? ` ${reasoningLabel}` : ""}`
+      : props.model);
   const duplicateDriverCount = props.instanceEntries.filter(
     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
   ).length;
@@ -210,6 +221,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           modelOptionDescriptors={modelOptionDescriptors}
           simplified={props.simplified ?? false}
           terminalOpen={props.terminalOpen ?? false}
+          {...(props.emptyMessage ? { emptyMessage: props.emptyMessage } : {})}
           onRequestClose={() => setIsMenuOpen(false)}
           onInstanceModelChange={handleInstanceModelChange}
           {...(props.onModelOptionsChange

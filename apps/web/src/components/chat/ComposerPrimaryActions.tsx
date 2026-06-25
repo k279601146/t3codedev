@@ -36,6 +36,7 @@ interface ComposerPrimaryActionsProps {
   isUsageLimitReached?: boolean;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
+  isProviderUnavailable?: boolean;
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
@@ -61,6 +62,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isUsageLimitReached = false,
   isConnecting,
   isEnvironmentUnavailable,
+  isProviderUnavailable = false,
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
@@ -142,11 +144,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             isSendBusy,
             isConnecting,
             isEnvironmentUnavailable,
+            isProviderUnavailable,
             hasSendableContent,
           })}
           aria-label={
             isEnvironmentUnavailable
               ? "Environment disconnected"
+              : isProviderUnavailable
+                ? "Model service unavailable"
               : isConnecting
                 ? "Connecting"
                 : isSendBusy
@@ -180,7 +185,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           size="sm"
           className={cn("rounded-full", compact ? "h-9 px-3 sm:h-8" : "h-9 px-4 sm:h-8")}
           {...pointerFocusProps}
-          disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
+          disabled={isSendBusy || isConnecting || isEnvironmentUnavailable || isProviderUnavailable}
         >
           {isConnecting || isSendBusy ? t("composer.plan.sending") : t("composer.plan.refine")}
         </Button>
@@ -194,7 +199,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           size="sm"
           className="h-9 rounded-l-full rounded-r-none px-4 sm:h-8"
           {...pointerFocusProps}
-          disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
+          disabled={isSendBusy || isConnecting || isEnvironmentUnavailable || isProviderUnavailable}
         >
           {isConnecting || isSendBusy ? t("composer.plan.sending") : t("composer.plan.implement")}
         </Button>
@@ -207,7 +212,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 className="h-9 rounded-l-none rounded-r-full border-l-white/12 px-2 sm:h-8"
                 aria-label={t("composer.plan.implementationActions")}
                 {...pointerFocusProps}
-                disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
+                disabled={
+                  isSendBusy || isConnecting || isEnvironmentUnavailable || isProviderUnavailable
+                }
               />
             }
           >
@@ -215,7 +222,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           </MenuTrigger>
           <MenuPopup align="end" side="top">
             <MenuItem
-              disabled={isSendBusy || isConnecting || isEnvironmentUnavailable}
+              disabled={
+                isSendBusy || isConnecting || isEnvironmentUnavailable || isProviderUnavailable
+              }
               onClick={() => void onImplementPlanInNewThread()}
             >
               {t("composer.plan.implementInNewThread")}
@@ -235,6 +244,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         isSendBusy,
         isConnecting,
         isEnvironmentUnavailable,
+        isProviderUnavailable,
         hasSendableContent,
       })}
       aria-label={
@@ -242,6 +252,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           ? "Usage limit reached"
           : isEnvironmentUnavailable
             ? "Environment disconnected"
+            : isProviderUnavailable
+              ? "Model service unavailable"
             : isConnecting
               ? "Connecting"
               : isPreparingWorktree

@@ -84,6 +84,7 @@ import { deriveComposerFooterVisibility, type ComposerSurface } from "./composer
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import { getComposerProviderState } from "./composerProviderState";
+import { deriveComposerProviderAvailability } from "./composerProviderAvailability";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../vscode-icons";
@@ -276,6 +277,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isUsageLimitReached?: boolean;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
+  isProviderUnavailable: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
   newThreadMode?: boolean;
@@ -303,6 +305,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isUsageLimitReached={props.isUsageLimitReached ?? false}
         isConnecting={props.isConnecting}
         isEnvironmentUnavailable={props.isEnvironmentUnavailable}
+        isProviderUnavailable={props.isProviderUnavailable}
         isPreparingWorktree={props.isPreparingWorktree}
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
@@ -684,6 +687,7 @@ const ComposerFooterToolbar = memo(function ComposerFooterToolbar(props: {
   interactionMode: ProviderInteractionMode;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
+  isProviderUnavailable: boolean;
   isPreparingWorktree: boolean;
   isSendBusy: boolean;
   isInterruptPending?: boolean;
@@ -812,6 +816,7 @@ const ComposerFooterToolbar = memo(function ComposerFooterToolbar(props: {
           isUsageLimitReached={props.isUsageLimitReached}
           isConnecting={props.isConnecting}
           isEnvironmentUnavailable={props.isEnvironmentUnavailable}
+          isProviderUnavailable={props.isProviderUnavailable}
           isPreparingWorktree={props.isPreparingWorktree}
           hasSendableContent={props.hasSendableContent}
           preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown}
@@ -1570,12 +1575,26 @@ export const ChatComposer = memo(
       }
       return out;
     }, [providerInstanceEntries, settings]);
+    const selectedInstanceModelOptions = modelOptionsByInstance.get(selectedInstanceId) ?? [];
     const selectedModelForPickerWithCustomFallback = useMemo(() => {
-      const currentOptions = modelOptionsByInstance.get(selectedInstanceId) ?? [];
-      return currentOptions.some((option) => option.slug === selectedModelForPicker)
+      return selectedInstanceModelOptions.some((option) => option.slug === selectedModelForPicker)
         ? selectedModelForPicker
         : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
-    }, [modelOptionsByInstance, selectedInstanceId, selectedModelForPicker, selectedProvider]);
+    }, [selectedInstanceModelOptions, selectedModelForPicker, selectedProvider]);
+    const composerProviderAvailability = useMemo(
+      () =>
+        deriveComposerProviderAvailability({
+          provider: selectedProviderStatus,
+          modelOptions: selectedInstanceModelOptions,
+          selectedModel: selectedModelForPickerWithCustomFallback,
+        }),
+      [
+        selectedInstanceModelOptions,
+        selectedModelForPickerWithCustomFallback,
+        selectedProviderStatus,
+      ],
+    );
+    const isProviderUnavailable = !composerProviderAvailability.canSend;
 
     // ------------------------------------------------------------------
     // Context window
@@ -1857,6 +1876,7 @@ export const ChatComposer = memo(
         : isSendBusy ||
           isConnecting ||
           environmentUnavailable !== null ||
+          isProviderUnavailable ||
           !composerSendState.hasSendableContent;
     const collapsedComposerPrimaryActionLabel =
       runningPrimaryActionMode === "interrupt"
@@ -1865,6 +1885,8 @@ export const ChatComposer = memo(
           : "Stop generation"
         : runningPrimaryActionMode === "steer"
           ? "Steer current turn"
+          : isProviderUnavailable
+            ? (composerProviderAvailability.triggerLabel ?? "Model service unavailable")
           : "Send message";
     const showMobilePendingAnswerActions =
       isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
@@ -2472,12 +2494,45 @@ export const ChatComposer = memo(
 
     const submitComposer = useCallback(
       (event?: { preventDefault: () => void }) => {
+        const isStandardSend =
+          pendingPrimaryAction === null &&
+          !isComposerApprovalState &&
+          activePendingProgress === null;
+        const hasSubmissionContent =
+          composerSendState.hasSendableContent ||
+          showPlanFollowUpPrompt ||
+          prompt.trim().length > 0;
+        if (isStandardSend && hasSubmissionContent && !composerProviderAvailability.canSend) {
+          event?.preventDefault();
+          setThreadError(
+            activeThreadId,
+            composerProviderAvailability.sendBlockMessage ??
+              "当前模型服务不可用，请稍后重试。",
+          );
+          void getPrimaryEnvironmentConnection()
+            .client.server.refreshProviders()
+            .catch(() => undefined);
+          return;
+        }
         onSend(event);
         if (shouldBlurMobileComposerOnSubmit()) {
           blurMobileComposerAfterSend();
         }
       },
-      [blurMobileComposerAfterSend, onSend, shouldBlurMobileComposerOnSubmit],
+      [
+        activePendingProgress,
+        activeThreadId,
+        blurMobileComposerAfterSend,
+        composerProviderAvailability,
+        composerSendState.hasSendableContent,
+        isComposerApprovalState,
+        onSend,
+        pendingPrimaryAction,
+        prompt,
+        setThreadError,
+        shouldBlurMobileComposerOnSubmit,
+        showPlanFollowUpPrompt,
+      ],
     );
     const expandMobileComposer = useCallback(() => {
       if (composerBlurFrameRef.current !== null) {
@@ -2989,6 +3044,8 @@ export const ChatComposer = memo(
         modelOptionsByInstance={modelOptionsByInstance}
         modelCapabilities={selectedModelCapabilities}
         modelOptionSelections={selectedModelOptionSelections ?? null}
+        availabilityTriggerLabel={composerProviderAvailability.triggerLabel}
+        emptyMessage={composerProviderAvailability.menuEmptyMessage}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         {...(composerProviderState.modelPickerIconClassName
@@ -3199,6 +3256,7 @@ export const ChatComposer = memo(
                         isConnecting={isConnecting}
                         isEnvironmentUnavailable={environmentUnavailable !== null}
                         isPreparingWorktree={false}
+                        isProviderUnavailable={isProviderUnavailable}
                         hasSendableContent={false}
                         preserveComposerFocusOnPointerDown
                         onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
@@ -3527,6 +3585,7 @@ export const ChatComposer = memo(
                 interactionMode={interactionMode}
                 isConnecting={isConnecting}
                 isEnvironmentUnavailable={environmentUnavailable !== null}
+                isProviderUnavailable={isProviderUnavailable}
                 isPreparingWorktree={isPreparingWorktree}
                 isSendBusy={isSendBusy}
                 isInterruptPending={isInterruptPending}
