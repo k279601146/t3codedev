@@ -1,8 +1,11 @@
 import { type ServerProvider } from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
-import { CircleAlertIcon, LoaderIcon, RefreshCwIcon } from "lucide-react";
-import { getProviderStatusAlertCopy } from "../../providerStatusCopy";
+import { CircleAlertIcon, LoaderIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import {
+  getProviderStatusAlertCopy,
+  shouldShowProviderStatusBanner,
+} from "../../providerStatusCopy";
 import { ensureLocalApi } from "../../localApi";
 import { Button } from "../ui/button";
 import {
@@ -11,6 +14,17 @@ import {
   useWsConnectionStatus,
 } from "../../rpc/wsConnectionState";
 import { usePendingRpcAckRequests } from "../../rpc/requestLatencyState";
+
+const DISMISSED_PROVIDER_STATUS_BANNERS = new Set<string>();
+
+function getProviderStatusBannerDismissKey(provider: ServerProvider): string {
+  return [
+    provider.instanceId,
+    provider.status,
+    provider.auth.status,
+    provider.message ?? "",
+  ].join(":");
+}
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status: provider,
@@ -27,6 +41,10 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const previousHasPendingBackendRequestsRef = useRef(hasPendingBackendRequests);
   const backendIdleRecoverySequenceRef = useRef(0);
   const lastAutoRefreshKeyRef = useRef<string | null>(null);
+  const dismissKey = provider ? getProviderStatusBannerDismissKey(provider) : null;
+  const [dismissedKey, setDismissedKey] = useState<string | null>(() =>
+    dismissKey && DISMISSED_PROVIDER_STATUS_BANNERS.has(dismissKey) ? dismissKey : null,
+  );
 
   const refreshProviderStatus = useCallback(async () => {
     if (!provider || isRetrying) {
@@ -43,6 +61,14 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
       setIsRetrying(false);
     }
   }, [isRetrying, provider]);
+
+  useEffect(() => {
+    if (!dismissKey) {
+      setDismissedKey(null);
+      return;
+    }
+    setDismissedKey(DISMISSED_PROVIDER_STATUS_BANNERS.has(dismissKey) ? dismissKey : null);
+  }, [dismissKey]);
 
   useEffect(() => {
     const previousWsUiState = previousWsUiStateRef.current;
@@ -80,7 +106,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     wsUiState,
   ]);
 
-  if (!provider || provider.status === "ready" || provider.status === "disabled") {
+  if (!provider || !shouldShowProviderStatusBanner(provider)) {
     return null;
   }
 
@@ -88,8 +114,19 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     return null;
   }
 
+  if (dismissKey && dismissedKey === dismissKey) {
+    return null;
+  }
+
   const copy = getProviderStatusAlertCopy(provider);
   const detail = retryError ?? copy.detail;
+  const dismissBanner = () => {
+    if (!dismissKey) {
+      return;
+    }
+    DISMISSED_PROVIDER_STATUS_BANNERS.add(dismissKey);
+    setDismissedKey(dismissKey);
+  };
 
   return (
     <div className="pt-3 mx-auto max-w-3xl">
@@ -112,6 +149,15 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
               <RefreshCwIcon className="size-3" />
             )}
             {isRetrying ? "检查中" : "重试"}
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="关闭提示"
+            title="关闭提示"
+            onClick={dismissBanner}
+          >
+            <XIcon className="size-3.5" />
           </Button>
         </AlertAction>
       </Alert>
