@@ -4,6 +4,8 @@ import {
   type UnifiedDiffHunk,
   type UnifiedDiffLine,
 } from "../lib/unifiedDiff";
+import { buildPatchCacheKey } from "../lib/diffRendering";
+import { LRUCache } from "../lib/lruCache";
 
 export type DiffRenderRow =
   | {
@@ -25,23 +27,38 @@ export function buildFileDiffRenderKey(fileDiff: UnifiedDiffFilePatch): string {
 }
 
 const PARSED_DIFF_CACHE_LIMIT = 24;
-const parsedDiffCache = new Map<string, UnifiedDiffFilePatch[]>();
+const PARSED_DIFF_CACHE_MEMORY_BYTES = 24 * 1024 * 1024;
+const parsedDiffCache = new LRUCache<UnifiedDiffFilePatch[]>(
+  PARSED_DIFF_CACHE_LIMIT,
+  PARSED_DIFF_CACHE_MEMORY_BYTES,
+);
 const fileLineCountCache = new WeakMap<UnifiedDiffFilePatch, number>();
 
+function estimateParsedDiffSize(patch: string, files: ReadonlyArray<UnifiedDiffFilePatch>): number {
+  let lineTextLength = 0;
+  let lineCount = 0;
+  for (const file of files) {
+    for (const hunk of file.hunks) {
+      lineCount += 1;
+      for (const line of hunk.lines) {
+        lineCount += 1;
+        lineTextLength += line.text.length;
+      }
+    }
+  }
+  return patch.length * 2 + lineTextLength * 2 + lineCount * 96 + files.length * 512;
+}
+
 export function parseRenderableUnifiedDiff(patch: string): UnifiedDiffFilePatch[] {
-  const cached = parsedDiffCache.get(patch);
+  const cacheKey = buildPatchCacheKey(patch, "renderable-diff");
+  const cached = parsedDiffCache.get(cacheKey);
   if (cached) {
-    parsedDiffCache.delete(patch);
-    parsedDiffCache.set(patch, cached);
     return cached;
   }
   const parsed = parseUnifiedDiff(patch).filter((file) => file.hunks.length > 0);
-  parsedDiffCache.set(patch, parsed);
-  if (parsedDiffCache.size > PARSED_DIFF_CACHE_LIMIT) {
-    const oldestKey = parsedDiffCache.keys().next().value;
-    if (oldestKey !== undefined) {
-      parsedDiffCache.delete(oldestKey);
-    }
+  const approximateSize = estimateParsedDiffSize(patch, parsed);
+  if (approximateSize <= PARSED_DIFF_CACHE_MEMORY_BYTES) {
+    parsedDiffCache.set(cacheKey, parsed, approximateSize);
   }
   return parsed;
 }

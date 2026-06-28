@@ -53,6 +53,7 @@ import { selectTerminalEventEntries, useTerminalStateStore } from "../terminalSt
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
 const MULTI_CLICK_SELECTION_ACTION_DELAY_MS = 260;
+const TERMINAL_SCROLLBACK_LINES = 2_000;
 
 function maxDrawerHeight(): number {
   if (typeof window === "undefined") return DEFAULT_THREAD_TERMINAL_HEIGHT;
@@ -320,7 +321,7 @@ export function TerminalViewport({
       cursorBlink: true,
       lineHeight: 1.2,
       fontSize: 12,
-      scrollback: 5_000,
+      scrollback: TERMINAL_SCROLLBACK_LINES,
       fontFamily: '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
       theme: terminalThemeFromApp(mount),
     });

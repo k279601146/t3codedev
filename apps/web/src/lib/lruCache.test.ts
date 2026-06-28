@@ -40,4 +40,11 @@ describe("LRUCache", () => {
     expect(cache.get("b")).toBe("B");
     expect(cache.get("c")).toBe("C");
   });
+
+  it("does not cache entries larger than the memory budget", () => {
+    const cache = new LRUCache<string>(10, 25);
+    cache.set("huge", "H", 30);
+
+    expect(cache.get("huge")).toBeNull();
+  });
 });

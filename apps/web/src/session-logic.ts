@@ -1933,9 +1933,87 @@ export function deriveTimelineEntries(
     createdAt: entry.createdAt,
     entry,
   }));
+  if (!timelineRowsAreSorted(messageRows) || !timelineRowsAreSorted(proposedPlanRows)) {
+    return sortTimelineRows(messageRows, proposedPlanRows, workRows);
+  }
+  if (!timelineRowsAreSorted(workRows)) {
+    return sortTimelineRows(messageRows, proposedPlanRows, workRows);
+  }
+  return mergeSortedTimelineRows(messageRows, proposedPlanRows, workRows);
+}
+
+function sortTimelineRows(
+  messageRows: TimelineEntry[],
+  proposedPlanRows: TimelineEntry[],
+  workRows: TimelineEntry[],
+): TimelineEntry[] {
   return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
     a.createdAt.localeCompare(b.createdAt),
   );
+}
+
+function timelineRowsAreSorted(rows: ReadonlyArray<TimelineEntry>): boolean {
+  for (let index = 1; index < rows.length; index += 1) {
+    const previous = rows[index - 1];
+    const current = rows[index];
+    if (previous && current && previous.createdAt > current.createdAt) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function mergeSortedTimelineRows(
+  messageRows: TimelineEntry[],
+  proposedPlanRows: TimelineEntry[],
+  workRows: TimelineEntry[],
+): TimelineEntry[] {
+  const result: TimelineEntry[] = [];
+  let messageIndex = 0;
+  let proposedPlanIndex = 0;
+  let workIndex = 0;
+
+  while (
+    messageIndex < messageRows.length ||
+    proposedPlanIndex < proposedPlanRows.length ||
+    workIndex < workRows.length
+  ) {
+    const messageRow = messageRows[messageIndex];
+    const proposedPlanRow = proposedPlanRows[proposedPlanIndex];
+    const workRow = workRows[workIndex];
+    const next = earliestTimelineRow(messageRow, proposedPlanRow, workRow);
+    result.push(next.row);
+    if (next.kind === "message") {
+      messageIndex += 1;
+    } else if (next.kind === "proposed-plan") {
+      proposedPlanIndex += 1;
+    } else {
+      workIndex += 1;
+    }
+  }
+
+  return result;
+}
+
+function earliestTimelineRow(
+  messageRow: TimelineEntry | undefined,
+  proposedPlanRow: TimelineEntry | undefined,
+  workRow: TimelineEntry | undefined,
+): { kind: TimelineEntry["kind"]; row: TimelineEntry } {
+  if (
+    messageRow &&
+    (!proposedPlanRow || messageRow.createdAt <= proposedPlanRow.createdAt) &&
+    (!workRow || messageRow.createdAt <= workRow.createdAt)
+  ) {
+    return { kind: "message", row: messageRow };
+  }
+  if (proposedPlanRow && (!workRow || proposedPlanRow.createdAt <= workRow.createdAt)) {
+    return { kind: "proposed-plan", row: proposedPlanRow };
+  }
+  if (workRow) {
+    return { kind: "work", row: workRow };
+  }
+  throw new Error("Expected at least one timeline row.");
 }
 
 export function deriveCompletionDividerBeforeEntryId(

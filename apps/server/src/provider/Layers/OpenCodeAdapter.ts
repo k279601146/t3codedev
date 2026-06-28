@@ -51,6 +51,7 @@ import {
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
+const OPENCODE_RUNTIME_EVENT_QUEUE_CAPACITY = 2048;
 
 interface OpenCodeTurnSnapshot {
   readonly id: TurnId;
@@ -468,7 +469,9 @@ export function makeOpenCodeAdapter(
     // `options.nativeEventLogger`, they own its lifecycle.
     const managedNativeEventLogger =
       options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
-    const runtimeEvents = yield* Queue.unbounded<ProviderRuntimeEvent>();
+    const runtimeEvents = yield* Queue.bounded<ProviderRuntimeEvent>(
+      OPENCODE_RUNTIME_EVENT_QUEUE_CAPACITY,
+    );
     const sessions = new Map<ThreadId, OpenCodeSessionContext>();
 
     // Layer-level finalizer: when the adapter layer shuts down, stop every

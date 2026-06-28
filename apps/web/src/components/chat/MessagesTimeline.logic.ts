@@ -77,6 +77,87 @@ export interface TurnProcessCollapseState {
   summaryButtonHostByRowId: Map<string, string>;
 }
 
+export interface VirtualTimelineWindowItem<T> {
+  index: number;
+  row: T;
+  top: number;
+  height: number;
+}
+
+export interface VirtualTimelineWindow<T> {
+  items: Array<VirtualTimelineWindowItem<T>>;
+  totalHeight: number;
+}
+
+export function computeVirtualTimelineWindow<T>(input: {
+  rows: ReadonlyArray<T>;
+  getRowId: (row: T) => string;
+  getRowHeight: (rowId: string) => number | undefined;
+  estimatedRowHeight: number;
+  scrollTop: number;
+  viewportHeight: number;
+  listOffsetTop: number;
+  overscanPx: number;
+}): VirtualTimelineWindow<T> {
+  const offsets: number[] = [];
+  const heights: number[] = [];
+  let totalHeight = 0;
+
+  for (const row of input.rows) {
+    const rowId = input.getRowId(row);
+    const measuredHeight = input.getRowHeight(rowId);
+    const height =
+      measuredHeight !== undefined && measuredHeight > 0
+        ? measuredHeight
+        : input.estimatedRowHeight;
+    offsets.push(totalHeight);
+    heights.push(height);
+    totalHeight += height;
+  }
+
+  const viewportTop = Math.max(
+    0,
+    input.scrollTop - input.listOffsetTop - Math.max(0, input.overscanPx),
+  );
+  const viewportBottom = Math.max(
+    viewportTop,
+    input.scrollTop -
+      input.listOffsetTop +
+      Math.max(0, input.viewportHeight) +
+      Math.max(0, input.overscanPx),
+  );
+
+  let startIndex = 0;
+  while (
+    startIndex < input.rows.length &&
+    (offsets[startIndex] ?? 0) + (heights[startIndex] ?? input.estimatedRowHeight) < viewportTop
+  ) {
+    startIndex += 1;
+  }
+
+  let endIndex = startIndex;
+  while (endIndex < input.rows.length && (offsets[endIndex] ?? 0) <= viewportBottom) {
+    endIndex += 1;
+  }
+
+  const items: Array<VirtualTimelineWindowItem<T>> = [];
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const row = input.rows[index];
+    if (!row) continue;
+    items.push({
+      index,
+      row,
+      top: offsets[index] ?? 0,
+      height: heights[index] ?? input.estimatedRowHeight,
+    });
+  }
+
+  return {
+    items,
+    totalHeight,
+  };
+}
+
 export function isCommandWorkEntry(
   entry: Pick<WorkLogEntry, "requestKind" | "itemType" | "command">,
 ): boolean {
@@ -725,7 +806,10 @@ export function deriveMessagesTimelineRows(input: {
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
   const turnDiffSummaryByTurnId = new Map<TurnId, TurnDiffSummary>();
-  for (const summary of input.turnDiffSummaryByAssistantMessageId.values()) {
+  const turnDiffSummariesByAssistantMessage = [
+    ...input.turnDiffSummaryByAssistantMessageId.values(),
+  ];
+  for (const summary of turnDiffSummariesByAssistantMessage) {
     turnDiffSummaryByTurnId.set(summary.turnId, summary);
   }
   const durationStartByMessageId = computeMessageDurationStart(
@@ -859,7 +943,7 @@ export function deriveMessagesTimelineRows(input: {
         timelineEntry.createdAt,
         turnDiffSummaryByTurnId,
         input.turnDiffSummaryByAssistantMessageId,
-        [...input.turnDiffSummaryByAssistantMessageId.values()],
+        turnDiffSummariesByAssistantMessage,
       );
       nextRows.push({
         kind: "work",

@@ -23,7 +23,7 @@ import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { openInPreferredEditor } from "../editorPreferences";
-import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
+import { fnv1a32, resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { useTheme } from "../hooks/useTheme";
 import {
   type MarkdownFileLinkMeta,
@@ -34,6 +34,7 @@ import {
 } from "../markdown-links";
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
+import { LRUCache } from "../lib/lruCache";
 
 const LazyChatMarkdownHighlighter = lazy(() => import("./ChatMarkdownHighlighter"));
 
@@ -69,6 +70,9 @@ interface ChatMarkdownProps {
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
 const MARKDOWN_RENDER_CACHE_LIMIT = 160;
+const MARKDOWN_RENDER_CACHE_MEMORY_BYTES = 12 * 1024 * 1024;
+const MARKDOWN_CACHE_SECONDARY_HASH_SEED = 0x9e3779b9;
+const MARKDOWN_CACHE_SECONDARY_HASH_MULTIPLIER = 0x85ebca6b;
 
 const CODE_FENCE_LANGUAGE_REGEX = /(?:^|\s)language-([^\s]+)/;
 type MarkdownFileLinkMetaValue = NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>;
@@ -77,22 +81,44 @@ type MarkdownRenderCacheEntry = {
   markdownFileLinkMetaByHref: Map<string, MarkdownFileLinkMetaValue>;
   fileLinkParentSuffixByPath: Map<string, string>;
 };
-const markdownRenderCache = new Map<string, MarkdownRenderCacheEntry>();
+const markdownRenderCache = new LRUCache<MarkdownRenderCacheEntry>(
+  MARKDOWN_RENDER_CACHE_LIMIT,
+  MARKDOWN_RENDER_CACHE_MEMORY_BYTES,
+);
 
 function markdownRenderCacheKey(text: string, cwd: string | undefined): string {
-  return `${cwd ?? ""}\u0000${text}`;
+  const textHash = fnv1a32(text).toString(36);
+  const textHashSecondary = fnv1a32(
+    text,
+    MARKDOWN_CACHE_SECONDARY_HASH_SEED,
+    MARKDOWN_CACHE_SECONDARY_HASH_MULTIPLIER,
+  ).toString(36);
+  const cwdHash = fnv1a32(cwd ?? "").toString(36);
+  return `${cwdHash}:${cwd?.length ?? 0}:${text.length}:${textHash}:${textHashSecondary}`;
+}
+
+function estimateMarkdownRenderCacheEntrySize(
+  text: string,
+  entry: MarkdownRenderCacheEntry,
+): number {
+  let metadataChars = 0;
+  for (const [href, meta] of entry.markdownFileLinkMetaByHref) {
+    metadataChars += href.length + meta.filePath.length + (meta.line ? 8 : 0);
+  }
+  for (const [filePath, suffix] of entry.fileLinkParentSuffixByPath) {
+    metadataChars += filePath.length + suffix.length;
+  }
+  return text.length * 2 + entry.renderedText.length * 2 + metadataChars * 2;
 }
 
 function rememberMarkdownRenderCacheEntry(
   key: string,
+  sourceText: string,
   entry: MarkdownRenderCacheEntry,
 ): MarkdownRenderCacheEntry {
-  markdownRenderCache.set(key, entry);
-  if (markdownRenderCache.size > MARKDOWN_RENDER_CACHE_LIMIT) {
-    const oldestKey = markdownRenderCache.keys().next().value;
-    if (oldestKey !== undefined) {
-      markdownRenderCache.delete(oldestKey);
-    }
+  const approximateSize = estimateMarkdownRenderCacheEntrySize(sourceText, entry);
+  if (approximateSize <= MARKDOWN_RENDER_CACHE_MEMORY_BYTES) {
+    markdownRenderCache.set(key, entry, approximateSize);
   }
   return entry;
 }
@@ -101,8 +127,6 @@ function getMarkdownRenderCacheEntry(text: string, cwd: string | undefined): Mar
   const key = markdownRenderCacheKey(text, cwd);
   const cached = markdownRenderCache.get(key);
   if (cached) {
-    markdownRenderCache.delete(key);
-    markdownRenderCache.set(key, cached);
     return cached;
   }
   const renderedText = linkifyPlainFilePaths(text, cwd);
@@ -116,7 +140,7 @@ function getMarkdownRenderCacheEntry(text: string, cwd: string | undefined): Mar
     }
   }
   const filePaths = [...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath);
-  return rememberMarkdownRenderCacheEntry(key, {
+  return rememberMarkdownRenderCacheEntry(key, text, {
     renderedText,
     markdownFileLinkMetaByHref,
     fileLinkParentSuffixByPath: buildFileLinkParentSuffixByPath(filePaths),

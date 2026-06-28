@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeVirtualTimelineWindow,
   computeStableMessagesTimelineRows,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
@@ -7,6 +8,82 @@ import {
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
 } from "./MessagesTimeline.logic";
+
+describe("computeVirtualTimelineWindow", () => {
+  const rows = Array.from({ length: 10 }, (_, index) => ({ id: `row-${index}` }));
+
+  it("returns all rows intersecting the viewport and overscan window", () => {
+    const result = computeVirtualTimelineWindow({
+      rows,
+      getRowId: (row) => row.id,
+      getRowHeight: () => undefined,
+      estimatedRowHeight: 100,
+      scrollTop: 350,
+      viewportHeight: 200,
+      listOffsetTop: 0,
+      overscanPx: 50,
+    });
+
+    expect(result.totalHeight).toBe(1_000);
+    expect(result.items.map((item) => item.row.id)).toEqual([
+      "row-2",
+      "row-3",
+      "row-4",
+      "row-5",
+      "row-6",
+    ]);
+    expect(result.items.map((item) => item.top)).toEqual([200, 300, 400, 500, 600]);
+  });
+
+  it("uses measured row heights when available", () => {
+    const result = computeVirtualTimelineWindow({
+      rows: rows.slice(0, 4),
+      getRowId: (row) => row.id,
+      getRowHeight: (rowId) => (rowId === "row-1" ? 240 : undefined),
+      estimatedRowHeight: 100,
+      scrollTop: 180,
+      viewportHeight: 180,
+      listOffsetTop: 0,
+      overscanPx: 0,
+    });
+
+    expect(result.totalHeight).toBe(540);
+    expect(result.items.map((item) => [item.row.id, item.top, item.height])).toEqual([
+      ["row-1", 100, 240],
+      ["row-2", 340, 100],
+    ]);
+  });
+
+  it("accounts for the list offset inside the scroll container", () => {
+    const result = computeVirtualTimelineWindow({
+      rows,
+      getRowId: (row) => row.id,
+      getRowHeight: () => undefined,
+      estimatedRowHeight: 100,
+      scrollTop: 450,
+      viewportHeight: 100,
+      listOffsetTop: 200,
+      overscanPx: 0,
+    });
+
+    expect(result.items.map((item) => item.row.id)).toEqual(["row-2", "row-3"]);
+  });
+
+  it("handles empty rows", () => {
+    const result = computeVirtualTimelineWindow({
+      rows: [],
+      getRowId: (row: { id: string }) => row.id,
+      getRowHeight: () => undefined,
+      estimatedRowHeight: 100,
+      scrollTop: 0,
+      viewportHeight: 100,
+      listOffsetTop: 0,
+      overscanPx: 100,
+    });
+
+    expect(result).toEqual({ items: [], totalHeight: 0 });
+  });
+});
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {

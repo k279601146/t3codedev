@@ -4371,7 +4371,7 @@ export default function Sidebar() {
         threadRef.environmentId,
         threadRef.threadId,
         {
-          initialDetailMode: "full",
+          initialDetailMode: "recent",
         },
       );
       void navigate({

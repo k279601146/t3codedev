@@ -2187,6 +2187,42 @@ describe("deriveTimelineEntries", () => {
     });
   });
 
+  it("sorts when an input group arrives out of chronological order", () => {
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.make("message-late"),
+          role: "assistant",
+          text: "late",
+          createdAt: "2026-02-23T00:00:03.000Z",
+          streaming: false,
+        },
+        {
+          id: MessageId.make("message-early"),
+          role: "user",
+          text: "early",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          streaming: false,
+        },
+      ],
+      [],
+      [
+        {
+          id: "work-middle",
+          createdAt: "2026-02-23T00:00:02.000Z",
+          label: "Ran tests",
+          tone: "tool",
+        },
+      ],
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "message-early",
+      "work-middle",
+      "message-late",
+    ]);
+  });
+
   it("anchors the completion divider to latestTurn.assistantMessageId before timestamp fallback", () => {
     const entries = deriveTimelineEntries(
       [

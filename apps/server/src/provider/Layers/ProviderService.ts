@@ -69,6 +69,7 @@ import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { ProviderEventLoggers } from "./ProviderEventLoggers.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
 const isModelSelection = Schema.is(ModelSelection);
+const PROVIDER_RUNTIME_EVENT_PUBSUB_CAPACITY = 2048;
 
 /**
  * Hook for tests that want to override the canonical event logger pulled
@@ -222,7 +223,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const registry = yield* ProviderAdapterRegistry;
   const directory = yield* ProviderSessionDirectory;
-  const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+  const runtimeEventPubSub = yield* PubSub.bounded<ProviderRuntimeEvent>(
+    PROVIDER_RUNTIME_EVENT_PUBSUB_CAPACITY,
+  );
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   const canonicalEventLogWorker = yield* makeDrainableWorker((event: ProviderRuntimeEvent) =>
     canonicalEventLogger

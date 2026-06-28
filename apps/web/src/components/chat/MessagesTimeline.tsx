@@ -11,6 +11,7 @@ import {
   use,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -56,6 +57,7 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
+  computeVirtualTimelineWindow,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
   fileChangeVerbLabel,
@@ -155,6 +157,9 @@ const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
+const TIMELINE_VIRTUALIZATION_ROW_THRESHOLD = 80;
+const TIMELINE_ESTIMATED_ROW_HEIGHT = 160;
+const TIMELINE_OVERSCAN_PX = 1_200;
 
 const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 
@@ -330,10 +335,39 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const scrollMeasureFrameRef = useRef<number | null>(null);
   const pendingPrependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const loadMoreBeforeInFlightRef = useRef(false);
+  const virtualListRef = useRef<HTMLDivElement | null>(null);
+  const rowHeightsRef = useRef(new Map<string, number>());
+  const [rowMeasurementVersion, setRowMeasurementVersion] = useState(0);
+  const [virtualScrollState, setVirtualScrollState] = useState({
+    scrollTop: 0,
+    viewportHeight: 0,
+    listOffsetTop: 0,
+  });
+  const shouldVirtualizeRows = rows.length > TIMELINE_VIRTUALIZATION_ROW_THRESHOLD;
 
   const getScrollContainer = useCallback(() => {
     return scrollRef.current;
   }, [scrollRef]);
+
+  const measureVirtualViewport = useCallback(() => {
+    const scrollEl = getScrollContainer();
+    if (!scrollEl) {
+      return;
+    }
+    const listOffsetTop = virtualListRef.current?.offsetTop ?? 0;
+    const nextState = {
+      scrollTop: scrollEl.scrollTop,
+      viewportHeight: scrollEl.clientHeight,
+      listOffsetTop,
+    };
+    setVirtualScrollState((previous) =>
+      previous.scrollTop === nextState.scrollTop &&
+      previous.viewportHeight === nextState.viewportHeight &&
+      previous.listOffsetTop === nextState.listOffsetTop
+        ? previous
+        : nextState,
+    );
+  }, [getScrollContainer]);
 
   const handleScroll = useCallback(() => {
     if (!isScrollingRef.current) {
@@ -359,6 +393,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         scrollMeasureFrameRef.current = null;
         const scrollEl = getScrollContainer();
         if (!scrollEl) return;
+        if (shouldVirtualizeRows) {
+          measureVirtualViewport();
+        }
         const isAtEnd = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 10;
         onIsAtEndChange(isAtEnd);
         if (
@@ -377,7 +414,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         }
       });
     }
-  }, [hasMoreBefore, isLoadingBefore, onIsAtEndChange, onLoadMoreBefore, getScrollContainer]);
+  }, [
+    hasMoreBefore,
+    isLoadingBefore,
+    onIsAtEndChange,
+    onLoadMoreBefore,
+    getScrollContainer,
+    measureVirtualViewport,
+    shouldVirtualizeRows,
+  ]);
 
   useEffect(() => {
     if (!isLoadingBefore) {
@@ -414,6 +459,97 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
+  useLayoutEffect(() => {
+    if (!shouldVirtualizeRows) {
+      return;
+    }
+    measureVirtualViewport();
+  }, [measureVirtualViewport, rows.length, shouldVirtualizeRows]);
+
+  useEffect(() => {
+    if (!shouldVirtualizeRows) {
+      return;
+    }
+    const scrollEl = getScrollContainer();
+    if (!scrollEl || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => measureVirtualViewport());
+    resizeObserver.observe(scrollEl);
+    if (virtualListRef.current) {
+      resizeObserver.observe(virtualListRef.current);
+    }
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [getScrollContainer, measureVirtualViewport, shouldVirtualizeRows]);
+
+  useEffect(() => {
+    if (!shouldVirtualizeRows) {
+      rowHeightsRef.current.clear();
+      return;
+    }
+    const rowIds = new Set(rows.map((row) => row.id));
+    let changed = false;
+    for (const rowId of rowHeightsRef.current.keys()) {
+      if (!rowIds.has(rowId)) {
+        rowHeightsRef.current.delete(rowId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      setRowMeasurementVersion((version) => version + 1);
+    }
+  }, [rows, shouldVirtualizeRows]);
+
+  const rememberRowElement = useCallback(
+    (rowId: string, element: HTMLDivElement | null) => {
+      if (!shouldVirtualizeRows || !element) {
+        return;
+      }
+
+      const measure = () => {
+        const nextHeight = element.getBoundingClientRect().height;
+        if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
+          return;
+        }
+        const previousHeight = rowHeightsRef.current.get(rowId);
+        if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) {
+          return;
+        }
+        rowHeightsRef.current.set(rowId, nextHeight);
+        setRowMeasurementVersion((version) => version + 1);
+      };
+
+      measure();
+      if (typeof ResizeObserver === "undefined") {
+        return;
+      }
+
+      const resizeObserver = new ResizeObserver(measure);
+      resizeObserver.observe(element);
+      return () => resizeObserver.disconnect();
+    },
+    [shouldVirtualizeRows],
+  );
+
+  const virtualWindow = useMemo(
+    () =>
+      shouldVirtualizeRows
+        ? computeVirtualTimelineWindow({
+            rows,
+            getRowId: keyExtractor,
+            getRowHeight: (rowId) => rowHeightsRef.current.get(rowId),
+            estimatedRowHeight: TIMELINE_ESTIMATED_ROW_HEIGHT,
+            scrollTop: virtualScrollState.scrollTop,
+            viewportHeight: virtualScrollState.viewportHeight,
+            listOffsetTop: virtualScrollState.listOffsetTop,
+            overscanPx: TIMELINE_OVERSCAN_PX,
+          })
+        : null,
+    [rowMeasurementVersion, rows, shouldVirtualizeRows, virtualScrollState],
+  );
+
   const didInitialScrollRef = useRef(false);
   const previousRowCountRef = useRef(rows.length);
   useEffect(() => {
@@ -433,12 +569,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       const scrollEl = getScrollContainer();
       if (scrollEl) {
         scrollEl.scrollTop = scrollEl.scrollHeight;
+        measureVirtualViewport();
       }
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [getScrollContainer, onIsAtEndChange, rows.length]);
+  }, [getScrollContainer, measureVirtualViewport, onIsAtEndChange, rows.length]);
 
   useEffect(() => {
     const anchor = pendingPrependAnchorRef.current;
@@ -449,12 +586,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       const scrollEl = getScrollContainer();
       if (!scrollEl) return;
       scrollEl.scrollTop = scrollEl.scrollHeight - anchor.scrollHeight + anchor.scrollTop;
+      measureVirtualViewport();
       pendingPrependAnchorRef.current = null;
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [getScrollContainer, isLoadingBefore, rows.length]);
+  }, [getScrollContainer, isLoadingBefore, measureVirtualViewport, rows.length]);
 
   const lastRow = rows.at(-1) ?? null;
   useEffect(() => {
@@ -476,12 +614,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       const nextScrollEl = getScrollContainer();
       if (nextScrollEl) {
         nextScrollEl.scrollTop = nextScrollEl.scrollHeight;
+        measureVirtualViewport();
       }
     });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeTurnInProgress, lastRow, onIsAtEndChange, getScrollContainer]);
+  }, [activeTurnInProgress, lastRow, onIsAtEndChange, getScrollContainer, measureVirtualViewport]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -601,15 +740,41 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 </button>
               </div>
             ) : null}
-            {rows.map((row) => (
+            {virtualWindow ? (
               <div
-                key={keyExtractor(row)}
-                className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]"
-                data-timeline-root="true"
+                ref={virtualListRef}
+                className="relative min-w-0"
+                style={{ height: virtualWindow.totalHeight }}
               >
-                <TimelineRowContent row={row} />
+                {virtualWindow.items.map((item) => (
+                  <div
+                    key={keyExtractor(item.row)}
+                    className="absolute inset-x-0 top-0 min-w-0"
+                    style={{ transform: `translateY(${item.top}px)` }}
+                  >
+                    <div
+                      ref={(element) => rememberRowElement(item.row.id, element)}
+                      className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain-intrinsic-size:0_160px] [contain:layout_paint] [content-visibility:auto]"
+                      data-timeline-root="true"
+                    >
+                      <TimelineRowContent row={item.row} />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              <div ref={virtualListRef} className="min-w-0">
+                {rows.map((row) => (
+                  <div
+                    key={keyExtractor(row)}
+                    className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain-intrinsic-size:0_160px] [contain:layout_paint] [content-visibility:auto]"
+                    data-timeline-root="true"
+                  >
+                    <TimelineRowContent row={row} />
+                  </div>
+                ))}
+              </div>
+            )}
             {TIMELINE_LIST_FOOTER}
           </div>
         </div>
