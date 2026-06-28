@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { Sidebar, SidebarProvider, SidebarRail } from "./ui/sidebar";
@@ -91,6 +91,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const layoutMode = useSettings((state) => state.layoutMode);
   const isSettingsRoute = pathname.startsWith("/settings");
   const pendingOpenThreadRef = useUiStateStore((state) => state.pendingOpenThreadRef);
+  const [isWindowFocused, setIsWindowFocused] = useState(() =>
+    typeof document === "undefined" ? true : document.hasFocus(),
+  );
 
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
@@ -100,16 +103,22 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       syncShortcutModifierStateFromKeyboardEvent(event);
     };
     const onWindowBlur = () => {
+      setIsWindowFocused(false);
       clearShortcutModifierState();
+    };
+    const onWindowFocus = () => {
+      setIsWindowFocused(true);
     };
 
     window.addEventListener("keydown", onWindowKeyDown, true);
     window.addEventListener("keyup", onWindowKeyUp, true);
+    window.addEventListener("focus", onWindowFocus);
     window.addEventListener("blur", onWindowBlur);
 
     return () => {
       window.removeEventListener("keydown", onWindowKeyDown, true);
       window.removeEventListener("keyup", onWindowKeyUp, true);
+      window.removeEventListener("focus", onWindowFocus);
       window.removeEventListener("blur", onWindowBlur);
     };
   }, []);
@@ -132,7 +141,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   }, [navigate]);
 
   return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen>
+    <SidebarProvider
+      className="h-dvh! min-h-0!"
+      data-window-focused={isWindowFocused ? "true" : "false"}
+      defaultOpen
+    >
       <Sidebar
         side="left"
         collapsible="offcanvas"
