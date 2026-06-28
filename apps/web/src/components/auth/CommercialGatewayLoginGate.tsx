@@ -126,7 +126,7 @@ export function CommercialGatewayLoginGate({
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
   const browserSignInRequestIdRef = useRef<string | null>(null);
   const gatewayBaseUrl = authState?.gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
-  const webAuthBaseUrl = authState?.webAuthBaseUrl || resolveCommercialEngineWebAuthBaseUrl();
+  const webAuthBaseUrl = resolveCommercialEngineWebAuthBaseUrl();
   const registerWebAuthBaseUrl = webAuthBaseUrl;
 
   useEffect(() => {

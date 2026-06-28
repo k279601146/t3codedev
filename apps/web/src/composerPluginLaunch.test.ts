@@ -13,7 +13,7 @@ describe("composerPluginLaunch", () => {
     expect(buildComposerPluginLaunchContext("@Computer 截屏看看")).toContain(
       "@Computer: use Bahew computer_use",
     );
-    expect(buildComposerPluginLaunchContext("@Browser 打开 localhost:3000")).toContain(
+    expect(buildComposerPluginLaunchContext("@Browser 打开 https://example.test")).toContain(
       "@Browser: use the Bahew in-app browser tools",
     );
     expect(buildComposerPluginLaunchContext("@Chrome 检查登录页")).toContain(

@@ -116,8 +116,8 @@ vi.mock("./environments/runtime", () => ({
       label: "Primary",
       source: "manual" as const,
       target: {
-        httpBaseUrl: "http://localhost:3000",
-        wsBaseUrl: "ws://localhost:3000",
+        httpBaseUrl: "https://backend.example.test",
+        wsBaseUrl: "wss://backend.example.test",
       },
       environmentId: EnvironmentId.make("environment-local"),
     },
@@ -729,8 +729,8 @@ describe("wsApi", () => {
       {
         environmentId: EnvironmentId.make("environment-local"),
         label: "Primary",
-        httpBaseUrl: "http://localhost:3000",
-        wsBaseUrl: "ws://localhost:3000",
+        httpBaseUrl: "https://backend.example.test",
+        wsBaseUrl: "wss://backend.example.test",
         createdAt: "2026-04-09T00:00:00.000Z",
         lastConnectedAt: null,
       },
@@ -745,8 +745,8 @@ describe("wsApi", () => {
       {
         environmentId: EnvironmentId.make("environment-local"),
         label: "Primary",
-        httpBaseUrl: "http://localhost:3000",
-        wsBaseUrl: "ws://localhost:3000",
+        httpBaseUrl: "https://backend.example.test",
+        wsBaseUrl: "wss://backend.example.test",
         createdAt: "2026-04-09T00:00:00.000Z",
         lastConnectedAt: null,
       },

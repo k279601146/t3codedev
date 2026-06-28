@@ -239,6 +239,72 @@ describe("DesktopCommercialAuth", () => {
     ),
   );
 
+  it.effect("uses configured auth endpoints instead of stale persisted URLs", () => {
+    const openedUrls: string[] = [];
+    return withGatewayBaseUrl(
+      "https://gateway.example.com/v1",
+      withWebAuthBaseUrl(
+        "https://app.example.com",
+        withCommercialAuth(
+          withFetch(
+            (async (url) => {
+              assert.equal(url, "https://gateway.example.com/ide/auth/token");
+              return new Response(
+                JSON.stringify({
+                  data: {
+                    access_token: "ide-jwt",
+                    expires_in: 3600,
+                    user: { email: "dev@example.com" },
+                  },
+                }),
+                { status: 200 },
+              );
+            }) as typeof fetch,
+            Effect.gen(function* () {
+              const environment = yield* DesktopEnvironment.DesktopEnvironment;
+              const fileSystem = yield* FileSystem.FileSystem;
+              const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+              const path = environment.path;
+
+              yield* fileSystem.makeDirectory(path.dirname(environment.commercialAuthPath), {
+                recursive: true,
+              });
+              yield* fileSystem.writeFileString(
+                environment.commercialAuthPath,
+                JSON.stringify({
+                  version: 1,
+                  gatewayBaseUrl: "https://old-gateway.example.test/v1",
+                  webAuthBaseUrl: "https://old-auth.example.test",
+                  encryptedIdeJwt: "ZW5jOm9sZC1qd3Q=",
+                  authenticatedAt: "2026-05-10T00:00:00.000Z",
+                  tokenExpiresAt: null,
+                  userLabel: "Old account",
+                }),
+              );
+
+              const loaded = yield* auth.getState;
+              assert.equal(loaded.gatewayBaseUrl, "https://gateway.example.com/v1");
+              assert.equal(loaded.webAuthBaseUrl, "https://app.example.com");
+
+              const state = yield* auth.signInWithBrowser({
+                gatewayBaseUrl: "https://old-gateway.example.test/v1",
+                webAuthBaseUrl: "https://old-auth.example.test",
+              });
+
+              assert.equal(state.gatewayBaseUrl, "https://gateway.example.com/v1");
+              assert.equal(state.webAuthBaseUrl, "https://app.example.com");
+              assert.equal(openedUrls.length, 1);
+              const authorizeUrl = new URL(openedUrls[0]!);
+              assert.equal(authorizeUrl.origin, "https://app.example.com");
+              assert.equal(authorizeUrl.pathname, "/ide/auth/authorize");
+            }),
+          ),
+          { openedUrls },
+        ),
+      ),
+    );
+  });
+
   it.effect("retries transient gateway token exchange failures", () =>
     withGatewayBaseUrl(
       "https://api.example.com/v1",

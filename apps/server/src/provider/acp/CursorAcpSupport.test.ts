@@ -64,13 +64,13 @@ describe("buildCursorAcpSpawnInput", () => {
       buildCursorAcpSpawnInput(
         {
           binaryPath: "/usr/local/bin/agent",
-          apiEndpoint: "http://localhost:3000",
+          apiEndpoint: "https://acp-endpoint.example.test",
         },
         "/tmp/project",
       ),
     ).toEqual({
       command: "/usr/local/bin/agent",
-      args: ["-e", "http://localhost:3000", "acp"],
+      args: ["-e", "https://acp-endpoint.example.test", "acp"],
       cwd: "/tmp/project",
     });
   });

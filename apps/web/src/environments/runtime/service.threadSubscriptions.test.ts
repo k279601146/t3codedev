@@ -156,8 +156,8 @@ describe("retainThreadDetailSubscription", () => {
       label: "Primary environment",
       source: "window-origin",
       target: {
-        httpBaseUrl: "http://127.0.0.1:3000/",
-        wsBaseUrl: "ws://127.0.0.1:3000/",
+        httpBaseUrl: "https://backend.example.test/",
+        wsBaseUrl: "wss://backend.example.test/",
       },
       environmentId: EnvironmentId.make("env-1"),
     });
@@ -295,8 +295,8 @@ describe("retainThreadDetailSubscription", () => {
       label: "Primary environment",
       source: "window-origin",
       target: {
-        httpBaseUrl: "http://127.0.0.1:3000/",
-        wsBaseUrl: "ws://127.0.0.1:3000/",
+        httpBaseUrl: "https://backend.example.test/",
+        wsBaseUrl: "wss://backend.example.test/",
       },
     });
     const {

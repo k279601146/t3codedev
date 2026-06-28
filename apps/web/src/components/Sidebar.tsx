@@ -68,7 +68,10 @@ import {
   type ThreadEnvMode,
   ThreadId,
 } from "@t3tools/contracts";
-import { DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL } from "@t3tools/shared/commercialEngine";
+import {
+  DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL,
+  resolveCommercialEngineWebAuthBaseUrl,
+} from "@t3tools/shared/commercialEngine";
 import {
   parseScopedThreadKey,
   scopedProjectKey,
@@ -2571,8 +2574,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const accountAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
     accountLabel,
   )}`;
-  const accountWebBaseUrl =
-    commercialAuthState?.webAuthBaseUrl || DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL;
+  const accountWebBaseUrl = resolveCommercialEngineWebAuthBaseUrl();
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 

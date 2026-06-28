@@ -6,8 +6,8 @@ export const COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV = "MYIDE_API_URL";
 export const COMMERCIAL_ENGINE_IDE_JWT_ENV = "MYIDE_IDE_JWT";
 export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV = "MYIDE_WINDOWS_SANDBOX_MODE";
 
-export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "http://localhost:3000/v1";
-export const DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL = "http://localhost:3001";
+export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "https://sub.bahew.com/v1";
+export const DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL = "https://www.bahew.com";
 export const COMMERCIAL_ENGINE_WIRE_API = "responses";
 export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_MODES = ["unelevated", "elevated"] as const;
 export type CommercialEngineWindowsSandboxMode =
@@ -49,7 +49,45 @@ const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
   "WINDIR",
 ] as const;
 
-export function getCommercialEngineEnvVar(env: NodeJS.ProcessEnv, key: string): string | undefined {
+type CommercialEngineEnv = Readonly<Record<string, string | undefined>>;
+
+function getProcessEnv(): CommercialEngineEnv {
+  return (
+    (globalThis as { process?: { env?: CommercialEngineEnv } }).process?.env ??
+    {}
+  );
+}
+
+function getProcessPlatform(): NodeJS.Platform | undefined {
+  return (globalThis as { process?: { platform?: NodeJS.Platform } }).process?.platform;
+}
+
+function getBundlerCommercialEngineEnv(): CommercialEngineEnv {
+  const env = (import.meta as unknown as {
+    env?: {
+      MYIDE_WEB_AUTH_BASE_URL?: string;
+      MYIDE_GATEWAY_BASE_URL?: string;
+      MYIDE_API_URL?: string;
+      MYIDE_WINDOWS_SANDBOX_MODE?: string;
+    };
+  }).env;
+
+  return {
+    [COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV]: env?.MYIDE_WEB_AUTH_BASE_URL,
+    [COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV]: env?.MYIDE_GATEWAY_BASE_URL,
+    [COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV]: env?.MYIDE_API_URL,
+    [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: env?.MYIDE_WINDOWS_SANDBOX_MODE,
+  };
+}
+
+function getDefaultCommercialEngineEnv(): CommercialEngineEnv {
+  return {
+    ...getBundlerCommercialEngineEnv(),
+    ...getProcessEnv(),
+  };
+}
+
+export function getCommercialEngineEnvVar(env: CommercialEngineEnv, key: string): string | undefined {
   if (env[key] !== undefined) return env[key];
   const upperKey = key.toUpperCase();
   for (const envKey in env) {
@@ -59,7 +97,7 @@ export function getCommercialEngineEnvVar(env: NodeJS.ProcessEnv, key: string): 
 }
 
 export function buildCommercialEngineProcessEnv(
-  baseEnv: NodeJS.ProcessEnv,
+  baseEnv: CommercialEngineEnv,
   patch: Readonly<Record<string, string | undefined>>,
 ): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
@@ -76,7 +114,7 @@ export function buildCommercialEngineProcessEnv(
 }
 
 export function resolveCommercialEngineGatewayBaseUrl(
-  env: NodeJS.ProcessEnv = process.env,
+  env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): string {
   return (
     getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_GATEWAY_BASE_URL_ENV) ||
@@ -86,7 +124,7 @@ export function resolveCommercialEngineGatewayBaseUrl(
 }
 
 export function resolveCommercialEngineWebAuthBaseUrl(
-  env: NodeJS.ProcessEnv = process.env,
+  env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): string {
   return (
     getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV) ||
@@ -108,14 +146,14 @@ export function resolveCommercialEngineIdeApiBaseUrlCandidates(gatewayBaseUrl: s
 }
 
 export function resolveCommercialEngineIdeJwt(
-  env: NodeJS.ProcessEnv = process.env,
+  env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): string | undefined {
   const token = getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_IDE_JWT_ENV)?.trim();
   return token && token.length > 0 ? token : undefined;
 }
 
 export function resolveCommercialEngineWindowsSandboxMode(
-  env: NodeJS.ProcessEnv = process.env,
+  env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): CommercialEngineWindowsSandboxMode {
   const raw = getCommercialEngineEnvVar(env, COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV)
     ?.trim()
@@ -131,10 +169,12 @@ function tomlStringArray(values: ReadonlyArray<string>): string {
   return `[${values.map(tomlString).join(", ")}]`;
 }
 
-export function generateCommercialEngineTomlConfig(env: NodeJS.ProcessEnv = process.env): string {
+export function generateCommercialEngineTomlConfig(
+  env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
+): string {
   const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(env);
   const windowsConfig =
-    process.platform === "win32"
+    getProcessPlatform() === "win32"
       ? `[windows]\nsandbox = ${tomlString(resolveCommercialEngineWindowsSandboxMode(env))}`
       : "";
 

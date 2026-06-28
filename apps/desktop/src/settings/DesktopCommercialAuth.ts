@@ -214,8 +214,8 @@ function normalizeDocument(document: CommercialAuthStorageDocument): CommercialA
   const configuredWebAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
   const baseDocument = {
     version: document.version ?? 1,
-    gatewayBaseUrl: document.gatewayBaseUrl?.trim() || configuredGatewayBaseUrl,
-    webAuthBaseUrl: document.webAuthBaseUrl?.trim() || configuredWebAuthBaseUrl,
+    gatewayBaseUrl: configuredGatewayBaseUrl,
+    webAuthBaseUrl: configuredWebAuthBaseUrl,
     authenticatedAt: document.authenticatedAt ?? null,
     tokenExpiresAt: document.tokenExpiresAt ?? null,
     userLabel: document.userLabel ?? null,
@@ -703,9 +703,7 @@ export const layer = Layer.effect(
       }).pipe(Effect.withSpan("desktop.commercialAuth.getCredentials")),
       signIn: Effect.fn("desktop.commercialAuth.signIn")(function* (input) {
         const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
-        const webAuthBaseUrl = input.webAuthBaseUrl
-          ? normalizeWebAuthBaseUrl(input.webAuthBaseUrl)
-          : resolveConfiguredWebAuthBaseUrl();
+        const webAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
         const exchanged = yield* exchangeWebTokenForIDEToken({
           ...input,
         });
@@ -738,9 +736,7 @@ export const layer = Layer.effect(
       }),
       signInWithBrowser: Effect.fn("desktop.commercialAuth.signInWithBrowser")(function* (input) {
         const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
-        const webAuthBaseUrl = input.webAuthBaseUrl
-          ? normalizeWebAuthBaseUrl(input.webAuthBaseUrl)
-          : resolveConfiguredWebAuthBaseUrl();
+        const webAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
         const codeVerifier = makePKCEVerifier();
         const codeChallenge = makePKCEChallenge(codeVerifier);
         const authorization = yield* Effect.tryPromise({

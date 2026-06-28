@@ -157,8 +157,8 @@ vi.mock("../../environments/runtime", () => {
       source: "manual" as const,
       environmentId: EnvironmentId.make("environment-local"),
       target: {
-        httpBaseUrl: "http://localhost:3000",
-        wsBaseUrl: "ws://localhost:3000",
+        httpBaseUrl: "https://backend.example.test",
+        wsBaseUrl: "wss://backend.example.test",
       },
     },
     environmentId: EnvironmentId.make("environment-local"),
@@ -174,7 +174,7 @@ vi.mock("../../environments/runtime", () => {
   };
 
   return {
-    getEnvironmentHttpBaseUrl: () => "http://localhost:3000",
+    getEnvironmentHttpBaseUrl: () => "https://backend.example.test",
     getSavedEnvironmentRecord: () => null,
     getSavedEnvironmentRuntimeState: () => null,
     hasSavedEnvironmentRegistryHydrated: () => true,
@@ -182,7 +182,7 @@ vi.mock("../../environments/runtime", () => {
     resetSavedEnvironmentRegistryStoreForTests: () => undefined,
     resetSavedEnvironmentRuntimeStoreForTests: () => undefined,
     resolveEnvironmentHttpUrl: (_environmentId: unknown, path: string) =>
-      new URL(path, "http://localhost:3000").toString(),
+      new URL(path, "https://backend.example.test").toString(),
     waitForSavedEnvironmentRegistryHydration: async () => undefined,
     addSavedEnvironment: vi.fn(),
     connectDesktopSshEnvironment: mockConnectDesktopSshEnvironment,

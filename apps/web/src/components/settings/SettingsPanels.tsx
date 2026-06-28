@@ -641,7 +641,6 @@ function CommercialGatewaySection() {
     void bridge
       .signInCommercialAuth({
         gatewayBaseUrl: authState?.gatewayBaseUrl ?? "",
-        ...(authState?.webAuthBaseUrl ? { webAuthBaseUrl: authState.webAuthBaseUrl } : {}),
         webAccessToken,
       })
       .then((state) => {

@@ -8,6 +8,7 @@ import {
   COMMERCIAL_ENGINE_WIRE_API,
   COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+  DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL,
   buildCommercialEngineProcessEnv,
   generateCommercialEngineTomlConfig,
   resolveCommercialEngineGatewayBaseUrl,
@@ -44,12 +45,36 @@ describe("commercialEngine", () => {
     );
   });
 
+  it("resolves public defaults when process is unavailable", () => {
+    const previousProcess = globalThis.process;
+
+    try {
+      Reflect.deleteProperty(globalThis, "process");
+
+      assert.equal(
+        resolveCommercialEngineGatewayBaseUrl(),
+        DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
+      );
+      assert.equal(
+        resolveCommercialEngineWebAuthBaseUrl(),
+        DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL,
+      );
+    } finally {
+      Object.defineProperty(globalThis, "process", {
+        configurable: true,
+        enumerable: false,
+        value: previousProcess,
+        writable: true,
+      });
+    }
+  });
+
   it("derives IDE API candidates from the gateway URL", () => {
     assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://api.example.com/v1"), [
       "https://api.example.com",
     ]);
-    assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("http://localhost:3000/v1"), [
-      "http://localhost:3000",
+    assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://sub.bahew.com/v1"), [
+      "https://sub.bahew.com",
     ]);
   });
 

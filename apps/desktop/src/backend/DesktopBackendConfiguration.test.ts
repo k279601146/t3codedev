@@ -549,7 +549,7 @@ describe("DesktopBackendConfiguration", () => {
         yield* configuration.resolve;
 
         const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-        assert.match(engineConfig, /base_url = "http:\/\/localhost:3000\/v1"/);
+        assert.match(engineConfig, /base_url = "https:\/\/sub\.bahew\.com\/v1"/);
         assert.match(
           engineConfig,
           /\[features\]\s+image_generation = true\s+imagegenext = true\s+plugins = true/,

@@ -550,7 +550,7 @@ export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIcon
 }
 
 export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefined): string {
-  return `http://localhost:${mockUpdateServerPort ?? 3000}`;
+  return `http://localhost:${mockUpdateServerPort ?? 4399}`;
 }
 
 export function resolveDesktopProductName(version: string): string {

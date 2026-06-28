@@ -35,11 +35,11 @@ const configuredHostedAppUrl = (() => {
 const sourcemapEnv = process.env.T3CODE_WEB_SOURCEMAP?.trim().toLowerCase();
 
 const buildSourcemap =
-  sourcemapEnv === "0" || sourcemapEnv === "false"
-    ? false
+  sourcemapEnv === "1" || sourcemapEnv === "true"
+    ? true
     : sourcemapEnv === "hidden"
       ? "hidden"
-      : true;
+      : false;
 
 const eagerChatRouteIds = new Set([
   "/_chat",
@@ -72,6 +72,13 @@ function resolveDevProxyTarget(wsUrl: string | undefined): string | undefined {
 const devProxyTarget = resolveDevProxyTarget(configuredWsUrl);
 
 export default defineConfig({
+  envDir: "../..",
+  envPrefix: [
+    "VITE_",
+    "MYIDE_WEB_AUTH_BASE_URL",
+    "MYIDE_GATEWAY_BASE_URL",
+    "MYIDE_API_URL",
+  ],
   plugins: [
     tanstackRouter({
       autoCodeSplitting: true,
@@ -145,7 +152,7 @@ export default defineConfig({
     hmr: {
       // Explicit config so Vite's HMR WebSocket connects reliably
       // inside Electron's BrowserWindow. Vite 8 uses console.debug for
-      // connection logs — enable "Verbose" in DevTools to see them.
+      // connection logs; enable "Verbose" in DevTools to see them.
       protocol: "ws",
       host,
     },
