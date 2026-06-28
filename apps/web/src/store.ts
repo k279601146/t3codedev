@@ -139,9 +139,15 @@ const MAX_THREAD_CHECKPOINTS = 500;
 const MAX_THREAD_PROPOSED_PLANS = 200;
 const MAX_THREAD_ACTIVITIES = 500;
 const EMPTY_THREAD_IDS: ThreadId[] = [];
+const EMPTY_PROJECTS: Project[] = [];
+const EMPTY_SIDEBAR_THREADS: SidebarThreadSummary[] = [];
 
 function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function retainPreviousArrayIfEqual<T>(previous: readonly T[], next: T[]): T[] {
+  return arraysEqual(previous, next) ? (previous as T[]) : next;
 }
 
 function threadHistoryStatesEqual(
@@ -1992,6 +1998,24 @@ export function selectProjectsAcrossEnvironments(state: AppState): Project[] {
   );
 }
 
+export function createProjectsAcrossEnvironmentsSelector(): (state: AppState) => Project[] {
+  let previousEnvironmentStateById: AppState["environmentStateById"] | undefined;
+  let previousProjects: Project[] = EMPTY_PROJECTS;
+
+  return (state) => {
+    if (state.environmentStateById === previousEnvironmentStateById) {
+      return previousProjects;
+    }
+
+    previousEnvironmentStateById = state.environmentStateById;
+    previousProjects = retainPreviousArrayIfEqual(
+      previousProjects,
+      selectProjectsAcrossEnvironments(state),
+    );
+    return previousProjects;
+  };
+}
+
 export function selectThreadsAcrossEnvironments(state: AppState): Thread[] {
   return getEnvironmentEntries(state).flatMap(([, environmentState]) =>
     getThreads(environmentState),
@@ -2017,6 +2041,26 @@ export function selectSidebarThreadsAcrossEnvironments(state: AppState): Sidebar
   );
 }
 
+export function createSidebarThreadsAcrossEnvironmentsSelector(): (
+  state: AppState,
+) => SidebarThreadSummary[] {
+  let previousEnvironmentStateById: AppState["environmentStateById"] | undefined;
+  let previousThreads: SidebarThreadSummary[] = EMPTY_SIDEBAR_THREADS;
+
+  return (state) => {
+    if (state.environmentStateById === previousEnvironmentStateById) {
+      return previousThreads;
+    }
+
+    previousEnvironmentStateById = state.environmentStateById;
+    previousThreads = retainPreviousArrayIfEqual(
+      previousThreads,
+      selectSidebarThreadsAcrossEnvironments(state),
+    );
+    return previousThreads;
+  };
+}
+
 export function selectSidebarThreadsForProjectRef(
   state: AppState,
   ref: ScopedProjectRef | null | undefined,
@@ -2040,6 +2084,56 @@ export function selectSidebarThreadsForProjectRefs(
   if (refs.length === 0) return [];
   if (refs.length === 1) return selectSidebarThreadsForProjectRef(state, refs[0]);
   return refs.flatMap((ref) => selectSidebarThreadsForProjectRef(state, ref));
+}
+
+export function createSidebarThreadsForProjectRefsSelector(
+  refs: readonly ScopedProjectRef[],
+): (state: AppState) => SidebarThreadSummary[] {
+  if (refs.length === 0) {
+    return () => EMPTY_SIDEBAR_THREADS;
+  }
+
+  let previousEnvironmentStateById: AppState["environmentStateById"] | undefined;
+  let previousThreadIdLists: ReadonlyArray<readonly ThreadId[]> | undefined;
+  let previousThreadSummaries:
+    | ReadonlyArray<EnvironmentState["sidebarThreadSummaryById"]>
+    | undefined;
+  let previousThreads: SidebarThreadSummary[] = EMPTY_SIDEBAR_THREADS;
+
+  return (state) => {
+    if (state.environmentStateById === previousEnvironmentStateById) {
+      return previousThreads;
+    }
+
+    const nextThreadIdLists: Array<readonly ThreadId[]> = [];
+    const nextThreadSummaries: Array<EnvironmentState["sidebarThreadSummaryById"]> = [];
+    for (const ref of refs) {
+      const environmentState = selectEnvironmentState(state, ref.environmentId);
+      nextThreadIdLists.push(
+        environmentState.threadIdsByProjectId[ref.projectId] ?? EMPTY_THREAD_IDS,
+      );
+      nextThreadSummaries.push(environmentState.sidebarThreadSummaryById);
+    }
+
+    if (
+      previousThreadIdLists &&
+      previousThreadSummaries &&
+      arraysEqual(previousThreadIdLists, nextThreadIdLists) &&
+      arraysEqual(previousThreadSummaries, nextThreadSummaries)
+    ) {
+      previousEnvironmentStateById = state.environmentStateById;
+      return previousThreads;
+    }
+
+    previousEnvironmentStateById = state.environmentStateById;
+    previousThreadIdLists = nextThreadIdLists;
+    previousThreadSummaries = nextThreadSummaries;
+    previousThreads = retainPreviousArrayIfEqual(
+      previousThreads,
+      selectSidebarThreadsForProjectRefs(state, refs),
+    );
+    return previousThreads;
+  };
 }
 
 export function selectBootstrapCompleteForActiveEnvironment(state: AppState): boolean {

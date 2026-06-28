@@ -22,9 +22,9 @@ import { readEnvironmentApi } from "../../environmentApi";
 import { newCommandId } from "../../lib/utils";
 import { readLocalApi } from "../../localApi";
 import {
+  createSidebarThreadsForProjectRefsSelector,
   selectProjectsAcrossEnvironments,
   selectSidebarThreadsForProjectRef,
-  selectSidebarThreadsForProjectRefs,
   useStore,
 } from "../../store";
 import type { Project, SidebarThreadSummary } from "../../types";
@@ -436,8 +436,7 @@ function CursorProjectDockRow({
   const sidebarThreads = useStore(
     useShallow(
       useMemo(
-        () => (state: import("../../store").AppState) =>
-          selectSidebarThreadsForProjectRefs(state, project.memberProjectRefs),
+        () => createSidebarThreadsForProjectRefsSelector(project.memberProjectRefs),
         [project.memberProjectRefs],
       ),
     ),

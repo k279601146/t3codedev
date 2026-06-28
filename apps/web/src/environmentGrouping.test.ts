@@ -3,6 +3,9 @@ import { scopeProjectRef } from "@t3tools/client-runtime";
 import { describe, expect, it } from "vitest";
 
 import {
+  createProjectsAcrossEnvironmentsSelector,
+  createSidebarThreadsAcrossEnvironmentsSelector,
+  createSidebarThreadsForProjectRefsSelector,
   selectProjectsAcrossEnvironments,
   selectSidebarThreadsAcrossEnvironments,
   selectSidebarThreadsForProjectRef,
@@ -458,6 +461,20 @@ describe("environment grouping", () => {
       const names = projects.map((p) => p.name).toSorted();
       expect(names).toEqual(["local-only", "remote-only", "shared-repo", "shared-repo"]);
     });
+
+    it("keeps the memoized selector output stable for equivalent project lists", () => {
+      const state = makeFixtureState();
+      const selector = createProjectsAcrossEnvironmentsSelector();
+      const first = selector(state);
+      const nextState: AppState = {
+        ...state,
+        environmentStateById: {
+          ...state.environmentStateById,
+        },
+      };
+
+      expect(selector(nextState)).toBe(first);
+    });
   });
 
   describe("selectSidebarThreadsAcrossEnvironments", () => {
@@ -471,6 +488,20 @@ describe("environment grouping", () => {
       expect(ids).toContain(threadR1);
       expect(ids).toContain(threadL1);
       expect(ids).toContain(threadRO1);
+    });
+
+    it("keeps the memoized selector output stable for equivalent thread summaries", () => {
+      const state = makeFixtureState();
+      const selector = createSidebarThreadsAcrossEnvironmentsSelector();
+      const first = selector(state);
+      const nextState: AppState = {
+        ...state,
+        environmentStateById: {
+          ...state.environmentStateById,
+        },
+      };
+
+      expect(selector(nextState)).toBe(first);
     });
   });
 
@@ -549,6 +580,53 @@ describe("environment grouping", () => {
       // Only returns threads from the valid ref
       expect(threads).toHaveLength(2);
       expect(threads.map((t) => t.id)).toEqual([threadP1, threadP2]);
+    });
+
+    it("keeps the memoized selector output stable when unrelated environment state changes", () => {
+      const state = makeFixtureState();
+      const refs = [scopeProjectRef(primaryEnvId, sharedProjectPrimaryId)];
+      const selector = createSidebarThreadsForProjectRefsSelector(refs);
+      const first = selector(state);
+      const nextState: AppState = {
+        ...state,
+        environmentStateById: {
+          ...state.environmentStateById,
+          [remoteEnvId]: {
+            ...state.environmentStateById[remoteEnvId]!,
+            bootstrapComplete: false,
+          },
+        },
+      };
+
+      expect(selector(nextState)).toBe(first);
+    });
+
+    it("invalidates the memoized selector output when project thread summaries change", () => {
+      const state = makeFixtureState();
+      const refs = [scopeProjectRef(primaryEnvId, sharedProjectPrimaryId)];
+      const selector = createSidebarThreadsForProjectRefsSelector(refs);
+      const first = selector(state);
+      const primaryState = state.environmentStateById[primaryEnvId]!;
+      const nextState: AppState = {
+        ...state,
+        environmentStateById: {
+          ...state.environmentStateById,
+          [primaryEnvId]: {
+            ...primaryState,
+            sidebarThreadSummaryById: {
+              ...primaryState.sidebarThreadSummaryById,
+              [threadP1]: {
+                ...primaryState.sidebarThreadSummaryById[threadP1]!,
+                title: "Updated title",
+              },
+            },
+          },
+        },
+      };
+      const next = selector(nextState);
+
+      expect(next).not.toBe(first);
+      expect(next[0]?.title).toBe("Updated title");
     });
   });
 

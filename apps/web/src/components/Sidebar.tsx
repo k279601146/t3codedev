@@ -89,10 +89,12 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { cn, isMacPlatform, newCommandId } from "../lib/utils";
 import { resolveConversationWorkspacePath } from "../lib/conversationWorkspace";
 import {
+  createProjectsAcrossEnvironmentsSelector,
+  createSidebarThreadsAcrossEnvironmentsSelector,
+  createSidebarThreadsForProjectRefsSelector,
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
   selectSidebarThreadsForProjectRefs,
-  selectSidebarThreadsAcrossEnvironments,
   selectThreadByRef,
   useStore,
 } from "../store";
@@ -1201,8 +1203,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const sidebarThreads = useStore(
     useShallow(
       useMemo(
-        () => (state: import("../store").AppState) =>
-          selectSidebarThreadsForProjectRefs(state, project.memberProjectRefs),
+        () => createSidebarThreadsForProjectRefsSelector(project.memberProjectRefs),
         [project.memberProjectRefs],
       ),
     ),
@@ -3217,7 +3218,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const setNewThreadScope = useUiStateStore((state) => state.setNewThreadScope);
-  const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const projects = useStore(
+    useShallow(useMemo(() => createProjectsAcrossEnvironmentsSelector(), [])),
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const [isProjectDropActive, setIsProjectDropActive] = useState(false);
   const defaultSidebarSectionOrder = useCursorLayoutStore(
@@ -4170,8 +4173,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 });
 
 export default function Sidebar() {
-  const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
-  const sidebarThreads = useStore(useShallow(selectSidebarThreadsAcrossEnvironments));
+  const projects = useStore(
+    useShallow(useMemo(() => createProjectsAcrossEnvironmentsSelector(), [])),
+  );
+  const sidebarThreads = useStore(
+    useShallow(useMemo(() => createSidebarThreadsAcrossEnvironmentsSelector(), [])),
+  );
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const pinnedThreadKeys = useUiStateStore((store) => store.pinnedThreadKeys);
   const projectOrder = useUiStateStore((store) => store.projectOrder);
@@ -4242,8 +4249,8 @@ export default function Sidebar() {
     });
   }, [projectOrder, projects]);
 
-  // Build a mapping from physical project key → logical project key for
-  // cross-environment grouping.  Projects that share a repositoryIdentity
+  // Build a mapping from physical project key to logical project key for
+  // cross-environment grouping. Projects that share a repositoryIdentity
   // canonicalKey are treated as one logical project in the sidebar.
   const physicalToLogicalKey = useMemo(() => {
     return buildPhysicalToLogicalProjectKeyMap({
