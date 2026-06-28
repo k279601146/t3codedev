@@ -255,4 +255,43 @@ describe("TraceDiagnostics", () => {
       );
     }),
   );
+
+  it.effect("excludes long-lived subscription spans from slow span diagnostics", () =>
+    Effect.sync(() => {
+      const diagnostics = TraceDiagnostics.aggregateTraceDiagnostics({
+        traceFilePath: "/tmp/server.trace.ndjson",
+        readAt: DateTime.makeUnsafe("2026-05-05T10:00:00.000Z"),
+        slowSpanThresholdMs: 1_000,
+        files: [
+          {
+            path: "/tmp/server.trace.ndjson",
+            text: [
+              record({
+                name: "RpcClient.subscribeVcsStatus",
+                traceId: "trace-subscription",
+                spanId: "span-subscription",
+                startMs: 1_000,
+                durationMs: 90_000,
+              }),
+              record({
+                name: "VcsStatusBroadcaster.refreshRemoteStatus",
+                traceId: "trace-refresh",
+                spanId: "span-refresh",
+                startMs: 2_000,
+                durationMs: 1_500,
+              }),
+            ].join("\n"),
+          },
+        ],
+      });
+
+      assert.equal(diagnostics.recordCount, 2);
+      assert.equal(diagnostics.slowSpanCount, 1);
+      assert.deepStrictEqual(
+        diagnostics.slowestSpans.map((span) => span.name),
+        ["VcsStatusBroadcaster.refreshRemoteStatus"],
+      );
+      assert.equal(diagnostics.topSpansByCount.length, 2);
+    }),
+  );
 });

@@ -1014,6 +1014,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
   });
 
+  const tryResolvePrimaryRemoteName = Effect.fn("tryResolvePrimaryRemoteName")(function* (
+    cwd: string,
+  ) {
+    if (yield* originRemoteExists(cwd)) {
+      return "origin";
+    }
+    const remotes = yield* listRemoteNames(cwd);
+    return remotes[0] ?? null;
+  });
+
   const resolvePushRemoteName = Effect.fn("resolvePushRemoteName")(function* (
     cwd: string,
     refName: string,
@@ -1038,7 +1048,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       return pushDefaultRemote;
     }
 
-    return yield* resolvePrimaryRemoteName(cwd).pipe(Effect.catch(() => Effect.succeed(null)));
+    return yield* tryResolvePrimaryRemoteName(cwd);
   });
 
   const ensureRemote: GitVcsDriver.GitVcsDriverShape["ensureRemote"] = Effect.fn("ensureRemote")(
@@ -1085,9 +1095,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       true,
     ).pipe(Effect.map((stdout) => stdout.trim()));
 
-    const primaryRemoteName = yield* resolvePrimaryRemoteName(cwd).pipe(
-      Effect.catch(() => Effect.succeed(null)),
-    );
+    const primaryRemoteName = yield* tryResolvePrimaryRemoteName(cwd);
     const defaultBranch =
       primaryRemoteName === null ? null : yield* resolveDefaultBranchName(cwd, primaryRemoteName);
     const candidates = [

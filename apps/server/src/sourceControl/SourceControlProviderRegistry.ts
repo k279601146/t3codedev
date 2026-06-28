@@ -86,6 +86,30 @@ function providerDetectionError(operation: string, cwd: string, cause: unknown) 
   });
 }
 
+function emptyProvider(
+  kind: SourceControlProviderKind,
+): SourceControlProvider.SourceControlProviderShape {
+  const unsupported = (operation: string) =>
+    Effect.fail(
+      new SourceControlProviderError({
+        provider: kind,
+        operation,
+        detail: `No ${kind} source control provider is registered.`,
+      }),
+    );
+
+  return SourceControlProvider.SourceControlProvider.of({
+    kind,
+    listChangeRequests: () => Effect.succeed([]),
+    getChangeRequest: () => unsupported("getChangeRequest"),
+    createChangeRequest: () => unsupported("createChangeRequest"),
+    getRepositoryCloneUrls: () => unsupported("getRepositoryCloneUrls"),
+    createRepository: () => unsupported("createRepository"),
+    getDefaultBranch: () => unsupported("getDefaultBranch"),
+    checkoutChangeRequest: () => unsupported("checkoutChangeRequest"),
+  });
+}
+
 function selectProviderContext(
   remotes: ReadonlyArray<{
     readonly name: string;
@@ -197,7 +221,10 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
       Cache.get(providerContextCache, input.cwd).pipe(
         Effect.map((context) => {
           const kind = context?.provider.kind ?? "unknown";
-          const provider = providers.get(kind) ?? unsupportedProvider(kind);
+          const provider =
+            context === null || kind === "unknown"
+              ? (providers.get(kind) ?? emptyProvider(kind))
+              : (providers.get(kind) ?? unsupportedProvider(kind));
           return {
             provider: bindProviderContext(provider, context),
             context,

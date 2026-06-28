@@ -65,6 +65,11 @@ interface TraceDiagnosticsErrorSummary {
 const DEFAULT_SLOW_SPAN_THRESHOLD_MS = 1_000;
 const TOP_LIMIT = 10;
 const RECENT_LIMIT = 20;
+const LONG_LIVED_SPAN_NAME_PATTERN = /(?:^|\.)(?:subscribe|stream|watch)(?:[A-Z.]|$)/u;
+
+function isLongLivedSpanName(name: string): boolean {
+  return LONG_LIVED_SPAN_NAME_PATTERN.test(name);
+}
 function toRotatedTracePaths(traceFilePath: string, maxFiles: number): ReadonlyArray<string> {
   const backupCount = Math.max(0, Math.floor(maxFiles));
   const backups = Array.from(
@@ -269,10 +274,13 @@ export function aggregateTraceDiagnostics(
       spansByName.set(name, spanSummary);
 
       const spanItem = { name, durationMs, endedAt, traceId, spanId };
-      if (durationMs >= slowSpanThresholdMs) {
+      const includeInSlowSpanDiagnostics = !isLongLivedSpanName(name);
+      if (includeInSlowSpanDiagnostics && durationMs >= slowSpanThresholdMs) {
         slowSpanCount += 1;
       }
-      insertBoundedSlowestSpan(slowestSpans, spanItem);
+      if (includeInSlowSpanDiagnostics) {
+        insertBoundedSlowestSpan(slowestSpans, spanItem);
+      }
 
       if (isFailure) {
         const cause = readExitCause(parsed.exit);

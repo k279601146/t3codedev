@@ -214,12 +214,12 @@ const DIAGNOSTICS_COPY = {
         {
           area: "握手",
           signal: "initialize 请求后发送 initialized 通知",
-          check: "初始化错误通常会出现在 provider 或认证相关 trace 里。",
+          check: "初始化错误通常会出现在 provider 或认证相关 trace 中。",
         },
         {
           area: "会话与回合",
           signal: "thread/start、thread/resume、turn/start、turn/interrupt",
-          check: "慢 span 和重复失败可以定位请求卡住或退出的位置。",
+          check: "慢 Span 和重复失败可以定位请求卡住或退出的位置。",
         },
         {
           area: "流式事件",

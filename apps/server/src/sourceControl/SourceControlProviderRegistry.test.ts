@@ -146,3 +146,41 @@ it.effect("falls back to a non-origin remote when origin is not configured", () 
     assert.strictEqual(provider.kind, "azure-devops");
   }),
 );
+
+it.effect("returns an empty change request list when no provider remote is configured", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry({
+      remotes: [],
+    });
+
+    const provider = yield* registry.resolve({ cwd: "/repo" });
+    const changeRequests = yield* provider.listChangeRequests({
+      cwd: "/repo",
+      headSelector: "main",
+      state: "all",
+      limit: 20,
+    });
+
+    assert.strictEqual(provider.kind, "unknown");
+    assert.deepStrictEqual(changeRequests, []);
+  }),
+);
+
+it.effect("returns an empty change request list for unsupported provider remotes", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry({
+      remotes: [{ name: "origin", url: "https://forge.example.com/acme/repo.git" }],
+    });
+
+    const provider = yield* registry.resolve({ cwd: "/repo" });
+    const changeRequests = yield* provider.listChangeRequests({
+      cwd: "/repo",
+      headSelector: "main",
+      state: "all",
+      limit: 20,
+    });
+
+    assert.strictEqual(provider.kind, "unknown");
+    assert.deepStrictEqual(changeRequests, []);
+  }),
+);
