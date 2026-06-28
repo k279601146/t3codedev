@@ -46,10 +46,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 
-import {
-  buildIdleSuggestions,
-  IDLE_SUGGESTION_DELAY_MS,
-} from "./NewThreadLauncherSuggestions";
+import { buildIdleSuggestions, IDLE_SUGGESTION_DELAY_MS } from "./NewThreadLauncherSuggestions";
 
 export type LauncherModeId =
   | "general"
@@ -682,7 +679,7 @@ export function NewThreadLauncherView({
             shouldLiftEmptyGeneralLauncher && "pb-14 sm:pb-20",
           )}
         >
-          <h1 className="mb-10 min-h-[40px] text-center font-sans text-[28px] font-normal leading-tight text-foreground sm:text-[30px]">
+          <h1 className="mb-10 min-h-[36px] text-center font-sans text-[25px] font-normal leading-[1.28] text-foreground sm:text-[27px]">
             <span key={title.key} className="block animate-in fade-in duration-500">
               {title.node}
             </span>
@@ -795,7 +792,7 @@ function IdleSuggestionsPanel({
   return (
     <section className="mt-4 w-full animate-in fade-in slide-in-from-top-1 px-3 duration-300 sm:px-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-[15px] font-semibold text-foreground">可以从这些任务开始</h2>
+        <h2 className="text-[14px] font-medium text-foreground">可以从这些任务开始</h2>
         <button
           type="button"
           onClick={onClose}
@@ -811,7 +808,7 @@ function IdleSuggestionsPanel({
             key={suggestion}
             type="button"
             onClick={() => onSubmitPreset(suggestion, "general")}
-            className="flex min-h-10 w-full animate-in items-center gap-2 py-2 text-left text-[14px] text-muted-foreground fade-in slide-in-from-bottom-1 transition-colors duration-300 hover:text-[#147DFF]"
+            className="flex min-h-10 w-full animate-in items-center gap-2 py-2 text-left text-[13px] text-muted-foreground fade-in slide-in-from-bottom-1 transition-colors duration-300 hover:text-foreground"
             style={{ animationDelay: `${index * 45}ms`, animationFillMode: "both" }}
           >
             <LightbulbIcon className="h-4 w-4 shrink-0 text-muted-foreground/70" />
@@ -868,7 +865,7 @@ function LauncherModeChip({
       className={cn(
         "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
         active
-          ? "border-[#147DFF] bg-[#EAF5FF] text-[#147DFF] dark:bg-[#147DFF]/10"
+          ? "border-border bg-muted text-foreground"
           : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
@@ -896,7 +893,7 @@ function LauncherMoreModesMenu({
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
           active
-            ? "border-[#147DFF] bg-[#EAF5FF] text-[#147DFF] dark:bg-[#147DFF]/10"
+            ? "border-border bg-muted text-foreground"
             : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
@@ -932,7 +929,7 @@ function LauncherMoreModesMenu({
                   <Icon className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{item.label}</span>
                 </span>
-                {selected ? <span className="h-1.5 w-1.5 rounded-full bg-[#147DFF]" /> : null}
+                {selected ? <span className="h-1.5 w-1.5 rounded-full bg-foreground/70" /> : null}
               </button>
             );
           })}
@@ -976,7 +973,7 @@ function ModeRecommendations({
               key={prompt}
               type="button"
               onClick={() => onSubmitPreset(prompt, "spreadsheet")}
-              className="flex h-10 animate-in items-center justify-between text-left text-[14px] text-foreground fade-in slide-in-from-bottom-1 transition-colors duration-300 hover:text-[#147DFF]"
+              className="flex h-10 animate-in items-center justify-between text-left text-[13px] text-foreground/88 fade-in slide-in-from-bottom-1 transition-colors duration-300 hover:text-foreground"
               style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
             >
               <span>{prompt}</span>
@@ -1109,7 +1106,7 @@ function SlidesRecommendations({
                 style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
               >
                 <span className="flex items-center gap-2 font-medium">
-                  <Icon className="h-4 w-4 text-[#147DFF]" />
+                  <Icon className="h-4 w-4 text-foreground/70" />
                   {prompt.title}
                 </span>
                 {prompt.desc ? (
@@ -1134,7 +1131,7 @@ function SlidesRecommendations({
             }
             className="group flex min-h-[86px] w-full animate-in items-center gap-3 rounded-[10px] border border-border bg-background px-4 py-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#147DFF]/10 text-[#147DFF]">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-muted text-foreground/70">
               <ImportIcon className="h-5 w-5" />
             </span>
             <span className="min-w-0 flex-1">
@@ -1145,7 +1142,7 @@ function SlidesRecommendations({
                 上传已有 PPTX 和新内容，保留原设计，自动选页、重排、替换文案并导出。
               </span>
             </span>
-            <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
+            <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
           </button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1160,10 +1157,10 @@ function SlidesRecommendations({
                 style={{ animationDelay: `${(index + 1) * 55}ms`, animationFillMode: "both" }}
               >
                 <span className="flex items-start justify-between gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-[#147DFF] transition-colors group-hover:bg-[#147DFF]/10">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-foreground/70 transition-colors group-hover:bg-accent">
                     <TemplateIcon className="h-4.5 w-4.5" />
                   </span>
-                  <ArrowUpRightIcon className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
+                  <ArrowUpRightIcon className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
                 </span>
                 <span className="mt-3 block text-[13px] font-medium leading-5 text-foreground">
                   {template.title}
@@ -1281,9 +1278,9 @@ function ResearchRecommendations({
           <button
             type="button"
             onClick={() => submitResearchPrompt(RESEARCH_PROMPTS[0]?.prompt ?? "$agent-reach ")}
-            className="group mb-4 flex min-h-[86px] w-full animate-in items-center gap-3 rounded-[10px] border border-[#147DFF]/30 bg-[#147DFF]/5 px-4 py-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-[#147DFF]/10"
+            className="group mb-4 flex min-h-[86px] w-full animate-in items-center gap-3 rounded-[10px] border border-border bg-background px-4 py-3 text-left fade-in slide-in-from-bottom-2 transition-colors duration-300 hover:bg-accent"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#147DFF]/10 text-[#147DFF]">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-muted text-foreground/70">
               <DownloadIcon className="h-5 w-5" />
             </span>
             <span className="min-w-0 flex-1">
@@ -1294,7 +1291,7 @@ function ResearchRecommendations({
                 安装后可用 $agent-reach 做网页搜索、链接阅读、GitHub、RSS 和公开视频资料调研。
               </span>
             </span>
-            <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
+            <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
           </button>
         ) : null}
 
@@ -1310,7 +1307,7 @@ function ResearchRecommendations({
                 style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
               >
                 <span className="flex items-center gap-2 font-medium">
-                  <Icon className="h-4 w-4 text-[#147DFF]" />
+                  <Icon className="h-4 w-4 text-foreground/70" />
                   {prompt.title}
                 </span>
                 {prompt.desc ? (
@@ -1338,10 +1335,10 @@ function ResearchRecommendations({
                   style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
                 >
                   <span className="flex items-start justify-between gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-[#147DFF] transition-colors group-hover:bg-[#147DFF]/10">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-foreground/70 transition-colors group-hover:bg-accent">
                       <TemplateIcon className="h-4.5 w-4.5" />
                     </span>
-                    <ArrowUpRightIcon className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-[#147DFF]" />
+                    <ArrowUpRightIcon className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
                   </span>
                   <span className="mt-3 block text-[13px] font-medium leading-5 text-foreground">
                     {template.title}
@@ -1432,7 +1429,7 @@ function PluginStatusBadge({ installed, loading }: { installed: boolean; loading
 
 function SectionTitle({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <h2 className={cn("mb-4 text-[15px] font-semibold text-foreground", className)}>{children}</h2>
+    <h2 className={cn("mb-4 text-[14px] font-medium text-foreground", className)}>{children}</h2>
   );
 }
 
@@ -1479,7 +1476,7 @@ function ImagePromptCard({
       style={{ animationDelay: `${index * 55}ms`, animationFillMode: "both" }}
     >
       <span className="flex min-w-0 flex-1 flex-col justify-center px-4">
-        <span className="flex items-center gap-1 text-[14px] font-semibold text-foreground">
+        <span className="flex items-center gap-1 text-[14px] font-medium text-foreground">
           <span className="truncate">{card.title}</span>
           <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </span>

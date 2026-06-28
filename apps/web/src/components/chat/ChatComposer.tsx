@@ -536,7 +536,7 @@ const NewThreadModeStatusChip = memo(function NewThreadModeStatusChip(props: {
       type="button"
       onClick={props.onClear}
       aria-label={`关闭${props.label}`}
-      className="inline-flex h-8 shrink-0 animate-in items-center gap-1.5 rounded-full border border-[#147DFF] bg-[#EAF5FF] px-2.5 text-[13px] font-medium text-[#147DFF] fade-in slide-in-from-left-1 zoom-in-95 duration-200 hover:bg-[#DDECFF] active:bg-[#D2E5FF] dark:bg-[#147DFF]/10 dark:hover:bg-[#147DFF]/15"
+      className="inline-flex h-8 shrink-0 animate-in items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-[13px] font-medium text-foreground/78 fade-in slide-in-from-left-1 zoom-in-95 duration-200 hover:bg-accent hover:text-foreground active:bg-muted/80"
     >
       <XIcon className="size-3.5 stroke-[2.4px]" />
       <span className="max-w-32 truncate">{props.label}</span>
@@ -554,9 +554,9 @@ const runtimeModeToneClassName: Record<
     menuIcon: "text-muted-foreground",
   },
   blue: {
-    trigger: "text-[#147DFF] hover:bg-[#EAF5FF] hover:text-[#147DFF] dark:hover:bg-[#147DFF]/10",
-    icon: "text-[#147DFF]",
-    menuIcon: "text-[#147DFF]",
+    trigger: "text-foreground/78 hover:bg-accent hover:text-foreground",
+    icon: "text-foreground/72",
+    menuIcon: "text-foreground/72",
   },
   orange: {
     trigger:
@@ -1887,7 +1887,7 @@ export const ChatComposer = memo(
           ? "Steer current turn"
           : isProviderUnavailable
             ? (composerProviderAvailability.triggerLabel ?? "Model service unavailable")
-          : "Send message";
+            : "Send message";
     const showMobilePendingAnswerActions =
       isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -2506,8 +2506,7 @@ export const ChatComposer = memo(
           event?.preventDefault();
           setThreadError(
             activeThreadId,
-            composerProviderAvailability.sendBlockMessage ??
-              "当前模型服务不可用，请稍后重试。",
+            composerProviderAvailability.sendBlockMessage ?? "当前模型服务不可用，请稍后重试。",
           );
           void getPrimaryEnvironmentConnection()
             .client.server.refreshProviders()
@@ -3109,7 +3108,7 @@ export const ChatComposer = memo(
                 : "rounded-[14px] shadow-[var(--t3-shadow-composer)] has-focus-visible:shadow-[var(--claude-shadow-panel)]",
               isDragOverComposer
                 ? newThreadMode
-                  ? "border-dashed border-[#147DFF] bg-card ring-[12px] ring-[#EAF5FF] dark:ring-[#147DFF]/10"
+                  ? "border-dashed border-foreground/30 bg-card ring-[12px] ring-muted"
                   : "border-foreground/25 bg-accent/20"
                 : newThreadMode
                   ? "border-[#dcdfe4] dark:border-border/70"
@@ -3138,7 +3137,7 @@ export const ChatComposer = memo(
           >
             {newThreadMode && isDragOverComposer ? (
               <div className="pointer-events-none absolute inset-1 z-20 flex items-center justify-center rounded-[20px] bg-card/85 backdrop-blur-[2px]">
-                <div className="flex flex-col items-center gap-1.5 text-[#147DFF]">
+                <div className="flex flex-col items-center gap-1.5 text-foreground/72">
                   <FileIcon className="h-5 w-5 stroke-[2.4px]" />
                   <span className="text-[13px] font-medium">将文件拖到这里</span>
                 </div>
@@ -3502,12 +3501,12 @@ export const ChatComposer = memo(
                   }
                   skills={selectedProviderStatus?.skills ?? []}
                   className={cn(
-                    newThreadMode && "min-h-[42px] max-h-[280px] text-[14px] leading-6",
+                    newThreadMode && "min-h-[42px] max-h-[280px] text-[14px] leading-[1.55]",
                     showMobilePendingAnswerActions && "max-sm:pb-11",
                   )}
                   {...(newThreadMode
                     ? {
-                        placeholderClassName: "text-[14px] leading-6 text-[#c7c7c7]",
+                        placeholderClassName: "text-[14px] leading-[1.55] text-muted-foreground/42",
                       }
                     : {})}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}

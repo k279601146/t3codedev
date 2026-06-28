@@ -823,7 +823,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
         render={buttonRender}
         data-thread-selection-safe
         size="sm"
-        className="t3-sidebar-thread-row h-7.5 w-full translate-x-0 justify-start rounded-[7px] px-2 text-left text-[13px] font-normal text-muted-foreground/70 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-muted-foreground/90"
+        className="t3-sidebar-thread-row h-7.5 w-full translate-x-0 justify-start rounded-[7px] px-2 text-left text-[13px] font-normal text-foreground/58 hover:bg-[color-mix(in_srgb,var(--foreground)_4.5%,transparent)] hover:text-foreground/74"
         onClick={expanded ? onCollapse : onExpand}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -1075,7 +1075,7 @@ function ProjectContextMenu({
 function SidebarProjectIcon({ project }: { project: SidebarProjectSnapshot }) {
   const DefaultIcon = project.repositoryIdentity ? FolderGit2Icon : FolderIcon;
   return (
-    <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/72">
+    <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center text-foreground/48">
       <DefaultIcon
         className="absolute inset-0 size-3.5 transition-[opacity,transform] duration-150 ease-out group-hover/project-header:scale-95 group-hover/project-header:opacity-0 group-focus-within/project-header:scale-95 group-focus-within/project-header:opacity-0"
         strokeWidth={1.8}
@@ -2117,16 +2117,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             environmentId: thread.environmentId,
             path: threadWorkspacePath,
             openPath: api.shell.openPath,
-          })
-            .catch((error: unknown) => {
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: t("sidebar.thread.pathOpenFailed"),
-                  description: error instanceof Error ? error.message : threadWorkspacePath,
-                }),
-              );
-            });
+          }).catch((error: unknown) => {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: t("sidebar.thread.pathOpenFailed"),
+                description: error instanceof Error ? error.message : threadWorkspacePath,
+              }),
+            );
+          });
           return;
         }
         copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
@@ -2181,7 +2180,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className="t3-sidebar-project-row h-7 cursor-default gap-2 rounded-[7px] px-2 py-0 pr-7 text-left text-[13px] font-normal leading-5 text-foreground/66 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/82 group-hover/project-header:text-foreground/82 max-sm:pr-14"
+          className="t3-sidebar-project-row h-[30px] cursor-default gap-2.5 rounded-[7px] px-2 py-0 pr-7 text-left text-[13px] font-normal leading-[1.45] text-foreground/54 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/72 group-hover/project-header:text-foreground/72 max-sm:pr-14"
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
           onPointerDownCapture={handleProjectButtonPointerDownCapture}
@@ -2191,7 +2190,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         >
           <SidebarProjectIcon project={project} />
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-[13px] font-normal leading-5 text-foreground/66 group-hover/project-header:text-foreground/82">
+            <span className="truncate text-[13px] font-normal leading-[1.45] text-foreground/54 group-hover/project-header:text-foreground/72">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
@@ -3200,10 +3199,10 @@ function SidebarNavButton({
         render={buttonRender}
         size="sm"
         isActive={isActive}
-        className="t3-sidebar-nav-row h-7.5 gap-2 rounded-[7px] px-2 text-[13px] font-normal text-foreground/82 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground focus-visible:ring-0"
+        className="t3-sidebar-nav-row h-[30px] gap-2.5 rounded-[7px] px-2 text-[13px] font-normal leading-[1.45] text-foreground/62 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/76 focus-visible:ring-0"
         onClick={onClick}
       >
-        <Icon className="size-3.5 text-foreground/72" />
+        <Icon className="size-3.5 text-foreground/50" />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         {trailing ? (
           <span className="ml-auto shrink-0 text-[12px] text-muted-foreground/60">{trailing}</span>
@@ -3612,16 +3611,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             environmentId: thread.environmentId,
             path: threadWorkspacePath,
             openPath: api.shell.openPath,
-          })
-            .catch((error: unknown) => {
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: t("sidebar.thread.pathOpenFailed"),
-                  description: error instanceof Error ? error.message : threadWorkspacePath,
-                }),
-              );
-            });
+          }).catch((error: unknown) => {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: t("sidebar.thread.pathOpenFailed"),
+                description: error instanceof Error ? error.message : threadWorkspacePath,
+              }),
+            );
+          });
           return;
         }
         copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
@@ -3790,12 +3788,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="t3-sidebar-nav-row h-7.5 gap-2 rounded-[7px] px-2 text-[13px] font-normal text-foreground/82 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground focus-visible:ring-0"
+                  className="t3-sidebar-nav-row h-[30px] gap-2.5 rounded-[7px] px-2 text-[13px] font-normal leading-[1.45] text-foreground/62 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/76 focus-visible:ring-0"
                   data-testid="command-palette-trigger"
                 />
               }
             >
-              <SearchIcon className="size-3.5 text-foreground/72" />
+              <SearchIcon className="size-3.5 text-foreground/50" />
               <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.search")}</span>
             </CommandDialogTrigger>
           </SidebarMenuItem>

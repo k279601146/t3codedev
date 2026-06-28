@@ -1115,7 +1115,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     void submitEdit();
                   }
                 }}
-                className="chat-text block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14px] leading-[1.78] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
+                className="chat-text block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14px] leading-[1.62] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
                 aria-label="编辑用户消息"
               />
               <div className="mt-3 flex items-center justify-end gap-2">
@@ -1947,10 +1947,7 @@ function isFileChangeWorkEntry(
     !(entry.detail?.trim() || entry.output?.trim()) &&
     (entry.changedFiles?.length ?? 0) === 0;
 
-  return (
-    hasStructuredFileChange ||
-    hasOnlyTurnDiffFileChange
-  );
+  return hasStructuredFileChange || hasOnlyTurnDiffFileChange;
 }
 
 function searchWorkEntryDetail(entry: TimelineWorkEntry): string | null {
@@ -2196,7 +2193,7 @@ function AssistantChangedFilesSectionInner({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="chat-text truncate text-[14px] font-semibold leading-5 text-[#111111] dark:text-foreground">
+              <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground/92">
                 {isSingleFile && firstFile ? (
                   <span className="inline-flex min-w-0 max-w-full items-baseline gap-1">
                     <span className="shrink-0">已编辑</span>
@@ -2204,7 +2201,7 @@ function AssistantChangedFilesSectionInner({
                       filePath={firstFile.linkMeta?.filePath ?? firstFile.path}
                       displayPath={singleFileTitle}
                       title={firstFile.linkMeta?.displayPath ?? singleFileTitle}
-                      className="min-w-0 font-sans text-[14px] font-semibold text-[#111111] hover:text-[#111111] hover:no-underline dark:text-foreground dark:hover:text-foreground"
+                      className="min-w-0 font-sans text-[14px] font-medium text-foreground/92 hover:text-foreground hover:no-underline"
                       onOpenFile={firstFile.linkMeta ? onOpenFile : undefined}
                     />
                   </span>
@@ -2228,7 +2225,7 @@ function AssistantChangedFilesSectionInner({
                 variant="ghost"
                 title={isSingleFile ? "打开文件所在目录" : "打开当前工作区目录"}
                 aria-label={isSingleFile ? "打开文件所在目录" : "打开当前工作区目录"}
-                className="h-8 gap-1 rounded-md border-0 bg-transparent px-1.5 text-[14px] font-semibold text-[#111111] opacity-100 shadow-none before:shadow-none dark:text-foreground"
+                className="h-8 gap-1 rounded-md border-0 bg-transparent px-1.5 text-[14px] font-medium text-foreground/88 opacity-100 shadow-none before:shadow-none"
                 onClick={() => void openChangedFilesDirectory()}
               >
                 打开目录
@@ -2238,7 +2235,7 @@ function AssistantChangedFilesSectionInner({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-8 rounded-lg border-[#E5E5E5] bg-white px-3 text-[14px] font-semibold text-[#111111] shadow-none before:shadow-none hover:bg-[#FAFAFA] dark:border-input dark:bg-popover dark:text-foreground"
+                className="h-8 rounded-lg border-border bg-card px-3 text-[14px] font-medium text-foreground/88 shadow-none before:shadow-none hover:bg-accent"
                 onClick={() => onOpenTurnDiff(turnSummary.turnId, firstFile?.path)}
               >
                 审核
@@ -2256,20 +2253,20 @@ function AssistantChangedFilesSectionInner({
               return (
                 <div
                   key={`${turnSummary.turnId}:${file.path}`}
-                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 text-[#111111] hover:text-[#111111] dark:text-foreground dark:hover:text-foreground"
+                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 text-foreground/86 hover:text-foreground"
                 >
                   {file.linkMeta ? (
                     <ChangedFileOpenButton
                       filePath={file.linkMeta.filePath}
                       displayPath={displayPath}
                       title={file.linkMeta.displayPath ?? displayPath}
-                      className="min-w-0 font-sans text-[13px] text-[#111111] hover:text-[#111111] hover:no-underline dark:text-foreground dark:hover:text-foreground"
+                      className="min-w-0 font-sans text-[13px] text-foreground/86 hover:text-foreground hover:no-underline"
                       onOpenFile={onOpenFile}
                     />
                   ) : (
                     <button
                       type="button"
-                      className="min-w-0 truncate text-left font-sans text-[13px] text-[#111111] underline-offset-2 transition-colors hover:text-[#111111] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:text-foreground dark:hover:text-foreground"
+                      className="min-w-0 truncate text-left font-sans text-[13px] text-foreground/86 underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       title={displayPath}
                       onClick={openFileDiff}
                     >
@@ -2293,7 +2290,7 @@ function AssistantChangedFilesSectionInner({
             {hiddenFileCount > 0 || showAllFiles ? (
               <button
                 type="button"
-                className="inline-flex h-6 items-center gap-1 text-[13px] leading-5 text-[#111111] hover:text-[#111111] dark:text-foreground dark:hover:text-foreground"
+                className="inline-flex h-6 items-center gap-1 text-[13px] leading-5 text-foreground/86 hover:text-foreground"
                 onClick={() => setShowAllFiles((value) => !value)}
               >
                 {showAllFiles ? "收起文件" : `再显示 ${hiddenFileCount} 个文件`}
@@ -2440,7 +2437,7 @@ function ChangedFileOpenButton({
     <button
       type="button"
       className={cn(
-        "min-w-0 truncate text-left font-mono text-[#147DFF] underline-offset-2 transition-colors hover:text-[#0F66D0] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "min-w-0 truncate text-left font-mono text-info-foreground underline-offset-2 transition-colors hover:text-info-foreground/85 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,
       )}
       title={title ?? displayPath}
@@ -2780,7 +2777,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
+          <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.62] text-foreground/92">
             {inlineNodes}
           </div>
         );
@@ -2812,7 +2809,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
+      <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.62] text-foreground/92">
         {inlineNodes}
       </div>
     );
@@ -2823,7 +2820,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.78] text-foreground/95">
+    <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.62] text-foreground/92">
       <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
     </div>
   );

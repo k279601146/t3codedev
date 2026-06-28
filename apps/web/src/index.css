@@ -342,15 +342,15 @@ body[data-performance-mode="scrolling"] .shadow-sm {
 :root {
   --radius: 0.5rem;
 
-  --claude-bg-base: #fdfdfc;
+  --claude-bg-base: #fbfbfa;
   --claude-bg-surface: #ffffff;
-  --claude-bg-hover: #f5f5f4;
-  --claude-bg-active: #eeeeed;
-  --claude-bg-subtle: #f7f7f6;
+  --claude-bg-hover: #f2f2f1;
+  --claude-bg-active: #e9e9e7;
+  --claude-bg-subtle: #f4f4f3;
 
-  --claude-text-primary: #202123;
-  --claude-text-secondary: #6f7377;
-  --claude-text-tertiary: #9a9da1;
+  --claude-text-primary: #1f2023;
+  --claude-text-secondary: #676a6e;
+  --claude-text-tertiary: #9b9da1;
 
   --claude-accent: #202123;
   --claude-accent-hover: #343638;
@@ -367,8 +367,8 @@ body[data-performance-mode="scrolling"] .shadow-sm {
   --claude-citation-border: #d6e4fb;
   --claude-citation-text: #1f6fd1;
 
-  --claude-border-subtle: #ebebea;
-  --claude-border-default: #d8d8d6;
+  --claude-border-subtle: #e7e7e5;
+  --claude-border-default: #d6d6d3;
 
   --claude-success: #23845f;
   --claude-warning: #b45309;
@@ -376,7 +376,7 @@ body[data-performance-mode="scrolling"] .shadow-sm {
   --claude-info: #1473e6;
 
   --background: var(--claude-bg-base);
-  --app-chrome-background: #f7f7f6;
+  --app-chrome-background: #f3f3f2;
   --foreground: var(--claude-text-primary);
   --card: var(--claude-bg-surface);
   --card-foreground: var(--claude-text-primary);
@@ -401,10 +401,10 @@ body[data-performance-mode="scrolling"] .shadow-sm {
   --success-foreground: var(--claude-success);
   --warning: var(--claude-warning);
   --warning-foreground: var(--claude-warning);
-  --sidebar: #f9f9f8;
+  --sidebar: #f4f4f3;
   --sidebar-foreground: var(--claude-text-secondary);
   --sidebar-border: var(--claude-border-subtle);
-  --sidebar-accent: #ededec;
+  --sidebar-accent: #e9e9e7;
   --sidebar-accent-foreground: var(--claude-text-primary);
 
   --claude-radius-sm: 6px;
@@ -422,8 +422,8 @@ body[data-performance-mode="scrolling"] .shadow-sm {
     0 1px 1px rgb(15 23 42 / 0.035), 0 14px 36px rgb(15 23 42 / 0.055),
     0 0 0 1px var(--claude-border-subtle);
   --t3-composer-surface: #ffffff;
-  --t3-composer-border: #dcdcdc;
-  --t3-composer-border-focus: #cfcfce;
+  --t3-composer-border: #dbdbd8;
+  --t3-composer-border-focus: #cececb;
   --t3-shadow-composer:
     0 1px 1px rgb(0 0 0 / 0.025), 0 10px 24px -16px rgb(0 0 0 / 0.34), 0 0 0 1px rgb(0 0 0 / 0.006);
   --t3-shadow-composer-focus:
@@ -513,16 +513,16 @@ body[data-performance-mode="scrolling"] .shadow-sm {
 }
 
 body {
-  --t3-chat-font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --t3-chat-font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
   --t3-sidebar-font-family:
     "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
     -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-family:
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
     "Segoe UI",
     -apple-system,
     BlinkMacSystemFont,
-    "Microsoft YaHei UI",
-    "Microsoft YaHei",
     "PingFang SC",
     "Hiragino Sans GB",
     system-ui,
@@ -549,6 +549,10 @@ body {
 
 .chat-text {
   font-family: var(--t3-chat-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.62;
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
   -webkit-font-smoothing: antialiased;
   font-feature-settings: normal;
   font-variation-settings: normal;
@@ -647,6 +651,20 @@ code {
   background: var(--sidebar);
 }
 
+[data-slot="sidebar-wrapper"],
+[data-slot="sidebar-container"] {
+  background: var(--sidebar);
+}
+
+[data-slot="sidebar-inset"] {
+  background: var(--background);
+}
+
+[data-slot="sidebar-inset"] > .bg-background,
+[data-slot="sidebar-inset"] .bg-background:not([data-chat-composer-surface-root="true"]) {
+  background-color: var(--background);
+}
+
 .t3-project-sidebar,
 .t3-project-sidebar-footer {
   font-family: var(--t3-sidebar-font-family);
@@ -659,11 +677,11 @@ code {
 }
 
 .t3-project-sidebar {
-  color: color-mix(in srgb, var(--foreground) 74%, transparent);
+  color: color-mix(in srgb, var(--foreground) 66%, transparent);
 }
 
 .t3-project-sidebar [data-slot="sidebar-menu"] {
-  gap: 2px;
+  gap: 1px;
 }
 
 .t3-project-sidebar [data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
@@ -691,25 +709,115 @@ code {
 .t3-sidebar-project-row,
 .t3-sidebar-thread-row {
   font-family: inherit;
+  min-height: 30px;
   font-size: 13px;
   font-weight: 400;
   letter-spacing: 0;
-  line-height: 1.42;
+  line-height: 1.45;
+}
+
+.t3-project-sidebar .t3-sidebar-nav-row,
+.t3-project-sidebar .t3-sidebar-project-row {
+  gap: 10px;
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.t3-project-sidebar .t3-sidebar-nav-row:hover,
+.t3-project-sidebar .t3-sidebar-project-row:hover {
+  color: color-mix(in srgb, var(--foreground) 72%, transparent);
+}
+
+.t3-project-sidebar .t3-sidebar-nav-row > svg,
+.t3-project-sidebar .t3-sidebar-project-row > svg,
+.t3-project-sidebar .t3-sidebar-project-row > span:first-child {
+  color: color-mix(in srgb, var(--foreground) 48%, transparent);
+}
+
+.t3-project-sidebar .t3-sidebar-nav-row span,
+.t3-project-sidebar .t3-sidebar-project-row span {
+  line-height: 1.45;
+}
+
+.t3-project-sidebar .t3-sidebar-project-row span.truncate {
+  color: color-mix(in srgb, var(--foreground) 54%, transparent);
+}
+
+.t3-project-sidebar .t3-sidebar-project-row:hover span.truncate {
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
 }
 
 .t3-sidebar-nav-row[data-active="true"],
+.t3-sidebar-project-row[data-active="true"],
 .t3-sidebar-thread-row[data-active="true"] {
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  background: color-mix(in srgb, var(--foreground) 5.5%, transparent);
 }
 
 .dark .t3-sidebar-nav-row[data-active="true"],
+.dark .t3-sidebar-project-row[data-active="true"],
 .dark .t3-sidebar-thread-row[data-active="true"] {
   background: color-mix(in srgb, var(--foreground) 9%, transparent);
 }
 
 [data-slot="sidebar-menu-button"],
 [data-slot="sidebar-menu-sub-button"] {
-  line-height: 1.42;
+  line-height: 1.38;
+}
+
+.t3-project-sidebar [data-slot="sidebar-menu-button"],
+.t3-project-sidebar [data-slot="sidebar-menu-sub-button"] {
+  color: color-mix(in srgb, var(--foreground) 64%, transparent);
+}
+
+.t3-project-sidebar [data-slot="sidebar-menu-button"]:hover,
+.t3-project-sidebar [data-slot="sidebar-menu-sub-button"]:hover {
+  background: color-mix(in srgb, var(--foreground) 4.5%, transparent);
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+.t3-project-sidebar [data-slot="sidebar-menu-button"][data-active="true"],
+.t3-project-sidebar [data-slot="sidebar-menu-sub-button"][data-active="true"] {
+  background: color-mix(in srgb, var(--foreground) 5.5%, transparent);
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+
+.t3-project-sidebar svg {
+  color: color-mix(in srgb, var(--foreground) 54%, transparent);
+  stroke-width: 1.55;
+}
+
+.t3-project-sidebar [data-slot="sidebar-group"] {
+  padding-inline: 8px;
+}
+
+.t3-project-sidebar [data-slot="sidebar-group-label"],
+.t3-project-sidebar .group\/section-title button {
+  height: 28px;
+  color: color-mix(in srgb, var(--foreground) 48%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.t3-project-sidebar-footer {
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.t3-project-sidebar-footer [data-slot="button"] {
+  color: color-mix(in srgb, var(--foreground) 64%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.t3-project-sidebar-footer [data-slot="button"]:hover {
+  background: color-mix(in srgb, var(--foreground) 4.5%, transparent);
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+[data-chat-composer-form="true"] {
+  font-family: var(--t3-chat-font-family);
 }
 
 [data-slot="sidebar-menu-button"] svg,
@@ -737,10 +845,10 @@ code {
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"][data-chat-composer-drag-over="false"] {
   background: #ffffff;
   background-clip: padding-box;
-  border-color: #dcdcdc;
+  border-color: #dddddc;
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 0.92) inset,
-    0 10px 22px -18px rgb(0 0 0 / 0.42);
+    0 1px 0 rgb(255 255 255 / 0.94) inset,
+    0 12px 28px -24px rgb(0 0 0 / 0.38);
 }
 
 .dark
@@ -767,19 +875,20 @@ code {
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-testid="composer-editor"] {
-  color: #1f1f1f;
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+  line-height: 1.55;
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-chat-composer-footer="true"] {
-  color: #8f8f8f;
+  color: color-mix(in srgb, var(--foreground) 56%, transparent);
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-chat-composer-footer="true"]
   > div:first-child
   [data-slot="button"] {
-  color: #9b9b9b;
+  color: color-mix(in srgb, var(--foreground) 52%, transparent);
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
@@ -787,31 +896,31 @@ code {
   > div:first-child
   [data-slot="button"]:hover {
   background: transparent;
-  color: #767676;
+  color: color-mix(in srgb, var(--foreground) 72%, transparent);
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-chat-provider-model-picker="true"] {
-  color: #373737;
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-chat-provider-model-picker="true"]:hover {
   background: transparent;
-  color: #242424;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-chat-composer-actions="right"]
   [data-slot="button"]:last-child {
-  background: #8d8f93;
+  background: #8f9296;
   color: #ffffff;
 }
 
 [data-chat-composer-surface-root="true"][data-chat-composer-surface="new-thread"]
   [data-chat-composer-actions="right"]
   [data-slot="button"]:last-child:hover {
-  background: #7e8084;
+  background: #7f8286;
   color: #ffffff;
 }
 
@@ -1754,10 +1863,12 @@ label:has(> select#reasoning-effort) select {
 [data-slot="sidebar-container"],
 [data-slot="sidebar-inner"] {
   font-family:
-    "PingFang SC",
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
     -apple-system,
     BlinkMacSystemFont,
-    "Microsoft YaHei",
+    "PingFang SC",
     "Hiragino Sans GB",
     sans-serif;
   font-size: 13px;

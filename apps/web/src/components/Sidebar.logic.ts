@@ -306,34 +306,34 @@ export function resolveThreadRowClassName(input: {
   if (input.isPendingOpen) {
     return cn(
       baseClassName,
-      "bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] text-foreground/88 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground after:absolute after:inset-y-1 after:left-0 after:w-0.5 after:rounded-full after:bg-foreground/45 after:content-['']",
+      "bg-[color-mix(in_srgb,var(--foreground)_5.5%,transparent)] text-foreground/80 hover:bg-[color-mix(in_srgb,var(--foreground)_6.5%,transparent)] hover:text-foreground/86 after:absolute after:inset-y-1 after:left-0 after:w-0.5 after:rounded-full after:bg-foreground/35 after:content-['']",
     );
   }
 
   if (input.isSelected && input.isActive) {
     return cn(
       baseClassName,
-      "bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] text-foreground/88 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground",
+      "bg-[color-mix(in_srgb,var(--foreground)_5.5%,transparent)] text-foreground/80 hover:bg-[color-mix(in_srgb,var(--foreground)_6.5%,transparent)] hover:text-foreground/86",
     );
   }
 
   if (input.isSelected) {
     return cn(
       baseClassName,
-      "bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)] text-foreground/86 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground",
+      "bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] text-foreground/78 hover:bg-[color-mix(in_srgb,var(--foreground)_6.5%,transparent)] hover:text-foreground/86",
     );
   }
 
   if (input.isActive) {
     return cn(
       baseClassName,
-      "bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] text-foreground/88 hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-foreground",
+      "bg-[color-mix(in_srgb,var(--foreground)_5.5%,transparent)] text-foreground/80 hover:bg-[color-mix(in_srgb,var(--foreground)_6.5%,transparent)] hover:text-foreground/86",
     );
   }
 
   return cn(
     baseClassName,
-    "text-foreground/76 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground/90",
+    "text-foreground/64 hover:bg-[color-mix(in_srgb,var(--foreground)_4.5%,transparent)] hover:text-foreground/78",
   );
 }
 
