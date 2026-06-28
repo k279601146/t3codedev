@@ -601,7 +601,7 @@ function parseCodexSkillsListResponse(
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {
     clientInfo: {
-      name: "t3code_desktop",
+      name: "Bahew_desktop",
       title: "Bahew Desktop",
       version: packageJson.version,
     },
@@ -647,7 +647,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
   const baseEnv = input.environment ?? process.env;
 
-  // 检测捆绑引擎模式：使用内嵌的 codex-app-server 二进制 + 自定义配置
+  // Detect bundled engine mode and use the embedded codex-app-server binary with custom config.
   const bundledConfig = resolveBundledEngineConfig(baseEnv);
   const effectiveBinaryPath = bundledConfig?.binaryPath ?? input.binaryPath;
   const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();

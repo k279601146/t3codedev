@@ -2252,28 +2252,42 @@ function AssistantChangedFilesSectionInner({
           <div className="space-y-2.5">
             {visibleFiles.map((file) => {
               const displayPath = formatChangedFilePath(file.path, workspaceRoot);
+              const openFileDiff = () => onOpenTurnDiff(turnSummary.turnId, file.path);
               return (
-                <button
+                <div
                   key={`${turnSummary.turnId}:${file.path}`}
-                  type="button"
                   className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left text-[13px] leading-5 text-[#111111] hover:text-[#111111] dark:text-foreground dark:hover:text-foreground"
-                  onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
                 >
-                  <ChangedFileOpenButton
-                    filePath={file.linkMeta?.filePath ?? file.path}
-                    displayPath={displayPath}
-                    title={file.linkMeta?.displayPath ?? displayPath}
-                    className="min-w-0 font-sans text-[13px] text-[#111111] hover:text-[#111111] hover:no-underline dark:text-foreground dark:hover:text-foreground"
-                    onOpenFile={file.linkMeta ? onOpenFile : undefined}
-                    stopPropagation
-                  />
-                  <span className="shrink-0 font-mono text-[12px] leading-5 tabular-nums">
+                  {file.linkMeta ? (
+                    <ChangedFileOpenButton
+                      filePath={file.linkMeta.filePath}
+                      displayPath={displayPath}
+                      title={file.linkMeta.displayPath ?? displayPath}
+                      className="min-w-0 font-sans text-[13px] text-[#111111] hover:text-[#111111] hover:no-underline dark:text-foreground dark:hover:text-foreground"
+                      onOpenFile={onOpenFile}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="min-w-0 truncate text-left font-sans text-[13px] text-[#111111] underline-offset-2 transition-colors hover:text-[#111111] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:text-foreground dark:hover:text-foreground"
+                      title={displayPath}
+                      onClick={openFileDiff}
+                    >
+                      {displayPath}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="shrink-0 font-mono text-[12px] leading-5 tabular-nums underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={`Open diff for ${displayPath}`}
+                    onClick={openFileDiff}
+                  >
                     <DiffStatLabel
                       additions={file.additions ?? 0}
                       deletions={file.deletions ?? 0}
                     />
-                  </span>
-                </button>
+                  </button>
+                </div>
               );
             })}
             {hiddenFileCount > 0 || showAllFiles ? (
