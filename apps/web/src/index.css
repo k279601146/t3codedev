@@ -2023,6 +2023,38 @@ label:has(> select#reasoning-effort) select {
   }
 }
 
+@keyframes auth-mark-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.025);
+  }
+}
+
+@keyframes auth-load-sweep {
+  0% {
+    transform: translateX(-115%);
+  }
+  55%,
+  100% {
+    transform: translateX(245%);
+  }
+}
+
+@keyframes auth-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: translateY(0) scale(0.92);
+  }
+  50% {
+    opacity: 0.92;
+    transform: translateY(-5px) scale(1);
+  }
+}
+
 .provider-update-pill-progress {
   animation: provider-update-pill-countdown var(--provider-update-pill-dismiss-ms) linear forwards;
 }

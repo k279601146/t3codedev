@@ -381,7 +381,7 @@ const TRANSLATIONS = {
     "auth.heroDescription":
       "登录后即可使用本地引擎、模型网关、Diff、终端和理解项目上下文的对话能力。",
     "auth.signInDescription":
-      "只需登录一次。Bahew 会把 IDE 令牌加密保存在本机，并通过网关安全转发模型请求。",
+      "一款具备自主执行力的 AI Agent，理解项目架构，自主编写代码并生成交付可用的文件成果。",
     "auth.featureLocalRuntime": "本地运行时与终端编排",
     "auth.featureGitAware": "理解 Git、Diff 与 checkpoint",
     "auth.featurePrivateToken": "网关令牌加密保存在此设备",
