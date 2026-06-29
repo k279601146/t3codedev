@@ -22,6 +22,10 @@ import * as DesktopCommercialAuth from "./DesktopCommercialAuth.ts";
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
 
+function jsonResponse(body: unknown, init?: ResponseInit): Response {
+  return Response.json(body, init);
+}
+
 function makeSafeStorageLayer(input: { readonly available: boolean }) {
   return Layer.succeed(ElectronSafeStorage.ElectronSafeStorage, {
     isEncryptionAvailable: Effect.succeed(input.available),
@@ -165,8 +169,8 @@ describe("DesktopCommercialAuth", () => {
             assert.equal(url, "http://localhost:8080/ide/auth/token");
             const headers = init?.headers as Record<string, string> | undefined;
             assert.equal(headers?.Authorization, "Bearer web-jwt");
-            return new Response(
-              JSON.stringify({
+            return jsonResponse(
+              {
                 code: 0,
                 message: "success",
                 data: {
@@ -174,7 +178,7 @@ describe("DesktopCommercialAuth", () => {
                   expires_in: 3600,
                   user: { email: "dev@example.com" },
                 },
-              }),
+              },
               { status: 200 },
             );
           }) as typeof fetch,
@@ -216,10 +220,8 @@ describe("DesktopCommercialAuth", () => {
       withCommercialAuth(
         withFetch(
           (async () =>
-            new Response(
-              JSON.stringify({
-                data: { access_token: "ide-jwt", expires_in: 3600 },
-              }),
+            jsonResponse(
+              { data: { access_token: "ide-jwt", expires_in: 3600 } },
               { status: 200 },
             )) as typeof fetch,
           Effect.gen(function* () {
@@ -249,14 +251,14 @@ describe("DesktopCommercialAuth", () => {
           withFetch(
             (async (url) => {
               assert.equal(url, "https://gateway.example.com/ide/auth/token");
-              return new Response(
-                JSON.stringify({
+              return jsonResponse(
+                {
                   data: {
                     access_token: "ide-jwt",
                     expires_in: 3600,
                     user: { email: "dev@example.com" },
                   },
-                }),
+                },
                 { status: 200 },
               );
             }) as typeof fetch,
@@ -271,15 +273,17 @@ describe("DesktopCommercialAuth", () => {
               });
               yield* fileSystem.writeFileString(
                 environment.commercialAuthPath,
-                JSON.stringify({
-                  version: 1,
-                  gatewayBaseUrl: "https://old-gateway.example.test/v1",
-                  webAuthBaseUrl: "https://old-auth.example.test",
-                  encryptedIdeJwt: "ZW5jOm9sZC1qd3Q=",
-                  authenticatedAt: "2026-05-10T00:00:00.000Z",
-                  tokenExpiresAt: null,
-                  userLabel: "Old account",
-                }),
+                [
+                  "{",
+                  '"version":1,',
+                  '"gatewayBaseUrl":"https://old-gateway.example.test/v1",',
+                  '"webAuthBaseUrl":"https://old-auth.example.test",',
+                  '"encryptedIdeJwt":"ZW5jOm9sZC1qd3Q=",',
+                  '"authenticatedAt":"2026-05-10T00:00:00.000Z",',
+                  '"tokenExpiresAt":null,',
+                  '"userLabel":"Old account"',
+                  "}",
+                ].join(""),
               );
 
               const loaded = yield* auth.getState;
@@ -317,10 +321,8 @@ describe("DesktopCommercialAuth", () => {
               if (attempts === 1) {
                 return new Response("busy", { status: 503 });
               }
-              return new Response(
-                JSON.stringify({
-                  data: { access_token: "ide-jwt", expires_in: 3600 },
-                }),
+              return jsonResponse(
+                { data: { access_token: "ide-jwt", expires_in: 3600 } },
                 { status: 200 },
               );
             }) as typeof fetch;
@@ -356,17 +358,17 @@ describe("DesktopCommercialAuth", () => {
           withFetch(
             (async (url, init) => {
               assert.equal(url, "https://gateway.example.com/ide/auth/token");
-              const body = JSON.parse(String(init?.body));
+              const body = await new Response(init?.body).json();
               assert.equal(body.code, "pkce-code");
               assert.equal(body.client_id, "t3code-desktop");
-              return new Response(
-                JSON.stringify({
+              return jsonResponse(
+                {
                   data: {
                     access_token: "ide-jwt",
                     expires_in: 3600,
                     user: { email: "dev@example.com" },
                   },
-                }),
+                },
                 { status: 200 },
               );
             }) as typeof fetch,

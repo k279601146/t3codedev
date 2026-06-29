@@ -102,7 +102,7 @@ function resolveDesktopAppStageLabel(input: {
     return "Dev";
   }
 
-  return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Alpha";
+  return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Stable";
 }
 
 function resolveDesktopAppBranding(input: {
@@ -110,10 +110,12 @@ function resolveDesktopAppBranding(input: {
   readonly appVersion: string;
 }): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
+  const displayName =
+    stageLabel === "Stable" ? DESKTOP_APP_BASE_NAME : `${DESKTOP_APP_BASE_NAME} (${stageLabel})`;
   return {
     baseName: DESKTOP_APP_BASE_NAME,
     stageLabel,
-    displayName: `${DESKTOP_APP_BASE_NAME} (${stageLabel})`,
+    displayName,
   };
 }
 

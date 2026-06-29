@@ -11,6 +11,7 @@ import {
   HttpBody,
   HttpClient,
   HttpClientResponse,
+  HttpMiddleware,
   HttpRouter,
   HttpServerResponse,
   HttpServerRequest,
@@ -39,6 +40,8 @@ import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
   browserApiCorsHeaders,
+  isBrowserApiCorsAllowedOrigin,
+  isLoopbackHostname as isBrowserApiCorsLoopbackHostname,
 } from "./httpCors.ts";
 
 const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
@@ -46,21 +49,20 @@ const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" vi
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const PROMETHEUS_METRICS_PATH = "/api/observability/metrics";
 const DESKTOP_APM_EVENTS_PATH = "/ide/api/telemetry";
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const ENGINE_PROTOCOL_VERSION = "app-server-v1";
 
-export const browserApiCorsLayer = HttpRouter.cors({
-  allowedMethods: [...browserApiCorsAllowedMethods],
-  allowedHeaders: [...browserApiCorsAllowedHeaders],
-  maxAge: 600,
-});
+export const browserApiCorsLayer = HttpRouter.middleware(
+  HttpMiddleware.cors({
+    allowedOrigins: isBrowserApiCorsAllowedOrigin,
+    allowedMethods: [...browserApiCorsAllowedMethods],
+    allowedHeaders: [...browserApiCorsAllowedHeaders],
+    maxAge: 600,
+  }),
+  { global: true },
+);
 
 export function isLoopbackHostname(hostname: string): boolean {
-  const normalizedHostname = hostname
-    .trim()
-    .toLowerCase()
-    .replace(/^\[(.*)\]$/, "$1");
-  return LOOPBACK_HOSTNAMES.has(normalizedHostname);
+  return isBrowserApiCorsLoopbackHostname(hostname);
 }
 
 export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
@@ -117,7 +119,6 @@ export const serverEnvironmentRouteLayer = HttpRouter.add(
 
 class DecodeOtlpTraceRecordsError extends Data.TaggedError("DecodeOtlpTraceRecordsError")<{
   readonly cause: unknown;
-  readonly bodyJson: OtlpTracer.TraceData;
 }> {}
 
 export const otlpTracesProxyRouteLayer = HttpRouter.add(
@@ -134,13 +135,12 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
 
     yield* Effect.try({
       try: () => decodeOtlpTraceRecords(bodyJson),
-      catch: (cause) => new DecodeOtlpTraceRecordsError({ cause, bodyJson }),
+      catch: (cause) => new DecodeOtlpTraceRecordsError({ cause }),
     }).pipe(
       Effect.flatMap((records) => browserTraceCollector.record(records)),
       Effect.catch((cause) =>
         Effect.logWarning("Failed to decode browser OTLP traces", {
           cause,
-          bodyJson,
         }),
       ),
     );

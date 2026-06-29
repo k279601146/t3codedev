@@ -342,7 +342,7 @@ describe("SkillsService catalog sorting", () => {
               hasErrors: false,
             }),
           warmUp: Effect.void,
-          findCatalogItem: () => Effect.succeed(undefined),
+          findCatalogItem: () => Effect.sync(() => undefined),
           resolveVendorAssetPath: () => Effect.succeed(null),
           readCatalogContent: () => Effect.succeed(null),
           readCatalogFiles: () => Effect.succeed(null),

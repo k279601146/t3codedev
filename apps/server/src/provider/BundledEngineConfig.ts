@@ -1,12 +1,10 @@
 /**
- * BundledEngineConfig — 捆绑引擎模式的配置与检测。
+ * Bundled engine configuration and detection.
  *
- * 当 `MYIDE_ENGINE_PATH` 环境变量存在时，服务器进入"捆绑引擎模式"：
- * 使用内嵌的 codex-app-server 二进制替代系统 PATH 中的 codex CLI，
- * 并通过内存环境变量注入自定义 API 配置。
- *
- * 这是商业化 IDE 客户端的核心机制：用户无需安装 Codex CLI，
- * 无需手动配置 config.toml，所有敏感凭证由客户端登录态按需注入。
+ * When `MYIDE_ENGINE_PATH` points to a packaged engine binary, the server uses
+ * that binary instead of a `codex` CLI discovered on PATH. Commercial model
+ * routing is injected through process environment and generated config, while
+ * real provider keys stay outside the desktop client.
  *
  * @module provider/BundledEngineConfig
  */
@@ -18,49 +16,43 @@ import {
   COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY,
   COMMERCIAL_ENGINE_WIRE_API,
   COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
+  buildCommercialEngineProcessEnv,
   generateCommercialEngineTomlConfig,
   getCommercialEngineEnvVar,
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
-  buildCommercialEngineProcessEnv,
 } from "@t3tools/shared/commercialEngine";
 
-// ── 环境变量常量 ────────────────────────────────────────────
-
-/** 捆绑引擎二进制的绝对路径（由 Electron 主进程注入） */
+/** Absolute packaged engine binary path injected by the Electron main process. */
 const ENV_ENGINE_PATH = "MYIDE_ENGINE_PATH";
 
-/** 隔离的 CODEX_HOME 目录（由 Electron 主进程注入） */
+/** Isolated CODEX_HOME injected by the Electron main process. */
 const ENV_ENGINE_HOME = "MYIDE_ENGINE_HOME";
 
-/** 用户 JWT（由 sub2api IDE 登录流程签发，传给 app-server 作为 Bearer 凭证） */
+/** IDE JWT issued by the commercial login flow and used as a gateway bearer token. */
 const ENV_IDE_JWT = COMMERCIAL_ENGINE_IDE_JWT_ENV;
 
 export const PROVIDER_DISPLAY_NAME = COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME;
-// ── 核心接口 ────────────────────────────────────────────────
 
 export interface BundledEngineResolvedConfig {
-  /** 捆绑引擎二进制的绝对路径 */
+  /** Absolute packaged engine binary path. */
   readonly binaryPath: string;
 
-  /** spawn 参数（包含 --no-load-config 和所有 --config 标志） */
+  /** Spawn arguments for the packaged binary. */
   readonly spawnArgs: ReadonlyArray<string>;
 
-  /** spawn 环境变量补丁（IDE JWT + CODEX_HOME） */
+  /** Environment patch for the packaged engine process. */
   readonly spawnEnvPatch: Readonly<Record<string, string>>;
 
-  /** 隔离的 CODEX_HOME 路径 */
+  /** Isolated CODEX_HOME path. */
   readonly engineHome: string;
 }
 
-// ── 检测与解析 ──────────────────────────────────────────────
-
 /**
- * 解析捆绑引擎配置。
- * 当 MYIDE_ENGINE_PATH 环境变量存在且非空时返回配置对象，否则返回 undefined。
+ * Resolve packaged engine configuration.
  *
- * 注意：此函数不检测文件是否存在（避免 node:fs 依赖），
- * 文件可执行性由 ChildProcessSpawner 在实际 spawn 时验证。
+ * This intentionally does not touch the filesystem. Executability is validated
+ * by the child process spawner at launch time.
  */
 export function resolveBundledEngineConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -70,8 +62,7 @@ export function resolveBundledEngineConfig(
     return undefined;
   }
 
-  // 当路径是 "codex" 这样的简单名称时，说明没有设置真正的捆绑路径
-  // 只有绝对路径才视为捆绑模式
+  // A bare command name still means "discover codex from PATH", not packaged mode.
   if (!binaryPath.includes("/") && !binaryPath.includes("\\")) {
     return undefined;
   }
@@ -79,13 +70,7 @@ export function resolveBundledEngineConfig(
   const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(env);
   const ideJwt = resolveCommercialEngineIdeJwt(env);
   const engineHome = getCommercialEngineEnvVar(env, ENV_ENGINE_HOME) || "";
-
-  // 构建 --config 参数列表
-  // 独立引擎 (ai-engine) 不接受 --no-load-config 和 --config，
-  // 我们通过 CODEX_ 前缀的环境变量来注入配置（Figment 会自动解析这些环境变量）。
   const configFlags: string[] = [];
-
-  // 构建环境变量补丁
   const spawnEnvPatch: Record<string, string> = {
     CODEX_MODEL_PROVIDER: COMMERCIAL_ENGINE_PROVIDER_ID,
     [`CODEX_MODEL_PROVIDERS_${COMMERCIAL_ENGINE_PROVIDER_ID.toUpperCase()}_NAME`]:
@@ -102,7 +87,7 @@ export function resolveBundledEngineConfig(
     ]),
     CODEX_DISABLE_TELEMETRY: "true",
     CODEX_FEATURES_IMAGEGENEXT: "true",
-    // 强制重定向内置的 OpenAI 提供商到我们的网关
+    // Route built-in OpenAI provider traffic through the commercial gateway.
     CODEX_OPENAI_BASE_URL: gatewayBaseUrl,
     CODEX_CHATGPT_BASE_URL: gatewayBaseUrl,
     CODEX_MODEL_PROVIDERS_OPENAI_BASE_URL: gatewayBaseUrl,
@@ -131,39 +116,24 @@ export function resolveBundledEngineConfig(
 }
 
 /**
- * 动态生成引擎的 TOML 配置内容，以避免底层 Figment 解析带下划线的环境变量时出现嵌套错误
- *（例如 requires_openai_auth 可能会被解析为 requires.openai.auth）。
+ * Generate TOML config for settings that should not be represented only as
+ * underscored environment variables.
  */
 export function generateBundledTomlConfig(env: NodeJS.ProcessEnv = process.env): string {
   return generateCommercialEngineTomlConfig(env);
 }
 
-/**
- * 构建捆绑引擎的 spawn 参数。
- *
- * 与系统安装的 `codex` CLI 不同，独立的 `codex-app-server` 二进制
- * 无需 `app-server` 子命令，直接以 app-server 模式启动。
- *
- * 返回格式: [...configFlags]（无 "app-server" 子命令）
- */
+/** Build spawn arguments for the packaged app-server binary. */
 export function buildBundledSpawnArgs(config: BundledEngineResolvedConfig): ReadonlyArray<string> {
   return config.spawnArgs;
 }
 
-/**
- * 构建系统 codex CLI 的 spawn 参数。
- * 需要 `app-server` 子命令。
- *
- * 返回格式: ["app-server"]
- */
+/** Build spawn arguments for a system `codex` CLI. */
 export function buildSystemSpawnArgs(): ReadonlyArray<string> {
   return ["app-server"];
 }
 
-/**
- * 构建 Codex 进程的环境变量。
- * 处理 CODEX_HOME 路径展开以及捆绑引擎的环境变量补丁。
- */
+/** Build the Codex process environment with CODEX_HOME and packaged-engine patches. */
 export function buildCodexProcessEnv(input: {
   readonly baseEnv: NodeJS.ProcessEnv;
   readonly resolvedHomePath: string | undefined;
@@ -186,7 +156,7 @@ export function buildCodexProcessEnv(input: {
       ? `${engineBinDir}${process.platform === "win32" ? ";" : ":"}${basePathValue}`
       : engineBinDir
         ? engineBinDir
-      : undefined;
+        : undefined;
   const patch = {
     ...(input.resolvedHomePath ? { CODEX_HOME: input.resolvedHomePath } : {}),
     ...(patchedPath ? { PATH: patchedPath, Path: patchedPath } : {}),

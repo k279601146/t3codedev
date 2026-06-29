@@ -357,7 +357,7 @@ function isFatalCodexProcessStderrMessage(message: string): boolean {
   return FATAL_CODEX_STDERR_SNIPPETS.some((snippet) => normalized.includes(snippet));
 }
 
-function shouldSuppressCodexProcessStderrMessage(message: string): boolean {
+export function shouldSuppressCodexProcessStderrMessage(message: string): boolean {
   const trimmed = message.trim();
   if (trimmed.length === 0) {
     return true;

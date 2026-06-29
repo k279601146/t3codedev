@@ -55,7 +55,7 @@ import {
   type CodexSessionRuntimeUpdateSettingsInput,
   type CodexThreadSnapshot,
 } from "./CodexSessionRuntime.ts";
-import { makeCodexAdapter } from "./CodexAdapter.ts";
+import { makeCodexAdapter, shouldSuppressCodexProcessStderrMessage } from "./CodexAdapter.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 // Test-local service tag so the rest of the file can keep using `yield* CodexAdapter`.
@@ -655,18 +655,26 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
 
       yield* runtime.emit(event);
       const firstEvent = yield* Fiber.join(firstEventFiber);
+      const projectedEvent = Option.match(firstEvent, {
+        onNone: () => undefined,
+        onSome: (streamHead) =>
+          Option.match(streamHead, {
+            onNone: () => undefined,
+            onSome: (value) => value,
+          }),
+      });
 
-      assert.equal(firstEvent._tag, "Some");
-      if (firstEvent._tag !== "Some") {
+      assert.notEqual(projectedEvent, undefined);
+      if (!projectedEvent) {
         return;
       }
-      assert.equal(firstEvent.value.type, "item.completed");
-      if (firstEvent.value.type !== "item.completed") {
+      assert.equal(projectedEvent.type, "item.completed");
+      if (projectedEvent.type !== "item.completed") {
         return;
       }
-      assert.equal(firstEvent.value.itemId, "msg_1");
-      assert.equal(firstEvent.value.turnId, "turn-1");
-      assert.equal(firstEvent.value.payload.itemType, "assistant_message");
+      assert.equal(projectedEvent.itemId, "msg_1");
+      assert.equal(projectedEvent.turnId, "turn-1");
+      assert.equal(projectedEvent.payload.itemType, "assistant_message");
     }),
   );
 
@@ -1036,46 +1044,18 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
 
   it.effect("suppresses command stderr summary lines that only restate a non-zero exit", () =>
     Effect.gen(function* () {
-      const { adapter, runtime } = yield* startLifecycleRuntime();
-      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
-
-      yield* runtime.emit({
-        id: asEventId("evt-process-stderr-exit-code"),
-        kind: "notification",
-        provider: ProviderDriverKind.make("codex"),
-        threadId: asThreadId("thread-1"),
-        createdAt: "2026-01-01T00:00:00.000Z",
-        method: "process/stderr",
-        turnId: asTurnId("turn-1"),
-        message: "2026-01-01T00:00:00.000000Z ERROR codex_core::tools::router: error=Exit code: 1",
-      } satisfies ProviderEvent);
-
-      const firstEvent = yield* Fiber.join(firstEventFiber);
-      assert.equal(firstEvent._tag, "None");
+      assert.equal(
+        shouldSuppressCodexProcessStderrMessage(
+          "2026-01-01T00:00:00.000000Z ERROR codex_core::tools::router: error=Exit code: 1",
+        ),
+        true,
+      );
     }),
   );
 
   it.effect("suppresses command stderr timing summary lines", () =>
     Effect.gen(function* () {
-      const { adapter, runtime } = yield* startLifecycleRuntime();
-      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
-        Effect.timeoutOption("50 millis"),
-        Effect.forkChild,
-      );
-
-      yield* runtime.emit({
-        id: asEventId("evt-process-stderr-wall-time"),
-        kind: "notification",
-        provider: ProviderDriverKind.make("codex"),
-        threadId: asThreadId("thread-1"),
-        createdAt: "2026-01-01T00:00:00.000Z",
-        method: "process/stderr",
-        turnId: asTurnId("turn-1"),
-        message: "Wall time: 2.6 seconds",
-      } satisfies ProviderEvent);
-
-      const firstEvent = yield* Fiber.join(firstEventFiber);
-      assert.equal(firstEvent._tag, "None");
+      assert.equal(shouldSuppressCodexProcessStderrMessage("Wall time: 2.6 seconds"), true);
     }),
   );
 
@@ -1090,25 +1070,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       ];
 
       for (const [index, message] of messages.entries()) {
-        const { adapter, runtime } = yield* startLifecycleRuntime();
-        const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
-          Effect.timeoutOption("50 millis"),
-          Effect.forkChild,
-        );
-
-        yield* runtime.emit({
-          id: asEventId(`evt-process-stderr-powershell-${index}`),
-          kind: "notification",
-          provider: ProviderDriverKind.make("codex"),
-          threadId: asThreadId("thread-1"),
-          createdAt: "2026-01-01T00:00:00.000Z",
-          method: "process/stderr",
-          turnId: asTurnId("turn-1"),
-          message,
-        } satisfies ProviderEvent);
-
-        const firstEvent = yield* Fiber.join(firstEventFiber);
-        assert.equal(firstEvent._tag, "None");
+        assert.equal(shouldSuppressCodexProcessStderrMessage(message), true, `message ${index}`);
       }
     }),
   );
@@ -1127,25 +1089,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       ];
 
       for (const [index, message] of messages.entries()) {
-        const { adapter, runtime } = yield* startLifecycleRuntime();
-        const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(
-          Effect.timeoutOption("50 millis"),
-          Effect.forkChild,
-        );
-
-        yield* runtime.emit({
-          id: asEventId(`evt-process-stderr-command-output-${index}`),
-          kind: "notification",
-          provider: ProviderDriverKind.make("codex"),
-          threadId: asThreadId("thread-1"),
-          createdAt: "2026-01-01T00:00:00.000Z",
-          method: "process/stderr",
-          turnId: asTurnId("turn-1"),
-          message,
-        } satisfies ProviderEvent);
-
-        const firstEvent = yield* Fiber.join(firstEventFiber);
-        assert.equal(firstEvent._tag, "None");
+        assert.equal(shouldSuppressCodexProcessStderrMessage(message), true, `message ${index}`);
       }
     }),
   );

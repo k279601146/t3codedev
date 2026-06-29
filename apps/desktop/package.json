@@ -11,7 +11,7 @@
     "build": "tsdown",
     "start": "node scripts/start-electron.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "smoke-test": "node scripts/smoke-test.mjs"
   },
   "dependencies": {
@@ -33,5 +33,5 @@
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "productName": "Bahew (Alpha)"
+  "productName": "Bahew"
 }

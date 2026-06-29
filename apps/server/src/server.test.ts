@@ -1042,8 +1042,9 @@ const splitHeaderTokens = (value: string | null) =>
     .filter((token) => token.length > 0)
     .toSorted();
 
-const assertBrowserApiCorsHeaders = (headers: Headers) => {
-  assert.equal(headers.get("access-control-allow-origin"), "*");
+const assertBrowserApiCorsHeaders = (headers: Headers, origin: string) => {
+  assert.equal(headers.get("access-control-allow-origin"), origin);
+  assert.equal(headers.get("vary"), "Origin");
   assert.deepEqual(splitHeaderTokens(headers.get("access-control-allow-methods")), [
     "GET",
     "OPTIONS",
@@ -1056,7 +1057,8 @@ const assertBrowserApiCorsHeaders = (headers: Headers) => {
     "traceparent",
   ]);
 };
-const crossOriginClientOrigin = "http://remote-client.test:3773";
+const crossOriginClientOrigin = "http://localhost:3773";
+const untrustedCrossOriginClientOrigin = "http://remote-client.test:3773";
 
 const getWsServerUrl = (
   pathname = "",
@@ -1218,7 +1220,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       )) as typeof testEnvironmentDescriptor;
 
       assert.equal(response.status, 200);
-      assertBrowserApiCorsHeaders(response.headers);
+      assertBrowserApiCorsHeaders(response.headers, crossOriginClientOrigin);
       assert.deepEqual(body, testEnvironmentDescriptor);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -1359,7 +1361,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
 
       assert.equal(bootstrapResponse.status, 200);
-      assertBrowserApiCorsHeaders(bootstrapResponse.headers);
+      assertBrowserApiCorsHeaders(bootstrapResponse.headers, origin);
       assert.equal(bootstrapBody.authenticated, true);
       assert.equal(typeof bootstrapBody.sessionToken, "string");
 
@@ -1378,7 +1380,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       };
 
       assert.equal(sessionResponse.status, 200);
-      assertBrowserApiCorsHeaders(sessionResponse.headers);
+      assertBrowserApiCorsHeaders(sessionResponse.headers, origin);
       assert.equal(sessionBody.authenticated, true);
       assert.equal(sessionBody.sessionMethod, "bearer-session-token");
 
@@ -1397,7 +1399,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       };
 
       assert.equal(wsTokenResponse.status, 200);
-      assertBrowserApiCorsHeaders(wsTokenResponse.headers);
+      assertBrowserApiCorsHeaders(wsTokenResponse.headers, origin);
       assert.equal(typeof wsTokenBody.token, "string");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -1421,8 +1423,29 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         );
 
         assert.equal(response.status, 204);
-        assertBrowserApiCorsHeaders(response.headers);
+        assertBrowserApiCorsHeaders(response.headers, crossOriginClientOrigin);
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("does not allow browser API CORS from untrusted origins", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsTokenUrl = yield* getHttpServerUrl("/api/auth/ws-token");
+      const response = yield* Effect.promise(() =>
+        fetch(wsTokenUrl, {
+          method: "OPTIONS",
+          headers: {
+            origin: untrustedCrossOriginClientOrigin,
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "authorization",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get("access-control-allow-origin"), null);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("includes CORS headers on remote websocket-token auth failures", () =>
@@ -1443,7 +1466,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       };
 
       assert.equal(response.status, 401);
-      assertBrowserApiCorsHeaders(response.headers);
+      assertBrowserApiCorsHeaders(response.headers, crossOriginClientOrigin);
       assert.equal(body.error, "Authentication required.");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -2037,7 +2060,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
 
       assert.equal(response.status, 204);
-      assert.equal(response.headers["access-control-allow-origin"], "*");
+      assert.equal(response.headers["access-control-allow-origin"], "http://localhost:5733");
       assert.deepEqual(localTraceRecords, [
         {
           type: "otlp-span",
@@ -2103,7 +2126,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
 
       assert.equal(response.status, 204);
-      assert.equal(response.headers.get("access-control-allow-origin"), "*");
+      assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:5733");
+      assert.equal(response.headers.get("vary"), "Origin");
       assert.deepEqual(splitHeaderTokens(response.headers.get("access-control-allow-methods")), [
         "GET",
         "OPTIONS",
@@ -2723,13 +2747,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc projects.searchEntries errors", () =>
     Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const missingWorkspaceDir = path.join(
+        process.cwd(),
+        "__missing_workspace_for_search_entries__",
+      );
       yield* buildAppUnderTest();
 
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           client[WS_METHODS.projectsSearchEntries]({
-            cwd: "/definitely/not/a/real/workspace/path",
+            cwd: missingWorkspaceDir,
             query: "needle",
             limit: 10,
           }),
@@ -2738,10 +2767,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assertTrue(result._tag === "Failure");
       assertTrue(result.failure._tag === "ProjectSearchEntriesError");
-      assertInclude(
-        result.failure.message,
-        "Workspace root does not exist: /definitely/not/a/real/workspace/path",
-      );
+      assertInclude(result.failure.message, `Workspace root does not exist: ${missingWorkspaceDir}`);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

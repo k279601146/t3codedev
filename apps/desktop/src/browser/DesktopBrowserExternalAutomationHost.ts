@@ -112,6 +112,36 @@ const POLL_TIMEOUT_MS = 25_000;
 const EXTENSION_STALE_AFTER_MS = 45_000;
 const EXTENSION_WATCHDOG_INTERVAL_MS = 10_000;
 const T3_BROWSER_CONFIRMATION_REQUIRED_PREFIX = "T3_BROWSER_CONFIRMATION_REQUIRED:";
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
+
+export function isBrowserExternalAutomationAllowedOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol === "chrome-extension:") {
+      return url.hostname.length > 0;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+    const hostname = url.hostname.trim().toLowerCase().replace(/^\[(.*)\]$/, "$1");
+    return LOOPBACK_HOSTNAMES.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function corsHeadersForRequest(
+  request: NodeHttp.IncomingMessage,
+): Record<string, string> {
+  const origin = request.headers.origin;
+  if (typeof origin !== "string" || !isBrowserExternalAutomationAllowedOrigin(origin)) {
+    return {};
+  }
+  return {
+    "access-control-allow-origin": origin,
+    vary: "Origin",
+  };
+}
 
 function textResponse(text: string, success = true): ToolResponse {
   return {
@@ -197,11 +227,16 @@ async function readRequestJson(request: NodeHttp.IncomingMessage): Promise<unkno
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function writeJson(response: NodeHttp.ServerResponse, status: number, body: unknown): void {
+function writeJson(
+  request: NodeHttp.IncomingMessage,
+  response: NodeHttp.ServerResponse,
+  status: number,
+  body: unknown,
+): void {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
-    "access-control-allow-origin": "*",
+    ...corsHeadersForRequest(request),
     "access-control-allow-headers": "authorization, content-type",
     "access-control-allow-methods": "GET, POST, OPTIONS",
   });
@@ -392,16 +427,16 @@ const make = Effect.gen(function* () {
     void (async () => {
       try {
         if (request.method === "OPTIONS") {
-          writeJson(response, 200, {});
+          writeJson(request, response, 204, {});
           return;
         }
         if (!authorizeRequest(request)) {
-          writeJson(response, 401, { error: "Unauthorized" });
+          writeJson(request, response, 401, { error: "Unauthorized" });
           return;
         }
 
         if (request.method === "GET" && request.url === "/state") {
-          writeJson(response, 200, currentState());
+          writeJson(request, response, 200, currentState());
           return;
         }
 
@@ -420,7 +455,7 @@ const make = Effect.gen(function* () {
             publishState();
           }
           const result = await callExtensionTool(payload);
-          writeJson(response, 200, result);
+          writeJson(request, response, 200, result);
           return;
         }
 
@@ -430,7 +465,7 @@ const make = Effect.gen(function* () {
           const decision = readString(body, "decision");
           const scope = readString(body, "scope") === "always" ? "always" : "session";
           if (!host || (decision !== "allow" && decision !== "block")) {
-            writeJson(response, 400, {
+            writeJson(request, response, 400, {
               error: "permission/resolve requires host and decision allow/block.",
             });
             return;
@@ -442,26 +477,26 @@ const make = Effect.gen(function* () {
             updatedAt: nowIso(),
           });
           publishState();
-          writeJson(response, 200, { ok: true, state: currentState() });
+          writeJson(request, response, 200, { ok: true, state: currentState() });
           return;
         }
 
         if (request.method === "POST" && request.url === "/extension/register") {
           applyStateUpdate(await readRequestJson(request));
-          writeJson(response, 200, { ok: true, endpoint, app: environment.displayName });
+          writeJson(request, response, 200, { ok: true, endpoint, app: environment.displayName });
           return;
         }
 
         if (request.method === "POST" && request.url === "/extension/state") {
           applyStateUpdate(await readRequestJson(request));
-          writeJson(response, 200, { ok: true });
+          writeJson(request, response, 200, { ok: true });
           return;
         }
 
         if (request.method === "POST" && request.url === "/extension/poll") {
           applyStateUpdate(await readRequestJson(request));
           const commands = await waitForCommands();
-          writeJson(response, 200, { commands });
+          writeJson(request, response, 200, { commands });
           return;
         }
 
@@ -470,7 +505,7 @@ const make = Effect.gen(function* () {
           const id = readString(body, "id") ?? "";
           const pending = pendingToolCalls.get(id);
           if (!pending) {
-            writeJson(response, 404, { error: "Unknown tool call id" });
+            writeJson(request, response, 404, { error: "Unknown tool call id" });
             return;
           }
           pendingToolCalls.delete(id);
@@ -478,16 +513,16 @@ const make = Effect.gen(function* () {
           pending.resolve(
             result?.contentItems ? result : textResponse("Malformed extension result.", false),
           );
-          writeJson(response, 200, { ok: true });
+          writeJson(request, response, 200, { ok: true });
           return;
         }
 
-        writeJson(response, 404, { error: "Not found" });
+        writeJson(request, response, 404, { error: "Not found" });
       } catch (error) {
         const message = normalizeError(error);
         mutable.lastError = message;
         publishState();
-        writeJson(response, 500, { error: message });
+        writeJson(request, response, 500, { error: message });
       }
     })();
   });

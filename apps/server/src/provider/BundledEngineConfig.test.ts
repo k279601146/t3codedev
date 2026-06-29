@@ -70,7 +70,7 @@ describe("BundledEngineConfig", () => {
     assert.doesNotMatch(toml, /jwt-token/);
   });
 
-  it("将捆绑引擎目录前置到 Codex 子进程 PATH", () => {
+  it("prepends the packaged engine directory to the Codex child process PATH", () => {
     const env = buildCodexProcessEnv({
       baseEnv: {
         PATH: "C:\\Windows\\System32",
@@ -92,7 +92,7 @@ describe("BundledEngineConfig", () => {
     assert.equal(env.Path, env.PATH);
   });
 
-  it("原环境没有 PATH 时仍提供捆绑引擎目录", () => {
+  it("still provides the packaged engine directory when the base environment has no PATH", () => {
     const env = buildCodexProcessEnv({
       baseEnv: {},
       resolvedHomePath: undefined,
