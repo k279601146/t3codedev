@@ -49,6 +49,11 @@ import {
 const CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT = "low";
 const CODEX_TIMEOUT_MS = 180_000;
 const encodeJsonString = Schema.encodeEffect(Schema.UnknownFromJsonString);
+const COMMERCIAL_GATEWAY_STRUCTURED_OUTPUT_UNSUPPORTED_PATTERNS = [
+  /compile_grammar_error/iu,
+  /guided_grammar/iu,
+  /unsupported tokenizer type/iu,
+] as const;
 /**
  * Build a Codex text-generation closure bound to a specific `CodexSettings`
  * payload. See `makeCodexAdapter` for the overall per-instance rationale.
@@ -127,6 +132,29 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       ),
     );
 
+  const isStructuredOutputUnsupported = (input: {
+    readonly status: number;
+    readonly body: string;
+  }): boolean => {
+    if (input.status !== 400 && input.status !== 422) {
+      return false;
+    }
+    return COMMERCIAL_GATEWAY_STRUCTURED_OUTPUT_UNSUPPORTED_PATTERNS.some((pattern) =>
+      pattern.test(input.body),
+    );
+  };
+
+  const buildPlainJsonPrompt = (input: {
+    readonly prompt: string;
+    readonly schemaJson: string;
+  }): string =>
+    [
+      input.prompt,
+      "",
+      "Return only valid JSON matching this JSON Schema. Do not include markdown fences or extra text.",
+      input.schemaJson,
+    ].join("\n");
+
   const materializeImageAttachments = Effect.fn("materializeImageAttachments")(function* (
     _operation:
       | "generateCommitMessage"
@@ -184,10 +212,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     cleanupPaths?: ReadonlyArray<string>;
     modelSelection: ModelSelection;
   }): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
-    const schemaJson = yield* encodeJsonForOperation(
-      operation,
-      toJsonSchemaObject(outputSchemaJson),
-    );
+    const outputSchemaObject = toJsonSchemaObject(outputSchemaJson);
+    const schemaJson = yield* encodeJsonForOperation(operation, outputSchemaObject);
     const schemaPath = yield* writeTempFile(operation, "codex-schema", schemaJson);
     const outputPath = yield* writeTempFile(operation, "codex-output", "");
 
@@ -287,62 +313,120 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           gatewayBaseUrl.endsWith("/") ? gatewayBaseUrl : `${gatewayBaseUrl}/`,
         ).toString();
 
-        const response = yield* Effect.tryPromise({
-          try: (signal) =>
-            fetch(url, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${ideJwt}`,
-              },
-              body: JSON.stringify({
-                model: modelSelection.model,
-                messages: [{ role: "user", content: prompt }],
-                response_format: {
-                  type: "json_schema",
-                  json_schema: {
-                    name: operation,
-                    strict: true,
-                    schema: toJsonSchemaObject(outputSchemaJson),
+        type GatewayResult =
+          | {
+              readonly _tag: "success";
+              readonly content: string;
+            }
+          | {
+              readonly _tag: "http-error";
+              readonly status: number;
+              readonly body: string;
+            };
+
+        const requestGateway = (input: {
+          readonly prompt: string;
+          readonly structuredOutput: boolean;
+        }): Effect.Effect<GatewayResult, TextGenerationError> =>
+          Effect.gen(function* () {
+            const response = yield* Effect.tryPromise({
+              try: (signal) =>
+                fetch(url, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${ideJwt}`,
                   },
-                },
-              }),
-              signal,
-            }),
-          catch: (cause) =>
-            new TextGenerationError({
-              operation,
-              detail: "Failed to request commercial gateway.",
-              cause,
-            }),
-        });
+                  body: JSON.stringify({
+                    model: modelSelection.model,
+                    messages: [{ role: "user", content: input.prompt }],
+                    ...(input.structuredOutput
+                      ? {
+                          response_format: {
+                            type: "json_schema",
+                            json_schema: {
+                              name: operation,
+                              strict: true,
+                              schema: outputSchemaObject,
+                            },
+                          },
+                        }
+                      : {}),
+                  }),
+                  signal,
+                }),
+              catch: (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Failed to request commercial gateway.",
+                  cause,
+                }),
+            });
 
-        if (!response.ok) {
-          const body = yield* Effect.tryPromise({
-            try: () => response.text(),
-            catch: () => "",
-          }).pipe(Effect.orElseSucceed(() => ""));
-          return yield* new TextGenerationError({
-            operation,
-            detail: `Gateway returned HTTP ${response.status}: ${body}`,
+            if (!response.ok) {
+              const body = yield* Effect.tryPromise({
+                try: () => response.text(),
+                catch: () => "",
+              }).pipe(Effect.orElseSucceed(() => ""));
+              return {
+                _tag: "http-error",
+                status: response.status,
+                body,
+              } satisfies GatewayResult;
+            }
+
+            const payload = yield* Effect.tryPromise({
+              try: () => response.json() as Promise<any>,
+              catch: (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Gateway returned invalid JSON.",
+                  cause,
+                }),
+            });
+
+            const content = payload.choices?.[0]?.message?.content;
+            if (typeof content !== "string") {
+              return yield* new TextGenerationError({
+                operation,
+                detail: "Gateway response missing content.",
+              });
+            }
+
+            return {
+              _tag: "success",
+              content,
+            } satisfies GatewayResult;
           });
-        }
 
-        const payload = yield* Effect.tryPromise({
-          try: () => response.json() as Promise<any>,
-          catch: (cause) =>
-            new TextGenerationError({
-              operation,
-              detail: "Gateway returned invalid JSON.",
-              cause,
-            }),
+        const structuredResult = yield* requestGateway({
+          prompt,
+          structuredOutput: true,
         });
-
-        const content = payload.choices?.[0]?.message?.content;
-        if (typeof content !== "string") {
+        let content: string;
+        if (structuredResult._tag === "success") {
+          content = structuredResult.content;
+        } else if (isStructuredOutputUnsupported(structuredResult)) {
+          content = yield* requestGateway({
+            prompt: buildPlainJsonPrompt({ prompt, schemaJson }),
+            structuredOutput: false,
+          }).pipe(
+            Effect.flatMap((fallbackResult) => {
+              if (fallbackResult._tag === "success") {
+                return Effect.succeed(fallbackResult.content);
+              }
+              return Effect.fail(
+                new TextGenerationError({
+                  operation,
+                  detail: `Gateway returned HTTP ${fallbackResult.status}: ${fallbackResult.body}`,
+                }),
+              );
+            }),
+          );
+        } else {
           return yield* new TextGenerationError({
             operation,
-            detail: "Gateway response missing content.",
+            detail: `Gateway returned HTTP ${structuredResult.status}: ${structuredResult.body}`,
           });
         }
 

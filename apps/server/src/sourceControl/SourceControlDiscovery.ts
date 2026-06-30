@@ -92,46 +92,64 @@ export const layer = Layer.effect(
         } satisfies DiscoveryProbeResult<Kind>);
       }
 
-      return process
-        .run({
-          operation: "source-control.discovery.probe",
-          command: executable,
-          args: versionArgs,
-          cwd: config.cwd,
-          timeoutMs: 5_000,
-          maxOutputBytes: 8_000,
-          appendTruncationMarker: true,
-        })
-        .pipe(
-          Effect.map(
-            (result) =>
-              ({
+      return Effect.gen(function* () {
+        const resolvedExecutable = process.resolveExecutable
+          ? yield* process.resolveExecutable(executable)
+          : Option.some(executable);
+        if (Option.isNone(resolvedExecutable)) {
+          return {
+            kind: input.kind,
+            label: input.label,
+            executable,
+            implemented: input.implemented,
+            status: "missing" as const,
+            version: Option.none<string>(),
+            installHint: input.installHint,
+            detail: Option.some(`${executable} was not found on the server PATH.`),
+          } satisfies DiscoveryProbeResult<Kind>;
+        }
+
+        return yield* process
+          .run({
+            operation: "source-control.discovery.probe",
+            command: executable,
+            args: versionArgs,
+            cwd: config.cwd,
+            timeoutMs: 5_000,
+            maxOutputBytes: 8_000,
+            appendTruncationMarker: true,
+          })
+          .pipe(
+            Effect.map(
+              (result) =>
+                ({
+                  kind: input.kind,
+                  label: input.label,
+                  executable,
+                  implemented: input.implemented,
+                  status: "available" as const,
+                  version: Option.orElse(
+                    SourceControlProviderDiscovery.firstNonEmptyLine(result.stdout),
+                    () => SourceControlProviderDiscovery.firstNonEmptyLine(result.stderr),
+                  ),
+                  installHint: input.installHint,
+                  detail: Option.none<string>(),
+                }) satisfies DiscoveryProbeResult<Kind>,
+            ),
+            Effect.catch((cause) =>
+              Effect.succeed({
                 kind: input.kind,
                 label: input.label,
                 executable,
                 implemented: input.implemented,
-                status: "available" as const,
-                version: Option.orElse(
-                  SourceControlProviderDiscovery.firstNonEmptyLine(result.stdout),
-                  () => SourceControlProviderDiscovery.firstNonEmptyLine(result.stderr),
-                ),
+                status: "missing" as const,
+                version: Option.none<string>(),
                 installHint: input.installHint,
-                detail: Option.none<string>(),
-              }) satisfies DiscoveryProbeResult<Kind>,
-          ),
-          Effect.catch((cause) =>
-            Effect.succeed({
-              kind: input.kind,
-              label: input.label,
-              executable,
-              implemented: input.implemented,
-              status: "missing" as const,
-              version: Option.none<string>(),
-              installHint: input.installHint,
-              detail: SourceControlProviderDiscovery.detailFromCause(cause),
-            } satisfies DiscoveryProbeResult<Kind>),
-          ),
-        );
+                detail: SourceControlProviderDiscovery.detailFromCause(cause),
+              } satisfies DiscoveryProbeResult<Kind>),
+            ),
+          );
+      });
     };
 
     return SourceControlDiscovery.of({

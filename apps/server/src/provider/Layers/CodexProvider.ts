@@ -79,7 +79,11 @@ const COMMERCIAL_CODEX_MODEL_CAPABILITIES = createModelCapabilities({
 class CommercialModelCatalogError extends Data.TaggedError("CommercialModelCatalogError")<{
   readonly detail: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  override get message(): string {
+    return this.detail;
+  }
+}
 
 function getPresentation(environment: NodeJS.ProcessEnv = process.env) {
   const isBundled = resolveBundledEngineConfig(environment) !== undefined;
@@ -271,196 +275,206 @@ function cacheCommercialGatewayRequest<A>(input: {
   });
 }
 
-const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels")(function* (
+function requestCommercialGatewayModels(
   environment: NodeJS.ProcessEnv,
-) {
-  const token = resolveCommercialEngineIdeJwt(environment);
-  const url = commercialGatewayModelsUrl(environment);
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetch(url, {
-        headers: {
-          accept: "application/json",
-          "cache-control": "no-cache",
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
-        },
-        signal,
-      }),
-    catch: (cause) =>
-      new CommercialModelCatalogError({
-        detail: "Failed to request model catalog.",
-        cause,
-      }),
-  });
-
-  if (!response.ok) {
-    const body = yield* Effect.tryPromise({
-      try: () => response.text(),
-      catch: () => "",
-    }).pipe(Effect.orElseSucceed(() => ""));
-    return yield* new CommercialModelCatalogError({
-      detail:
-        body.trim().length > 0
-          ? `Model catalog returned HTTP ${response.status}: ${body.trim()}`
-          : `Model catalog returned HTTP ${response.status}.`,
-    });
-  }
-
-  const payload = yield* Effect.tryPromise({
-    try: () => response.json(),
-    catch: (cause) =>
-      new CommercialModelCatalogError({
-        detail: "Model catalog returned invalid JSON.",
-        cause,
-      }),
-  });
-  const decoded = parseCommercialGatewayModelListResponse(payload);
-  if (!decoded) {
-    return yield* new CommercialModelCatalogError({
-      detail: "Model catalog returned invalid JSON: data must be an array.",
-    });
-  }
-
-  const models: ServerProviderModel[] = [];
-  for (const model of decoded) {
-    models.push({
-      slug: model.id,
-      name: model.name,
-      ...(model.provider !== "unknown" ? { subProvider: model.provider } : {}),
-      isCustom: false,
-      capabilities: COMMERCIAL_CODEX_MODEL_CAPABILITIES,
-    });
-  }
-  return models;
-});
-
-const requestCommercialGatewayBalance = Effect.fn("requestCommercialGatewayBalance")(function* (
-  environment: NodeJS.ProcessEnv,
-) {
-  const token = resolveCommercialEngineIdeJwt(environment);
-  if (!token) {
-    return null;
-  }
-
-  const url = commercialGatewayAccountUrl(environment);
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetch(url, {
-        headers: {
-          accept: "application/json",
-          authorization: `Bearer ${token}`,
-          "cache-control": "no-cache",
-        },
-        signal,
-      }),
-    catch: (cause) =>
-      new CommercialModelCatalogError({
-        detail: "Failed to request account balance.",
-        cause,
-      }),
-  });
-
-  if (!response.ok) {
-    const body = yield* Effect.tryPromise({
-      try: () => response.text(),
-      catch: () => "",
-    }).pipe(Effect.orElseSucceed(() => ""));
-    return yield* new CommercialModelCatalogError({
-      detail:
-        body.trim().length > 0
-          ? `Account balance returned HTTP ${response.status}: ${body.trim()}`
-          : `Account balance returned HTTP ${response.status}.`,
-    });
-  }
-
-  const payload = yield* Effect.tryPromise({
-    try: () => response.json(),
-    catch: (cause) =>
-      new CommercialModelCatalogError({
-        detail: "Account balance returned invalid JSON.",
-        cause,
-      }),
-  });
-  const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayAccountResponse)(payload).pipe(
-    Effect.mapError(
-      (cause) =>
+): Effect.Effect<ReadonlyArray<ServerProviderModel>, CommercialModelCatalogError> {
+  return Effect.gen(function* () {
+    const token = resolveCommercialEngineIdeJwt(environment);
+    const url = commercialGatewayModelsUrl(environment);
+    const response = yield* Effect.tryPromise({
+      try: (signal) =>
+        fetch(url, {
+          headers: {
+            accept: "application/json",
+            "cache-control": "no-cache",
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+          signal,
+        }),
+      catch: (cause) =>
         new CommercialModelCatalogError({
-          detail: `Account balance returned invalid JSON: ${cause.message}`,
+          detail: "Failed to request model catalog.",
           cause,
         }),
-    ),
-  );
-  return decoded.data.user?.balance ?? decoded.data.balance ?? null;
-});
-
-const requestCommercialGatewayUsage = Effect.fn("requestCommercialGatewayUsage")(function* (
-  environment: NodeJS.ProcessEnv,
-) {
-  const token = resolveCommercialEngineIdeJwt(environment);
-  if (!token) {
-    return null;
-  }
-
-  const url = commercialGatewayUsageUrl(environment);
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetch(url, {
-        headers: {
-          accept: "application/json",
-          authorization: `Bearer ${token}`,
-          "cache-control": "no-cache",
-        },
-        signal,
-      }),
-    catch: (cause) =>
-      new CommercialModelCatalogError({
-        detail: "Failed to request account usage.",
-        cause,
-      }),
-  });
-
-  if (!response.ok) {
-    const body = yield* Effect.tryPromise({
-      try: () => response.text(),
-      catch: () => "",
-    }).pipe(Effect.orElseSucceed(() => ""));
-    return yield* new CommercialModelCatalogError({
-      detail:
-        body.trim().length > 0
-          ? `Account usage returned HTTP ${response.status}: ${body.trim()}`
-          : `Account usage returned HTTP ${response.status}.`,
     });
-  }
 
-  const payload = yield* Effect.tryPromise({
-    try: () => response.json(),
-    catch: (cause) =>
-      new CommercialModelCatalogError({
-        detail: "Account usage returned invalid JSON.",
-        cause,
-      }),
-  });
-  const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayUsageResponse)(payload).pipe(
-    Effect.mapError(
-      (cause) =>
+    if (!response.ok) {
+      const body = yield* Effect.tryPromise({
+        try: () => response.text(),
+        catch: () => "",
+      }).pipe(Effect.orElseSucceed(() => ""));
+      return yield* new CommercialModelCatalogError({
+        detail:
+          body.trim().length > 0
+            ? `Model catalog returned HTTP ${response.status}: ${body.trim()}`
+            : `Model catalog returned HTTP ${response.status}.`,
+      });
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (cause) =>
         new CommercialModelCatalogError({
-          detail: `Account usage returned invalid JSON: ${cause.message}`,
+          detail: "Model catalog returned invalid JSON.",
           cause,
         }),
-    ),
-  );
-  return {
-    ...buildCommercialUsageLimitSnapshot(payload),
-    totalTokens: decoded.data.total_tokens ?? 0,
-    ...(decoded.data.today_tokens !== undefined ? { todayTokens: decoded.data.today_tokens } : {}),
-    ...(decoded.data.total_actual_cost !== undefined
-      ? { totalActualCost: decoded.data.total_actual_cost }
-      : {}),
-    ...(decoded.data.today_actual_cost !== undefined
-      ? { todayActualCost: decoded.data.today_actual_cost }
-      : {}),
-  } satisfies CommercialUsageSnapshot;
-});
+    });
+    const decoded = parseCommercialGatewayModelListResponse(payload);
+    if (!decoded) {
+      return yield* new CommercialModelCatalogError({
+        detail: "Model catalog returned invalid JSON: data must be an array.",
+      });
+    }
+
+    const models: ServerProviderModel[] = [];
+    for (const model of decoded) {
+      models.push({
+        slug: model.id,
+        name: model.name,
+        ...(model.provider !== "unknown" ? { subProvider: model.provider } : {}),
+        isCustom: false,
+        capabilities: COMMERCIAL_CODEX_MODEL_CAPABILITIES,
+      });
+    }
+    return models;
+  });
+}
+
+function requestCommercialGatewayBalance(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<number | null, CommercialModelCatalogError> {
+  return Effect.gen(function* () {
+    const token = resolveCommercialEngineIdeJwt(environment);
+    if (!token) {
+      return null;
+    }
+
+    const url = commercialGatewayAccountUrl(environment);
+    const response = yield* Effect.tryPromise({
+      try: (signal) =>
+        fetch(url, {
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${token}`,
+            "cache-control": "no-cache",
+          },
+          signal,
+        }),
+      catch: (cause) =>
+        new CommercialModelCatalogError({
+          detail: "Failed to request account balance.",
+          cause,
+        }),
+    });
+
+    if (!response.ok) {
+      const body = yield* Effect.tryPromise({
+        try: () => response.text(),
+        catch: () => "",
+      }).pipe(Effect.orElseSucceed(() => ""));
+      return yield* new CommercialModelCatalogError({
+        detail:
+          body.trim().length > 0
+            ? `Account balance returned HTTP ${response.status}: ${body.trim()}`
+            : `Account balance returned HTTP ${response.status}.`,
+      });
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (cause) =>
+        new CommercialModelCatalogError({
+          detail: "Account balance returned invalid JSON.",
+          cause,
+        }),
+    });
+    const decoded = yield* Schema.decodeUnknownEffect(
+      CommercialGatewayAccountResponse,
+    )(payload).pipe(
+      Effect.mapError(
+        (cause) =>
+          new CommercialModelCatalogError({
+            detail: `Account balance returned invalid JSON: ${cause.message}`,
+            cause,
+          }),
+      ),
+    );
+    return decoded.data.user?.balance ?? decoded.data.balance ?? null;
+  });
+}
+
+function requestCommercialGatewayUsage(
+  environment: NodeJS.ProcessEnv,
+): Effect.Effect<CommercialUsageSnapshot | null, CommercialModelCatalogError> {
+  return Effect.gen(function* () {
+    const token = resolveCommercialEngineIdeJwt(environment);
+    if (!token) {
+      return null;
+    }
+
+    const url = commercialGatewayUsageUrl(environment);
+    const response = yield* Effect.tryPromise({
+      try: (signal) =>
+        fetch(url, {
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${token}`,
+            "cache-control": "no-cache",
+          },
+          signal,
+        }),
+      catch: (cause) =>
+        new CommercialModelCatalogError({
+          detail: "Failed to request account usage.",
+          cause,
+        }),
+    });
+
+    if (!response.ok) {
+      const body = yield* Effect.tryPromise({
+        try: () => response.text(),
+        catch: () => "",
+      }).pipe(Effect.orElseSucceed(() => ""));
+      return yield* new CommercialModelCatalogError({
+        detail:
+          body.trim().length > 0
+            ? `Account usage returned HTTP ${response.status}: ${body.trim()}`
+            : `Account usage returned HTTP ${response.status}.`,
+      });
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (cause) =>
+        new CommercialModelCatalogError({
+          detail: "Account usage returned invalid JSON.",
+          cause,
+        }),
+    });
+    const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayUsageResponse)(payload).pipe(
+      Effect.mapError(
+        (cause) =>
+          new CommercialModelCatalogError({
+            detail: `Account usage returned invalid JSON: ${cause.message}`,
+            cause,
+          }),
+      ),
+    );
+    return {
+      ...buildCommercialUsageLimitSnapshot(payload),
+      totalTokens: decoded.data.total_tokens ?? 0,
+      ...(decoded.data.today_tokens !== undefined
+        ? { todayTokens: decoded.data.today_tokens }
+        : {}),
+      ...(decoded.data.total_actual_cost !== undefined
+        ? { totalActualCost: decoded.data.total_actual_cost }
+        : {}),
+      ...(decoded.data.today_actual_cost !== undefined
+        ? { todayActualCost: decoded.data.today_actual_cost }
+        : {}),
+    } satisfies CommercialUsageSnapshot;
+  });
+}
 
 const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) => {
   const token = resolveCommercialEngineIdeJwt(environment);

@@ -1,7 +1,12 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import { constants as fsConstants } from "node:fs";
+import { access } from "node:fs/promises";
+import nodePath from "node:path";
 
 import {
   VcsOutputDecodeError,
@@ -37,6 +42,10 @@ export interface VcsProcessOutput {
 
 export interface VcsProcessShape {
   readonly run: (input: VcsProcessInput) => Effect.Effect<VcsProcessOutput, VcsError>;
+  readonly resolveExecutable?: (
+    command: string,
+    env?: NodeJS.ProcessEnv,
+  ) => Effect.Effect<Option.Option<string>, never>;
 }
 
 export class VcsProcess extends Context.Service<VcsProcess, VcsProcessShape>()(
@@ -49,6 +58,74 @@ const OUTPUT_TRUNCATED_MARKER = "\n\n[truncated]";
 
 function commandLabel(command: string, args: ReadonlyArray<string>): string {
   return [command, ...args].join(" ");
+}
+
+function getEnvVar(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  if (env[key] !== undefined) return env[key];
+  const upperKey = key.toUpperCase();
+  for (const name in env) {
+    if (name.toUpperCase() === upperKey) {
+      return env[name];
+    }
+  }
+  return undefined;
+}
+
+function hasPathSeparator(command: string): boolean {
+  return command.includes("/") || command.includes("\\");
+}
+
+function windowsExecutableExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
+  const raw = getEnvVar(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD";
+  const extensions = raw
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
+  return extensions.length > 0 ? extensions : [".COM", ".EXE", ".BAT", ".CMD"];
+}
+
+function executableNames(command: string, env: NodeJS.ProcessEnv): ReadonlyArray<string> {
+  if (process.platform !== "win32" || nodePath.extname(command).length > 0) {
+    return [command];
+  }
+  return [...windowsExecutableExtensions(env).map((extension) => `${command}${extension}`), command];
+}
+
+async function canAccessFile(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function resolveExecutablePath(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | null> {
+  const trimmed = command.trim();
+  if (trimmed.length === 0) return null;
+
+  const names = executableNames(trimmed, env);
+  if (nodePath.isAbsolute(trimmed) || hasPathSeparator(trimmed)) {
+    for (const candidate of names) {
+      if (await canAccessFile(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  const pathValue = getEnvVar(env, "PATH") ?? "";
+  for (const directory of pathValue.split(nodePath.delimiter)) {
+    const baseDirectory = directory.trim().length > 0 ? directory : ".";
+    for (const name of names) {
+      const candidate = nodePath.join(baseDirectory, name);
+      if (await canAccessFile(candidate)) return candidate;
+    }
+  }
+
+  return null;
 }
 
 export const make = Effect.fn("makeVcsProcess")(function* () {
@@ -116,7 +193,16 @@ export const make = Effect.fn("makeVcsProcess")(function* () {
     } satisfies VcsProcessOutput;
   });
 
-  return VcsProcess.of({ run });
+  const resolveExecutable: NonNullable<VcsProcessShape["resolveExecutable"]> = (
+    command,
+    env = process.env,
+  ) =>
+    Effect.promise(() => resolveExecutablePath(command, env)).pipe(
+      Effect.map((value) => (value === null ? Option.none<string>() : Option.some(value))),
+      Effect.catch(() => Effect.succeed(Option.none<string>())),
+    );
+
+  return VcsProcess.of({ run, resolveExecutable });
 });
 
 export const layer = Layer.effect(VcsProcess, make()).pipe(Layer.provide(ProcessRunnerLive));
