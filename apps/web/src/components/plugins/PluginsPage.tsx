@@ -56,6 +56,7 @@ import {
   formatAutomationPermissionPolicyActionAuditExport,
   isAutomationPermissionPolicyActionAuditEventServerSynced,
   markAutomationPermissionPolicyActionAuditEventsServerSynced,
+  mergeAutomationPermissionPolicyActionAuditEvents,
   normalizeAutomationPermissionPolicyActionAuditEvents,
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
@@ -134,8 +135,13 @@ const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY =
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_DEVICE_STORAGE_KEY =
   "t3code:automation-permission-policy-action-audit-device:v1";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_LIMIT = 12;
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_LIMIT = 100;
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_POLICY_VERSION =
   "local-automation-permission-policy:v1";
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_QUERY = [
+  "automation-permission-policy-action-audit",
+  "server-list",
+] as const;
 const POLICY_ACTION_AUDIT_RESULT_FILTERS: readonly {
   readonly value: AutomationPermissionPolicyActionAuditResultFilter;
   readonly label: string;
@@ -664,9 +670,11 @@ function formatPolicyActionAuditContext(
 function AutomationPermissionPolicyActionAuditSection({
   title,
   events,
+  sourceLabel,
 }: {
   readonly title: string;
   readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
+  readonly sourceLabel: string;
 }) {
   const [query, setQuery] = useState("");
   const [resultFilter, setResultFilter] =
@@ -712,15 +720,17 @@ function AutomationPermissionPolicyActionAuditSection({
   }, [filteredEvents]);
   return (
     <section>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
-        {events.length > 0 ? (
-          <span className="text-[11px] text-muted-foreground">
-            匹配 {filteredEvents.length}/{events.length} · 成功 {summary.succeeded} · 失败{" "}
-            {summary.failed} · 最近{" "}
-            {formatTimestamp(summary.lastOccurredAt)}
-          </span>
-        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
+          <span>{sourceLabel}</span>
+          {events.length > 0 ? (
+            <span>
+              匹配 {filteredEvents.length}/{events.length} · 成功 {summary.succeeded} · 失败{" "}
+              {summary.failed} · 最近 {formatTimestamp(summary.lastOccurredAt)}
+            </span>
+          ) : null}
+        </div>
       </div>
       {events.length > 0 ? (
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -980,12 +990,14 @@ function BrowserExternalPluginDetails({
   state,
   refresh,
   actionAuditEvents,
+  actionAuditSourceLabel,
   onRestartSetup,
   onRecordPolicyActionAuditEvent,
 }: {
   readonly state: DesktopBrowserExternalAutomationState | null;
   readonly refresh: () => void;
   readonly actionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
+  readonly actionAuditSourceLabel: string;
   readonly onRestartSetup: () => void;
   readonly onRecordPolicyActionAuditEvent: (
     event: AutomationPermissionPolicyActionAuditEvent,
@@ -1138,6 +1150,7 @@ function BrowserExternalPluginDetails({
       <AutomationPermissionPolicyActionAuditSection
         title="站点权限动作审计"
         events={actionAuditEvents}
+        sourceLabel={actionAuditSourceLabel}
       />
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="flex items-start gap-2">
@@ -1315,6 +1328,7 @@ function ComputerPluginDetails({
   state,
   refresh,
   actionAuditEvents,
+  actionAuditSourceLabel,
   onTogglePaused,
   onAllowForeground,
   onRemovePermission,
@@ -1325,6 +1339,7 @@ function ComputerPluginDetails({
   readonly state: DesktopComputerAutomationState | null;
   readonly refresh: () => void;
   readonly actionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
+  readonly actionAuditSourceLabel: string;
   readonly onTogglePaused: () => void;
   readonly onAllowForeground: () => void;
   readonly onRemovePermission: (appKey: string) => void;
@@ -1482,6 +1497,7 @@ function ComputerPluginDetails({
       <AutomationPermissionPolicyActionAuditSection
         title="App 权限动作审计"
         events={actionAuditEvents}
+        sourceLabel={actionAuditSourceLabel}
       />
 
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
@@ -1661,6 +1677,7 @@ function PluginDetailsDialog({
   onRemovePermission,
   onClearPermissions,
   policyActionAuditEvents,
+  policyActionAuditSourceLabel,
   onRecordPolicyActionAuditEvent,
   onInstall,
   onUninstall,
@@ -1689,6 +1706,7 @@ function PluginDetailsDialog({
   readonly onRemovePermission: (appKey: string) => void;
   readonly onClearPermissions: () => Promise<DesktopAutomationActionResult>;
   readonly policyActionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
+  readonly policyActionAuditSourceLabel: string;
   readonly onRecordPolicyActionAuditEvent: (
     event: AutomationPermissionPolicyActionAuditEvent,
   ) => void;
@@ -1721,6 +1739,7 @@ function PluginDetailsDialog({
                   actionAuditEvents={policyActionAuditEvents.filter(
                     (event) => event.source === "chrome",
                   )}
+                  actionAuditSourceLabel={policyActionAuditSourceLabel}
                   onRestartSetup={onRestartBrowserExternalSetup}
                   onRecordPolicyActionAuditEvent={onRecordPolicyActionAuditEvent}
                 />
@@ -1738,6 +1757,7 @@ function PluginDetailsDialog({
                 actionAuditEvents={policyActionAuditEvents.filter(
                   (event) => event.source === "computer",
                 )}
+                actionAuditSourceLabel={policyActionAuditSourceLabel}
                 onRecordPolicyActionAuditEvent={onRecordPolicyActionAuditEvent}
                 busyAction={busyAction}
               />
@@ -1789,10 +1809,38 @@ export function PluginsPage() {
     staleTime: 30_000,
   });
 
+  const policyActionAuditServerQuery = useQuery({
+    queryKey: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_QUERY,
+    queryFn: () =>
+      getAutomationPermissionAuditClient().list({
+        limit: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_LIMIT,
+      }),
+    retry: false,
+    staleTime: 10_000,
+  });
+
   const allPlugins = useMemo(
     () => pluginsQuery.data?.marketplaces.flatMap((marketplace) => marketplace.plugins) ?? [],
     [pluginsQuery.data],
   );
+
+  const displayedPolicyActionAuditEvents = useMemo(
+    () =>
+      policyActionAuditServerQuery.data
+        ? mergeAutomationPermissionPolicyActionAuditEvents(
+            policyActionAuditServerQuery.data.events,
+            policyActionAuditEvents,
+            AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_LIMIT,
+          )
+        : policyActionAuditEvents,
+    [policyActionAuditEvents, policyActionAuditServerQuery.data],
+  );
+
+  const policyActionAuditSourceLabel = policyActionAuditServerQuery.isSuccess
+    ? "服务端审计日志"
+    : policyActionAuditServerQuery.isError
+      ? "本地浏览器记录"
+      : "本地记录，正在连接服务端";
 
   const selectedPlugin =
     allPlugins.find((plugin) => plugin.id === selectedPluginId) ?? allPlugins[0] ?? null;
@@ -1913,10 +1961,15 @@ export function PluginsPage() {
             idempotencyKey: `plugins-policy-action-audit:${Date.now().toString(36)}`,
           }),
         )
-        .then((result) => markPolicyActionAuditEventsSynced(eventIds, result.syncedAt))
+        .then((result) => {
+          markPolicyActionAuditEventsSynced(eventIds, result.syncedAt);
+          void queryClient.invalidateQueries({
+            queryKey: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_QUERY,
+          });
+        })
         .catch(() => undefined);
     },
-    [markPolicyActionAuditEventsSynced],
+    [markPolicyActionAuditEventsSynced, queryClient],
   );
 
   useEffect(() => {
@@ -2216,7 +2269,8 @@ export function PluginsPage() {
         onAllowForegroundApp={allowForegroundApp}
         onRemovePermission={removePermission}
         onClearPermissions={clearPermissions}
-        policyActionAuditEvents={policyActionAuditEvents}
+        policyActionAuditEvents={displayedPolicyActionAuditEvents}
+        policyActionAuditSourceLabel={policyActionAuditSourceLabel}
         onRecordPolicyActionAuditEvent={recordPolicyActionAuditEvent}
         onInstall={() => {
           if (selectedPlugin) installMutation.mutate(selectedPlugin);

@@ -441,6 +441,24 @@ export function markAutomationPermissionPolicyActionAuditEventsServerSynced(
   });
 }
 
+export function mergeAutomationPermissionPolicyActionAuditEvents(
+  primaryEvents: readonly AutomationPermissionPolicyActionAuditEvent[],
+  fallbackEvents: readonly AutomationPermissionPolicyActionAuditEvent[],
+  limit = 100,
+): readonly AutomationPermissionPolicyActionAuditEvent[] {
+  const eventsById = new Map<string, AutomationPermissionPolicyActionAuditEvent>();
+  for (const event of fallbackEvents) {
+    eventsById.set(event.id, event);
+  }
+  for (const event of primaryEvents) {
+    eventsById.set(event.id, event);
+  }
+  return sortAutomationPermissionPolicyActionAuditEvents(Array.from(eventsById.values())).slice(
+    0,
+    Math.max(1, limit),
+  );
+}
+
 export function summarizeAutomationPermissionPolicyActionAudit(
   events: readonly AutomationPermissionPolicyActionAuditEvent[],
 ): AutomationPermissionPolicyActionAuditSummary {

@@ -18,6 +18,7 @@ import {
   formatAutomationPermissionPolicyActionAuditExport,
   isAutomationPermissionPolicyActionAuditEventServerSynced,
   markAutomationPermissionPolicyActionAuditEventsServerSynced,
+  mergeAutomationPermissionPolicyActionAuditEvents,
   normalizeAutomationPermissionPolicyActionAuditEvents,
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
@@ -448,5 +449,47 @@ describe("automation permission audit", () => {
       syncedAt: "2026-06-30T00:11:00.000Z",
     });
     expect(marked[1]).toBe(legacy);
+  });
+
+  it("merges server audit events over local fallback events", () => {
+    const action = buildAutomationPermissionPolicyActions(
+      [
+        {
+          id: "chrome:billing.example.com",
+          source: "chrome",
+          subject: "billing.example.com",
+          decision: "allow",
+          scope: "always",
+          updatedAt: "2026-06-30T00:05:00.000Z",
+          lastUsedAt: null,
+          detail: "Chrome 站点权限已持久保存。",
+        },
+      ],
+      "chrome",
+    )[0]!;
+    const localDuplicate = createAutomationPermissionPolicyActionAuditEvent({
+      action,
+      result: "failure",
+      occurredAt: "2026-06-30T00:10:00.000Z",
+      detail: "本地失败记录",
+    });
+    const serverDuplicate = {
+      ...localDuplicate,
+      result: "success" as const,
+      detail: "服务端成功记录",
+    };
+    const localOnly = createAutomationPermissionPolicyActionAuditEvent({
+      action,
+      result: "failure",
+      occurredAt: "2026-06-30T00:11:00.000Z",
+      detail: "本地未同步记录",
+    });
+
+    expect(
+      mergeAutomationPermissionPolicyActionAuditEvents(
+        [serverDuplicate],
+        [localDuplicate, localOnly],
+      ),
+    ).toEqual([localOnly, serverDuplicate]);
   });
 });
