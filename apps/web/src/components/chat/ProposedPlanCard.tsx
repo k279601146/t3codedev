@@ -142,7 +142,6 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               text={collapsedPreview ?? ""}
               cwd={cwd}
               isStreaming={false}
-              enableCodeHighlight={false}
               onOpenFile={onOpenFile}
             />
           ) : (
@@ -150,7 +149,6 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               text={displayedPlanMarkdown}
               cwd={cwd}
               isStreaming={false}
-              enableCodeHighlight={false}
               onOpenFile={onOpenFile}
             />
           )}

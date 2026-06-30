@@ -1579,7 +1579,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           text={messageText}
           cwd={ctx.markdownCwd}
           isStreaming={Boolean(row.message.streaming)}
-          enableCodeHighlight={false}
           skills={ctx.skills}
           onOpenFile={ctx.onOpenMarkdownFile}
         />
