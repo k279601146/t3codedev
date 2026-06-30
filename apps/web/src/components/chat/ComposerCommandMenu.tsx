@@ -8,7 +8,10 @@ import { BotIcon } from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
-import type { ComposerPluginMention } from "../../composerPluginMentions";
+import {
+  formatComposerPluginMentionHealthStatus,
+  type ComposerPluginMention,
+} from "../../composerPluginMentions";
 import { formatProviderSkillInstallSource } from "~/providerSkillPresentation";
 import { cn } from "~/lib/utils";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
@@ -220,6 +223,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
 }) {
   const skillSourceLabel =
     props.item.type === "skill" ? formatProviderSkillInstallSource(props.item.skill) : null;
+  const pluginHealth = props.item.type === "plugin" ? props.item.plugin.health : null;
 
   return (
     <button
@@ -273,6 +277,20 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           {props.item.description}
         </span>
       </span>
+      {pluginHealth ? (
+        <span
+          className={cn(
+            "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+            pluginHealth.status === "ready"
+              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : pluginHealth.status === "warning"
+                ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                : "bg-destructive/10 text-destructive",
+          )}
+        >
+          {formatComposerPluginMentionHealthStatus(pluginHealth.status)}
+        </span>
+      ) : null}
       {skillSourceLabel ? (
         <span className="shrink-0 pl-2 text-muted-foreground/70 text-xs">{skillSourceLabel}</span>
       ) : null}

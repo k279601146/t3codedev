@@ -7,8 +7,9 @@ import {
   InfoIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
+  DesktopBackendHealthSnapshot,
   ServerProcessDiagnosticsEntry,
   ServerProcessResourceHistorySummary,
   ServerProcessSignal,
@@ -93,6 +94,39 @@ const DIAGNOSTICS_COPY = {
       footnote:
         "Based on the Codex app-server protocol shape used by rich clients: initialize the connection, start or resume a thread, begin a turn, then consume streamed notifications.",
     },
+    desktopBackend: {
+      title: "Desktop Backend",
+      refresh: "Refresh desktop backend health",
+      status: "Status",
+      activePid: "PID",
+      restartAttempt: "Restarts",
+      nextRestart: "Next Restart",
+      headers: ["Field", "Value"],
+      loading: "Loading desktop backend health...",
+      unavailable: "Desktop backend health is only available in the desktop app.",
+      loadFailed: "Failed to load desktop backend health.",
+      captureEnabled: "Captured",
+      captureDisabled: "Inherited",
+      statuses: {
+        ready: "Ready",
+        starting: "Starting",
+        restarting: "Restarting",
+        stopped: "Stopped",
+        failed: "Failed",
+      },
+      fields: {
+        httpBaseUrl: "HTTP Base URL",
+        backendEntryPath: "Backend Entry",
+        backendCwd: "Working Directory",
+        logDirPath: "Logs Directory",
+        captureOutput: "Output Logs",
+        lastStartedAt: "Last Started",
+        lastReadyAt: "Last Ready",
+        lastExitAt: "Last Exit",
+        lastExitCode: "Last Exit Code",
+        lastExitReason: "Last Exit Reason",
+      },
+    },
     live: {
       title: "Live Processes",
       refresh: "Refresh process diagnostics",
@@ -139,6 +173,7 @@ const DIAGNOSTICS_COPY = {
       failures: "Failures",
       slowSpans: "Slow Spans",
       parseErrors: "Parse Errors",
+      providerPerformance: "Provider Performance",
       slowSpansTooltip: "Spans with a duration of {duration} or longer.",
       slowSpansFallback: "Spans at or above the configured slow-span threshold.",
       partial: "Some trace files could not be read, so diagnostics may be incomplete. {message}",
@@ -152,6 +187,12 @@ const DIAGNOSTICS_COPY = {
       slowestSpans: "Slowest Spans",
       spanLogs: "Span Logs",
       topSpanNames: "Top Span Names",
+      provider: "Provider",
+      turns: "Turns",
+      avgTurn: "Avg Turn",
+      maxTurn: "Max Turn",
+      avgTtft: "Avg TTFT",
+      maxTtft: "Max TTFT",
       span: "Span",
       cause: "Cause",
       duration: "Duration",
@@ -174,6 +215,9 @@ const DIAGNOSTICS_COPY = {
       loadingLogs: "Loading recent logs...",
       noWarnings: "No warnings or errors found.",
       loadingSpanNames: "Loading span names...",
+      loadingProviderPerformance: "Loading provider performance...",
+      noProviderPerformance:
+        "No provider performance records found. Run a chat turn, then refresh diagnostics.",
     },
   },
   "zh-CN": {
@@ -230,6 +274,39 @@ const DIAGNOSTICS_COPY = {
       footnote:
         "依据 Codex app-server 富客户端协议形态整理：先初始化连接，再启动或恢复线程，随后开始 turn 并消费流式通知。",
     },
+    desktopBackend: {
+      title: "桌面后端",
+      refresh: "刷新桌面后端健康状态",
+      status: "状态",
+      activePid: "PID",
+      restartAttempt: "重启次数",
+      nextRestart: "下次重启",
+      headers: ["字段", "值"],
+      loading: "正在加载桌面后端健康状态...",
+      unavailable: "桌面后端健康状态仅在桌面端可用。",
+      loadFailed: "加载桌面后端健康状态失败。",
+      captureEnabled: "已捕获",
+      captureDisabled: "继承输出",
+      statuses: {
+        ready: "就绪",
+        starting: "启动中",
+        restarting: "重启中",
+        stopped: "已停止",
+        failed: "失败",
+      },
+      fields: {
+        httpBaseUrl: "HTTP 地址",
+        backendEntryPath: "后端入口",
+        backendCwd: "工作目录",
+        logDirPath: "日志目录",
+        captureOutput: "输出日志",
+        lastStartedAt: "最近启动",
+        lastReadyAt: "最近就绪",
+        lastExitAt: "最近退出",
+        lastExitCode: "最近退出码",
+        lastExitReason: "最近退出原因",
+      },
+    },
     live: {
       title: "实时进程",
       refresh: "刷新进程诊断",
@@ -271,6 +348,7 @@ const DIAGNOSTICS_COPY = {
       failures: "失败",
       slowSpans: "慢 Span",
       parseErrors: "解析错误",
+      providerPerformance: "Provider 性能",
       slowSpansTooltip: "耗时达到 {duration} 或更长的 span。",
       slowSpansFallback: "达到或超过当前慢 span 阈值的 span。",
       partial: "部分 trace 文件无法读取，诊断结果可能不完整。{message}",
@@ -283,6 +361,12 @@ const DIAGNOSTICS_COPY = {
       slowestSpans: "最慢 Span",
       spanLogs: "Span 日志",
       topSpanNames: "Span 计数排行",
+      provider: "Provider",
+      turns: "回合",
+      avgTurn: "平均回合",
+      maxTurn: "最慢回合",
+      avgTtft: "平均 TTFT",
+      maxTtft: "最慢 TTFT",
       span: "Span",
       cause: "原因",
       duration: "耗时",
@@ -305,6 +389,8 @@ const DIAGNOSTICS_COPY = {
       loadingLogs: "正在加载最近日志...",
       noWarnings: "暂无警告或错误。",
       loadingSpanNames: "正在加载 span 名称...",
+      loadingProviderPerformance: "正在加载 provider 性能...",
+      noProviderPerformance: "暂无 provider 性能记录。执行一次对话后，再刷新诊断。",
     },
   },
 } as const;
@@ -341,6 +427,10 @@ function formatDuration(value: number): string {
   return `${(value / 1_000).toFixed(value >= 10_000 ? 1 : 2)} s`;
 }
 
+function formatOptionalDuration(value: number | null): string {
+  return value === null ? "--" : formatDuration(value);
+}
+
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   const units = ["KB", "MB", "GB"] as const;
@@ -370,6 +460,29 @@ function shortenTraceId(traceId: string): string {
 
 function isStaleProcessSignalMessage(message: string | undefined): boolean {
   return message?.includes("not a live descendant") ?? false;
+}
+
+function formatIsoRelativeNoWrap(value: string | null): string {
+  if (!value || Number.isNaN(Date.parse(value))) return "--";
+  const relative = formatRelativeTime(value);
+  const label = relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
+  return label.replaceAll(" ", "\u00a0");
+}
+
+function formatOptionalCount(value: number | null): string {
+  return value === null ? "--" : formatCount(value);
+}
+
+function formatOptionalText(value: string | null): string {
+  return value && value.trim().length > 0 ? value : "--";
+}
+
+function desktopBackendStatusTone(
+  status: DesktopBackendHealthSnapshot["status"] | null,
+): "default" | "warning" | "danger" {
+  if (status === "failed") return "danger";
+  if (status === "starting" || status === "restarting" || status === "stopped") return "warning";
+  return "default";
 }
 
 function StatBlock({
@@ -1141,6 +1254,200 @@ function DiagnosticsRefreshButton({
   );
 }
 
+interface DesktopBackendHealthState {
+  readonly data: DesktopBackendHealthSnapshot | null;
+  readonly error: string | null;
+  readonly isPending: boolean;
+  readonly refresh: () => void;
+}
+
+function useDesktopBackendHealth(loadFailedMessage: string): DesktopBackendHealthState {
+  const [data, setData] = useState<DesktopBackendHealthSnapshot | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const readHealth = ensureLocalApi().diagnostics?.getDesktopBackendHealth;
+    if (!readHealth) {
+      setData(null);
+      setError(null);
+      setIsPending(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsPending(true);
+    setError(null);
+    void readHealth()
+      .then((snapshot) => {
+        if (cancelled) return;
+        setData(snapshot);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setError(error instanceof Error ? error.message : loadFailedMessage);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsPending(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadFailedMessage, refreshKey]);
+
+  const refresh = useCallback(() => {
+    setRefreshKey((value) => value + 1);
+  }, []);
+
+  return { data, error, isPending, refresh };
+}
+
+function DesktopBackendHealthPanel({
+  health,
+  error,
+  isPending,
+  onRefresh,
+}: {
+  health: DesktopBackendHealthSnapshot | null;
+  error: string | null;
+  isPending: boolean;
+  onRefresh: () => void;
+}) {
+  const copy = useDiagnosticsCopy();
+  const relativeTimeTick = useRelativeTimeTick();
+  const pendingValue = isPending ? "..." : "--";
+  const rows = useMemo(
+    () =>
+      health
+        ? [
+            {
+              label: copy.desktopBackend.fields.httpBaseUrl,
+              value: formatOptionalText(health.httpBaseUrl),
+            },
+            {
+              label: copy.desktopBackend.fields.backendEntryPath,
+              value: formatOptionalText(health.backendEntryPath),
+            },
+            {
+              label: copy.desktopBackend.fields.backendCwd,
+              value: formatOptionalText(health.backendCwd),
+            },
+            {
+              label: copy.desktopBackend.fields.logDirPath,
+              value: health.logDirPath,
+            },
+            {
+              label: copy.desktopBackend.fields.captureOutput,
+              value: health.captureOutput
+                ? copy.desktopBackend.captureEnabled
+                : copy.desktopBackend.captureDisabled,
+            },
+            {
+              label: copy.desktopBackend.fields.lastStartedAt,
+              value: formatIsoRelativeNoWrap(health.lastStartedAt),
+            },
+            {
+              label: copy.desktopBackend.fields.lastReadyAt,
+              value: formatIsoRelativeNoWrap(health.lastReadyAt),
+            },
+            {
+              label: copy.desktopBackend.fields.lastExitAt,
+              value: formatIsoRelativeNoWrap(health.lastExitAt),
+            },
+            {
+              label: copy.desktopBackend.fields.lastExitCode,
+              value: formatOptionalCount(health.lastExitCode),
+            },
+            {
+              label: copy.desktopBackend.fields.lastExitReason,
+              value: formatOptionalText(health.lastExitReason),
+            },
+          ]
+        : [],
+    [copy, health, relativeTimeTick],
+  );
+
+  return (
+    <SettingsSection
+      title={copy.desktopBackend.title}
+      headerAction={
+        <DiagnosticsRefreshButton
+          isPending={isPending}
+          label={copy.desktopBackend.refresh}
+          onClick={onRefresh}
+        />
+      }
+    >
+      <StatsGrid>
+        <StatBlock
+          label={copy.desktopBackend.status}
+          value={health ? copy.desktopBackend.statuses[health.status] : pendingValue}
+          tone={desktopBackendStatusTone(health?.status ?? null)}
+        />
+        <StatBlock
+          label={copy.desktopBackend.activePid}
+          value={health?.activePid ? String(health.activePid) : "--"}
+        />
+        <StatBlock
+          label={copy.desktopBackend.restartAttempt}
+          value={health ? formatCount(health.restartAttempt) : pendingValue}
+          tone={health && health.restartAttempt > 0 ? "warning" : "default"}
+        />
+        <StatBlock
+          label={copy.desktopBackend.nextRestart}
+          value={
+            health?.nextRestartDelayMs !== null && health?.nextRestartDelayMs !== undefined
+              ? formatDuration(health.nextRestartDelayMs)
+              : "--"
+          }
+          tone={health?.restartScheduled ? "warning" : "default"}
+        />
+      </StatsGrid>
+      {error ? (
+        <div className="border-t border-border/60 px-4 py-3 text-xs text-destructive sm:px-5">
+          <div className="flex items-start gap-2">
+            <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
+            <span>{error || copy.desktopBackend.loadFailed}</span>
+          </div>
+        </div>
+      ) : null}
+      {health ? (
+        <DiagnosticsTable
+          headers={copy.desktopBackend.headers}
+          minTableWidth="min-w-[720px]"
+          columnWidths={["w-[24%]", "w-[76%]"]}
+        >
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                {row.label}
+              </td>
+              <td className="px-4 py-3 align-top font-mono text-[11px] text-muted-foreground last:sm:pr-5">
+                <ExpandableText
+                  text={row.value}
+                  className="max-w-[min(760px,calc(100vw-4rem))]"
+                  collapsedClassName="line-clamp-2"
+                  expandLabel={copy.showFullMessage}
+                />
+              </td>
+            </tr>
+          ))}
+        </DiagnosticsTable>
+      ) : (
+        <EmptyRows
+          label={isPending ? copy.desktopBackend.loading : copy.desktopBackend.unavailable}
+        />
+      )}
+    </SettingsSection>
+  );
+}
+
 function ProtocolDiagnosticsOverview() {
   const copy = useDiagnosticsCopy();
 
@@ -1197,6 +1504,12 @@ export function DiagnosticsSettingsPanel() {
     windowMs: selectedResourceWindow.windowMs,
     bucketMs: selectedResourceWindow.bucketMs,
   });
+  const {
+    data: desktopBackendHealth,
+    error: desktopBackendHealthError,
+    isPending: isDesktopBackendHealthPending,
+    refresh: refreshDesktopBackendHealth,
+  } = useDesktopBackendHealth(copy.desktopBackend.loadFailed);
   const [isOpeningLogsDirectory, setIsOpeningLogsDirectory] = useState(false);
   const [openLogsDirectoryError, setOpenLogsDirectoryError] = useState<string | null>(null);
   const [signalingPid, setSignalingPid] = useState<number | null>(null);
@@ -1292,11 +1605,18 @@ export function DiagnosticsSettingsPanel() {
         data.commonFailures.length > 0 ||
         data.slowestSpans.length > 0 ||
         data.latestWarningAndErrorLogs.length > 0 ||
+        data.providerPerformance.length > 0 ||
         data.topSpansByCount.length > 0));
 
   return (
     <SettingsPageContainer>
       <ProtocolDiagnosticsOverview />
+      <DesktopBackendHealthPanel
+        health={desktopBackendHealth}
+        error={desktopBackendHealthError}
+        isPending={isDesktopBackendHealthPending}
+        onRefresh={refreshDesktopBackendHealth}
+      />
       <SettingsSection
         title={copy.live.title}
         headerAction={
@@ -1509,6 +1829,76 @@ export function DiagnosticsSettingsPanel() {
             ) : null}
           </div>
         ) : null}
+      </SettingsSection>
+
+      <SettingsSection title={copy.trace.providerPerformance}>
+        {data && data.providerPerformance.length > 0 ? (
+          <DiagnosticsTable
+            headers={[
+              copy.tables.provider,
+              copy.tables.turns,
+              copy.tables.failures,
+              copy.tables.avgTurn,
+              copy.tables.maxTurn,
+              copy.tables.avgTtft,
+              copy.tables.maxTtft,
+              copy.tables.lastSeen,
+            ]}
+            minTableWidth="min-w-[860px]"
+            columnWidths={[
+              "w-[18%]",
+              "w-[10%]",
+              "w-[10%]",
+              "w-[12%]",
+              "w-[12%]",
+              "w-[12%]",
+              "w-[12%]",
+              "w-[14%]",
+            ]}
+          >
+            {data.providerPerformance.map((provider) => (
+              <tr key={provider.provider}>
+                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                  {provider.provider}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                  {formatCount(provider.turnCount)}
+                </td>
+                <td
+                  className={cn(
+                    "whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums",
+                    provider.failureCount > 0 && "text-destructive",
+                  )}
+                >
+                  {formatCount(provider.failureCount)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                  {formatOptionalDuration(provider.averageTurnDurationMs)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                  {formatOptionalDuration(provider.maxTurnDurationMs)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                  {formatOptionalDuration(provider.averageTtftMs)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
+                  {formatOptionalDuration(provider.maxTtftMs)}
+                </td>
+                <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
+                  {formatRelativeNoWrap(provider.lastSeenAt, copy)}
+                </td>
+              </tr>
+            ))}
+          </DiagnosticsTable>
+        ) : (
+          <EmptyRows
+            label={
+              isInitialLoading
+                ? copy.tables.loadingProviderPerformance
+                : copy.tables.noProviderPerformance
+            }
+          />
+        )}
       </SettingsSection>
 
       {hasTraceDetails ? (

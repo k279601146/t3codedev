@@ -18,6 +18,7 @@ function record(input: {
   readonly spanId: string;
   readonly startMs: number;
   readonly durationMs: number;
+  readonly attributes?: Readonly<Record<string, unknown>>;
   readonly exit?: { readonly _tag: "Success" | "Failure" | "Interrupted"; readonly cause?: string };
   readonly events?: ReadonlyArray<unknown>;
 }) {
@@ -31,7 +32,7 @@ function record(input: {
     startTimeUnixNano: ns(input.startMs),
     endTimeUnixNano: ns(input.startMs + input.durationMs),
     durationMs: input.durationMs,
-    attributes: {},
+    attributes: input.attributes ?? {},
     events: input.events ?? [],
     links: [],
     exit: input.exit ?? { _tag: "Success" },
@@ -181,6 +182,118 @@ describe("TraceDiagnostics", () => {
       assert.equal(diagnostics.latestFailures[0]?.cause, longCause);
       assert.equal(diagnostics.commonFailures[0]?.cause, longCause);
       assert.equal(diagnostics.latestWarningAndErrorLogs[0]?.message, longMessage);
+    }),
+  );
+
+  it.effect("aggregates provider turn and TTFT diagnostics", () =>
+    Effect.sync(() => {
+      const diagnostics = TraceDiagnostics.aggregateTraceDiagnostics({
+        traceFilePath: "/tmp/server.trace.ndjson",
+        readAt: DateTime.makeUnsafe("2026-05-05T10:00:00.000Z"),
+        files: [
+          {
+            path: "/tmp/server.trace.ndjson",
+            text: [
+              record({
+                name: "ProviderService.sendTurn",
+                traceId: "trace-provider-a",
+                spanId: "span-provider-a",
+                startMs: 1_000,
+                durationMs: 2_000,
+                attributes: {
+                  "provider.operation": "send-turn",
+                  "provider.kind": "codex",
+                },
+                events: [
+                  {
+                    name: "provider first assistant delta observed",
+                    timeUnixNano: ns(2_500),
+                    attributes: {
+                      provider: "codex",
+                      latencyMs: 1_500,
+                      "effect.logLevel": "Info",
+                    },
+                  },
+                ],
+              }),
+              record({
+                name: "ProviderService.sendTurn",
+                traceId: "trace-provider-b",
+                spanId: "span-provider-b",
+                startMs: 4_000,
+                durationMs: 4_000,
+                attributes: {
+                  "provider.operation": "send-turn",
+                  "provider.kind": "codex",
+                },
+                exit: { _tag: "Failure", cause: "Provider failed" },
+                events: [
+                  {
+                    name: "provider first assistant delta observed",
+                    timeUnixNano: ns(5_000),
+                    attributes: {
+                      provider: "codex",
+                      latencyMs: 1_000,
+                      "effect.logLevel": "Info",
+                    },
+                  },
+                ],
+              }),
+            ].join("\n"),
+          },
+        ],
+      });
+
+      assert.equal(diagnostics.providerPerformance.length, 1);
+      assert.equal(diagnostics.providerPerformance[0]?.provider, "codex");
+      assert.equal(diagnostics.providerPerformance[0]?.turnCount, 2);
+      assert.equal(diagnostics.providerPerformance[0]?.failureCount, 1);
+      assert.equal(diagnostics.providerPerformance[0]?.averageTurnDurationMs, 3_000);
+      assert.equal(diagnostics.providerPerformance[0]?.maxTurnDurationMs, 4_000);
+      assert.equal(diagnostics.providerPerformance[0]?.ttftCount, 2);
+      assert.equal(diagnostics.providerPerformance[0]?.averageTtftMs, 1_250);
+      assert.equal(diagnostics.providerPerformance[0]?.maxTtftMs, 1_500);
+    }),
+  );
+
+  it.effect("does not invent turn durations for TTFT-only provider logs", () =>
+    Effect.sync(() => {
+      const diagnostics = TraceDiagnostics.aggregateTraceDiagnostics({
+        traceFilePath: "/tmp/server.trace.ndjson",
+        readAt: DateTime.makeUnsafe("2026-05-05T10:00:00.000Z"),
+        files: [
+          {
+            path: "/tmp/server.trace.ndjson",
+            text: record({
+              name: "ProviderRuntimeIngestion.consume",
+              traceId: "trace-ttft-only",
+              spanId: "span-ttft-only",
+              startMs: 1_000,
+              durationMs: 20,
+              events: [
+                {
+                  name: "provider first assistant delta observed",
+                  timeUnixNano: ns(1_010),
+                  attributes: {
+                    provider: "claude",
+                    latencyMs: 750,
+                    "effect.logLevel": "Info",
+                  },
+                },
+              ],
+            }),
+          },
+        ],
+      });
+
+      assert.equal(diagnostics.providerPerformance.length, 1);
+      assert.equal(diagnostics.providerPerformance[0]?.provider, "claude");
+      assert.equal(diagnostics.providerPerformance[0]?.turnCount, 0);
+      assert.equal(diagnostics.providerPerformance[0]?.averageTurnDurationMs, null);
+      assert.equal(diagnostics.providerPerformance[0]?.maxTurnDurationMs, null);
+      assert.equal(diagnostics.providerPerformance[0]?.ttftCount, 1);
+      assert.equal(diagnostics.providerPerformance[0]?.averageTtftMs, 750);
+      assert.equal(diagnostics.providerPerformance[0]?.maxTtftMs, 750);
     }),
   );
 

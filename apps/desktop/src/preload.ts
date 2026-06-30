@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     }
     return result as ReturnType<DesktopBridge["getLocalEnvironmentBootstrap"]>;
   },
+  getDesktopBackendHealth: () =>
+    ipcRenderer.invoke(IpcChannels.GET_DESKTOP_BACKEND_HEALTH_CHANNEL),
   getCommercialAuthState: () => ipcRenderer.invoke(IpcChannels.GET_COMMERCIAL_AUTH_STATE_CHANNEL),
   signInCommercialAuth: (input) =>
     ipcRenderer.invoke(IpcChannels.SIGN_IN_COMMERCIAL_AUTH_CHANNEL, input),

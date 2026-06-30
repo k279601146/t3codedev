@@ -5,7 +5,14 @@ import {
   buildComposerPluginLaunchContext,
   stripTrailingComposerPluginLaunchContext,
 } from "./composerPluginLaunch";
-import { searchComposerPluginMentions } from "./composerPluginMentions";
+import {
+  attachComposerPluginMentionHealth,
+  getVisibleComposerPluginMentions,
+  resolveComposerPluginMentionHealthBlock,
+  resolvePromptComposerPluginMentionHealthBlock,
+  searchComposerPluginMentionList,
+  searchComposerPluginMentions,
+} from "./composerPluginMentions";
 import { promptUsesChromePlugin } from "./browserExternalPluginState";
 
 describe("composerPluginLaunch", () => {
@@ -50,5 +57,124 @@ describe("composerPluginLaunch", () => {
     expect(promptUsesChromePlugin("@Chrome 打开登录页")).toBe(true);
     expect(promptUsesChromePlugin("请用 @chrome 打开登录页")).toBe(true);
     expect(promptUsesChromePlugin("解释 @ChromeDriver")).toBe(false);
+  });
+
+  it("attaches bridge health to composer plugin mentions", () => {
+    const mentions = attachComposerPluginMentionHealth(
+      getVisibleComposerPluginMentions({ includeChrome: true }),
+      [
+        {
+          id: "browser_use",
+          label: "Browser Use",
+          namespace: "t3_browser",
+          status: "ready",
+          reason: "ready",
+          reasonLabel: "状态正常",
+          summary: "可直接使用",
+          detail: "当前标签页：Local App",
+          actionLabel: null,
+          lastError: null,
+          updatedAt: "2026-06-30T00:00:00.000Z",
+          lastToolCallAt: null,
+        },
+        {
+          id: "browser_use_external",
+          label: "Chrome",
+          namespace: "t3_browser_external",
+          status: "warning",
+          reason: "chrome-extension-unpaired",
+          reasonLabel: "Chrome 扩展未配对",
+          summary: "等待 Chrome 扩展配对",
+          detail: "需要把 Endpoint 与 Token 填入 Chrome 扩展弹窗。",
+          actionLabel: "打开配对流程",
+          lastError: null,
+          updatedAt: "2026-06-30T00:00:00.000Z",
+          lastToolCallAt: null,
+        },
+      ],
+    );
+
+    expect(mentions.find((mention) => mention.id === "Browser")?.health?.status).toBe("ready");
+    expect(mentions.find((mention) => mention.id === "Chrome")?.health?.summary).toBe(
+      "等待 Chrome 扩展配对",
+    );
+    expect(mentions.find((mention) => mention.id === "Chrome")?.health?.actionLabel).toBe(
+      "打开配对流程",
+    );
+    expect(searchComposerPluginMentionList(mentions, "配对").map((mention) => mention.id)).toEqual([
+      "Chrome",
+    ]);
+  });
+
+  it("blocks plugin insertion when bridge health needs attention", () => {
+    const chrome = attachComposerPluginMentionHealth(
+      getVisibleComposerPluginMentions({ includeChrome: true }),
+      [
+        {
+          id: "browser_use_external",
+          label: "Chrome",
+          namespace: "t3_browser_external",
+          status: "warning",
+          reason: "chrome-extension-unpaired",
+          reasonLabel: "Chrome 扩展未配对",
+          summary: "等待 Chrome 扩展配对",
+          detail: "需要把 Endpoint 与 Token 填入 Chrome 扩展弹窗。",
+          actionLabel: "打开配对流程",
+          lastError: null,
+          updatedAt: "2026-06-30T00:00:00.000Z",
+          lastToolCallAt: null,
+        },
+      ],
+    ).find((mention) => mention.id === "Chrome");
+
+    expect(chrome).toBeDefined();
+    expect(resolveComposerPluginMentionHealthBlock(chrome!)).toEqual({
+      title: "Chrome 需要处理",
+      description: "需要把 Endpoint 与 Token 填入 Chrome 扩展弹窗。 操作：打开配对流程。",
+    });
+  });
+
+  it("blocks handwritten plugin mentions before send when bridge health needs attention", () => {
+    const mentions = attachComposerPluginMentionHealth(
+      getVisibleComposerPluginMentions({ includeChrome: true }),
+      [
+        {
+          id: "browser_use",
+          label: "Browser Use",
+          namespace: "t3_browser",
+          status: "ready",
+          reason: "ready",
+          reasonLabel: "状态正常",
+          summary: "可直接使用",
+          detail: "当前标签页：Local App",
+          actionLabel: null,
+          lastError: null,
+          updatedAt: "2026-06-30T00:00:00.000Z",
+          lastToolCallAt: null,
+        },
+        {
+          id: "browser_use_external",
+          label: "Chrome",
+          namespace: "t3_browser_external",
+          status: "warning",
+          reason: "chrome-extension-unpaired",
+          reasonLabel: "Chrome 扩展未配对",
+          summary: "等待 Chrome 扩展配对",
+          detail: "需要把 Endpoint 与 Token 填入 Chrome 扩展弹窗。",
+          actionLabel: "打开配对流程",
+          lastError: null,
+          updatedAt: "2026-06-30T00:00:00.000Z",
+          lastToolCallAt: null,
+        },
+      ],
+    );
+
+    expect(resolvePromptComposerPluginMentionHealthBlock("@Browser 打开网页", mentions)).toBeNull();
+    expect(resolvePromptComposerPluginMentionHealthBlock("请用 @chrome 打开网页", mentions))
+      .toMatchObject({
+        mention: { id: "Chrome" },
+        title: "Chrome 需要处理",
+      });
+    expect(resolvePromptComposerPluginMentionHealthBlock("解释 @ChromeDriver", mentions)).toBeNull();
   });
 });

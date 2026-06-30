@@ -1,10 +1,13 @@
 import {
   ContextMenuItemSchema,
   DesktopAppBrandingSchema,
+  DesktopBackendHealthSnapshotSchema,
   DesktopEnvironmentBootstrapSchema,
   DesktopNotificationInputSchema,
   DesktopThemeSchema,
   PickFolderOptionsSchema,
+  type DesktopBackendHealthSnapshot,
+  type DesktopBackendHealthStatus,
 } from "@t3tools/contracts";
 import * as Electron from "electron";
 import * as Data from "effect/Data";
@@ -101,6 +104,50 @@ export const getLocalEnvironmentBootstrap = makeSyncIpcMethod({
           : {}),
       }),
     });
+  }),
+});
+
+function resolveDesktopBackendHealthStatus(
+  snapshot: DesktopBackendManager.DesktopBackendSnapshot,
+): DesktopBackendHealthStatus {
+  if (snapshot.ready) return "ready";
+  if (snapshot.restartScheduled) return "restarting";
+  if (snapshot.desiredRunning && Option.isSome(snapshot.activePid)) return "starting";
+  if (snapshot.desiredRunning) {
+    return Option.isSome(snapshot.lastExitReason) ? "failed" : "starting";
+  }
+  return "stopped";
+}
+
+export const getDesktopBackendHealth = makeIpcMethod({
+  channel: IpcChannels.GET_DESKTOP_BACKEND_HEALTH_CHANNEL,
+  payload: Schema.Void,
+  result: DesktopBackendHealthSnapshotSchema,
+  handler: Effect.fn("desktop.ipc.window.getDesktopBackendHealth")(function* () {
+    const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const snapshot = yield* backendManager.snapshot;
+    const config = yield* backendManager.currentConfig;
+    const currentConfig = Option.getOrNull(config);
+    return {
+      status: resolveDesktopBackendHealthStatus(snapshot),
+      desiredRunning: snapshot.desiredRunning,
+      ready: snapshot.ready,
+      activePid: Option.getOrNull(snapshot.activePid),
+      restartAttempt: snapshot.restartAttempt,
+      restartScheduled: snapshot.restartScheduled,
+      nextRestartDelayMs: Option.getOrNull(snapshot.nextRestartDelayMs),
+      httpBaseUrl: currentConfig?.httpBaseUrl.href ?? null,
+      backendEntryPath: currentConfig?.entryPath ?? null,
+      backendCwd: currentConfig?.cwd ?? null,
+      logDirPath: environment.logDir,
+      captureOutput: currentConfig?.captureOutput ?? false,
+      lastStartedAt: Option.getOrNull(snapshot.lastStartedAt),
+      lastReadyAt: Option.getOrNull(snapshot.lastReadyAt),
+      lastExitAt: Option.getOrNull(snapshot.lastExitAt),
+      lastExitCode: Option.getOrNull(snapshot.lastExitCode),
+      lastExitReason: Option.getOrNull(snapshot.lastExitReason),
+    } satisfies DesktopBackendHealthSnapshot;
   }),
 });
 

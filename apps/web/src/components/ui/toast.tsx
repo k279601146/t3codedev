@@ -292,7 +292,7 @@ function deriveToastBodyDescriptor(toast: {
 }
 
 interface ToastBodyContentProps extends ToastBodyDescriptor {
-  readonly actionProps: { readonly children?: ReactNode } | undefined;
+  readonly actionProps: ComponentPropsWithoutRef<"button"> | undefined;
   readonly toastData: ThreadToastData | undefined;
   readonly toastDescription: unknown;
   readonly toastType: unknown;
@@ -314,6 +314,12 @@ function ToastBodyContent({
   const leadingIcon = toastData?.leadingIcon;
   const { className: secondaryActionClassName, ...secondaryActionRest } =
     secondaryActionProps ?? {};
+  const {
+    className: actionClassName,
+    children: actionChildren,
+    type: actionType,
+    ...actionRest
+  } = actionProps ?? {};
 
   return (
     <>
@@ -367,10 +373,16 @@ function ToastBodyContent({
           ) : null}
           {actionProps ? (
             <Toast.Action
-              className={cn(buttonVariants({ size: "xs", variant: actionVariant }), "shrink-0")}
+              {...actionRest}
+              className={cn(
+                buttonVariants({ size: "xs", variant: actionVariant }),
+                "shrink-0",
+                actionClassName,
+              )}
               data-slot="toast-action"
+              type={actionType ?? "button"}
             >
-              {actionProps.children}
+              {actionChildren}
             </Toast.Action>
           ) : null}
         </div>

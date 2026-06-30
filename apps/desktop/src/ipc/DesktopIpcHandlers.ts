@@ -49,6 +49,7 @@ import {
 import {
   confirm,
   getAppBranding,
+  getDesktopBackendHealth,
   getLocalEnvironmentBootstrap,
   openExternal,
   openPath,
@@ -64,6 +65,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
 
   yield* ipc.handleSync(getAppBranding);
   yield* ipc.handleSync(getLocalEnvironmentBootstrap);
+  yield* ipc.handle(getDesktopBackendHealth);
 
   yield* ipc.handle(getCommercialAuthState);
   yield* ipc.handle(signInCommercialAuth);

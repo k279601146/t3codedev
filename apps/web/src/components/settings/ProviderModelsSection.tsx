@@ -19,6 +19,10 @@ import {
 import { normalizeModelSlug } from "@t3tools/shared/model";
 
 import { cn } from "../../lib/utils";
+import {
+  buildModelCapabilityTags,
+  resolveDefaultModelSlugForModels,
+} from "../../modelCapabilityTags";
 import { sortModelsForProviderInstance } from "../../modelOrdering";
 import { MAX_CUSTOM_MODEL_LENGTH } from "../../modelSelection";
 import { Button } from "../ui/button";
@@ -109,6 +113,10 @@ export function ProviderModelsSection({
       modelOrder,
     });
   }, [favoriteModelSet, modelOrder, models]);
+  const defaultModelSlug = useMemo(
+    () => (driverKind ? resolveDefaultModelSlugForModels(models, driverKind) : null),
+    [driverKind, models],
+  );
 
   const handleAdd = () => {
     const normalized = driverKind ? normalizeModelSlug(input, driverKind) : input.trim() || null;
@@ -192,35 +200,18 @@ export function ProviderModelsSection({
       </div>
       <div ref={listRef} className="mt-2 max-h-40 overflow-y-auto pb-1">
         {orderedModels.map((model, index) => {
-          const caps = model.capabilities;
-          const capLabels: string[] = [];
           const isHidden = !model.isCustom && hiddenModelSet.has(model.slug);
           const isFavorite = favoriteModelSet.has(model.slug);
+          const capLabels = buildModelCapabilityTags({
+            model,
+            defaultModelSlug,
+          }).map((tag) => tag.label);
           const previousModel = orderedModels[index - 1];
           const nextModel = orderedModels[index + 1];
           const canMoveUp =
             previousModel !== undefined && favoriteModelSet.has(previousModel.slug) === isFavorite;
           const canMoveDown =
             nextModel !== undefined && favoriteModelSet.has(nextModel.slug) === isFavorite;
-          const descriptors = caps?.optionDescriptors ?? [];
-          if (descriptors.some((descriptor) => descriptor.id === "fastMode")) {
-            capLabels.push("Fast mode");
-          }
-          if (descriptors.some((descriptor) => descriptor.id === "thinking")) {
-            capLabels.push("Thinking");
-          }
-          if (
-            descriptors.some(
-              (descriptor) =>
-                descriptor.type === "select" &&
-                (descriptor.id === "reasoningEffort" ||
-                  descriptor.id === "effort" ||
-                  descriptor.id === "reasoning" ||
-                  descriptor.id === "variant"),
-            )
-          ) {
-            capLabels.push("Reasoning");
-          }
           const hasDetails = capLabels.length > 0 || model.name !== model.slug;
 
           return (

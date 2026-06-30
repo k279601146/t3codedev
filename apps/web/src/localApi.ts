@@ -154,6 +154,14 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         removeBrowserSavedEnvironmentSecret(environmentId);
       },
     },
+    ...(window.desktopBridge?.getDesktopBackendHealth
+      ? {
+          diagnostics: {
+            getDesktopBackendHealth: async () =>
+              window.desktopBridge?.getDesktopBackendHealth?.() ?? null,
+          },
+        }
+      : {}),
     server: {
       getConfig: () =>
         rpcClient ? rpcClient.server.getConfig() : Promise.reject(unavailableLocalBackendError()),

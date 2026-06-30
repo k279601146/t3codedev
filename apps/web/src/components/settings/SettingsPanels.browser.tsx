@@ -1158,6 +1158,7 @@ describe("GeneralSettingsPanel observability", () => {
           commonFailures: [],
           latestFailures: [],
           latestWarningAndErrorLogs: [],
+          providerPerformance: [],
           partialFailure: Option.none(),
           error: Option.none(),
         }),
@@ -1176,6 +1177,85 @@ describe("GeneralSettingsPanel observability", () => {
     await openLogsButton.click();
 
     expect(openInEditor).toHaveBeenCalledWith("/repo/project/.t3/logs", "cursor");
+  });
+
+  it("shows desktop backend health in diagnostics", async () => {
+    window.nativeApi = {
+      persistence: {
+        getClientSettings: vi.fn().mockResolvedValue(null),
+        setClientSettings: vi.fn().mockResolvedValue(undefined),
+      },
+      diagnostics: {
+        getDesktopBackendHealth: vi.fn().mockResolvedValue({
+          status: "restarting",
+          desiredRunning: true,
+          ready: false,
+          activePid: null,
+          restartAttempt: 2,
+          restartScheduled: true,
+          nextRestartDelayMs: 1_000,
+          httpBaseUrl: "http://127.0.0.1:13773/",
+          backendEntryPath: "/repo/apps/server/dist/bin.mjs",
+          backendCwd: "/repo",
+          logDirPath: "/tmp/bahew/logs",
+          captureOutput: true,
+          lastStartedAt: "2036-04-07T00:00:00.000Z",
+          lastReadyAt: "2036-04-07T00:00:01.000Z",
+          lastExitAt: "2036-04-07T00:00:02.000Z",
+          lastExitCode: 1,
+          lastExitReason: "code=1",
+        }),
+      },
+      server: {
+        getProcessDiagnostics: vi.fn().mockResolvedValue({
+          serverPid: 1234,
+          readAt: makeUtc("2036-04-07T00:00:00.000Z"),
+          processCount: 0,
+          totalRssBytes: 0,
+          totalCpuPercent: 0,
+          processes: [],
+          error: Option.none(),
+        }),
+        getProcessResourceHistory: vi
+          .fn()
+          .mockResolvedValue(createEmptyProcessResourceHistoryResult()),
+        getTraceDiagnostics: vi.fn().mockResolvedValue({
+          traceFilePath: "/repo/project/.t3/traces.jsonl",
+          scannedFilePaths: ["/repo/project/.t3/traces.jsonl"],
+          readAt: makeUtc("2036-04-07T00:00:00.000Z"),
+          recordCount: 0,
+          parseErrorCount: 0,
+          firstSpanAt: Option.none(),
+          lastSpanAt: Option.none(),
+          failureCount: 0,
+          interruptionCount: 0,
+          slowSpanThresholdMs: 5_000,
+          slowSpanCount: 0,
+          logLevelCounts: {},
+          topSpansByCount: [],
+          slowestSpans: [],
+          commonFailures: [],
+          latestFailures: [],
+          latestWarningAndErrorLogs: [],
+          providerPerformance: [],
+          partialFailure: Option.none(),
+          error: Option.none(),
+        }),
+      },
+    } as unknown as LocalApi;
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <DiagnosticsSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect.element(page.getByText("Desktop Backend")).toBeInTheDocument();
+    await expect.element(page.getByText("Restarting")).toBeInTheDocument();
+    await expect.element(page.getByText("http://127.0.0.1:13773/")).toBeInTheDocument();
+    await expect.element(page.getByText("code=1")).toBeInTheDocument();
   });
 
   it("shows an OpenCode server URL field in provider settings", async () => {

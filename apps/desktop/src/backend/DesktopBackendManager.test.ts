@@ -337,6 +337,9 @@ describe("DesktopBackendManager", () => {
         const runningSnapshot = yield* manager.snapshot;
         assert.equal(runningSnapshot.ready, true);
         assert.deepEqual(runningSnapshot.activePid, Option.some(123));
+        assert.isTrue(Option.isSome(runningSnapshot.lastStartedAt));
+        assert.isTrue(Option.isSome(runningSnapshot.lastReadyAt));
+        assert.isTrue(Option.isNone(runningSnapshot.lastExitAt));
 
         yield* manager.stop();
         assert.equal(startCount, 1);
@@ -347,6 +350,8 @@ describe("DesktopBackendManager", () => {
         assert.equal(stoppedSnapshot.desiredRunning, false);
         assert.equal(stoppedSnapshot.ready, false);
         assert.equal(Option.isNone(stoppedSnapshot.activePid), true);
+        assert.deepEqual(stoppedSnapshot.lastExitCode, Option.none());
+        assert.deepEqual(stoppedSnapshot.lastExitReason, Option.some("stopped"));
       }).pipe(Effect.provide(managerLayer));
     }),
   );
@@ -479,7 +484,13 @@ describe("DesktopBackendManager", () => {
 
         let restartScheduled = false;
         while (!restartScheduled) {
-          restartScheduled = (yield* manager.snapshot).restartScheduled;
+          const snapshot = yield* manager.snapshot;
+          restartScheduled = snapshot.restartScheduled;
+          if (restartScheduled) {
+            assert.deepEqual(snapshot.nextRestartDelayMs, Option.some(500));
+            assert.deepEqual(snapshot.lastExitCode, Option.some(1));
+            assert.deepEqual(snapshot.lastExitReason, Option.some("code=1"));
+          }
           if (!restartScheduled) {
             yield* Effect.yieldNow;
           }

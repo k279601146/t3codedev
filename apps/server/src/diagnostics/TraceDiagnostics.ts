@@ -2,6 +2,7 @@ import type {
   ServerTraceDiagnosticsErrorKind,
   ServerTraceDiagnosticsFailureSummary,
   ServerTraceDiagnosticsLogEvent,
+  ServerTraceDiagnosticsProviderPerformance,
   ServerTraceDiagnosticsRecentFailure,
   ServerTraceDiagnosticsResult,
   ServerTraceDiagnosticsSpanOccurrence,
@@ -22,6 +23,7 @@ interface TraceRecordLike {
   readonly startTimeUnixNano?: unknown;
   readonly endTimeUnixNano?: unknown;
   readonly durationMs?: unknown;
+  readonly attributes?: unknown;
   readonly exit?: unknown;
   readonly events?: unknown;
 }
@@ -122,6 +124,61 @@ function readEventAttributes(event: TraceEventLike): Readonly<Record<string, unk
     : {};
 }
 
+function readRecordAttributes(record: TraceRecordLike): Readonly<Record<string, unknown>> {
+  return typeof record.attributes === "object" && record.attributes !== null
+    ? (record.attributes as Readonly<Record<string, unknown>>)
+    : {};
+}
+
+function readProviderName(attributes: Readonly<Record<string, unknown>>): string | null {
+  return (
+    toStringValue(attributes["provider.kind"]) ??
+    toStringValue(attributes.provider) ??
+    toStringValue(attributes["provider.name"])
+  );
+}
+
+function isProviderTurnSpan(
+  name: string,
+  attributes: Readonly<Record<string, unknown>>,
+): boolean {
+  const operation = toStringValue(attributes["provider.operation"]);
+  if (operation === "send-turn" || operation === "steer-turn") return true;
+  return /^ProviderService\.(?:sendTurn|steerTurn)$/u.test(name);
+}
+
+function isFirstAssistantDeltaLog(event: TraceEventLike): boolean {
+  return toStringValue(event.name) === "provider first assistant delta observed";
+}
+
+function readLatencyMs(attributes: Readonly<Record<string, unknown>>): number | null {
+  return toNumberValue(attributes.latencyMs) ?? toNumberValue(attributes["provider.latency_ms"]);
+}
+
+function createProviderPerformanceBucket(provider: string) {
+  return {
+    provider,
+    turnCount: 0,
+    failureCount: 0,
+    totalTurnDurationMs: 0,
+    maxTurnDurationMs: 0,
+    ttftCount: 0,
+    totalTtftMs: 0,
+    maxTtftMs: 0,
+    lastSeenAt: null as DateTime.Utc | null,
+  };
+}
+
+function updateProviderLastSeen(
+  bucket: ReturnType<typeof createProviderPerformanceBucket>,
+  seenAt: DateTime.Utc,
+): void {
+  bucket.lastSeenAt =
+    bucket.lastSeenAt === null || DateTime.isGreaterThan(seenAt, bucket.lastSeenAt)
+      ? seenAt
+      : bucket.lastSeenAt;
+}
+
 function makeEmptyDiagnostics(input: {
   readonly traceFilePath: string;
   readonly scannedFilePaths: ReadonlyArray<string>;
@@ -148,6 +205,7 @@ function makeEmptyDiagnostics(input: {
     commonFailures: [],
     latestFailures: [],
     latestWarningAndErrorLogs: [],
+    providerPerformance: [],
     partialFailure: input.partialFailure ? Option.some(true) : Option.none(),
     error: Option.fromNullishOr(input.error),
   };
@@ -216,6 +274,10 @@ export function aggregateTraceDiagnostics(
   const slowestSpans: ServerTraceDiagnosticsSpanOccurrence[] = [];
   const latestWarningAndErrorLogs: ServerTraceDiagnosticsLogEvent[] = [];
   const logLevelCounts: Record<string, number> = {};
+  const providerPerformanceByProvider = new Map<
+    string,
+    ReturnType<typeof createProviderPerformanceBucket>
+  >();
 
   for (const file of input.files) {
     const lines = file.text.split(/\r?\n/);
@@ -260,6 +322,22 @@ export function aggregateTraceDiagnostics(
       const isInterrupted = exitTag === "Interrupted";
       if (isFailure) failureCount += 1;
       if (isInterrupted) interruptionCount += 1;
+      const attributes = readRecordAttributes(parsed);
+      const providerName = readProviderName(attributes);
+
+      if (providerName && isProviderTurnSpan(name, attributes)) {
+        const providerBucket =
+          providerPerformanceByProvider.get(providerName) ??
+          createProviderPerformanceBucket(providerName);
+        providerBucket.turnCount += 1;
+        providerBucket.totalTurnDurationMs += durationMs;
+        providerBucket.maxTurnDurationMs = Math.max(providerBucket.maxTurnDurationMs, durationMs);
+        if (isFailure) {
+          providerBucket.failureCount += 1;
+        }
+        updateProviderLastSeen(providerBucket, endedAt);
+        providerPerformanceByProvider.set(providerName, providerBucket);
+      }
 
       const spanSummary = spansByName.get(name) ?? {
         count: 0,
@@ -304,6 +382,21 @@ export function aggregateTraceDiagnostics(
           if (!isTraceEvent(rawEvent)) continue;
           const attributes = readEventAttributes(rawEvent);
           const level = toStringValue(attributes["effect.logLevel"]);
+          if (isFirstAssistantDeltaLog(rawEvent)) {
+            const latencyMs = readLatencyMs(attributes);
+            const eventProvider = readProviderName(attributes) ?? providerName;
+            if (latencyMs !== null && eventProvider) {
+              const seenAt = unixNanoToDateTime(rawEvent.timeUnixNano) ?? endedAt;
+              const providerBucket =
+                providerPerformanceByProvider.get(eventProvider) ??
+                createProviderPerformanceBucket(eventProvider);
+              providerBucket.ttftCount += 1;
+              providerBucket.totalTtftMs += latencyMs;
+              providerBucket.maxTtftMs = Math.max(providerBucket.maxTtftMs, latencyMs);
+              updateProviderLastSeen(providerBucket, seenAt);
+              providerPerformanceByProvider.set(eventProvider, providerBucket);
+            }
+          }
           if (!level) continue;
 
           logLevelCounts[level] = (logLevelCounts[level] ?? 0) + 1;
@@ -343,6 +436,34 @@ export function aggregateTraceDiagnostics(
     }))
     .toSorted((left, right) => right.count - left.count || right.maxDurationMs - left.maxDurationMs)
     .slice(0, TOP_LIMIT);
+  const providerPerformance: ServerTraceDiagnosticsProviderPerformance[] = [
+    ...providerPerformanceByProvider.values(),
+  ]
+    .flatMap((bucket) =>
+      bucket.lastSeenAt
+        ? [
+            {
+              provider: bucket.provider,
+              turnCount: bucket.turnCount,
+              failureCount: bucket.failureCount,
+              averageTurnDurationMs:
+                bucket.turnCount > 0 ? bucket.totalTurnDurationMs / bucket.turnCount : null,
+              maxTurnDurationMs: bucket.turnCount > 0 ? bucket.maxTurnDurationMs : null,
+              ttftCount: bucket.ttftCount,
+              averageTtftMs:
+                bucket.ttftCount > 0 ? bucket.totalTtftMs / bucket.ttftCount : null,
+              maxTtftMs: bucket.ttftCount > 0 ? bucket.maxTtftMs : null,
+              lastSeenAt: bucket.lastSeenAt,
+            },
+          ]
+        : [],
+    )
+    .toSorted(
+      (left, right) =>
+        DateTime.toEpochMillis(right.lastSeenAt) - DateTime.toEpochMillis(left.lastSeenAt) ||
+        right.turnCount - left.turnCount,
+    )
+    .slice(0, TOP_LIMIT);
 
   return {
     traceFilePath: input.traceFilePath,
@@ -377,6 +498,7 @@ export function aggregateTraceDiagnostics(
         (left, right) => DateTime.toEpochMillis(right.seenAt) - DateTime.toEpochMillis(left.seenAt),
       )
       .slice(0, RECENT_LIMIT),
+    providerPerformance,
     partialFailure: input.partialFailure ? Option.some(true) : Option.none(),
     error: Option.fromNullishOr(input.error),
   };

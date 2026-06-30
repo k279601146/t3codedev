@@ -11,6 +11,7 @@ import { ComboboxItem } from "../ui/combobox";
 import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import type { ModelCapabilityTag } from "../../modelCapabilityTags";
 
 export const ModelListRow = memo(function ModelListRow(props: {
   index: number;
@@ -31,6 +32,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   preferShortName?: boolean;
   useTriggerLabel?: boolean;
   showNewBadge?: boolean;
+  capabilityTags?: ReadonlyArray<ModelCapabilityTag>;
   showSubmenuIndicator?: boolean;
   showFavorite?: boolean;
   jumpLabel?: string | null;
@@ -40,6 +42,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   const providerLabel = props.model.subProvider
     ? `${props.providerDisplayName} · ${props.model.subProvider}`
     : props.providerDisplayName;
+  const capabilityTags = props.capabilityTags ?? [];
 
   return (
     <ComboboxItem
@@ -109,19 +112,38 @@ export const ModelListRow = memo(function ModelListRow(props: {
             ) : null}
           </div>
         </div>
-        {props.showProvider && (
-          <div className="flex items-center gap-1 mt-0.5">
-            {ProviderIcon ? <ProviderIcon className="size-3 shrink-0" /> : null}
-            {props.providerAccentColor ? (
+        {(props.showProvider || capabilityTags.length > 0) && (
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+            {capabilityTags.map((tag) => (
               <span
-                className="size-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: props.providerAccentColor }}
-                aria-hidden
-              />
+                key={tag.kind}
+                className={cn(
+                  "shrink-0 rounded-[5px] border px-1 py-px text-[10px] leading-none",
+                  tag.kind === "default"
+                    ? "border-info/30 bg-info/10 text-info"
+                    : tag.kind === "economy"
+                      ? "border-success/30 bg-success/10 text-success"
+                      : "border-border bg-muted/60 text-muted-foreground",
+                )}
+              >
+                {tag.label}
+              </span>
+            ))}
+            {props.showProvider ? (
+              <>
+                {ProviderIcon ? <ProviderIcon className="size-3 shrink-0" /> : null}
+                {props.providerAccentColor ? (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: props.providerAccentColor }}
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="truncate text-xs font-normal leading-snug text-muted-foreground/70">
+                  {providerLabel}
+                </span>
+              </>
             ) : null}
-            <span className="text-xs font-normal leading-snug text-muted-foreground/70 truncate">
-              {providerLabel}
-            </span>
           </div>
         )}
       </div>

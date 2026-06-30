@@ -69,10 +69,6 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import {
-  DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL,
-  resolveCommercialEngineWebAuthBaseUrl,
-} from "@t3tools/shared/commercialEngine";
-import {
   parseScopedThreadKey,
   scopedProjectKey,
   scopedThreadKey,
@@ -128,6 +124,11 @@ import {
 } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatSidebarThreadTimeLabel } from "../timestampFormat";
+import {
+  openCommercialAccountUrl,
+  resolveCommercialAccountActionUrl,
+  resolveCommercialAccountWebBaseUrl,
+} from "../lib/commercialAccountLinks";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import {
   getArm64IntelBuildWarningDescription,
@@ -2573,7 +2574,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const accountAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
     accountLabel,
   )}`;
-  const accountWebBaseUrl = resolveCommercialEngineWebAuthBaseUrl();
+  const accountWebBaseUrl = resolveCommercialAccountWebBaseUrl();
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2607,8 +2608,8 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     if (isMobile) {
       setOpenMobile(false);
     }
-    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/settings");
-    openExternalAccountUrl(url);
+    const url = resolveCommercialAccountActionUrl(accountWebBaseUrl, "/account/settings");
+    openCommercialAccountUrl(url);
   }, [accountWebBaseUrl, isMobile, setOpenMobile]);
 
   const handleOpenSystemSettings = useCallback(() => {
@@ -2643,23 +2644,23 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   }, [isSigningOut, t]);
 
   const handleOpenBilling = useCallback(() => {
-    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/billing");
-    openExternalAccountUrl(url);
+    const url = resolveCommercialAccountActionUrl(accountWebBaseUrl, "/account/billing");
+    openCommercialAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   const handleOpenSupport = useCallback(() => {
-    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/support");
-    openExternalAccountUrl(url);
+    const url = resolveCommercialAccountActionUrl(accountWebBaseUrl, "/account/support");
+    openCommercialAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   const handleOpenPlans = useCallback(() => {
-    const url = resolveAccountActionUrl(accountWebBaseUrl, "/pricing");
-    openExternalAccountUrl(url);
+    const url = resolveCommercialAccountActionUrl(accountWebBaseUrl, "/pricing");
+    openCommercialAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   const handleOpenReferrals = useCallback(() => {
-    const url = resolveAccountActionUrl(accountWebBaseUrl, "/account/settings?invite=1");
-    openExternalAccountUrl(url);
+    const url = resolveCommercialAccountActionUrl(accountWebBaseUrl, "/account/settings?invite=1");
+    openCommercialAccountUrl(url);
   }, [accountWebBaseUrl]);
 
   return (
@@ -3056,28 +3057,6 @@ function formatResetTime(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
-}
-
-function resolveAccountActionUrl(baseUrl: string | null | undefined, path: string): string {
-  const fallback = new URL(path, DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL).toString();
-  if (!baseUrl) {
-    return fallback;
-  }
-
-  try {
-    return new URL(path, baseUrl).toString();
-  } catch {
-    return fallback;
-  }
-}
-
-function openExternalAccountUrl(url: string): void {
-  const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
-  if (bridge?.openExternal) {
-    void bridge.openExternal(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 interface SidebarProjectsContentProps {

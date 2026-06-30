@@ -2,6 +2,7 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
+  type ModelCapabilities,
   type ModelSelection,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -73,6 +74,7 @@ export interface AppModelOption {
   shortName?: string;
   subProvider?: string;
   isCustom: boolean;
+  capabilities?: ModelCapabilities | null;
 }
 
 function toAppModelOption(model: ServerProvider["models"][number]): AppModelOption {
@@ -83,6 +85,7 @@ function toAppModelOption(model: ServerProvider["models"][number]): AppModelOpti
   };
   if (model.shortName) option.shortName = model.shortName;
   if (model.subProvider) option.subProvider = model.subProvider;
+  if (model.capabilities !== undefined) option.capabilities = model.capabilities;
   return option;
 }
 

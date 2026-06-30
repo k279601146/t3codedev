@@ -232,9 +232,14 @@ import { RightPanelSheet } from "./RightPanelSheet";
 import type { RightPanelArtifact } from "./ThreadRightPanel";
 import { Button } from "./ui/button";
 import {
-  formatUsageLimitResetHint,
+  buildCommercialUsageLimitToastCopy,
   resolveCommercialUsageLimitBlock,
 } from "../lib/commercialUsageGate";
+import {
+  openCommercialAccountUrl,
+  resolveCommercialAccountActionUrl,
+  resolveCommercialAccountWebBaseUrl,
+} from "../lib/commercialAccountLinks";
 import { mergeProviderSkillsForInlineDisplay } from "../providerSkillPresentation";
 import {
   buildVersionMismatchDismissalKey,
@@ -2401,17 +2406,36 @@ export default function ChatView(props: ChatViewProps) {
     () => resolveCommercialUsageLimitBlock(activeProviderStatus),
     [activeProviderStatus],
   );
+  const commercialAccountWebBaseUrl = useMemo(() => resolveCommercialAccountWebBaseUrl(), []);
   const showUsageLimitReachedToast = useCallback(() => {
     if (!usageLimitBlock) return false;
+    const toastCopy = buildCommercialUsageLimitToastCopy(usageLimitBlock);
+    const openAccountPath = (path: string) => {
+      openCommercialAccountUrl(resolveCommercialAccountActionUrl(commercialAccountWebBaseUrl, path));
+    };
+
     toastManager.add(
       stackedThreadToast({
         type: "warning",
-        title: "用量已达上限",
-        description: formatUsageLimitResetHint(usageLimitBlock),
+        title: toastCopy.title,
+        description: toastCopy.description,
+        timeout: 0,
+        actionProps: {
+          children: toastCopy.primaryActionLabel,
+          onClick: () => openAccountPath(toastCopy.primaryActionPath),
+        },
+        actionVariant: "default",
+        data: {
+          secondaryActionProps: {
+            children: toastCopy.secondaryActionLabel,
+            onClick: () => openAccountPath(toastCopy.secondaryActionPath),
+          },
+          secondaryActionVariant: "outline",
+        },
       }),
     );
     return true;
-  }, [usageLimitBlock]);
+  }, [commercialAccountWebBaseUrl, usageLimitBlock]);
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeConversationWorkspaceRoot =

@@ -1,6 +1,7 @@
 import type {
   DesktopBrowserAutomationState,
   DesktopBrowserExternalAutomationState,
+  DesktopBrowserExternalAutomationPermission,
   DesktopComputerAutomationAppPermission,
   DesktopComputerAutomationState,
   PluginDetail,
@@ -8,6 +9,7 @@ import type {
 } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangleIcon,
   BlocksIcon,
   CheckIcon,
   CircleSlashIcon,
@@ -41,10 +43,40 @@ import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { toastManager } from "~/components/ui/toast";
 import { cn } from "~/lib/utils";
-import { useBrowserExternalPluginState } from "~/browserExternalPluginState";
+import {
+  appendAutomationPermissionPolicyActionAuditEvent,
+  buildBrowserExternalPermissionAuditItems,
+  buildComputerPermissionAuditItems,
+  buildAutomationPermissionPolicyActions,
+  buildAutomationPermissionPolicyHints,
+  buildAutomationPermissionPolicyEntries,
+  createAutomationPermissionPolicyActionAuditEvent,
+  normalizeAutomationPermissionPolicyActionAuditEvents,
+  summarizeAutomationPermissionAudit,
+  summarizeAutomationPermissionPolicyActionAudit,
+  type AutomationPermissionAuditItem,
+  type AutomationPermissionPolicyAction,
+  type AutomationPermissionPolicyActionAuditEvent,
+  type AutomationPermissionPolicyHint,
+  type AutomationPermissionPolicyEntry,
+  type AutomationPermissionPolicyStatus,
+} from "~/lib/automationPermissionAudit";
+import {
+  describeComputerAutomationPermission,
+  type ToolBridgeHealthId,
+  type ToolBridgeHealthItem,
+  type ToolBridgeHealthStatus,
+  type ToolBridgeHealthSummary,
+} from "~/lib/toolBridgeHealth";
+import { useToolBridgeHealth } from "~/hooks/useToolBridgeHealth";
 import { getPrimaryEnvironmentConnection } from "~/environments/runtime";
 
 type BuiltinPluginId = "browser_use" | "browser_use_external" | "computer_use";
+
+interface DesktopAutomationActionResult {
+  readonly success: boolean;
+  readonly error?: string;
+}
 
 interface BuiltinPlugin {
   readonly id: BuiltinPluginId;
@@ -89,6 +121,9 @@ const pluginDetailQueryKey = (plugin: PluginSummary) =>
 const CHROME_EXTENSION_DOWNLOAD_URL = "/downloads/t3-code-chrome-extension.zip";
 const CHROME_EXTENSION_DOWNLOAD_NAME = "t3-code-chrome-extension.zip";
 const CHROME_EXTENSIONS_URL = "chrome://extensions";
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY =
+  "t3code:automation-permission-policy-action-audit:v1";
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_LIMIT = 12;
 
 function getPluginsClient() {
   return getPrimaryEnvironmentConnection().client.plugins;
@@ -96,6 +131,30 @@ function getPluginsClient() {
 
 function getMarketplaceClient() {
   return getPrimaryEnvironmentConnection().client.marketplace;
+}
+
+function readPolicyActionAuditEvents(): readonly AutomationPermissionPolicyActionAuditEvent[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY);
+    return normalizeAutomationPermissionPolicyActionAuditEvents(raw ? JSON.parse(raw) : []);
+  } catch {
+    return [];
+  }
+}
+
+function writePolicyActionAuditEvents(
+  events: readonly AutomationPermissionPolicyActionAuditEvent[],
+) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY,
+      JSON.stringify(events),
+    );
+  } catch {
+    // Ignore storage failures; the in-memory audit state still updates for this session.
+  }
 }
 
 function builtinPluginId(plugin: PluginSummary): BuiltinPluginId | null {
@@ -125,6 +184,38 @@ function describeDesktopBridgeError(error: unknown): string {
     return "桌面主进程还没有加载新的插件 IPC。请完全退出并重新启动 Bahew 后再试。";
   }
   return message;
+}
+
+function describePolicyActionError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function resolveBrowserExternalPermission(input: {
+  readonly state: DesktopBrowserExternalAutomationState;
+  readonly host: string;
+  readonly decision: DesktopBrowserExternalAutomationPermission["decision"];
+  readonly scope: DesktopBrowserExternalAutomationPermission["scope"];
+}): Promise<void> {
+  const response = await fetch(new URL("/permission/resolve", input.state.endpoint).toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.state.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      host: input.host,
+      decision: input.decision,
+      scope: input.scope,
+    }),
+  });
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const error =
+      body && typeof body === "object" && "error" in body && typeof body.error === "string"
+        ? body.error
+        : response.statusText;
+    throw new Error(error || "Chrome 权限更新失败。");
+  }
 }
 
 function statusPill(
@@ -169,6 +260,120 @@ function statusPill(
   }
 }
 
+function bridgeHealthStatusPill(status: ToolBridgeHealthStatus) {
+  switch (status) {
+    case "ready":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+          <CheckIcon className="size-3" />
+          可用
+        </span>
+      );
+    case "warning":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+          <AlertTriangleIcon className="size-3" />
+          需处理
+        </span>
+      );
+    case "unavailable":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+          <CircleSlashIcon className="size-3" />
+          不可用
+        </span>
+      );
+  }
+}
+
+function bridgeHealthIcon(item: ToolBridgeHealthItem) {
+  switch (item.id) {
+    case "browser_use":
+      return <GlobeIcon className="size-4" />;
+    case "browser_use_external":
+      return <PlugIcon className="size-4" />;
+    case "computer_use":
+      return <LaptopIcon className="size-4" />;
+  }
+}
+
+function formatBridgeHealthSummary(summary: ToolBridgeHealthSummary): string {
+  const parts = [`${summary.ready} 可用`];
+  if (summary.warning > 0) parts.push(`${summary.warning} 需处理`);
+  if (summary.unavailable > 0) parts.push(`${summary.unavailable} 不可用`);
+  return `${summary.total} 项预检：${parts.join("，")}`;
+}
+
+function BridgeHealthPanel({
+  items,
+  summary,
+  onRefresh,
+  onOpenDetails,
+}: {
+  readonly items: readonly ToolBridgeHealthItem[];
+  readonly summary: ToolBridgeHealthSummary;
+  readonly onRefresh: () => void;
+  readonly onOpenDetails: (id: ToolBridgeHealthId) => void;
+}) {
+  return (
+    <section className="mt-6 rounded-md border border-border/70 bg-muted/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[13px] font-semibold text-foreground">桥接能力预检</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {formatBridgeHealthSummary(summary)}
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="xs" onClick={onRefresh}>
+          <RefreshCcwIcon className="size-3.5" />
+          刷新
+        </Button>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={cn(
+              "grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border px-3 py-2 text-start transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              item.status === "ready"
+                ? "border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10"
+                : item.status === "warning"
+                  ? "border-amber-500/25 bg-amber-500/5 hover:bg-amber-500/10"
+                  : "border-destructive/20 bg-destructive/5 hover:bg-destructive/10",
+            )}
+            onClick={() => onOpenDetails(item.id)}
+          >
+            <div className="flex size-9 items-center justify-center rounded-md bg-background text-muted-foreground">
+              {bridgeHealthIcon(item)}
+            </div>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-[13px] font-medium text-foreground">
+                  {item.label}
+                </span>
+                <span className="truncate font-mono text-[11px] text-muted-foreground">
+                  {item.namespace}
+                </span>
+                <span className="shrink-0 rounded bg-background/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {item.reasonLabel}
+                </span>
+              </div>
+              <div className="mt-0.5 truncate text-xs text-foreground">{item.summary}</div>
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                {item.detail}
+                {item.actionLabel ? ` · ${item.actionLabel}` : null}
+                {item.updatedAt ? ` · ${formatTimestamp(item.updatedAt)}` : null}
+              </div>
+            </div>
+            <div className="shrink-0">{bridgeHealthStatusPill(item.status)}</div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PluginCard({
   active,
   plugin,
@@ -207,6 +412,292 @@ function SettingRow({ label, value }: { readonly label: string; readonly value: 
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="min-w-0 text-right text-xs text-foreground">{value}</div>
     </div>
+  );
+}
+
+function permissionDecisionPill(decision: AutomationPermissionAuditItem["decision"]) {
+  if (decision === "allow") {
+    return (
+      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+        允许
+      </span>
+    );
+  }
+  return (
+    <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+      阻止
+    </span>
+  );
+}
+
+function permissionPolicyHintClassName(tone: AutomationPermissionPolicyHint["tone"]) {
+  switch (tone) {
+    case "info":
+      return "border-border/70 bg-muted/30 text-muted-foreground";
+    case "warning":
+      return "border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-300";
+    case "danger":
+      return "border-destructive/25 bg-destructive/5 text-destructive";
+  }
+}
+
+function permissionPolicyStatusPill(status: AutomationPermissionPolicyStatus) {
+  switch (status) {
+    case "satisfied":
+      return (
+        <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+          已满足
+        </span>
+      );
+    case "review":
+      return (
+        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+          建议复查
+        </span>
+      );
+    case "action-required":
+      return (
+        <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+          需处理
+        </span>
+      );
+  }
+}
+
+function AutomationPermissionPolicySection({
+  title,
+  entries,
+}: {
+  readonly title: string;
+  readonly entries: readonly AutomationPermissionPolicyEntry[];
+}) {
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
+        <span className="text-[11px] text-muted-foreground">当前为本机推荐基线</span>
+      </div>
+      <div className="mt-3 rounded-md border border-border/70 px-3">
+        {entries.map((entry) => (
+          <div
+            key={entry.id}
+            className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
+          >
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-[13px] font-medium text-foreground">
+                  {entry.title}
+                </span>
+                {permissionPolicyStatusPill(entry.status)}
+              </div>
+              <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                推荐：{entry.recommended}
+              </div>
+              <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                当前：{entry.current}
+              </div>
+            </div>
+            <div className="max-w-[150px] text-right text-[11px] leading-4 text-muted-foreground">
+              {entry.actionLabel}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AutomationPermissionPolicyActionsSection({
+  title,
+  actions,
+  busyActionId,
+  disabled = false,
+  onRunAction,
+}: {
+  readonly title: string;
+  readonly actions: readonly AutomationPermissionPolicyAction[];
+  readonly busyActionId: string | null;
+  readonly disabled?: boolean;
+  readonly onRunAction: (action: AutomationPermissionPolicyAction) => void;
+}) {
+  if (actions.length === 0) return null;
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
+        <span className="text-[11px] text-muted-foreground">{actions.length} 个可执行动作</span>
+      </div>
+      <div className="mt-3 rounded-md border border-border/70 px-3">
+        {actions.map((action) => {
+          const busy = busyActionId === action.id;
+          return (
+            <div
+              key={action.id}
+              className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-medium text-foreground">
+                  {action.targetLabel}
+                </div>
+                <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                  {action.detail}
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                disabled={disabled || busy}
+                onClick={() => onRunAction(action)}
+              >
+                {busy ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+                {action.label}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function permissionPolicyActionAuditResultPill(
+  result: AutomationPermissionPolicyActionAuditEvent["result"],
+) {
+  if (result === "success") {
+    return (
+      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+        成功
+      </span>
+    );
+  }
+  return (
+    <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+      失败
+    </span>
+  );
+}
+
+function AutomationPermissionPolicyActionAuditSection({
+  title,
+  events,
+}: {
+  readonly title: string;
+  readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
+}) {
+  const summary = summarizeAutomationPermissionPolicyActionAudit(events);
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
+        {events.length > 0 ? (
+          <span className="text-[11px] text-muted-foreground">
+            成功 {summary.succeeded} · 失败 {summary.failed} · 最近{" "}
+            {formatTimestamp(summary.lastOccurredAt)}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-3 rounded-md border border-border/70 px-3">
+        {events.length === 0 ? (
+          <div className="py-6 text-sm text-muted-foreground">还没有策略动作记录。</div>
+        ) : (
+          events.slice(0, 5).map((event) => (
+            <div
+              key={event.id}
+              className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-[13px] font-medium text-foreground">
+                    {event.targetLabel}
+                  </span>
+                  {permissionPolicyActionAuditResultPill(event.result)}
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {event.actionLabel}
+                  {event.detail ? ` · ${event.detail}` : null}
+                </div>
+              </div>
+              <div className="text-right text-[11px] text-muted-foreground">
+                {formatTimestamp(event.occurredAt)}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AutomationPermissionAuditSection({
+  title,
+  emptyText,
+  items,
+}: {
+  readonly title: string;
+  readonly emptyText: string;
+  readonly items: readonly AutomationPermissionAuditItem[];
+}) {
+  const summary = summarizeAutomationPermissionAudit(items);
+  const policyHints = buildAutomationPermissionPolicyHints(items);
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
+        {items.length > 0 ? (
+          <span className="text-[11px] text-muted-foreground">
+            允许 {summary.allowed} · 阻止 {summary.blocked} · 最近 {formatTimestamp(summary.lastUpdatedAt)}
+          </span>
+        ) : null}
+      </div>
+      {policyHints.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {policyHints.map((hint) => (
+            <div
+              key={hint.id}
+              className={cn(
+                "rounded-md border px-3 py-2 text-xs leading-5",
+                permissionPolicyHintClassName(hint.tone),
+              )}
+            >
+              <div className="font-medium">{hint.title}</div>
+              <div className="opacity-80">{hint.detail}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-3 rounded-md border border-border/70 px-3">
+        {items.length === 0 ? (
+          <div className="py-6 text-sm text-muted-foreground">{emptyText}</div>
+        ) : (
+          items.slice(0, 6).map((item) => (
+            <div
+              key={item.id}
+              className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-[13px] font-medium text-foreground">
+                    {item.subject}
+                  </span>
+                  {permissionDecisionPill(item.decision)}
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {item.scope === "always" ? "始终" : "本次会话"}
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {item.detail}
+                </div>
+              </div>
+              <div className="text-right text-[11px] text-muted-foreground">
+                <div>更新：{formatTimestamp(item.updatedAt)}</div>
+                {item.lastUsedAt ? <div>使用：{formatTimestamp(item.lastUsedAt)}</div> : null}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -300,14 +791,72 @@ function BrowserPluginDetails({
 function BrowserExternalPluginDetails({
   state,
   refresh,
+  actionAuditEvents,
   onRestartSetup,
+  onRecordPolicyActionAuditEvent,
 }: {
   readonly state: DesktopBrowserExternalAutomationState | null;
   readonly refresh: () => void;
+  readonly actionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
   readonly onRestartSetup: () => void;
+  readonly onRecordPolicyActionAuditEvent: (
+    event: AutomationPermissionPolicyActionAuditEvent,
+  ) => void;
 }) {
   const activeTab =
     state?.tabs.find((tab) => tab.id === state.selectedTabId) ?? state?.tabs[0] ?? null;
+  const auditItems = buildBrowserExternalPermissionAuditItems(state);
+  const policyEntries = buildAutomationPermissionPolicyEntries(auditItems, "chrome");
+  const policyActions = buildAutomationPermissionPolicyActions(auditItems, "chrome");
+  const [busyPolicyActionId, setBusyPolicyActionId] = useState<string | null>(null);
+  const runPolicyAction = useCallback(
+    (action: AutomationPermissionPolicyAction) => {
+      if (action.kind !== "chrome-downgrade-persistent-host" || !action.host || !state) {
+        return;
+      }
+      setBusyPolicyActionId(action.id);
+      void resolveBrowserExternalPermission({
+        state,
+        host: action.host,
+        decision: "allow",
+        scope: "session",
+      })
+        .then(() => {
+          onRecordPolicyActionAuditEvent(
+            createAutomationPermissionPolicyActionAuditEvent({
+              action,
+              result: "success",
+              occurredAt: new Date().toISOString(),
+              detail: "已改为本次会话授权。",
+            }),
+          );
+          toastManager.add({
+            type: "success",
+            title: "Chrome 权限已更新",
+            description: `${action.host} 已改为本次会话授权。`,
+          });
+          refresh();
+        })
+        .catch((error: unknown) => {
+          const description = describePolicyActionError(error);
+          onRecordPolicyActionAuditEvent(
+            createAutomationPermissionPolicyActionAuditEvent({
+              action,
+              result: "failure",
+              occurredAt: new Date().toISOString(),
+              detail: description,
+            }),
+          );
+          toastManager.add({
+            type: "error",
+            title: "Chrome 权限更新失败",
+            description,
+          });
+        })
+        .finally(() => setBusyPolicyActionId(null));
+    },
+    [onRecordPolicyActionAuditEvent, refresh, state],
+  );
   return (
     <div className="space-y-5">
       {!state?.connected ? (
@@ -383,6 +932,23 @@ function BrowserExternalPluginDetails({
           />
         </div>
       </section>
+      <AutomationPermissionAuditSection
+        title="站点权限审计"
+        emptyText="还没有 Chrome 站点允许或阻止记录。"
+        items={auditItems}
+      />
+      <AutomationPermissionPolicySection title="站点权限策略配置" entries={policyEntries} />
+      <AutomationPermissionPolicyActionsSection
+        title="站点权限修复动作"
+        actions={policyActions}
+        busyActionId={busyPolicyActionId}
+        disabled={busyPolicyActionId !== null}
+        onRunAction={runPolicyAction}
+      />
+      <AutomationPermissionPolicyActionAuditSection
+        title="站点权限动作审计"
+        events={actionAuditEvents}
+      />
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="flex items-start gap-2">
           <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -558,23 +1124,50 @@ function CopyConnectionValue({
 function ComputerPluginDetails({
   state,
   refresh,
+  actionAuditEvents,
   onTogglePaused,
   onAllowForeground,
   onRemovePermission,
   onClearPermissions,
+  onRecordPolicyActionAuditEvent,
   busyAction,
 }: {
   readonly state: DesktopComputerAutomationState | null;
   readonly refresh: () => void;
+  readonly actionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
   readonly onTogglePaused: () => void;
   readonly onAllowForeground: () => void;
   readonly onRemovePermission: (appKey: string) => void;
-  readonly onClearPermissions: () => void;
+  readonly onClearPermissions: () => Promise<DesktopAutomationActionResult>;
+  readonly onRecordPolicyActionAuditEvent: (
+    event: AutomationPermissionPolicyActionAuditEvent,
+  ) => void;
   readonly busyAction: string | null;
 }) {
   const status = !state || !state.available ? "unavailable" : state.paused ? "paused" : "ready";
   const foreground = state?.foregroundWindow;
   const allowedApps = state?.allowedApps ?? [];
+  const permissionSummary = describeComputerAutomationPermission(state);
+  const auditItems = buildComputerPermissionAuditItems(state);
+  const policyEntries = buildAutomationPermissionPolicyEntries(auditItems, "computer");
+  const policyActions = buildAutomationPermissionPolicyActions(auditItems, "computer");
+  const runPolicyAction = useCallback(
+    (action: AutomationPermissionPolicyAction) => {
+      if (action.kind === "computer-clear-persistent-apps") {
+        void onClearPermissions().then((result) => {
+          onRecordPolicyActionAuditEvent(
+            createAutomationPermissionPolicyActionAuditEvent({
+              action,
+              result: result.success ? "success" : "failure",
+              occurredAt: new Date().toISOString(),
+              detail: result.success ? "始终允许 App 已清空。" : (result.error ?? "清空失败。"),
+            }),
+          );
+        });
+      }
+    },
+    [onClearPermissions, onRecordPolicyActionAuditEvent],
+  );
   return (
     <div className="space-y-5">
       <section>
@@ -607,6 +1200,7 @@ function ComputerPluginDetails({
           <SettingRow label="插件状态" value={statusPill(status)} />
           <SettingRow label="命名空间" value={<span className="font-mono">t3_computer</span>} />
           <SettingRow label="平台" value={state?.platform ?? "unknown"} />
+          <SettingRow label="前台权限" value={permissionSummary.summary} />
           <SettingRow
             label="前台 App"
             value={
@@ -681,6 +1275,23 @@ function ComputerPluginDetails({
           )}
         </div>
       </section>
+      <AutomationPermissionAuditSection
+        title="App 权限审计"
+        emptyText="还没有 Computer Use 始终允许记录。"
+        items={auditItems}
+      />
+      <AutomationPermissionPolicySection title="App 权限策略配置" entries={policyEntries} />
+      <AutomationPermissionPolicyActionsSection
+        title="App 权限修复动作"
+        actions={policyActions}
+        busyActionId={busyAction === "clear" ? "computer-clear-persistent-apps" : null}
+        disabled={busyAction !== null}
+        onRunAction={runPolicyAction}
+      />
+      <AutomationPermissionPolicyActionAuditSection
+        title="App 权限动作审计"
+        events={actionAuditEvents}
+      />
 
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="flex items-start gap-2">
@@ -949,11 +1560,20 @@ export function PluginsPage() {
   const [marketplaceSource, setMarketplaceSource] = useState("");
   const [selectedPluginId, setSelectedPluginId] = useState<string>("builtin:browser_use");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [browserState, setBrowserState] = useState<DesktopBrowserAutomationState | null>(null);
-  const browserExternalPlugin = useBrowserExternalPluginState();
-  const browserExternalState = browserExternalPlugin.state;
-  const [computerState, setComputerState] = useState<DesktopComputerAutomationState | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const {
+    browserState,
+    browserExternalPlugin,
+    browserExternalState,
+    computerState,
+    items: bridgeHealthItems,
+    refreshAll: refreshBridgeHealth,
+    refreshBrowser,
+    refreshBrowserExternal,
+    refreshComputer,
+    setComputerState,
+    summary: bridgeHealthSummary,
+  } = useToolBridgeHealth();
 
   const pluginsQuery = useQuery({
     queryKey: PLUGINS_LIST_QUERY,
@@ -1056,49 +1676,6 @@ export function PluginsPage() {
     },
   });
 
-  const refreshBrowser = useCallback(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge?.getBrowserAutomationState) {
-      setBrowserState(null);
-      return;
-    }
-    void bridge
-      .getBrowserAutomationState()
-      .then(setBrowserState)
-      .catch(() => setBrowserState(null));
-  }, []);
-
-  const refreshComputer = useCallback(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge?.getComputerAutomationState) {
-      setComputerState(null);
-      return;
-    }
-    void bridge
-      .getComputerAutomationState()
-      .then(setComputerState)
-      .catch(() => setComputerState(null));
-  }, []);
-
-  const refreshBrowserExternal = browserExternalPlugin.refresh;
-
-  useEffect(() => {
-    refreshBrowser();
-    refreshBrowserExternal();
-    refreshComputer();
-    const bridge = window.desktopBridge;
-    const unsubscribeBrowser = bridge?.onBrowserAutomationState?.((state) =>
-      setBrowserState(state),
-    );
-    const unsubscribeComputer = bridge?.onComputerAutomationState?.((state) =>
-      setComputerState(state),
-    );
-    return () => {
-      unsubscribeBrowser?.();
-      unsubscribeComputer?.();
-    };
-  }, [refreshBrowser, refreshBrowserExternal, refreshComputer]);
-
   const runComputerAction = useCallback(
     async (actionKey: string, action: () => Promise<DesktopComputerAutomationState>) => {
       if (busyAction) return;
@@ -1198,7 +1775,12 @@ export function PluginsPage() {
     setSelectedPluginId(pluginId);
     setDetailDialogOpen(true);
   }, []);
-
+  const openBridgeDetails = useCallback(
+    (id: ToolBridgeHealthId) => {
+      openPluginDetails(`builtin:${id}`);
+    },
+    [openPluginDetails],
+  );
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
       <header className="drag-region flex min-h-[52px] shrink-0 flex-wrap items-center justify-end gap-3 border-b border-border/60 px-8 py-3 wco:min-h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]">
@@ -1263,6 +1845,12 @@ export function PluginsPage() {
                 管理运行时插件、Bahew 内置桥接能力、自动化入口和授权边界。
               </p>
             </div>
+            <BridgeHealthPanel
+              items={bridgeHealthItems}
+              summary={bridgeHealthSummary}
+              onRefresh={refreshBridgeHealth}
+              onOpenDetails={openBridgeDetails}
+            />
 
             {pluginsQuery.isLoading ? (
               <div className="mt-8 flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">

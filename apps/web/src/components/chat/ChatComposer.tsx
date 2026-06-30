@@ -155,11 +155,15 @@ import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { getPrimaryEnvironmentConnection } from "../../environments/runtime";
 import {
+  attachComposerPluginMentionHealth,
+  formatComposerPluginMentionHealthStatus,
   getVisibleComposerPluginMentions,
+  resolveComposerPluginMentionHealthBlock,
+  resolvePromptComposerPluginMentionHealthBlock,
   type ComposerPluginMention,
-  searchComposerPluginMentions,
+  searchComposerPluginMentionList,
 } from "../../composerPluginMentions";
-import { useBrowserExternalPluginState } from "../../browserExternalPluginState";
+import { useToolBridgeHealth } from "../../hooks/useToolBridgeHealth";
 
 const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
@@ -373,13 +377,30 @@ const ComposerPlusMenu = memo(function ComposerPlusMenu(props: {
           <MenuSubPopup className="min-w-52">
             {props.pluginMentions.map((plugin) => {
               const Icon = plugin.kind === "computer" ? LaptopIcon : GlobeIcon;
+              const health = plugin.health;
               return (
                 <MenuItem key={plugin.id} onClick={() => props.onSelectPlugin(plugin)}>
                   <Icon className="size-4 shrink-0 opacity-80" />
                   <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="text-sm font-medium">{plugin.menuLabel}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-medium">{plugin.menuLabel}</span>
+                      {health ? (
+                        <span
+                          className={cn(
+                            "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                            health.status === "ready"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : health.status === "warning"
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                : "bg-destructive/10 text-destructive",
+                          )}
+                        >
+                          {formatComposerPluginMentionHealthStatus(health.status)}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="line-clamp-1 text-xs text-muted-foreground">
-                      {plugin.description}
+                      {health ? `${health.reasonLabel} · ${health.summary}` : plugin.description}
                     </span>
                   </span>
                 </MenuItem>
@@ -1324,14 +1345,20 @@ export const ChatComposer = memo(
     } = props;
     const navigate = useNavigate();
     const { t } = useI18n();
-    const browserExternalPlugin = useBrowserExternalPluginState();
+    const {
+      browserExternalPlugin,
+      items: toolBridgeHealthItems,
+    } = useToolBridgeHealth();
     const composerSurface: ComposerSurface = newThreadMode ? "new-thread" : "reply";
     const visiblePluginMentions = useMemo(
       () =>
-        getVisibleComposerPluginMentions({
-          includeChrome: true,
-        }),
-      [],
+        attachComposerPluginMentionHealth(
+          getVisibleComposerPluginMentions({
+            includeChrome: true,
+          }),
+          toolBridgeHealthItems,
+        ),
+      [toolBridgeHealthItems],
     );
 
     // ------------------------------------------------------------------
@@ -1683,14 +1710,17 @@ export const ChatComposer = memo(
     const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
       if (!composerTrigger) return [];
       if (composerTrigger.kind === "path") {
-        const pluginItems = searchComposerPluginMentions(composerTrigger.query, {
-          includeChrome: true,
-        }).map((plugin) => ({
+        const pluginItems = searchComposerPluginMentionList(
+          visiblePluginMentions,
+          composerTrigger.query,
+        ).map((plugin) => ({
           id: `plugin:${plugin.id}`,
           type: "plugin" as const,
           plugin,
           label: plugin.menuLabel,
-          description: plugin.description,
+          description: plugin.health
+            ? `${plugin.health.reasonLabel} · ${plugin.health.summary}`
+            : plugin.description,
         }));
         const pathItems = workspaceEntries.map((entry) => ({
           id: `path:${entry.kind}:${entry.path}`,
@@ -1760,7 +1790,13 @@ export const ChatComposer = memo(
         }));
       }
       return [];
-    }, [composerTrigger, selectedProvider, selectedProviderStatus, workspaceEntries]);
+    }, [
+      composerTrigger,
+      selectedProvider,
+      selectedProviderStatus,
+      visiblePluginMentions,
+      workspaceEntries,
+    ]);
 
     const composerMenuOpen = Boolean(composerTrigger);
     const composerMenuSearchKey = composerTrigger
@@ -2513,6 +2549,22 @@ export const ChatComposer = memo(
             .catch(() => undefined);
           return;
         }
+        if (isStandardSend && hasSubmissionContent) {
+          const healthBlock = resolvePromptComposerPluginMentionHealthBlock(
+            prompt,
+            visiblePluginMentions,
+          );
+          if (healthBlock) {
+            event?.preventDefault();
+            toastManager.add({
+              type: "warning",
+              title: healthBlock.title,
+              description: healthBlock.description,
+            });
+            void navigate({ to: "/extensions", hash: "plugins" });
+            return;
+          }
+        }
         onSend(event);
         if (shouldBlurMobileComposerOnSubmit()) {
           blurMobileComposerAfterSend();
@@ -2525,12 +2577,14 @@ export const ChatComposer = memo(
         composerProviderAvailability,
         composerSendState.hasSendableContent,
         isComposerApprovalState,
+        navigate,
         onSend,
         pendingPrimaryAction,
         prompt,
         setThreadError,
         shouldBlurMobileComposerOnSubmit,
         showPlanFollowUpPrompt,
+        visiblePluginMentions,
       ],
     );
     const expandMobileComposer = useCallback(() => {
@@ -2642,6 +2696,16 @@ export const ChatComposer = memo(
         if (isComposerApprovalState || activePendingProgress) {
           return;
         }
+        const healthBlock = resolveComposerPluginMentionHealthBlock(plugin);
+        if (healthBlock) {
+          toastManager.add({
+            type: "warning",
+            title: healthBlock.title,
+            description: healthBlock.description,
+          });
+          void navigate({ to: "/extensions", hash: "plugins" });
+          return;
+        }
         if (plugin.id === "Chrome" && !browserExternalPlugin.connected) {
           toastManager.add({
             type: "warning",
@@ -2678,6 +2742,7 @@ export const ChatComposer = memo(
         activePendingProgress,
         applyPromptReplacement,
         browserExternalPlugin.connected,
+        browserExternalPlugin.installed,
         isComposerApprovalState,
         navigate,
         promptRef,

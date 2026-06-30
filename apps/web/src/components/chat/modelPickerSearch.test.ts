@@ -10,8 +10,9 @@ describe("buildModelPickerSearchText", () => {
         providerDisplayName: "opencode",
         name: "Claude Opus 4.7",
         subProvider: "GitHub Copilot",
+        tags: ["推理", "长上下文"],
       }),
-    ).toBe("claude opus 4.7 github copilot opencode opencode");
+    ).toBe("claude opus 4.7 github copilot 推理 长上下文 opencode opencode");
   });
 });
 
@@ -125,6 +126,20 @@ describe("scoreModelPickerSearch", () => {
           name: "GPT-5 Codex",
         },
         "personal",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("matches model capability tags", () => {
+    expect(
+      scoreModelPickerSearch(
+        {
+          driverKind: "codex",
+          providerDisplayName: "Codex",
+          name: "GPT-5.4 Mini",
+          tags: ["省额度", "mini", "cheap"],
+        },
+        "cheap",
       ),
     ).not.toBeNull();
   });

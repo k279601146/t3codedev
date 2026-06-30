@@ -604,6 +604,36 @@ describe("wsApi", () => {
     expect(pickFolder).toHaveBeenCalledWith({ initialPath: "/tmp/workspace" });
   });
 
+  it("exposes desktop backend health when the desktop bridge supports it", async () => {
+    const snapshot = {
+      status: "ready" as const,
+      desiredRunning: true,
+      ready: true,
+      activePid: 1234,
+      restartAttempt: 0,
+      restartScheduled: false,
+      nextRestartDelayMs: null,
+      httpBaseUrl: "http://127.0.0.1:13773/",
+      backendEntryPath: "/repo/apps/server/dist/bin.mjs",
+      backendCwd: "/repo",
+      logDirPath: "/tmp/bahew/logs",
+      captureOutput: true,
+      lastStartedAt: "2036-04-07T00:00:00.000Z",
+      lastReadyAt: "2036-04-07T00:00:01.000Z",
+      lastExitAt: null,
+      lastExitCode: null,
+      lastExitReason: null,
+    };
+    const getDesktopBackendHealth = vi.fn().mockResolvedValue(snapshot);
+    getWindowForTest().desktopBridge = makeDesktopBridge({ getDesktopBackendHealth });
+
+    const { createLocalApi } = await import("./localApi");
+    const api = createLocalApi(rpcClientMock as never);
+
+    await expect(api.diagnostics?.getDesktopBackendHealth()).resolves.toEqual(snapshot);
+    expect(getDesktopBackendHealth).toHaveBeenCalledWith();
+  });
+
   it("falls back to the browser context menu helper when the desktop bridge is missing", async () => {
     showContextMenuFallbackMock.mockResolvedValue("rename");
     const { createLocalApi } = await import("./localApi");

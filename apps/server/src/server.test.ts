@@ -736,6 +736,7 @@ const buildAppUnderTest = (options?: {
               commonFailures: [],
               latestFailures: [],
               latestWarningAndErrorLogs: [],
+              providerPerformance: [],
               partialFailure: Option.none(),
               error: Option.none(),
             }),

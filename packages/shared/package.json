@@ -95,6 +95,10 @@
       "types": "./src/commercialEngine.ts",
       "import": "./src/commercialEngine.ts"
     },
+    "./commercialEngineModels": {
+      "types": "./src/commercialEngineModels.ts",
+      "import": "./src/commercialEngineModels.ts"
+    },
     "./windowsSandboxArtifacts": {
       "types": "./src/windowsSandboxArtifacts.ts",
       "import": "./src/windowsSandboxArtifacts.ts"
@@ -102,6 +106,10 @@
     "./commercialUsage": {
       "types": "./src/commercialUsage.ts",
       "import": "./src/commercialUsage.ts"
+    },
+    "./ttlMemoryCache": {
+      "types": "./src/ttlMemoryCache.ts",
+      "import": "./src/ttlMemoryCache.ts"
     },
     "./workspaceConfig": {
       "types": "./src/workspaceConfig.ts",

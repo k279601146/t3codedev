@@ -112,6 +112,12 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       activePid: Option.none(),
       restartAttempt: 0,
       restartScheduled: false,
+      nextRestartDelayMs: Option.none(),
+      lastStartedAt: Option.none(),
+      lastReadyAt: Option.none(),
+      lastExitAt: Option.none(),
+      lastExitCode: Option.none(),
+      lastExitReason: Option.none(),
     }),
   });
 

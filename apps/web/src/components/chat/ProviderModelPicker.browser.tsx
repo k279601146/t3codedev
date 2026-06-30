@@ -434,6 +434,55 @@ describe("ProviderModelPicker", () => {
     }
   });
 
+  it("promotes economy models when commercial usage is tight", async () => {
+    const providers: ReadonlyArray<ServerProvider> = TEST_PROVIDERS.map((provider) =>
+      provider.instanceId === CLAUDE_INSTANCE_ID
+        ? {
+            ...provider,
+            auth: {
+              ...provider.auth,
+              rateLimits: {
+                usage: {
+                  plan: "free",
+                  currentWindow: {
+                    usedUnits: 170,
+                    limitUnits: 200,
+                    usedPercent: 85,
+                    resetsAt: "2036-04-07T01:00:00.000Z",
+                  },
+                  weeklyWindow: {
+                    usedUnits: 320,
+                    limitUnits: 1_400,
+                    usedPercent: 23,
+                    resetsAt: "2036-04-13T00:00:00.000Z",
+                  },
+                  totalTokens: 320,
+                },
+              },
+            },
+          }
+        : provider,
+    );
+    const mounted = await mountPicker({
+      activeInstanceId: CLAUDE_INSTANCE_ID,
+      model: "claude-opus-4-6",
+      lockedProvider: null,
+      providers,
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        const listText = getModelPickerListText();
+        expect(listText).toContain("省额度推荐");
+        expect(getVisibleModelNames()[0]).toBe("Claude Haiku 4.5");
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("focuses the search input after selecting a sidebar provider", async () => {
     const mounted = await mountPicker({
       activeInstanceId: CLAUDE_INSTANCE_ID,

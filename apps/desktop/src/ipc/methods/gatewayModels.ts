@@ -8,15 +8,43 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
 } from "@t3tools/shared/commercialEngine";
+import { parseCommercialGatewayModelListResponse } from "@t3tools/shared/commercialEngineModels";
 import { buildCommercialAccountUsageSnapshot } from "@t3tools/shared/commercialUsage";
+import { createTtlMemoryCache } from "@t3tools/shared/ttlMemoryCache";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Crypto from "node:crypto";
 
 import * as DesktopCommercialAuth from "../../settings/DesktopCommercialAuth.ts";
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";
+
+const GATEWAY_MODEL_LIST_CACHE_TTL_MS = 5 * 60_000;
+const COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS = 15_000;
+const GATEWAY_CACHE_MAX_ENTRIES = 32;
+
+type GatewayCacheKind = "models" | "usage";
+
+const gatewayResponseCache = createTtlMemoryCache({ maxEntries: GATEWAY_CACHE_MAX_ENTRIES });
+
+function gatewayTokenFingerprint(token: string): string {
+  return Crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+}
+
+function gatewayCacheKey(input: {
+  readonly kind: GatewayCacheKind;
+  readonly baseUrl: string;
+  readonly token: string;
+}): string {
+  return [
+    input.kind,
+    input.baseUrl.replace(/\/+$/, ""),
+    gatewayTokenFingerprint(input.token),
+  ].join("\u0000");
+}
 
 export const listGatewayModels = makeIpcMethod({
   channel: IpcChannels.LIST_GATEWAY_MODELS_CHANNEL,
@@ -33,6 +61,15 @@ export const listGatewayModels = makeIpcMethod({
     const { gatewayBaseUrl, ideJwt } = credentials.value;
     const baseUrl = gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
     const modelsUrl = `${baseUrl.replace(/\/+$/, "")}/models`;
+    const nowMs = yield* Clock.currentTimeMillis;
+    const cacheKey = gatewayCacheKey({ kind: "models", baseUrl, token: ideJwt });
+    const cached = gatewayResponseCache.read<Array<{ id: string; name: string; provider: string }>>(
+      cacheKey,
+      nowMs,
+    );
+    if (cached) {
+      return cached;
+    }
 
     const response = yield* Effect.tryPromise({
       try: () =>
@@ -56,7 +93,9 @@ export const listGatewayModels = makeIpcMethod({
       catch: (cause) => GatewayModelsNetworkError({ cause }),
     });
 
-    return parseModelsResponse(body);
+    const models = parseModelsResponse(body);
+    gatewayResponseCache.write(cacheKey, models, GATEWAY_MODEL_LIST_CACHE_TTL_MS, nowMs);
+    return models;
   }),
 });
 
@@ -73,16 +112,23 @@ export const getCommercialAccountUsage = makeIpcMethod({
     }
 
     const { gatewayBaseUrl, ideJwt } = credentials.value;
-    const accountUsage = yield* requestCommercialAccountUsageSnapshot(
-      gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl(),
-      ideJwt,
-    );
+    const baseUrl = gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
+    const nowMs = yield* Clock.currentTimeMillis;
+    const cacheKey = gatewayCacheKey({ kind: "usage", baseUrl, token: ideJwt });
+    const cached = gatewayResponseCache.read<CommercialAccountUsageSchema>(cacheKey, nowMs);
+    if (cached) {
+      return cached;
+    }
+
+    const accountUsage = yield* requestCommercialAccountUsageSnapshot(baseUrl, ideJwt);
 
     if (accountUsage === null) {
       return null;
     }
 
-    return buildCommercialAccountUsageSnapshot(accountUsage);
+    const snapshot = buildCommercialAccountUsageSnapshot(accountUsage);
+    gatewayResponseCache.write(cacheKey, snapshot, COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS, nowMs);
+    return snapshot;
   }),
 });
 
@@ -183,26 +229,6 @@ function requestGatewayJson(
   });
 }
 
-interface RawModelEntry {
-  id?: string;
-  name?: string;
-  owned_by?: string;
-}
-
 function parseModelsResponse(body: unknown): Array<{ id: string; name: string; provider: string }> {
-  if (typeof body !== "object" || body === null) return [];
-  const data = (body as { data?: unknown }).data;
-  if (!Array.isArray(data)) return [];
-
-  const results: Array<{ id: string; name: string; provider: string }> = [];
-  for (const entry of data as RawModelEntry[]) {
-    if (typeof entry.id !== "string" || entry.id.length === 0) continue;
-    results.push({
-      id: entry.id,
-      name: typeof entry.name === "string" && entry.name.length > 0 ? entry.name : entry.id,
-      provider: typeof entry.owned_by === "string" ? entry.owned_by : "unknown",
-    });
-  }
-  return results;
+  return [...(parseCommercialGatewayModelListResponse(body) ?? [])];
 }
-

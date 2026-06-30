@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
@@ -10,6 +11,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Types from "effect/Types";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import * as Crypto from "node:crypto";
 import { stat } from "node:fs/promises";
 import nodePath from "node:path";
 import * as CodexClient from "effect-codex-app-server/client";
@@ -31,7 +33,9 @@ import {
   resolveCommercialEngineIdeApiBaseUrlCandidates,
   resolveCommercialEngineIdeJwt,
 } from "@t3tools/shared/commercialEngine";
+import { parseCommercialGatewayModelListResponse } from "@t3tools/shared/commercialEngineModels";
 import { buildCommercialUsageLimitSnapshot } from "@t3tools/shared/commercialUsage";
+import { createTtlMemoryCache } from "@t3tools/shared/ttlMemoryCache";
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
@@ -52,6 +56,9 @@ const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnErro
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
 const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 5_000;
 const COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS = 5_000;
+const COMMERCIAL_MODEL_CATALOG_CACHE_TTL_MS = 5 * 60_000;
+const COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS = 15_000;
+const COMMERCIAL_GATEWAY_CACHE_MAX_ENTRIES = 64;
 const COMMERCIAL_CODEX_MODEL_CAPABILITIES = createModelCapabilities({
   optionDescriptors: [
     {
@@ -132,15 +139,6 @@ function codexAccountEmail(account: CodexSchema.V2GetAccountResponse["account"])
   if (!account || account.type !== "chatgpt") return undefined;
   return account.email;
 }
-
-const CommercialGatewayModel = Schema.Struct({
-  id: Schema.String,
-  display_name: Schema.optional(Schema.String),
-});
-
-const CommercialGatewayModelListResponse = Schema.Struct({
-  data: Schema.Array(CommercialGatewayModel),
-});
 
 const CommercialGatewayAccountResponse = Schema.Struct({
   data: Schema.Struct({
@@ -228,8 +226,49 @@ function mergeCommercialBalanceIntoRateLimits(
   };
 }
 
-function isCommercialEngineConfigured(environment: NodeJS.ProcessEnv): boolean {
-  return Boolean(resolveCommercialEngineIdeJwt(environment));
+type CommercialGatewayCacheKind = "models" | "balance" | "usage";
+
+const commercialGatewayResponseCache = createTtlMemoryCache({
+  maxEntries: COMMERCIAL_GATEWAY_CACHE_MAX_ENTRIES,
+});
+
+function commercialGatewayTokenFingerprint(token: string | undefined): string {
+  if (!token) return "anonymous";
+  return Crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+}
+
+function commercialGatewayCacheKey(input: {
+  readonly kind: CommercialGatewayCacheKind;
+  readonly url: string;
+  readonly token: string | undefined;
+}): string {
+  return [
+    input.kind,
+    input.url,
+    commercialGatewayTokenFingerprint(input.token),
+  ].join("\u0000");
+}
+
+function cacheCommercialGatewayRequest<A>(input: {
+  readonly kind: CommercialGatewayCacheKind;
+  readonly url: string;
+  readonly token: string | undefined;
+  readonly ttlMs: number;
+  readonly request: Effect.Effect<A, CommercialModelCatalogError>;
+}): Effect.Effect<A, CommercialModelCatalogError> {
+  return Effect.gen(function* () {
+    const nowMs = yield* Clock.currentTimeMillis;
+    const key = commercialGatewayCacheKey(input);
+    const cached = commercialGatewayResponseCache.read<A>(key, nowMs);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const value = yield* input.request;
+    commercialGatewayResponseCache.write(key, value, input.ttlMs, nowMs);
+    return value;
+  });
 }
 
 const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels")(function* (
@@ -275,29 +314,19 @@ const requestCommercialGatewayModels = Effect.fn("requestCommercialGatewayModels
         cause,
       }),
   });
-  const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayModelListResponse)(
-    payload,
-  ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new CommercialModelCatalogError({
-          detail: `Model catalog returned invalid JSON: ${cause.message}`,
-          cause,
-        }),
-    ),
-  );
-  const seen = new Set<string>();
+  const decoded = parseCommercialGatewayModelListResponse(payload);
+  if (!decoded) {
+    return yield* new CommercialModelCatalogError({
+      detail: "Model catalog returned invalid JSON: data must be an array.",
+    });
+  }
+
   const models: ServerProviderModel[] = [];
-  for (const model of decoded.data) {
-    const slug = model.id.trim();
-    if (!slug || seen.has(slug)) {
-      continue;
-    }
-    seen.add(slug);
-    const displayName = model.display_name?.trim();
+  for (const model of decoded) {
     models.push({
-      slug,
-      name: displayName && displayName.length > 0 ? displayName : slug,
+      slug: model.id,
+      name: model.name,
+      ...(model.provider !== "unknown" ? { subProvider: model.provider } : {}),
       isCustom: false,
       capabilities: COMMERCIAL_CODEX_MODEL_CAPABILITIES,
     });
@@ -433,8 +462,16 @@ const requestCommercialGatewayUsage = Effect.fn("requestCommercialGatewayUsage")
   } satisfies CommercialUsageSnapshot;
 });
 
-const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) =>
-  requestCommercialGatewayModels(environment).pipe(
+const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) => {
+  const token = resolveCommercialEngineIdeJwt(environment);
+  const url = commercialGatewayModelsUrl(environment);
+  return cacheCommercialGatewayRequest({
+    kind: "models",
+    url,
+    token,
+    ttlMs: COMMERCIAL_MODEL_CATALOG_CACHE_TTL_MS,
+    request: requestCommercialGatewayModels(environment),
+  }).pipe(
     Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS)),
     Effect.flatMap((models) =>
       Option.match(models, {
@@ -452,10 +489,18 @@ const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) =>
       }).pipe(Effect.as([] as ReadonlyArray<ServerProviderModel>)),
     ),
   );
+};
 
-const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) =>
-  isCommercialEngineConfigured(environment)
-    ? requestCommercialGatewayBalance(environment).pipe(
+const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) => {
+  const token = resolveCommercialEngineIdeJwt(environment);
+  return token
+    ? cacheCommercialGatewayRequest({
+        kind: "balance",
+        url: commercialGatewayAccountUrl(environment),
+        token,
+        ttlMs: COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS,
+        request: requestCommercialGatewayBalance(environment),
+      }).pipe(
         Effect.timeoutOption(Duration.millis(COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS)),
         Effect.flatMap((balance) =>
           Option.match(balance, {
@@ -474,10 +519,18 @@ const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) =>
         ),
       )
     : Effect.succeed(null);
+};
 
-const requestCommercialEngineUsage = (environment: NodeJS.ProcessEnv) =>
-  isCommercialEngineConfigured(environment)
-    ? requestCommercialGatewayUsage(environment).pipe(
+const requestCommercialEngineUsage = (environment: NodeJS.ProcessEnv) => {
+  const token = resolveCommercialEngineIdeJwt(environment);
+  return token
+    ? cacheCommercialGatewayRequest({
+        kind: "usage",
+        url: commercialGatewayUsageUrl(environment),
+        token,
+        ttlMs: COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS,
+        request: requestCommercialGatewayUsage(environment),
+      }).pipe(
         Effect.timeoutOption(Duration.millis(COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS)),
         Effect.flatMap((usage) =>
           Option.match(usage, {
@@ -496,6 +549,7 @@ const requestCommercialEngineUsage = (environment: NodeJS.ProcessEnv) =>
         ),
       )
     : Effect.succeed(null);
+};
 
 function appendCustomCodexModels(
   models: ReadonlyArray<ServerProviderModel>,
@@ -903,15 +957,15 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       presentation: getPresentation(environment),
       enabled: false,
       checkedAt,
-        models: emptyModels,
-        skills: [],
-        permissionProfiles: [],
-        windowsSandbox: buildWindowsSandboxSnapshot({
-          binaryPath: codexSettings.binaryPath,
-          environment,
-          updatedAt: checkedAt,
-        }),
-        probe: {
+      models: emptyModels,
+      skills: [],
+      permissionProfiles: [],
+      windowsSandbox: buildWindowsSandboxSnapshot({
+        binaryPath: codexSettings.binaryPath,
+        environment,
+        updatedAt: checkedAt,
+      }),
+      probe: {
         installed: false,
         version: null,
         status: "warning",

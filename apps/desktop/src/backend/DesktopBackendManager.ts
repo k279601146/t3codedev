@@ -1,6 +1,7 @@
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -105,6 +106,12 @@ export interface DesktopBackendSnapshot {
   readonly activePid: Option.Option<number>;
   readonly restartAttempt: number;
   readonly restartScheduled: boolean;
+  readonly nextRestartDelayMs: Option.Option<number>;
+  readonly lastStartedAt: Option.Option<string>;
+  readonly lastReadyAt: Option.Option<string>;
+  readonly lastExitAt: Option.Option<string>;
+  readonly lastExitCode: Option.Option<number>;
+  readonly lastExitReason: Option.Option<string>;
 }
 
 export interface DesktopBackendManagerShape {
@@ -136,6 +143,12 @@ interface BackendManagerState {
   readonly active: Option.Option<ActiveBackendRun>;
   readonly restartAttempt: number;
   readonly restartFiber: Option.Option<Fiber.Fiber<void, never>>;
+  readonly nextRestartDelayMs: Option.Option<number>;
+  readonly lastStartedAt: Option.Option<string>;
+  readonly lastReadyAt: Option.Option<string>;
+  readonly lastExitAt: Option.Option<string>;
+  readonly lastExitCode: Option.Option<number>;
+  readonly lastExitReason: Option.Option<string>;
   readonly nextRunId: number;
 }
 
@@ -146,6 +159,12 @@ const initialState: BackendManagerState = {
   active: Option.none(),
   restartAttempt: 0,
   restartFiber: Option.none(),
+  nextRestartDelayMs: Option.none(),
+  lastStartedAt: Option.none(),
+  lastReadyAt: Option.none(),
+  lastExitAt: Option.none(),
+  lastExitCode: Option.none(),
+  lastExitReason: Option.none(),
   nextRunId: 1,
 };
 
@@ -161,6 +180,8 @@ const withActiveRun =
 
 const calculateRestartDelay = (attempt: number): Duration.Duration =>
   Duration.min(Duration.times(INITIAL_RESTART_DELAY, 2 ** attempt), MAX_RESTART_DELAY);
+
+const currentIsoTimestamp = DateTime.now.pipe(Effect.map(DateTime.formatIso));
 
 const closeRun = (
   run: ActiveBackendRun,
@@ -302,6 +323,12 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
         activePid: activePid(current.active),
         restartAttempt: current.restartAttempt,
         restartScheduled: Option.isSome(current.restartFiber),
+        nextRestartDelayMs: current.nextRestartDelayMs,
+        lastStartedAt: current.lastStartedAt,
+        lastReadyAt: current.lastReadyAt,
+        lastExitAt: current.lastExitAt,
+        lastExitCode: current.lastExitCode,
+        lastExitReason: current.lastExitReason,
       }),
     ),
   );
@@ -313,6 +340,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
       {
         ...current,
         restartFiber: Option.none(),
+        nextRestartDelayMs: Option.none(),
       },
     ]);
 
@@ -342,6 +370,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
           desiredRunning: true,
           ready: false,
           config: Option.some(config),
+          nextRestartDelayMs: Option.none(),
         }));
 
         if (!entryExists) {
@@ -366,9 +395,11 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
 
         const finalizeRun = Effect.fn("desktop.backendManager.finalizeRun")(function* (
           reason: string,
+          code: Option.Option<number>,
         ) {
           yield* mutex.withPermits(1)(
             Effect.gen(function* () {
+              const exitedAt = yield* currentIsoTimestamp;
               const { isCurrentRun, nextState, pid } = yield* Ref.modify(
                 state,
                 (
@@ -397,6 +428,9 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
                     ...latest,
                     active: Option.none<ActiveBackendRun>(),
                     ready: false,
+                    lastExitAt: Option.some(exitedAt),
+                    lastExitCode: code,
+                    lastExitReason: Option.some(reason),
                   };
                   return [
                     {
@@ -429,9 +463,14 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
         const program = runBackendProcess({
           ...config,
           onStarted: Effect.fn("desktop.backendManager.onStarted")(function* (pid) {
+            const startedAt = yield* currentIsoTimestamp;
             yield* updateActiveRun(runId, (run) => ({
               ...run,
               pid: Option.some(pid),
+            }));
+            yield* Ref.update(state, (latest) => ({
+              ...latest,
+              lastStartedAt: Option.some(startedAt),
             }));
             yield* backendOutputLog.writeSessionBoundary({
               phase: "START",
@@ -439,6 +478,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
             });
           }),
           onReady: Effect.fn("desktop.backendManager.onReady")(function* () {
+            const readyAt = yield* currentIsoTimestamp;
             const isCurrentRun = yield* Ref.modify(state, (latest) => {
               const activeRun = Option.getOrUndefined(latest.active);
               if (activeRun?.id !== runId) {
@@ -451,6 +491,8 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
                   ...latest,
                   restartAttempt: 0,
                   ready: true,
+                  nextRestartDelayMs: Option.none(),
+                  lastReadyAt: Option.some(readyAt),
                 },
               ] as const;
             });
@@ -493,8 +535,8 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
                   reason: "spawn_or_bootstrap_failure",
                   message: error.message,
                 })
-                .pipe(Effect.andThen(finalizeRun(error.message))),
-            onSuccess: (exit) => finalizeRun(exit.reason),
+                .pipe(Effect.andThen(finalizeRun(error.message, Option.none()))),
+            onSuccess: (exit) => finalizeRun(exit.reason, exit.code),
           }),
           Effect.ensuring(Scope.close(runScope, Exit.void).pipe(Effect.ignore)),
         );
@@ -517,11 +559,13 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
       }
 
       const delay = calculateRestartDelay(latest.restartAttempt);
+      const delayMs = Duration.toMillis(delay);
       return [
         Option.some(delay),
         {
           ...latest,
           restartAttempt: latest.restartAttempt + 1,
+          nextRestartDelayMs: Option.some(delayMs),
         },
       ] as const;
     });
@@ -547,6 +591,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
                   {
                     ...latest,
                     restartFiber: Option.none(),
+                    nextRestartDelayMs: Option.none(),
                   },
                 ] as const;
               }),
@@ -575,6 +620,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
   const stop = Effect.fn("desktop.backendManager.stop")(function* (options?: {
     readonly timeout?: Duration.Duration;
   }) {
+    const stoppedAt = yield* currentIsoTimestamp;
     const { active, restartFiber } = yield* mutex.withPermits(1)(
       Effect.gen(function* () {
         const result = yield* Ref.modify(state, (latest) => [
@@ -588,6 +634,14 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
             ready: false,
             active: Option.none<ActiveBackendRun>(),
             restartFiber: Option.none<Fiber.Fiber<void, never>>(),
+            nextRestartDelayMs: Option.none(),
+            ...(Option.isSome(latest.active)
+              ? {
+                  lastExitAt: Option.some(stoppedAt),
+                  lastExitCode: Option.none<number>(),
+                  lastExitReason: Option.some("stopped"),
+                }
+              : {}),
           },
         ]);
         yield* Ref.set(desktopState.backendReady, false);

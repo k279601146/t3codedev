@@ -17,6 +17,7 @@ import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
 import { buildModelPickerSearchText, scoreModelPickerSearch } from "./modelPickerSearch";
+import { buildModelPickerSections } from "./modelPickerSections";
 import { Combobox, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "../ui/combobox";
 import { getDisplayModelName, ModelEsque, PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
 import {
@@ -30,6 +31,13 @@ import { cn } from "~/lib/utils";
 import { TooltipProvider } from "../ui/tooltip";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { resolveCommercialUsageModelRecommendation } from "../../lib/commercialUsageGate";
+import {
+  buildModelCapabilitySearchTokens,
+  buildModelCapabilityTags,
+  type ModelCapabilityTag,
+  resolveDefaultModelSlugForModels,
+} from "../../modelCapabilityTags";
 import { useI18n } from "../../i18n";
 
 type ModelPickerItem = {
@@ -42,9 +50,17 @@ type ModelPickerItem = {
   instanceDisplayName: string;
   instanceAccentColor?: string | undefined;
   continuationGroupKey?: string | undefined;
+  isCustom?: boolean | undefined;
+  isDefaultModel?: boolean | undefined;
+  capabilityTags: ReadonlyArray<ModelCapabilityTag>;
+  capabilitySearchTokens: ReadonlyArray<string>;
 };
 
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
+
+function hasEconomyCapabilityTag(tags: ReadonlyArray<ModelCapabilityTag>): boolean {
+  return tags.some((tag) => tag.kind === "economy");
+}
 
 // Split a `${instanceId}:${slug}` combobox key back into its pieces. Slugs
 // can contain colons (e.g. some vendor model ids), so we only split on the
@@ -285,6 +301,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     }
     return ready;
   }, [instanceEntries]);
+  const usageRecommendationInstanceSet = useMemo(() => {
+    const instanceIds = new Set<ProviderInstanceId>();
+    for (const entry of instanceEntries) {
+      if (resolveCommercialUsageModelRecommendation(entry.snapshot)) {
+        instanceIds.add(entry.instanceId);
+      }
+    }
+    return instanceIds;
+  }, [instanceEntries]);
 
   // Flatten models into a searchable array. One pass over the
   // instance-keyed map; each model carries its instance id + driver kind
@@ -302,12 +327,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (!readyInstanceSet.has(instanceId)) {
         continue;
       }
+      const defaultModelSlug = resolveDefaultModelSlugForModels(models, entry.driverKind);
       for (const model of models) {
+        const capabilityTags = buildModelCapabilityTags({
+          model,
+          defaultModelSlug,
+        });
         out.push({
           slug: model.slug,
           name: model.name,
           ...(model.shortName ? { shortName: model.shortName } : {}),
           ...(model.subProvider ? { subProvider: model.subProvider } : {}),
+          ...(model.isCustom !== undefined ? { isCustom: model.isCustom } : {}),
           instanceId,
           driverKind: entry.driverKind,
           instanceDisplayName: entry.displayName,
@@ -315,6 +346,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           ...(entry.continuationGroupKey
             ? { continuationGroupKey: entry.continuationGroupKey }
             : {}),
+          isDefaultModel: defaultModelSlug === model.slug,
+          capabilityTags,
+          capabilitySearchTokens: buildModelCapabilitySearchTokens(capabilityTags),
         });
       }
     }
@@ -353,6 +387,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               name: model.name,
               ...(model.shortName ? { shortName: model.shortName } : {}),
               ...(model.subProvider ? { subProvider: model.subProvider } : {}),
+              tags: model.capabilitySearchTokens,
               driverKind: model.driverKind,
               providerDisplayName: model.instanceDisplayName,
               isFavorite: favoritesSet.has(providerModelKey(model.instanceId, model.slug)),
@@ -364,6 +399,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             name: model.name,
             ...(model.shortName ? { shortName: model.shortName } : {}),
             ...(model.subProvider ? { subProvider: model.subProvider } : {}),
+            tags: model.capabilitySearchTokens,
             driverKind: model.driverKind,
             providerDisplayName: model.instanceDisplayName,
           }),
@@ -519,12 +555,35 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     (): string[] => filteredModels.map((model) => `${model.instanceId}:${model.slug}`),
     [filteredModels],
   );
-  const activeModelKey = `${props.activeInstanceId}:${props.model}`;
-  const filteredModelByKey = useMemo(
-    (): ReadonlyMap<string, ModelPickerItem> =>
-      new Map(filteredModels.map((model) => [`${model.instanceId}:${model.slug}`, model] as const)),
-    [filteredModels],
+  const filteredModelSections = useMemo(
+    () =>
+      buildModelPickerSections(filteredModels, {
+        favoriteModelKeys: favoritesSet,
+        economyRecommendationModelKeys: new Set(
+          filteredModels
+            .filter(
+              (model) =>
+                usageRecommendationInstanceSet.has(model.instanceId) &&
+                hasEconomyCapabilityTag(model.capabilityTags),
+            )
+            .map((model) => providerModelKey(model.instanceId, model.slug)),
+        ),
+        showSections:
+          !props.simplified &&
+          !isSearching &&
+          selectedInstanceId !== "favorites" &&
+          filteredModels.length > 1,
+      }),
+    [
+      favoritesSet,
+      filteredModels,
+      isSearching,
+      props.simplified,
+      selectedInstanceId,
+      usageRecommendationInstanceSet,
+    ],
   );
+  const activeModelKey = `${props.activeInstanceId}:${props.model}`;
   const reasoningFirstModels = useMemo(() => {
     const scopedModels =
       props.lockedProvider !== null
@@ -870,40 +929,58 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   props.simplified ? "px-1.5 pb-2" : "divide-y px-2 py-1",
                 )}
               >
-                {filteredModelKeys.map((modelKey, index) => {
-                  const model = filteredModelByKey.get(modelKey);
-                  if (!model) {
-                    return null;
-                  }
-                  if (props.simplified) {
-                    return (
-                      <ModelPickerSimpleRow
-                        key={modelKey}
-                        index={index}
-                        model={model}
-                        selected={modelKey === activeModelKey}
-                        showSubmenuIndicator={modelKey === activeModelKey && showReasoningSubmenu}
-                      />
-                    );
-                  }
+                {filteredModelSections.map((section) => {
+                  const sectionOffset = filteredModelSections
+                    .slice(0, filteredModelSections.indexOf(section))
+                    .reduce((count, priorSection) => count + priorSection.items.length, 0);
+
                   return (
-                    <ModelListRow
-                      key={modelKey}
-                      index={index}
-                      model={model}
-                      instanceId={model.instanceId}
-                      driverKind={model.driverKind}
-                      providerDisplayName={model.instanceDisplayName}
-                      providerAccentColor={model.instanceAccentColor}
-                      isFavorite={favoritesSet.has(modelKey)}
-                      showProvider={!isLocked || showLockedInstanceSidebar}
-                      preferShortName={!isLocked}
-                      useTriggerLabel={isLocked && !showLockedInstanceSidebar}
-                      showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
-                      showSubmenuIndicator={modelKey === activeModelKey && showReasoningSubmenu}
-                      jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
-                      onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
-                    />
+                    <div key={section.key} className="contents">
+                      {section.label ? (
+                        <div className="px-3 pb-1 pt-2 text-[11px] font-medium text-muted-foreground/70">
+                          {section.label}
+                        </div>
+                      ) : null}
+                      {section.items.map((model, sectionIndex) => {
+                        const modelKey = `${model.instanceId}:${model.slug}`;
+                        const index = sectionOffset + sectionIndex;
+                        if (props.simplified) {
+                          return (
+                            <ModelPickerSimpleRow
+                              key={modelKey}
+                              index={index}
+                              model={model}
+                              selected={modelKey === activeModelKey}
+                              showSubmenuIndicator={
+                                modelKey === activeModelKey && showReasoningSubmenu
+                              }
+                            />
+                          );
+                        }
+                        return (
+                          <ModelListRow
+                            key={modelKey}
+                            index={index}
+                            model={model}
+                            instanceId={model.instanceId}
+                            driverKind={model.driverKind}
+                            providerDisplayName={model.instanceDisplayName}
+                            providerAccentColor={model.instanceAccentColor}
+                            isFavorite={favoritesSet.has(modelKey)}
+                            showProvider={!isLocked || showLockedInstanceSidebar}
+                            preferShortName={!isLocked}
+                            useTriggerLabel={isLocked && !showLockedInstanceSidebar}
+                            showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
+                            capabilityTags={model.capabilityTags}
+                            showSubmenuIndicator={
+                              modelKey === activeModelKey && showReasoningSubmenu
+                            }
+                            jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
+                            onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
+                          />
+                        );
+                      })}
+                    </div>
                   );
                 })}
               </ComboboxList>

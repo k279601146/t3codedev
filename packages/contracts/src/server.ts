@@ -419,6 +419,20 @@ export const ServerTraceDiagnosticsLogEvent = Schema.Struct({
 });
 export type ServerTraceDiagnosticsLogEvent = typeof ServerTraceDiagnosticsLogEvent.Type;
 
+export const ServerTraceDiagnosticsProviderPerformance = Schema.Struct({
+  provider: TrimmedNonEmptyString,
+  turnCount: NonNegativeInt,
+  failureCount: NonNegativeInt,
+  averageTurnDurationMs: Schema.NullOr(Schema.Number),
+  maxTurnDurationMs: Schema.NullOr(Schema.Number),
+  ttftCount: NonNegativeInt,
+  averageTtftMs: Schema.NullOr(Schema.Number),
+  maxTtftMs: Schema.NullOr(Schema.Number),
+  lastSeenAt: Schema.DateTimeUtc,
+});
+export type ServerTraceDiagnosticsProviderPerformance =
+  typeof ServerTraceDiagnosticsProviderPerformance.Type;
+
 export const ServerTraceDiagnosticsResult = Schema.Struct({
   traceFilePath: TrimmedNonEmptyString,
   scannedFilePaths: Schema.Array(TrimmedNonEmptyString),
@@ -437,6 +451,7 @@ export const ServerTraceDiagnosticsResult = Schema.Struct({
   commonFailures: Schema.Array(ServerTraceDiagnosticsFailureSummary),
   latestFailures: Schema.Array(ServerTraceDiagnosticsRecentFailure),
   latestWarningAndErrorLogs: Schema.Array(ServerTraceDiagnosticsLogEvent),
+  providerPerformance: Schema.Array(ServerTraceDiagnosticsProviderPerformance),
   partialFailure: Schema.Option(Schema.Boolean),
   error: Schema.Option(
     Schema.Struct({

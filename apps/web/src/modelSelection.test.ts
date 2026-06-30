@@ -1,4 +1,5 @@
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
+import { createModelCapabilities } from "@t3tools/shared/model";
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
 import { describe, expect, it } from "vitest";
 import { deriveProviderInstanceEntries } from "./providerInstances";
@@ -173,6 +174,39 @@ describe("instance-scoped model selection", () => {
       "claude-opus-4-6",
       "claude-sonnet-4-6",
     ]);
+  });
+
+  it("preserves server model capabilities for picker presentation", () => {
+    const capabilities = createModelCapabilities({
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          options: [{ id: "medium", label: "medium" }],
+        },
+      ],
+    });
+    const providers = [
+      {
+        ...provider({ instanceId: "codex", models: [] }),
+        models: [
+          {
+            slug: "gpt-5.4",
+            name: "GPT-5.4",
+            isCustom: false,
+            capabilities,
+          },
+        ],
+      },
+    ];
+    const stock = deriveProviderInstanceEntries(providers).find(
+      (entry) => entry.instanceId === "codex",
+    )!;
+
+    expect(getAppModelOptionsForInstance(DEFAULT_UNIFIED_SETTINGS, stock)[0]?.capabilities).toBe(
+      capabilities,
+    );
   });
 
   it("falls back when the selected model is hidden", () => {

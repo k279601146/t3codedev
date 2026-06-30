@@ -285,6 +285,61 @@ export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
   bootstrapToken: Schema.optionalKey(Schema.String),
 });
 
+export type DesktopBackendHealthStatus =
+  | "ready"
+  | "starting"
+  | "restarting"
+  | "stopped"
+  | "failed";
+
+export const DesktopBackendHealthStatusSchema = Schema.Literals([
+  "ready",
+  "starting",
+  "restarting",
+  "stopped",
+  "failed",
+]);
+
+export interface DesktopBackendHealthSnapshot {
+  status: DesktopBackendHealthStatus;
+  desiredRunning: boolean;
+  ready: boolean;
+  activePid: number | null;
+  restartAttempt: number;
+  restartScheduled: boolean;
+  nextRestartDelayMs: number | null;
+  httpBaseUrl: string | null;
+  backendEntryPath: string | null;
+  backendCwd: string | null;
+  logDirPath: string;
+  captureOutput: boolean;
+  lastStartedAt: string | null;
+  lastReadyAt: string | null;
+  lastExitAt: string | null;
+  lastExitCode: number | null;
+  lastExitReason: string | null;
+}
+
+export const DesktopBackendHealthSnapshotSchema = Schema.Struct({
+  status: DesktopBackendHealthStatusSchema,
+  desiredRunning: Schema.Boolean,
+  ready: Schema.Boolean,
+  activePid: Schema.NullOr(Schema.Number),
+  restartAttempt: Schema.Number,
+  restartScheduled: Schema.Boolean,
+  nextRestartDelayMs: Schema.NullOr(Schema.Number),
+  httpBaseUrl: Schema.NullOr(Schema.String),
+  backendEntryPath: Schema.NullOr(Schema.String),
+  backendCwd: Schema.NullOr(Schema.String),
+  logDirPath: Schema.String,
+  captureOutput: Schema.Boolean,
+  lastStartedAt: Schema.NullOr(Schema.String),
+  lastReadyAt: Schema.NullOr(Schema.String),
+  lastExitAt: Schema.NullOr(Schema.String),
+  lastExitCode: Schema.NullOr(Schema.Number),
+  lastExitReason: Schema.NullOr(Schema.String),
+});
+
 export interface DesktopCommercialAuthState {
   gatewayBaseUrl: string;
   webAuthBaseUrl: string;
@@ -652,6 +707,7 @@ export const DesktopWindowsSandboxModeChangeResultSchema = Schema.Struct({
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
+  getDesktopBackendHealth?: () => Promise<DesktopBackendHealthSnapshot>;
   getCommercialAuthState?: () => Promise<DesktopCommercialAuthState>;
   signInCommercialAuth?: (
     input: DesktopCommercialAuthSignInInput,
@@ -789,6 +845,9 @@ export interface LocalApi {
     getSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<string | null>;
     setSavedEnvironmentSecret: (environmentId: EnvironmentId, secret: string) => Promise<boolean>;
     removeSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<void>;
+  };
+  diagnostics?: {
+    getDesktopBackendHealth: () => Promise<DesktopBackendHealthSnapshot | null>;
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
