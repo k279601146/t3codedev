@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resetPerformanceModeForTests, setPerformanceModeActive } from "./performanceMode";
+import {
+  getPerformanceModeSnapshot,
+  resetPerformanceModeForTests,
+  setPerformanceModeActive,
+  subscribePerformanceMode,
+} from "./performanceMode";
 
 beforeEach(() => {
   const body = {
@@ -56,5 +61,21 @@ describe("performance mode", () => {
 
     expect(document.body.dataset.performanceLite).toBe("false");
     expect(document.body.dataset.performanceMode).toBe("normal");
+  });
+
+  it("notifies subscribers when the active mode changes", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribePerformanceMode(listener);
+
+    setPerformanceModeActive("scrolling", true);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getPerformanceModeSnapshot()).toBe("scrolling");
+
+    unsubscribe();
+    setPerformanceModeActive("scrolling", false);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getPerformanceModeSnapshot()).toBe("normal");
   });
 });

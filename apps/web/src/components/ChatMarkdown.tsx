@@ -12,6 +12,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { Components } from "react-markdown";
@@ -35,6 +36,7 @@ import {
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 import { LRUCache } from "../lib/lruCache";
+import { getPerformanceModeSnapshot, subscribePerformanceMode } from "../performanceMode";
 
 const LazyChatMarkdownHighlighter = lazy(() => import("./ChatMarkdownHighlighter"));
 
@@ -360,6 +362,7 @@ interface SuspenseShikiCodeBlockProps {
   code: string;
   themeName: DiffThemeName;
   isStreaming: boolean;
+  suppressHighlight: boolean;
 }
 
 function SuspenseShikiCodeBlock({
@@ -367,10 +370,11 @@ function SuspenseShikiCodeBlock({
   code,
   themeName,
   isStreaming,
+  suppressHighlight,
 }: SuspenseShikiCodeBlockProps) {
   const shouldHydrate = useIdleHydration();
   const language = extractFenceLanguage(className);
-  if (!shouldHydrate) {
+  if (!shouldHydrate || suppressHighlight) {
     return <pre className={className}>{code}</pre>;
   }
   return (
@@ -969,6 +973,12 @@ function ChatMarkdown({
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
+  const performanceMode = useSyncExternalStore(
+    subscribePerformanceMode,
+    getPerformanceModeSnapshot,
+    getPerformanceModeSnapshot,
+  );
+  const suppressCodeHighlight = performanceMode === "scrolling";
   const { renderedText, markdownFileLinkMetaByHref, fileLinkParentSuffixByPath } = useMemo(
     () => getMarkdownRenderCacheEntry(text, cwd),
     [cwd, text],
@@ -1073,6 +1083,7 @@ function ChatMarkdown({
                   code={codeBlock.code}
                   themeName={diffThemeName}
                   isStreaming={isStreaming}
+                  suppressHighlight={suppressCodeHighlight}
                 />
               </Suspense>
             </CodeHighlightErrorBoundary>
@@ -1088,6 +1099,7 @@ function ChatMarkdown({
       onOpenFile,
       resolvedTheme,
       skills,
+      suppressCodeHighlight,
     ],
   );
 
