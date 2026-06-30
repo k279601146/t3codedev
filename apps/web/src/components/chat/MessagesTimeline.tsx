@@ -11,13 +11,17 @@ import {
   use,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import {
+  Virtuoso,
+  type Components as VirtuosoComponents,
+  type VirtuosoHandle,
+} from "react-virtuoso";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
 import { type TurnDiffSummary } from "../../types";
 import { getPatchDisplayPath, parseUnifiedDiff, type UnifiedDiffLine } from "../../lib/unifiedDiff";
@@ -64,9 +68,6 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
-  computeVirtualTextWindow,
-  computeVirtualTimelineLayout,
-  computeVirtualTimelineWindowFromLayout,
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
@@ -76,8 +77,6 @@ import {
   resolveAggregateFileChangeAction,
   resolveFileChangeActionFromKind,
   resolveAssistantMessageCopyState,
-  resolveTimelineOverscanPx,
-  resolveVirtualTimelineMeasuredRowHeight,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
@@ -170,20 +169,13 @@ const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
-const TIMELINE_VIRTUALIZATION_ROW_THRESHOLD = 80;
-const TIMELINE_ESTIMATED_ROW_HEIGHT = 160;
-const TIMELINE_COLLAPSED_SUMMARY_HOST_ESTIMATED_ROW_HEIGHT = 32;
-const TIMELINE_SCROLLING_OVERSCAN_PX = 360;
-const TIMELINE_IDLE_OVERSCAN_PX = 900;
+const TIMELINE_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
+const TIMELINE_INITIAL_RENDER_COUNT = 24;
+const TIMELINE_TOP_LOAD_THRESHOLD_PX = 240;
+const TIMELINE_OVERSCAN_PX = 360;
+const TIMELINE_INCREASE_VIEWPORT_PX = 900;
 const COMMAND_OUTPUT_PREVIEW_MAX_CHARS = 24_000;
 const COMMAND_OUTPUT_PREVIEW_MAX_LINES = 400;
-const COMMAND_OUTPUT_DIALOG_LINE_HEIGHT = 20;
-const COMMAND_OUTPUT_DIALOG_OVERSCAN_LINES = 24;
-type TimelineRowMeasurementMode = "expanded" | "collapsed";
-interface TimelineRowHeightMeasurement {
-  expanded?: number | undefined;
-  collapsed?: number | undefined;
-}
 
 const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 
@@ -353,300 +345,47 @@ export const MessagesTimeline = memo(function MessagesTimeline({
    *  Removing them entirely would shift the transcript while the user reads. */
   const rows = stableRows;
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const isScrollingRef = useRef(false);
-  const scrollingEndTimerRef = useRef<number | null>(null);
-  const scrollMeasureFrameRef = useRef<number | null>(null);
-  const pendingPrependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
-  const virtualListRef = useRef<HTMLDivElement | null>(null);
-  const rowHeightsRef = useRef(new Map<string, TimelineRowHeightMeasurement>());
-  const rowMeasurementFrameRef = useRef<number | null>(null);
-  const [rowMeasurementVersion, setRowMeasurementVersion] = useState(0);
-  const [isVirtualScrollActive, setIsVirtualScrollActive] = useState(false);
-  const [virtualScrollState, setVirtualScrollState] = useState({
-    scrollTop: 0,
-    viewportHeight: 0,
-    listOffsetTop: 0,
-  });
-  const shouldVirtualizeRows = rows.length > TIMELINE_VIRTUALIZATION_ROW_THRESHOLD;
+  const didInitialScrollRef = useRef(false);
+  const previousRowCountRef = useRef(rows.length);
+  const previousRowsRef = useRef<ReadonlyArray<MessagesTimelineRow>>(rows);
+  const [firstItemIndex, setFirstItemIndex] = useState(TIMELINE_INITIAL_FIRST_ITEM_INDEX);
 
   const getScrollContainer = useCallback(() => {
     return scrollRef.current;
   }, [scrollRef]);
 
-  const scheduleRowMeasurementVersionBump = useCallback(() => {
-    if (rowMeasurementFrameRef.current !== null) {
-      return;
-    }
-    rowMeasurementFrameRef.current = window.requestAnimationFrame(() => {
-      rowMeasurementFrameRef.current = null;
-      setRowMeasurementVersion((version) => version + 1);
-    });
-  }, []);
-
-  const measureVirtualViewport = useCallback(() => {
-    const scrollEl = getScrollContainer();
-    if (!scrollEl) {
-      return;
-    }
-    const listOffsetTop = virtualListRef.current?.offsetTop ?? 0;
-    const nextState = {
-      scrollTop: scrollEl.scrollTop,
-      viewportHeight: scrollEl.clientHeight,
-      listOffsetTop,
-    };
-    setVirtualScrollState((previous) =>
-      previous.scrollTop === nextState.scrollTop &&
-      previous.viewportHeight === nextState.viewportHeight &&
-      previous.listOffsetTop === nextState.listOffsetTop
-        ? previous
-        : nextState,
-    );
-  }, [getScrollContainer]);
-
-  const handleScroll = useCallback(() => {
-    if (!isScrollingRef.current) {
-      isScrollingRef.current = true;
-      window.requestAnimationFrame(() => {
-        if (isScrollingRef.current) {
-          setIsVirtualScrollActive(true);
-        }
-      });
-    }
-    if (scrollingEndTimerRef.current !== null) {
-      window.clearTimeout(scrollingEndTimerRef.current);
-    }
-    scrollingEndTimerRef.current = window.setTimeout(() => {
-      scrollingEndTimerRef.current = null;
-      if (isScrollingRef.current) {
-        isScrollingRef.current = false;
-        setIsVirtualScrollActive(false);
-      }
-    }, 160);
-    if (scrollMeasureFrameRef.current === null) {
-      scrollMeasureFrameRef.current = window.requestAnimationFrame(() => {
-        scrollMeasureFrameRef.current = null;
-        const scrollEl = getScrollContainer();
-        if (!scrollEl) return;
-        if (shouldVirtualizeRows) {
-          measureVirtualViewport();
-        }
-        const isAtEnd = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 10;
-        onIsAtEndChange(isAtEnd);
-        if (
-          hasMoreBefore &&
-          !isLoadingBefore &&
-          !loadMoreBeforeInFlightRef.current &&
-          onLoadMoreBefore &&
-          scrollEl.scrollTop < 240
-        ) {
-          loadMoreBeforeInFlightRef.current = true;
-          pendingPrependAnchorRef.current = {
-            scrollHeight: scrollEl.scrollHeight,
-            scrollTop: scrollEl.scrollTop,
-          };
-          onLoadMoreBefore();
-        }
-      });
-    }
-  }, [
-    hasMoreBefore,
-    isLoadingBefore,
-    onIsAtEndChange,
-    onLoadMoreBefore,
-    getScrollContainer,
-    measureVirtualViewport,
-    shouldVirtualizeRows,
-  ]);
-
   useEffect(() => {
     if (!isLoadingBefore) {
       loadMoreBeforeInFlightRef.current = false;
     }
-    if (!hasMoreBefore) {
-      pendingPrependAnchorRef.current = null;
-    }
-  }, [hasMoreBefore, isLoadingBefore]);
+  }, [isLoadingBefore]);
 
   useEffect(() => {
-    const scrollEl = getScrollContainer();
-    if (!scrollEl) return;
-    scrollEl.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      scrollEl.removeEventListener("scroll", handleScroll);
-    };
-  }, [getScrollContainer, handleScroll]);
-
-  useEffect(
-    () => () => {
-      if (scrollingEndTimerRef.current !== null) {
-        window.clearTimeout(scrollingEndTimerRef.current);
-      }
-      if (scrollMeasureFrameRef.current !== null) {
-        window.cancelAnimationFrame(scrollMeasureFrameRef.current);
-        scrollMeasureFrameRef.current = null;
-      }
-      if (rowMeasurementFrameRef.current !== null) {
-        window.cancelAnimationFrame(rowMeasurementFrameRef.current);
-        rowMeasurementFrameRef.current = null;
-      }
-      if (isScrollingRef.current) {
-        isScrollingRef.current = false;
-      }
-    },
-    [],
-  );
-
-  useLayoutEffect(() => {
-    if (!shouldVirtualizeRows) {
+    const previousRows = previousRowsRef.current;
+    const previousFirstRowId = previousRows[0]?.id;
+    previousRowsRef.current = rows;
+    if (!previousFirstRowId || rows.length <= previousRows.length) {
       return;
     }
-    measureVirtualViewport();
-  }, [measureVirtualViewport, rows.length, shouldVirtualizeRows]);
-
-  useEffect(() => {
-    if (!shouldVirtualizeRows) {
+    const previousFirstRowNextIndex = rows.findIndex((row) => row.id === previousFirstRowId);
+    if (previousFirstRowNextIndex <= 0) {
       return;
     }
-    const scrollEl = getScrollContainer();
-    if (!scrollEl || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const resizeObserver = new ResizeObserver(() => measureVirtualViewport());
-    resizeObserver.observe(scrollEl);
-    if (virtualListRef.current) {
-      resizeObserver.observe(virtualListRef.current);
-    }
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [getScrollContainer, measureVirtualViewport, shouldVirtualizeRows]);
+    setFirstItemIndex((index) => Math.max(1, index - previousFirstRowNextIndex));
+  }, [rows]);
 
-  useEffect(() => {
-    if (!shouldVirtualizeRows) {
-      rowHeightsRef.current.clear();
-      return;
-    }
-    const rowIds = new Set(rows.map((row) => row.id));
-    let changed = false;
-    for (const rowId of rowHeightsRef.current.keys()) {
-      if (!rowIds.has(rowId)) {
-        rowHeightsRef.current.delete(rowId);
-        changed = true;
-      }
-    }
-    if (changed) {
-      scheduleRowMeasurementVersionBump();
-    }
-  }, [rows, scheduleRowMeasurementVersionBump, shouldVirtualizeRows]);
+  const scrollToEnd = useCallback((behavior: "auto" | "smooth" = "auto") => {
+    virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior });
+  }, []);
 
-  const resolveRowMeasurementMode = useCallback(
-    (rowId: string): TimelineRowMeasurementMode => {
-      const ownerId = ownerAssistantMessageIdByRowId.get(rowId);
-      return ownerId && collapsedAssistantMessageIds.has(ownerId) ? "collapsed" : "expanded";
-    },
-    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId],
-  );
-
-  const getMeasuredVirtualRowHeight = useCallback(
-    (rowId: string) => {
-      const ownerId = ownerAssistantMessageIdByRowId.get(rowId);
-      const isCollapsedMember = ownerId ? collapsedAssistantMessageIds.has(ownerId) : false;
-      const hasSummaryToggle = summaryButtonHostByRowId.has(rowId);
-      const measurement = rowHeightsRef.current.get(rowId);
-      return resolveVirtualTimelineMeasuredRowHeight({
-        isCollapsedMember,
-        hasSummaryToggle,
-        expandedHeight: measurement?.expanded,
-        collapsedHeight: measurement?.collapsed,
-        collapsedSummaryEstimatedHeight: TIMELINE_COLLAPSED_SUMMARY_HOST_ESTIMATED_ROW_HEIGHT,
-      });
-    },
-    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId, summaryButtonHostByRowId],
-  );
-
-  const rememberRowElement = useCallback(
-    (
-      rowId: string,
-      measurementMode: TimelineRowMeasurementMode,
-      element: HTMLDivElement | null,
-    ) => {
-      if (!shouldVirtualizeRows || !element) {
-        return;
-      }
-
-      const measure = () => {
-        const nextHeight = element.getBoundingClientRect().height;
-        if (!Number.isFinite(nextHeight) || nextHeight < 0) {
-          return;
-        }
-        const previousHeight = rowHeightsRef.current.get(rowId)?.[measurementMode];
-        if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) {
-          return;
-        }
-        const previousMeasurement = rowHeightsRef.current.get(rowId) ?? {};
-        rowHeightsRef.current.set(rowId, {
-          ...previousMeasurement,
-          [measurementMode]: nextHeight,
-        });
-        scheduleRowMeasurementVersionBump();
-      };
-
-      measure();
-      if (typeof ResizeObserver === "undefined") {
-        return;
-      }
-
-      const resizeObserver = new ResizeObserver(measure);
-      resizeObserver.observe(element);
-      return () => resizeObserver.disconnect();
-    },
-    [scheduleRowMeasurementVersionBump, shouldVirtualizeRows],
-  );
-
-  const virtualLayout = useMemo(
-    () =>
-      shouldVirtualizeRows
-        ? computeVirtualTimelineLayout({
-            rows,
-            getRowId: keyExtractor,
-            getRowHeight: getMeasuredVirtualRowHeight,
-            estimatedRowHeight: TIMELINE_ESTIMATED_ROW_HEIGHT,
-          })
-        : null,
-    [getMeasuredVirtualRowHeight, rowMeasurementVersion, rows, shouldVirtualizeRows],
-  );
-
-  const virtualOverscanPx = resolveTimelineOverscanPx({
-    isScrolling: isVirtualScrollActive,
-    scrollingOverscanPx: TIMELINE_SCROLLING_OVERSCAN_PX,
-    idleOverscanPx: TIMELINE_IDLE_OVERSCAN_PX,
-  });
-
-  const virtualWindow = useMemo(
-    () =>
-      virtualLayout
-        ? computeVirtualTimelineWindowFromLayout({
-            layout: virtualLayout,
-            estimatedRowHeight: TIMELINE_ESTIMATED_ROW_HEIGHT,
-            scrollTop: virtualScrollState.scrollTop,
-            viewportHeight: virtualScrollState.viewportHeight,
-            listOffsetTop: virtualScrollState.listOffsetTop,
-            overscanPx: virtualOverscanPx,
-          })
-        : null,
-    [virtualLayout, virtualOverscanPx, virtualScrollState],
-  );
-
-  const didInitialScrollRef = useRef(false);
-  const previousRowCountRef = useRef(rows.length);
   useEffect(() => {
     const previousRowCount = previousRowCountRef.current;
     previousRowCountRef.current = rows.length;
 
-    const shouldScrollToInitialEnd =
-      !didInitialScrollRef.current && rows.length > 0 && !pendingPrependAnchorRef.current;
+    const shouldScrollToInitialEnd = !didInitialScrollRef.current && rows.length > 0;
     const shouldScrollAfterEmptyLoad = previousRowCount === 0 && rows.length > 0;
     if (!shouldScrollToInitialEnd && !shouldScrollAfterEmptyLoad) {
       return;
@@ -655,61 +394,119 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
     onIsAtEndChange(true);
     const frameId = window.requestAnimationFrame(() => {
-      const scrollEl = getScrollContainer();
-      if (scrollEl) {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-        measureVirtualViewport();
+      scrollToEnd();
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [onIsAtEndChange, rows.length, scrollToEnd]);
+
+  const handleAtBottomStateChange = useCallback(
+    (isAtBottom: boolean) => {
+      isAtBottomRef.current = isAtBottom;
+      onIsAtEndChange(isAtBottom);
+    },
+    [onIsAtEndChange],
+  );
+
+  const handleAtTopStateChange = useCallback(
+    (isAtTop: boolean) => {
+      if (
+        !isAtTop ||
+        !didInitialScrollRef.current ||
+        !hasMoreBefore ||
+        isLoadingBefore ||
+        loadMoreBeforeInFlightRef.current ||
+        !onLoadMoreBefore
+      ) {
+        return;
       }
-    });
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [getScrollContainer, measureVirtualViewport, onIsAtEndChange, rows.length]);
+      loadMoreBeforeInFlightRef.current = true;
+      onLoadMoreBefore();
+    },
+    [hasMoreBefore, isLoadingBefore, onLoadMoreBefore],
+  );
 
-  useEffect(() => {
-    const anchor = pendingPrependAnchorRef.current;
-    if (!anchor || isLoadingBefore) {
+  const handleTotalListHeightChanged = useCallback(() => {
+    if (!didInitialScrollRef.current || !isAtBottomRef.current) {
       return;
     }
-    const frameId = window.requestAnimationFrame(() => {
-      const scrollEl = getScrollContainer();
-      if (!scrollEl) return;
-      scrollEl.scrollTop = scrollEl.scrollHeight - anchor.scrollHeight + anchor.scrollTop;
-      measureVirtualViewport();
-      pendingPrependAnchorRef.current = null;
-    });
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [getScrollContainer, isLoadingBefore, measureVirtualViewport, rows.length]);
+    scrollToEnd();
+  }, [scrollToEnd]);
 
-  const lastRow = rows.at(-1) ?? null;
-  useEffect(() => {
-    if (!lastRow) {
-      return;
+  const handleScrollerRef = useCallback(
+    (ref: HTMLElement | Window | null) => {
+      (scrollRef as { current: HTMLDivElement | null }).current =
+        ref instanceof HTMLElement ? (ref as HTMLDivElement) : null;
+    },
+    [scrollRef],
+  );
+
+  const timelineComponents = useMemo<VirtuosoComponents<MessagesTimelineRow>>(
+    () => ({
+      Header: function TimelineHeader() {
+        return (
+          <>
+            {TIMELINE_LIST_HEADER}
+            {hasMoreBefore ? (
+              <div className="mx-auto flex w-full max-w-[736px] justify-center py-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs transition-colors hover:border-border hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  disabled={isLoadingBefore}
+                  onClick={() => {
+                    if (loadMoreBeforeInFlightRef.current) {
+                      return;
+                    }
+                    loadMoreBeforeInFlightRef.current = true;
+                    onLoadMoreBefore?.();
+                  }}
+                >
+                  {isLoadingBefore ? "加载中..." : "加载更早记录"}
+                </button>
+              </div>
+            ) : null}
+          </>
+        );
+      },
+      Footer: function TimelineFooter() {
+        return TIMELINE_LIST_FOOTER;
+      },
+    }),
+    [hasMoreBefore, isLoadingBefore, onLoadMoreBefore],
+  );
+
+  const renderTimelineRow = useCallback(
+    (_index: number, row: MessagesTimelineRow) => {
+      const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
+      const isCollapsedProcessMember = ownerId
+        ? collapsedAssistantMessageIds.has(ownerId)
+        : false;
+      return (
+        <div
+          className={cn(
+            "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]",
+            isCollapsedProcessMember
+              ? null
+              : "[contain-intrinsic-size:0_160px] [content-visibility:auto]",
+          )}
+          data-timeline-root="true"
+        >
+          <TimelineRowContent row={row} />
+        </div>
+      );
+    },
+    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId],
+  );
+
+  const followOutput = useCallback((isAtBottom: boolean) => (isAtBottom ? "auto" : false), []);
+
+  const initialTopMostItemIndex = useMemo(() => {
+    if (rows.length === 0) {
+      return undefined;
     }
-
-    const scrollEl = getScrollContainer();
-    const isAtEnd = scrollEl
-      ? scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 10
-      : true;
-
-    if (!isAtEnd) {
-      onIsAtEndChange(false);
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const nextScrollEl = getScrollContainer();
-      if (nextScrollEl) {
-        nextScrollEl.scrollTop = nextScrollEl.scrollHeight;
-        measureVirtualViewport();
-      }
-    });
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [activeTurnInProgress, lastRow, onIsAtEndChange, getScrollContainer, measureVirtualViewport]);
+    return { index: "LAST" as const, align: "end" as const };
+  }, [rows.length]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -795,99 +592,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx.Provider value={sharedState}>
       <TimelineRowActivityCtx.Provider value={activityState}>
-        <div
-          ref={containerRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 bg-white dark:bg-background"
-        >
-          <div
-            ref={scrollRef}
-            className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
-            data-chat-timeline-scrolling={isVirtualScrollActive ? "true" : undefined}
-          >
-            {TIMELINE_LIST_HEADER}
-            {hasMoreBefore ? (
-              <div className="mx-auto flex w-full max-w-[736px] justify-center py-2">
-                <button
-                  type="button"
-                  className="rounded-md border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs transition-colors hover:border-border hover:text-foreground disabled:cursor-default disabled:opacity-60"
-                  disabled={isLoadingBefore}
-                  onClick={() => {
-                    const scrollEl = getScrollContainer();
-                    if (loadMoreBeforeInFlightRef.current) {
-                      return;
-                    }
-                    loadMoreBeforeInFlightRef.current = true;
-                    if (scrollEl) {
-                      pendingPrependAnchorRef.current = {
-                        scrollHeight: scrollEl.scrollHeight,
-                        scrollTop: scrollEl.scrollTop,
-                      };
-                    }
-                    onLoadMoreBefore?.();
-                  }}
-                >
-                  {isLoadingBefore ? "加载中..." : "加载更早记录"}
-                </button>
-              </div>
-            ) : null}
-            {virtualWindow ? (
-              <div
-                ref={virtualListRef}
-                className="relative min-w-0"
-                style={{ height: virtualWindow.totalHeight }}
-              >
-                {virtualWindow.items.map((item) => {
-                  const measurementMode = resolveRowMeasurementMode(item.row.id);
-                  const isCollapsedProcessMember = measurementMode === "collapsed";
-                  return (
-                    <div
-                      key={keyExtractor(item.row)}
-                      className="absolute inset-x-0 top-0 min-w-0"
-                      style={{ transform: `translateY(${item.top}px)` }}
-                    >
-                      <div
-                        ref={(element) =>
-                          rememberRowElement(item.row.id, measurementMode, element)
-                        }
-                        className={cn(
-                          "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]",
-                          isCollapsedProcessMember
-                            ? null
-                            : "[contain-intrinsic-size:0_160px] [content-visibility:auto]",
-                        )}
-                        data-timeline-root="true"
-                      >
-                        <TimelineRowContent row={item.row} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div ref={virtualListRef} className="min-w-0">
-                {rows.map((row) => {
-                  const measurementMode = resolveRowMeasurementMode(row.id);
-                  const isCollapsedProcessMember = measurementMode === "collapsed";
-                  return (
-                    <div
-                      key={keyExtractor(row)}
-                      className={cn(
-                        "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]",
-                        isCollapsedProcessMember
-                          ? null
-                          : "[contain-intrinsic-size:0_160px] [content-visibility:auto]",
-                      )}
-                      data-timeline-root="true"
-                    >
-                      <TimelineRowContent row={row} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {TIMELINE_LIST_FOOTER}
-          </div>
-        </div>
+        <Virtuoso<MessagesTimelineRow>
+          ref={virtuosoRef}
+          className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
+          data={rows}
+          firstItemIndex={firstItemIndex}
+          initialItemCount={Math.min(rows.length, TIMELINE_INITIAL_RENDER_COUNT)}
+          initialTopMostItemIndex={initialTopMostItemIndex}
+          computeItemKey={(_index, row) => keyExtractor(row)}
+          components={timelineComponents}
+          itemContent={renderTimelineRow}
+          scrollerRef={handleScrollerRef}
+          atBottomStateChange={handleAtBottomStateChange}
+          atTopStateChange={handleAtTopStateChange}
+          atTopThreshold={TIMELINE_TOP_LOAD_THRESHOLD_PX}
+          followOutput={followOutput}
+          totalListHeightChanged={handleTotalListHeightChanged}
+          increaseViewportBy={{
+            top: TIMELINE_INCREASE_VIEWPORT_PX,
+            bottom: TIMELINE_INCREASE_VIEWPORT_PX,
+          }}
+          overscan={{ main: TIMELINE_OVERSCAN_PX, reverse: TIMELINE_OVERSCAN_PX }}
+        />
       </TimelineRowActivityCtx.Provider>
     </TimelineRowCtx.Provider>
   );
@@ -4237,74 +3963,21 @@ const VirtualizedCommandOutput = memo(function VirtualizedCommandOutput({
   output: string;
 }) {
   const lines = useMemo(() => output.split("\n"), [output]);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const scrollFrameRef = useRef<number | null>(null);
-  const [viewport, setViewport] = useState({ scrollTop: 0, viewportHeight: 420 });
-
-  const measure = useCallback(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    setViewport((previous) => {
-      const next = {
-        scrollTop: element.scrollTop,
-        viewportHeight: element.clientHeight,
-      };
-      return previous.scrollTop === next.scrollTop &&
-        previous.viewportHeight === next.viewportHeight
-        ? previous
-        : next;
-    });
-  }, []);
-
-  const scheduleMeasure = useCallback(() => {
-    if (scrollFrameRef.current !== null) return;
-    scrollFrameRef.current = window.requestAnimationFrame(() => {
-      scrollFrameRef.current = null;
-      measure();
-    });
-  }, [measure]);
-
-  useLayoutEffect(() => {
-    measure();
-  }, [measure, lines.length]);
-
-  useEffect(
-    () => () => {
-      if (scrollFrameRef.current !== null) {
-        window.cancelAnimationFrame(scrollFrameRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(scheduleMeasure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [scheduleMeasure]);
-
-  const windowState = computeVirtualTextWindow({
-    lineCount: lines.length,
-    lineHeight: COMMAND_OUTPUT_DIALOG_LINE_HEIGHT,
-    scrollTop: viewport.scrollTop,
-    viewportHeight: viewport.viewportHeight,
-    overscanLines: COMMAND_OUTPUT_DIALOG_OVERSCAN_LINES,
-  });
-  const visibleLines = lines.slice(windowState.startIndex, windowState.endIndex);
 
   return (
-    <div
-      ref={scrollRef}
+    <Virtuoso<string>
       className="max-h-[min(58dvh,34rem)] min-h-64 overflow-auto rounded-md bg-neutral-950 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-100 [scrollbar-gutter:stable]"
-      onScroll={scheduleMeasure}
       data-command-output-dialog-scroll="true"
-    >
-      <div style={{ height: windowState.topPadding }} aria-hidden="true" />
-      <pre className="whitespace-pre-wrap break-words">{visibleLines.join("\n")}</pre>
-      <div style={{ height: windowState.bottomPadding }} aria-hidden="true" />
-    </div>
+      data={lines}
+      initialItemCount={Math.min(lines.length, 80)}
+      increaseViewportBy={480}
+      overscan={240}
+      itemContent={(_index, line) => (
+        <div className="min-h-5 whitespace-pre-wrap break-words">
+          {line.length > 0 ? line : "\u00A0"}
+        </div>
+      )}
+    />
   );
 });
 
