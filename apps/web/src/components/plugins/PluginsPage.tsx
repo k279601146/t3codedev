@@ -1249,7 +1249,7 @@ function ComputerPluginDetails({
               variant="ghost"
               size="xs"
               disabled={allowedApps.length === 0 || busyAction === "clear"}
-              onClick={onClearPermissions}
+              onClick={() => void onClearPermissions()}
             >
               {busyAction === "clear" ? (
                 <Loader2Icon className="size-3.5 animate-spin" />
@@ -1469,6 +1469,8 @@ function PluginDetailsDialog({
   onAllowForegroundApp,
   onRemovePermission,
   onClearPermissions,
+  policyActionAuditEvents,
+  onRecordPolicyActionAuditEvent,
   onInstall,
   onUninstall,
 }: {
@@ -1494,7 +1496,11 @@ function PluginDetailsDialog({
   readonly onToggleComputerPaused: () => void;
   readonly onAllowForegroundApp: () => void;
   readonly onRemovePermission: (appKey: string) => void;
-  readonly onClearPermissions: () => void;
+  readonly onClearPermissions: () => Promise<DesktopAutomationActionResult>;
+  readonly policyActionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
+  readonly onRecordPolicyActionAuditEvent: (
+    event: AutomationPermissionPolicyActionAuditEvent,
+  ) => void;
   readonly onInstall: () => void;
   readonly onUninstall: () => void;
 }) {
@@ -1521,7 +1527,11 @@ function PluginDetailsDialog({
                 <BrowserExternalPluginDetails
                   state={browserExternalState}
                   refresh={onRefreshBrowserExternal}
+                  actionAuditEvents={policyActionAuditEvents.filter(
+                    (event) => event.source === "chrome",
+                  )}
                   onRestartSetup={onRestartBrowserExternalSetup}
+                  onRecordPolicyActionAuditEvent={onRecordPolicyActionAuditEvent}
                 />
               ) : (
                 <BrowserExternalInstallDetails onInstall={onInstallBrowserExternal} />
@@ -1534,6 +1544,10 @@ function PluginDetailsDialog({
                 onAllowForeground={onAllowForegroundApp}
                 onRemovePermission={onRemovePermission}
                 onClearPermissions={onClearPermissions}
+                actionAuditEvents={policyActionAuditEvents.filter(
+                  (event) => event.source === "computer",
+                )}
+                onRecordPolicyActionAuditEvent={onRecordPolicyActionAuditEvent}
                 busyAction={busyAction}
               />
             ) : (
@@ -1561,6 +1575,9 @@ export function PluginsPage() {
   const [selectedPluginId, setSelectedPluginId] = useState<string>("builtin:browser_use");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [policyActionAuditEvents, setPolicyActionAuditEvents] = useState(
+    readPolicyActionAuditEvents,
+  );
   const {
     browserState,
     browserExternalPlugin,
@@ -1676,23 +1693,46 @@ export function PluginsPage() {
     },
   });
 
+  const recordPolicyActionAuditEvent = useCallback(
+    (event: AutomationPermissionPolicyActionAuditEvent) => {
+      setPolicyActionAuditEvents((events) => {
+        const next = appendAutomationPermissionPolicyActionAuditEvent(
+          events,
+          event,
+          AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_LIMIT,
+        );
+        writePolicyActionAuditEvents(next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const runComputerAction = useCallback(
-    async (actionKey: string, action: () => Promise<DesktopComputerAutomationState>) => {
-      if (busyAction) return;
+    async (
+      actionKey: string,
+      action: () => Promise<DesktopComputerAutomationState>,
+    ): Promise<DesktopAutomationActionResult> => {
+      if (busyAction) {
+        return { success: false, error: "已有 Computer Use 操作正在执行。" };
+      }
       setBusyAction(actionKey);
       try {
         setComputerState(await action());
+        return { success: true };
       } catch (error) {
+        const description = describeDesktopBridgeError(error);
         toastManager.add({
           type: "error",
           title: "Computer Use 操作失败",
-          description: describeDesktopBridgeError(error),
+          description,
         });
+        return { success: false, error: description };
       } finally {
         setBusyAction(null);
       }
     },
-    [busyAction],
+    [busyAction, setComputerState],
   );
 
   const toggleComputerPaused = useCallback(() => {
@@ -1720,10 +1760,15 @@ export function PluginsPage() {
     [runComputerAction],
   );
 
-  const clearPermissions = useCallback(() => {
+  const clearPermissions = useCallback((): Promise<DesktopAutomationActionResult> => {
     const bridge = window.desktopBridge;
-    if (!bridge?.clearComputerAutomationAppPermissions) return;
-    void runComputerAction("clear", () => bridge.clearComputerAutomationAppPermissions!());
+    if (!bridge?.clearComputerAutomationAppPermissions) {
+      return Promise.resolve({
+        success: false,
+        error: "当前桌面桥接不支持清空 App 权限。",
+      });
+    }
+    return runComputerAction("clear", () => bridge.clearComputerAutomationAppPermissions!());
   }, [runComputerAction]);
 
   const pluginStatus = useCallback(
@@ -1941,6 +1986,8 @@ export function PluginsPage() {
         onAllowForegroundApp={allowForegroundApp}
         onRemovePermission={removePermission}
         onClearPermissions={clearPermissions}
+        policyActionAuditEvents={policyActionAuditEvents}
+        onRecordPolicyActionAuditEvent={recordPolicyActionAuditEvent}
         onInstall={() => {
           if (selectedPlugin) installMutation.mutate(selectedPlugin);
         }}
