@@ -89,6 +89,22 @@ export interface VirtualTimelineWindow<T> {
   totalHeight: number;
 }
 
+export function resolveVirtualTimelineMeasuredRowHeight(input: {
+  isCollapsedMember: boolean;
+  hasSummaryToggle: boolean;
+  expandedHeight: number | undefined;
+  collapsedHeight: number | undefined;
+  collapsedSummaryEstimatedHeight: number;
+}): number | undefined {
+  if (!input.isCollapsedMember) {
+    return input.expandedHeight;
+  }
+  if (!input.hasSummaryToggle) {
+    return 0;
+  }
+  return input.collapsedHeight ?? input.collapsedSummaryEstimatedHeight;
+}
+
 export function computeVirtualTimelineWindow<T>(input: {
   rows: ReadonlyArray<T>;
   getRowId: (row: T) => string;
@@ -107,7 +123,7 @@ export function computeVirtualTimelineWindow<T>(input: {
     const rowId = input.getRowId(row);
     const measuredHeight = input.getRowHeight(rowId);
     const height =
-      measuredHeight !== undefined && measuredHeight > 0
+      measuredHeight !== undefined && Number.isFinite(measuredHeight) && measuredHeight >= 0
         ? measuredHeight
         : input.estimatedRowHeight;
     offsets.push(totalHeight);

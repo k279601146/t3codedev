@@ -66,6 +66,7 @@ import {
   resolveAggregateFileChangeAction,
   resolveFileChangeActionFromKind,
   resolveAssistantMessageCopyState,
+  resolveVirtualTimelineMeasuredRowHeight,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
@@ -160,7 +161,13 @@ const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "d
 const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 const TIMELINE_VIRTUALIZATION_ROW_THRESHOLD = 80;
 const TIMELINE_ESTIMATED_ROW_HEIGHT = 160;
+const TIMELINE_COLLAPSED_SUMMARY_HOST_ESTIMATED_ROW_HEIGHT = 32;
 const TIMELINE_OVERSCAN_PX = 1_200;
+type TimelineRowMeasurementMode = "expanded" | "collapsed";
+interface TimelineRowHeightMeasurement {
+  expanded?: number | undefined;
+  collapsed?: number | undefined;
+}
 
 const ASSISTANT_URL_PATTERN = /https?:\/\/[^\s"'`<>)\]]+/gi;
 
@@ -337,7 +344,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const pendingPrependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const loadMoreBeforeInFlightRef = useRef(false);
   const virtualListRef = useRef<HTMLDivElement | null>(null);
-  const rowHeightsRef = useRef(new Map<string, number>());
+  const rowHeightsRef = useRef(new Map<string, TimelineRowHeightMeasurement>());
   const [rowMeasurementVersion, setRowMeasurementVersion] = useState(0);
   const [virtualScrollState, setVirtualScrollState] = useState({
     scrollTop: 0,
@@ -503,22 +510,55 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
   }, [rows, shouldVirtualizeRows]);
 
+  const resolveRowMeasurementMode = useCallback(
+    (rowId: string): TimelineRowMeasurementMode => {
+      const ownerId = ownerAssistantMessageIdByRowId.get(rowId);
+      return ownerId && collapsedAssistantMessageIds.has(ownerId) ? "collapsed" : "expanded";
+    },
+    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId],
+  );
+
+  const getMeasuredVirtualRowHeight = useCallback(
+    (rowId: string) => {
+      const ownerId = ownerAssistantMessageIdByRowId.get(rowId);
+      const isCollapsedMember = ownerId ? collapsedAssistantMessageIds.has(ownerId) : false;
+      const hasSummaryToggle = summaryButtonHostByRowId.has(rowId);
+      const measurement = rowHeightsRef.current.get(rowId);
+      return resolveVirtualTimelineMeasuredRowHeight({
+        isCollapsedMember,
+        hasSummaryToggle,
+        expandedHeight: measurement?.expanded,
+        collapsedHeight: measurement?.collapsed,
+        collapsedSummaryEstimatedHeight: TIMELINE_COLLAPSED_SUMMARY_HOST_ESTIMATED_ROW_HEIGHT,
+      });
+    },
+    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId, summaryButtonHostByRowId],
+  );
+
   const rememberRowElement = useCallback(
-    (rowId: string, element: HTMLDivElement | null) => {
+    (
+      rowId: string,
+      measurementMode: TimelineRowMeasurementMode,
+      element: HTMLDivElement | null,
+    ) => {
       if (!shouldVirtualizeRows || !element) {
         return;
       }
 
       const measure = () => {
         const nextHeight = element.getBoundingClientRect().height;
-        if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
+        if (!Number.isFinite(nextHeight) || nextHeight < 0) {
           return;
         }
-        const previousHeight = rowHeightsRef.current.get(rowId);
+        const previousHeight = rowHeightsRef.current.get(rowId)?.[measurementMode];
         if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) {
           return;
         }
-        rowHeightsRef.current.set(rowId, nextHeight);
+        const previousMeasurement = rowHeightsRef.current.get(rowId) ?? {};
+        rowHeightsRef.current.set(rowId, {
+          ...previousMeasurement,
+          [measurementMode]: nextHeight,
+        });
         setRowMeasurementVersion((version) => version + 1);
       };
 
@@ -540,7 +580,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         ? computeVirtualTimelineWindow({
             rows,
             getRowId: keyExtractor,
-            getRowHeight: (rowId) => rowHeightsRef.current.get(rowId),
+            getRowHeight: getMeasuredVirtualRowHeight,
             estimatedRowHeight: TIMELINE_ESTIMATED_ROW_HEIGHT,
             scrollTop: virtualScrollState.scrollTop,
             viewportHeight: virtualScrollState.viewportHeight,
@@ -548,7 +588,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             overscanPx: TIMELINE_OVERSCAN_PX,
           })
         : null,
-    [rowMeasurementVersion, rows, shouldVirtualizeRows, virtualScrollState],
+    [
+      getMeasuredVirtualRowHeight,
+      rowMeasurementVersion,
+      rows,
+      shouldVirtualizeRows,
+      virtualScrollState,
+    ],
   );
 
   const didInitialScrollRef = useRef(false);
@@ -747,33 +793,53 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 className="relative min-w-0"
                 style={{ height: virtualWindow.totalHeight }}
               >
-                {virtualWindow.items.map((item) => (
-                  <div
-                    key={keyExtractor(item.row)}
-                    className="absolute inset-x-0 top-0 min-w-0"
-                    style={{ transform: `translateY(${item.top}px)` }}
-                  >
+                {virtualWindow.items.map((item) => {
+                  const measurementMode = resolveRowMeasurementMode(item.row.id);
+                  const isCollapsedProcessMember = measurementMode === "collapsed";
+                  return (
                     <div
-                      ref={(element) => rememberRowElement(item.row.id, element)}
-                      className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain-intrinsic-size:0_160px] [contain:layout_paint] [content-visibility:auto]"
-                      data-timeline-root="true"
+                      key={keyExtractor(item.row)}
+                      className="absolute inset-x-0 top-0 min-w-0"
+                      style={{ transform: `translateY(${item.top}px)` }}
                     >
-                      <TimelineRowContent row={item.row} />
+                      <div
+                        ref={(element) =>
+                          rememberRowElement(item.row.id, measurementMode, element)
+                        }
+                        className={cn(
+                          "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]",
+                          isCollapsedProcessMember
+                            ? null
+                            : "[contain-intrinsic-size:0_160px] [content-visibility:auto]",
+                        )}
+                        data-timeline-root="true"
+                      >
+                        <TimelineRowContent row={item.row} />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div ref={virtualListRef} className="min-w-0">
-                {rows.map((row) => (
-                  <div
-                    key={keyExtractor(row)}
-                    className="mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain-intrinsic-size:0_160px] [contain:layout_paint] [content-visibility:auto]"
-                    data-timeline-root="true"
-                  >
-                    <TimelineRowContent row={row} />
-                  </div>
-                ))}
+                {rows.map((row) => {
+                  const measurementMode = resolveRowMeasurementMode(row.id);
+                  const isCollapsedProcessMember = measurementMode === "collapsed";
+                  return (
+                    <div
+                      key={keyExtractor(row)}
+                      className={cn(
+                        "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]",
+                        isCollapsedProcessMember
+                          ? null
+                          : "[contain-intrinsic-size:0_160px] [content-visibility:auto]",
+                      )}
+                      data-timeline-root="true"
+                    >
+                      <TimelineRowContent row={row} />
+                    </div>
+                  );
+                })}
               </div>
             )}
             {TIMELINE_LIST_FOOTER}

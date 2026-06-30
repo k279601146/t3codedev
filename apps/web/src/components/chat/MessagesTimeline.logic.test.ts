@@ -7,6 +7,7 @@ import {
   deriveTurnProcessCollapseState,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
+  resolveVirtualTimelineMeasuredRowHeight,
 } from "./MessagesTimeline.logic";
 
 describe("computeVirtualTimelineWindow", () => {
@@ -54,6 +55,27 @@ describe("computeVirtualTimelineWindow", () => {
     ]);
   });
 
+  it("uses measured zero-height rows when collapsed content leaves the layout", () => {
+    const result = computeVirtualTimelineWindow({
+      rows: rows.slice(0, 4),
+      getRowId: (row) => row.id,
+      getRowHeight: (rowId) => (rowId === "row-1" ? 0 : undefined),
+      estimatedRowHeight: 100,
+      scrollTop: 0,
+      viewportHeight: 220,
+      listOffsetTop: 0,
+      overscanPx: 0,
+    });
+
+    expect(result.totalHeight).toBe(300);
+    expect(result.items.map((item) => [item.row.id, item.top, item.height])).toEqual([
+      ["row-0", 0, 100],
+      ["row-1", 100, 0],
+      ["row-2", 100, 100],
+      ["row-3", 200, 100],
+    ]);
+  });
+
   it("accounts for the list offset inside the scroll container", () => {
     const result = computeVirtualTimelineWindow({
       rows,
@@ -82,6 +104,42 @@ describe("computeVirtualTimelineWindow", () => {
     });
 
     expect(result).toEqual({ items: [], totalHeight: 0 });
+  });
+});
+
+describe("resolveVirtualTimelineMeasuredRowHeight", () => {
+  it("does not reuse expanded row height for collapsed process rows", () => {
+    expect(
+      resolveVirtualTimelineMeasuredRowHeight({
+        isCollapsedMember: true,
+        hasSummaryToggle: false,
+        expandedHeight: 480,
+        collapsedHeight: undefined,
+        collapsedSummaryEstimatedHeight: 32,
+      }),
+    ).toBe(0);
+  });
+
+  it("uses collapsed summary host height instead of stale expanded height", () => {
+    expect(
+      resolveVirtualTimelineMeasuredRowHeight({
+        isCollapsedMember: true,
+        hasSummaryToggle: true,
+        expandedHeight: 480,
+        collapsedHeight: undefined,
+        collapsedSummaryEstimatedHeight: 32,
+      }),
+    ).toBe(32);
+
+    expect(
+      resolveVirtualTimelineMeasuredRowHeight({
+        isCollapsedMember: true,
+        hasSummaryToggle: true,
+        expandedHeight: 480,
+        collapsedHeight: 28,
+        collapsedSummaryEstimatedHeight: 32,
+      }),
+    ).toBe(28);
   });
 });
 
