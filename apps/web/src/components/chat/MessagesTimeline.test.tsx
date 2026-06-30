@@ -785,6 +785,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("line-3");
     expect(markup).not.toContain("已运行命令");
     expect(markup).not.toContain("summary line");
+    expect(markup).not.toContain('data-command-work-panel="true"');
   });
 
   it("keeps the collapsed summary command text without rendering shell output", async () => {

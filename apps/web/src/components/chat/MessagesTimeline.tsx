@@ -1061,11 +1061,32 @@ function CollapsibleMember({
 }) {
   const initialCollapsedRef = useRef(collapsed);
   const [hasUserToggled, setHasUserToggled] = useState(false);
+  const [keepCollapsedContentMounted, setKeepCollapsedContentMounted] = useState(!collapsed);
   useEffect(() => {
     if (collapsed !== initialCollapsedRef.current && !hasUserToggled) {
       setHasUserToggled(true);
     }
   }, [collapsed, hasUserToggled]);
+
+  useEffect(() => {
+    if (!collapsed) {
+      setKeepCollapsedContentMounted(true);
+      return;
+    }
+    if (!keepCollapsedContentMounted) {
+      return;
+    }
+    if (!hasUserToggled) {
+      setKeepCollapsedContentMounted(false);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setKeepCollapsedContentMounted(false);
+    }, 220);
+    return () => window.clearTimeout(timeoutId);
+  }, [collapsed, hasUserToggled, keepCollapsedContentMounted]);
+
+  const shouldRenderChildren = !collapsed || keepCollapsedContentMounted;
 
   return (
     <div
@@ -1079,7 +1100,7 @@ function CollapsibleMember({
       data-collapsible-member="true"
       data-collapsed={collapsed ? "true" : "false"}
     >
-      <div className="min-h-0 overflow-hidden">{children}</div>
+      <div className="min-h-0 overflow-hidden">{shouldRenderChildren ? children : null}</div>
     </div>
   );
 }
