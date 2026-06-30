@@ -192,6 +192,18 @@ describe("ChatMarkdown", () => {
     }
   });
 
+  it("renders long code blocks as previews with an expand control", async () => {
+    const longCode = Array.from({ length: 320 }, (_, index) => `console.log(${index});`).join("\n");
+    const screen = await render(<ChatMarkdown text={`\`\`\`ts\n${longCode}\n\`\`\``} cwd="/repo" />);
+
+    try {
+      await expect.element(page.getByRole("button", { name: "展开完整代码" })).toBeVisible();
+      expect(document.body.textContent ?? "").toContain("代码块较长");
+    } finally {
+      await screen.unmount();
+    }
+  });
+
   it("renders plain URLs as compact readable links", async () => {
     const url = "https://www.cosmicjs.com/blog/claude-code-vs-github-copilot-vs-cursor";
     const screen = await render(<ChatMarkdown text={url} cwd="/repo/project" />);

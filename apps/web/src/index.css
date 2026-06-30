@@ -154,6 +154,19 @@ body[data-performance-mode="scrolling"] .shadow-sm {
   box-shadow: none !important;
 }
 
+body[data-performance-mode="scrolling"] .chat-markdown-codeblock,
+body[data-performance-mode="scrolling"] [data-command-work-panel="true"],
+body[data-performance-mode="scrolling"] [data-command-output-scroll="true"] {
+  box-shadow: none !important;
+  filter: none !important;
+  transition-duration: 0s !important;
+}
+
+body[data-performance-mode="scrolling"] .chat-markdown-copy-button,
+body[data-performance-mode="scrolling"] [data-command-work-panel="true"] button {
+  transition-duration: 0s !important;
+}
+
 /* =========================================================================
    Claude 设计风格主题 (Claude App UI v2.0)
    - 浅色：米白色暖色调底 (#F5F0EB)，纸张质感

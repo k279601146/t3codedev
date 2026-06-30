@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeVirtualTextWindow,
+  computeVirtualTimelineLayout,
   computeVirtualTimelineWindow,
+  computeVirtualTimelineWindowFromLayout,
   computeStableMessagesTimelineRows,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
   normalizeCompactToolLabel,
+  resolveTimelineOverscanPx,
   resolveAssistantMessageCopyState,
   resolveVirtualTimelineMeasuredRowHeight,
 } from "./MessagesTimeline.logic";
@@ -104,6 +108,70 @@ describe("computeVirtualTimelineWindow", () => {
     });
 
     expect(result).toEqual({ items: [], totalHeight: 0 });
+  });
+
+  it("reuses a computed layout for binary-window queries", () => {
+    const layout = computeVirtualTimelineLayout({
+      rows,
+      getRowId: (row) => row.id,
+      getRowHeight: (rowId) => (rowId === "row-2" ? 300 : undefined),
+      estimatedRowHeight: 100,
+    });
+
+    expect(layout.totalHeight).toBe(1_200);
+    expect(layout.offsets.slice(0, 4)).toEqual([0, 100, 200, 500]);
+
+    const result = computeVirtualTimelineWindowFromLayout({
+      layout,
+      estimatedRowHeight: 100,
+      scrollTop: 520,
+      viewportHeight: 120,
+      listOffsetTop: 0,
+      overscanPx: 0,
+    });
+
+    expect(result.items.map((item) => [item.row.id, item.top, item.height])).toEqual([
+      ["row-3", 500, 100],
+      ["row-4", 600, 100],
+    ]);
+  });
+});
+
+describe("resolveTimelineOverscanPx", () => {
+  it("uses smaller overscan while scrolling", () => {
+    expect(
+      resolveTimelineOverscanPx({
+        isScrolling: true,
+        scrollingOverscanPx: 360,
+        idleOverscanPx: 900,
+      }),
+    ).toBe(360);
+    expect(
+      resolveTimelineOverscanPx({
+        isScrolling: false,
+        scrollingOverscanPx: 360,
+        idleOverscanPx: 900,
+      }),
+    ).toBe(900);
+  });
+});
+
+describe("computeVirtualTextWindow", () => {
+  it("returns a padded visible line window for long text", () => {
+    expect(
+      computeVirtualTextWindow({
+        lineCount: 1_000,
+        lineHeight: 20,
+        scrollTop: 2_000,
+        viewportHeight: 200,
+        overscanLines: 3,
+      }),
+    ).toEqual({
+      startIndex: 97,
+      endIndex: 113,
+      topPadding: 1_940,
+      bottomPadding: 17_740,
+    });
   });
 });
 

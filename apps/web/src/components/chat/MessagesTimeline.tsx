@@ -50,14 +50,24 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
+  computeVirtualTextWindow,
+  computeVirtualTimelineLayout,
+  computeVirtualTimelineWindowFromLayout,
   computeStableMessagesTimelineRows,
-  computeVirtualTimelineWindow,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
   fileChangeVerbLabel,
@@ -66,6 +76,7 @@ import {
   resolveAggregateFileChangeAction,
   resolveFileChangeActionFromKind,
   resolveAssistantMessageCopyState,
+  resolveTimelineOverscanPx,
   resolveVirtualTimelineMeasuredRowHeight,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
@@ -104,6 +115,7 @@ import {
   isBareMarkdownPreviewPath,
   rewriteMarkdownFileUriHref,
 } from "../../markdown-links";
+import { truncateTextForPreview } from "../../lib/textPreview";
 
 // ---------------------------------------------------------------------------
 // Context shared by transcript rows. Row-scoped data stays on the row props;
@@ -162,9 +174,12 @@ const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 const TIMELINE_VIRTUALIZATION_ROW_THRESHOLD = 80;
 const TIMELINE_ESTIMATED_ROW_HEIGHT = 160;
 const TIMELINE_COLLAPSED_SUMMARY_HOST_ESTIMATED_ROW_HEIGHT = 32;
-const TIMELINE_OVERSCAN_PX = 640;
+const TIMELINE_SCROLLING_OVERSCAN_PX = 360;
+const TIMELINE_IDLE_OVERSCAN_PX = 900;
 const COMMAND_OUTPUT_PREVIEW_MAX_CHARS = 24_000;
 const COMMAND_OUTPUT_PREVIEW_MAX_LINES = 400;
+const COMMAND_OUTPUT_DIALOG_LINE_HEIGHT = 20;
+const COMMAND_OUTPUT_DIALOG_OVERSCAN_LINES = 24;
 type TimelineRowMeasurementMode = "expanded" | "collapsed";
 interface TimelineRowHeightMeasurement {
   expanded?: number | undefined;
@@ -347,7 +362,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const loadMoreBeforeInFlightRef = useRef(false);
   const virtualListRef = useRef<HTMLDivElement | null>(null);
   const rowHeightsRef = useRef(new Map<string, TimelineRowHeightMeasurement>());
+  const rowMeasurementFrameRef = useRef<number | null>(null);
   const [rowMeasurementVersion, setRowMeasurementVersion] = useState(0);
+  const [isVirtualScrollActive, setIsVirtualScrollActive] = useState(false);
   const [virtualScrollState, setVirtualScrollState] = useState({
     scrollTop: 0,
     viewportHeight: 0,
@@ -358,6 +375,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const getScrollContainer = useCallback(() => {
     return scrollRef.current;
   }, [scrollRef]);
+
+  const scheduleRowMeasurementVersionBump = useCallback(() => {
+    if (rowMeasurementFrameRef.current !== null) {
+      return;
+    }
+    rowMeasurementFrameRef.current = window.requestAnimationFrame(() => {
+      rowMeasurementFrameRef.current = null;
+      setRowMeasurementVersion((version) => version + 1);
+    });
+  }, []);
 
   const measureVirtualViewport = useCallback(() => {
     const scrollEl = getScrollContainer();
@@ -384,6 +411,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isScrollingRef.current = true;
       window.requestAnimationFrame(() => {
         if (isScrollingRef.current) {
+          setIsVirtualScrollActive(true);
           setPerformanceModeActive("scrolling", true);
         }
       });
@@ -395,6 +423,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       scrollingEndTimerRef.current = null;
       if (isScrollingRef.current) {
         isScrollingRef.current = false;
+        setIsVirtualScrollActive(false);
         setPerformanceModeActive("scrolling", false);
       }
     }, 160);
@@ -461,6 +490,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         window.cancelAnimationFrame(scrollMeasureFrameRef.current);
         scrollMeasureFrameRef.current = null;
       }
+      if (rowMeasurementFrameRef.current !== null) {
+        window.cancelAnimationFrame(rowMeasurementFrameRef.current);
+        rowMeasurementFrameRef.current = null;
+      }
       if (isScrollingRef.current) {
         isScrollingRef.current = false;
         setPerformanceModeActive("scrolling", false);
@@ -508,9 +541,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
     }
     if (changed) {
-      setRowMeasurementVersion((version) => version + 1);
+      scheduleRowMeasurementVersionBump();
     }
-  }, [rows, shouldVirtualizeRows]);
+  }, [rows, scheduleRowMeasurementVersionBump, shouldVirtualizeRows]);
 
   const resolveRowMeasurementMode = useCallback(
     (rowId: string): TimelineRowMeasurementMode => {
@@ -561,7 +594,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           ...previousMeasurement,
           [measurementMode]: nextHeight,
         });
-        setRowMeasurementVersion((version) => version + 1);
+        scheduleRowMeasurementVersionBump();
       };
 
       measure();
@@ -573,30 +606,41 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resizeObserver.observe(element);
       return () => resizeObserver.disconnect();
     },
-    [shouldVirtualizeRows],
+    [scheduleRowMeasurementVersionBump, shouldVirtualizeRows],
   );
 
-  const virtualWindow = useMemo(
+  const virtualLayout = useMemo(
     () =>
       shouldVirtualizeRows
-        ? computeVirtualTimelineWindow({
+        ? computeVirtualTimelineLayout({
             rows,
             getRowId: keyExtractor,
             getRowHeight: getMeasuredVirtualRowHeight,
             estimatedRowHeight: TIMELINE_ESTIMATED_ROW_HEIGHT,
+          })
+        : null,
+    [getMeasuredVirtualRowHeight, rowMeasurementVersion, rows, shouldVirtualizeRows],
+  );
+
+  const virtualOverscanPx = resolveTimelineOverscanPx({
+    isScrolling: isVirtualScrollActive,
+    scrollingOverscanPx: TIMELINE_SCROLLING_OVERSCAN_PX,
+    idleOverscanPx: TIMELINE_IDLE_OVERSCAN_PX,
+  });
+
+  const virtualWindow = useMemo(
+    () =>
+      virtualLayout
+        ? computeVirtualTimelineWindowFromLayout({
+            layout: virtualLayout,
+            estimatedRowHeight: TIMELINE_ESTIMATED_ROW_HEIGHT,
             scrollTop: virtualScrollState.scrollTop,
             viewportHeight: virtualScrollState.viewportHeight,
             listOffsetTop: virtualScrollState.listOffsetTop,
-            overscanPx: TIMELINE_OVERSCAN_PX,
+            overscanPx: virtualOverscanPx,
           })
         : null,
-    [
-      getMeasuredVirtualRowHeight,
-      rowMeasurementVersion,
-      rows,
-      shouldVirtualizeRows,
-      virtualScrollState,
-    ],
+    [virtualLayout, virtualOverscanPx, virtualScrollState],
   );
 
   const didInitialScrollRef = useRef(false);
@@ -3237,38 +3281,11 @@ function truncateCommandOutputForPreview(output: string): {
   text: string;
   truncated: boolean;
 } {
-  if (output.length <= COMMAND_OUTPUT_PREVIEW_MAX_CHARS) {
-    const lineCount = output.split("\n").length;
-    if (lineCount <= COMMAND_OUTPUT_PREVIEW_MAX_LINES) {
-      return { text: output, truncated: false };
-    }
-  }
-
-  const lines = output.split("\n");
-  let visibleChars = 0;
-  const visibleLines: string[] = [];
-  for (const line of lines) {
-    if (visibleLines.length >= COMMAND_OUTPUT_PREVIEW_MAX_LINES) {
-      break;
-    }
-    const nextLength = visibleChars + line.length + (visibleLines.length > 0 ? 1 : 0);
-    if (nextLength > COMMAND_OUTPUT_PREVIEW_MAX_CHARS) {
-      const remaining = COMMAND_OUTPUT_PREVIEW_MAX_CHARS - visibleChars;
-      if (remaining > 0) {
-        visibleLines.push(line.slice(0, remaining));
-        visibleChars = COMMAND_OUTPUT_PREVIEW_MAX_CHARS;
-      }
-      break;
-    }
-    visibleLines.push(line);
-    visibleChars = nextLength;
-  }
-
-  const text = visibleLines.join("\n").trimEnd();
-  return {
-    text,
-    truncated: text.length < output.length,
-  };
+  return truncateTextForPreview({
+    text: output,
+    maxChars: COMMAND_OUTPUT_PREVIEW_MAX_CHARS,
+    maxLines: COMMAND_OUTPUT_PREVIEW_MAX_LINES,
+  });
 }
 
 function commandWorkEntryCopyText(workEntry: TimelineWorkEntry): string {
@@ -4018,6 +4035,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
   initiallyExpanded?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
+  const [fullOutputOpen, setFullOutputOpen] = useState(false);
   const command = commandWorkEntryCommand(workEntry);
   const output = commandWorkEntryOutput(workEntry);
   const outputPreview = useMemo(() => truncateCommandOutputForPreview(output), [output]);
@@ -4103,9 +4121,20 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
                     {outputPreview.text}
                   </pre>
                   {outputPreview.truncated ? (
-                    <div className="mt-2 rounded-md border border-neutral-300/70 bg-white/45 px-2 py-1.5 text-[11px] leading-4 text-neutral-500 dark:border-neutral-700/70 dark:bg-black/20 dark:text-neutral-400">
-                      输出较长，已仅渲染前 {outputPreview.text.length.toLocaleString()} 个字符；
-                      复制仍包含完整输出。
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-300/70 bg-white/45 px-2 py-1.5 text-[11px] leading-4 text-neutral-500 dark:border-neutral-700/70 dark:bg-black/20 dark:text-neutral-400">
+                      <span>
+                        输出较长，已仅渲染前 {outputPreview.text.length.toLocaleString()} 个字符；
+                        复制仍包含完整输出。
+                      </span>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className="h-5 rounded px-1.5 text-[11px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/10"
+                        onClick={() => setFullOutputOpen(true)}
+                      >
+                        查看完整输出
+                      </Button>
                     </div>
                   ) : null}
                   <MessageCopyButton
@@ -4139,6 +4168,145 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
           </div>
         </div>
       ) : null}
+      {outputPreview.truncated ? (
+        <CommandOutputDialog
+          open={fullOutputOpen}
+          onOpenChange={setFullOutputOpen}
+          command={command}
+          output={output}
+          copyText={copyText}
+        />
+      ) : null}
+    </div>
+  );
+});
+
+const CommandOutputDialog = memo(function CommandOutputDialog({
+  open,
+  onOpenChange,
+  command,
+  output,
+  copyText,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  command: string | null;
+  output: string;
+  copyText: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[min(86dvh,52rem)] max-w-[min(92vw,64rem)] overflow-hidden rounded-xl">
+        <DialogHeader className="border-b border-border/70 px-5 py-4">
+          <DialogTitle className="text-base">完整命令输出</DialogTitle>
+          <DialogDescription className="text-xs">
+            聊天流仅渲染预览；这里按需加载完整输出。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 px-5 py-4">
+          {command ? (
+            <div className="mb-3 rounded-md bg-muted/55 px-2.5 py-2 font-mono text-[12px] leading-5 text-foreground/82">
+              <span className="select-none text-muted-foreground/60">$ </span>
+              <span className="whitespace-pre-wrap break-words">{command}</span>
+            </div>
+          ) : null}
+          <VirtualizedCommandOutput output={output} />
+        </div>
+        <DialogFooter className="items-center border-t bg-background px-5 py-3 sm:justify-between">
+          <div className="text-xs text-muted-foreground/60">
+            {output.length.toLocaleString()} 个字符
+          </div>
+          <div className="flex items-center gap-2">
+            <MessageCopyButton
+              text={copyText}
+              size="xs"
+              variant="outline"
+              ariaLabel="复制完整输出"
+              tooltipLabel="复制完整输出"
+            />
+            <Button type="button" size="xs" variant="ghost" onClick={() => onOpenChange(false)}>
+              关闭
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+});
+
+const VirtualizedCommandOutput = memo(function VirtualizedCommandOutput({
+  output,
+}: {
+  output: string;
+}) {
+  const lines = useMemo(() => output.split("\n"), [output]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const [viewport, setViewport] = useState({ scrollTop: 0, viewportHeight: 420 });
+
+  const measure = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    setViewport((previous) => {
+      const next = {
+        scrollTop: element.scrollTop,
+        viewportHeight: element.clientHeight,
+      };
+      return previous.scrollTop === next.scrollTop &&
+        previous.viewportHeight === next.viewportHeight
+        ? previous
+        : next;
+    });
+  }, []);
+
+  const scheduleMeasure = useCallback(() => {
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      measure();
+    });
+  }, [measure]);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [measure, lines.length]);
+
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(scheduleMeasure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [scheduleMeasure]);
+
+  const windowState = computeVirtualTextWindow({
+    lineCount: lines.length,
+    lineHeight: COMMAND_OUTPUT_DIALOG_LINE_HEIGHT,
+    scrollTop: viewport.scrollTop,
+    viewportHeight: viewport.viewportHeight,
+    overscanLines: COMMAND_OUTPUT_DIALOG_OVERSCAN_LINES,
+  });
+  const visibleLines = lines.slice(windowState.startIndex, windowState.endIndex);
+
+  return (
+    <div
+      ref={scrollRef}
+      className="max-h-[min(58dvh,34rem)] min-h-64 overflow-auto rounded-md bg-neutral-950 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-100 [scrollbar-gutter:stable]"
+      onScroll={scheduleMeasure}
+      data-command-output-dialog-scroll="true"
+    >
+      <div style={{ height: windowState.topPadding }} aria-hidden="true" />
+      <pre className="whitespace-pre-wrap break-words">{visibleLines.join("\n")}</pre>
+      <div style={{ height: windowState.bottomPadding }} aria-hidden="true" />
     </div>
   );
 });

@@ -37,6 +37,7 @@ import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 import { LRUCache } from "../lib/lruCache";
 import { getPerformanceModeSnapshot, subscribePerformanceMode } from "../performanceMode";
+import { truncateTextForPreview } from "../lib/textPreview";
 
 const LazyChatMarkdownHighlighter = lazy(() => import("./ChatMarkdownHighlighter"));
 
@@ -75,6 +76,8 @@ const MARKDOWN_RENDER_CACHE_LIMIT = 160;
 const MARKDOWN_RENDER_CACHE_MEMORY_BYTES = 12 * 1024 * 1024;
 const MARKDOWN_CACHE_SECONDARY_HASH_SEED = 0x9e3779b9;
 const MARKDOWN_CACHE_SECONDARY_HASH_MULTIPLIER = 0x85ebca6b;
+const MARKDOWN_CODE_PREVIEW_MAX_CHARS = 16_000;
+const MARKDOWN_CODE_PREVIEW_MAX_LINES = 260;
 
 const CODE_FENCE_LANGUAGE_REGEX = /(?:^|\s)language-([^\s]+)/;
 type MarkdownFileLinkMetaValue = NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>;
@@ -324,6 +327,14 @@ function MarkdownCodeBlock({
   );
 }
 
+function truncateMarkdownCodeForPreview(code: string): { text: string; truncated: boolean } {
+  return truncateTextForPreview({
+    text: code,
+    maxChars: MARKDOWN_CODE_PREVIEW_MAX_CHARS,
+    maxLines: MARKDOWN_CODE_PREVIEW_MAX_LINES,
+  });
+}
+
 function useIdleHydration(): boolean {
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -384,6 +395,48 @@ function SuspenseShikiCodeBlock({
       themeName={themeName}
       isStreaming={isStreaming}
     />
+  );
+}
+
+function MarkdownCodeBlockContent({
+  className,
+  code,
+  themeName,
+  isStreaming,
+  suppressHighlight,
+}: SuspenseShikiCodeBlockProps) {
+  const preview = useMemo(() => truncateMarkdownCodeForPreview(code), [code]);
+  const [expanded, setExpanded] = useState(false);
+  const visibleCode = preview.truncated && !expanded ? preview.text : code;
+
+  return (
+    <>
+      <CodeHighlightErrorBoundary fallback={<pre className={className}>{visibleCode}</pre>}>
+        <Suspense fallback={<pre className={className}>{visibleCode}</pre>}>
+          <SuspenseShikiCodeBlock
+            className={className}
+            code={visibleCode}
+            themeName={themeName}
+            isStreaming={isStreaming}
+            suppressHighlight={suppressHighlight}
+          />
+        </Suspense>
+      </CodeHighlightErrorBoundary>
+      {preview.truncated ? (
+        <div className="flex items-center justify-between gap-3 border-t border-border/40 bg-muted/35 px-3 py-2 text-[12px] leading-4 text-muted-foreground">
+          <span>
+            代码块较长，已仅渲染前 {preview.text.length.toLocaleString()} 个字符。
+          </span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-2 py-1 text-foreground/75 transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? "收起代码" : "展开完整代码"}
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1076,17 +1129,13 @@ function ChatMarkdown({
             code={codeBlock.code}
             languageLabel={extractFenceLanguageLabel(codeBlock.className)}
           >
-            <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
-              <Suspense fallback={<pre {...props}>{children}</pre>}>
-                <SuspenseShikiCodeBlock
-                  className={codeBlock.className}
-                  code={codeBlock.code}
-                  themeName={diffThemeName}
-                  isStreaming={isStreaming}
-                  suppressHighlight={suppressCodeHighlight}
-                />
-              </Suspense>
-            </CodeHighlightErrorBoundary>
+            <MarkdownCodeBlockContent
+              className={codeBlock.className}
+              code={codeBlock.code}
+              themeName={diffThemeName}
+              isStreaming={isStreaming}
+              suppressHighlight={suppressCodeHighlight}
+            />
           </MarkdownCodeBlock>
         );
       },

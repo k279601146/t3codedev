@@ -89,6 +89,13 @@ export interface VirtualTimelineWindow<T> {
   totalHeight: number;
 }
 
+export interface VirtualTimelineLayout<T> {
+  rows: ReadonlyArray<T>;
+  offsets: number[];
+  heights: number[];
+  totalHeight: number;
+}
+
 export function resolveVirtualTimelineMeasuredRowHeight(input: {
   isCollapsedMember: boolean;
   hasSummaryToggle: boolean;
@@ -105,16 +112,12 @@ export function resolveVirtualTimelineMeasuredRowHeight(input: {
   return input.collapsedHeight ?? input.collapsedSummaryEstimatedHeight;
 }
 
-export function computeVirtualTimelineWindow<T>(input: {
+export function computeVirtualTimelineLayout<T>(input: {
   rows: ReadonlyArray<T>;
   getRowId: (row: T) => string;
   getRowHeight: (rowId: string) => number | undefined;
   estimatedRowHeight: number;
-  scrollTop: number;
-  viewportHeight: number;
-  listOffsetTop: number;
-  overscanPx: number;
-}): VirtualTimelineWindow<T> {
+}): VirtualTimelineLayout<T> {
   const offsets: number[] = [];
   const heights: number[] = [];
   let totalHeight = 0;
@@ -131,6 +134,56 @@ export function computeVirtualTimelineWindow<T>(input: {
     totalHeight += height;
   }
 
+  return { rows: input.rows, offsets, heights, totalHeight };
+}
+
+function findFirstVirtualRowIndex(input: {
+  offsets: ReadonlyArray<number>;
+  heights: ReadonlyArray<number>;
+  estimatedRowHeight: number;
+  viewportTop: number;
+}): number {
+  let low = 0;
+  let high = input.offsets.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const rowBottom =
+      (input.offsets[mid] ?? 0) + (input.heights[mid] ?? input.estimatedRowHeight);
+    if (rowBottom < input.viewportTop) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+function findVirtualWindowEndIndex(input: {
+  offsets: ReadonlyArray<number>;
+  viewportBottom: number;
+  startIndex: number;
+}): number {
+  let low = input.startIndex;
+  let high = input.offsets.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if ((input.offsets[mid] ?? 0) <= input.viewportBottom) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+export function computeVirtualTimelineWindowFromLayout<T>(input: {
+  layout: VirtualTimelineLayout<T>;
+  estimatedRowHeight: number;
+  scrollTop: number;
+  viewportHeight: number;
+  listOffsetTop: number;
+  overscanPx: number;
+}): VirtualTimelineWindow<T> {
   const viewportTop = Math.max(
     0,
     input.scrollTop - input.listOffsetTop - Math.max(0, input.overscanPx),
@@ -143,34 +196,84 @@ export function computeVirtualTimelineWindow<T>(input: {
       Math.max(0, input.overscanPx),
   );
 
-  let startIndex = 0;
-  while (
-    startIndex < input.rows.length &&
-    (offsets[startIndex] ?? 0) + (heights[startIndex] ?? input.estimatedRowHeight) < viewportTop
-  ) {
-    startIndex += 1;
-  }
-
-  let endIndex = startIndex;
-  while (endIndex < input.rows.length && (offsets[endIndex] ?? 0) <= viewportBottom) {
-    endIndex += 1;
-  }
+  const startIndex = findFirstVirtualRowIndex({
+    offsets: input.layout.offsets,
+    heights: input.layout.heights,
+    estimatedRowHeight: input.estimatedRowHeight,
+    viewportTop,
+  });
+  const endIndex = findVirtualWindowEndIndex({
+    offsets: input.layout.offsets,
+    viewportBottom,
+    startIndex,
+  });
 
   const items: Array<VirtualTimelineWindowItem<T>> = [];
   for (let index = startIndex; index < endIndex; index += 1) {
-    const row = input.rows[index];
+    const row = input.layout.rows[index];
     if (!row) continue;
     items.push({
       index,
       row,
-      top: offsets[index] ?? 0,
-      height: heights[index] ?? input.estimatedRowHeight,
+      top: input.layout.offsets[index] ?? 0,
+      height: input.layout.heights[index] ?? input.estimatedRowHeight,
     });
   }
 
   return {
     items,
-    totalHeight,
+    totalHeight: input.layout.totalHeight,
+  };
+}
+
+export function computeVirtualTimelineWindow<T>(input: {
+  rows: ReadonlyArray<T>;
+  getRowId: (row: T) => string;
+  getRowHeight: (rowId: string) => number | undefined;
+  estimatedRowHeight: number;
+  scrollTop: number;
+  viewportHeight: number;
+  listOffsetTop: number;
+  overscanPx: number;
+}): VirtualTimelineWindow<T> {
+  return computeVirtualTimelineWindowFromLayout({
+    layout: computeVirtualTimelineLayout(input),
+    estimatedRowHeight: input.estimatedRowHeight,
+    scrollTop: input.scrollTop,
+    viewportHeight: input.viewportHeight,
+    listOffsetTop: input.listOffsetTop,
+    overscanPx: input.overscanPx,
+  });
+}
+
+export function resolveTimelineOverscanPx(input: {
+  isScrolling: boolean;
+  scrollingOverscanPx: number;
+  idleOverscanPx: number;
+}): number {
+  return input.isScrolling ? input.scrollingOverscanPx : input.idleOverscanPx;
+}
+
+export function computeVirtualTextWindow(input: {
+  lineCount: number;
+  lineHeight: number;
+  scrollTop: number;
+  viewportHeight: number;
+  overscanLines: number;
+}): { startIndex: number; endIndex: number; topPadding: number; bottomPadding: number } {
+  const lineCount = Math.max(0, Math.floor(input.lineCount));
+  const lineHeight = Math.max(1, input.lineHeight);
+  const viewportHeight = Math.max(0, input.viewportHeight);
+  const overscanLines = Math.max(0, Math.floor(input.overscanLines));
+  const visibleStart = Math.floor(Math.max(0, input.scrollTop) / lineHeight);
+  const visibleEnd = Math.ceil((Math.max(0, input.scrollTop) + viewportHeight) / lineHeight);
+  const startIndex = Math.max(0, visibleStart - overscanLines);
+  const endIndex = Math.min(lineCount, visibleEnd + overscanLines);
+  return {
+    startIndex,
+    endIndex,
+    topPadding: startIndex * lineHeight,
+    bottomPadding: Math.max(0, (lineCount - endIndex) * lineHeight),
   };
 }
 
