@@ -83,6 +83,7 @@ import {
 import { cn } from "~/lib/utils";
 import { setPerformanceModeActive } from "~/performanceMode";
 import { readEnvironmentApi } from "../../environmentApi";
+import { sanitizeProviderErrorMessage } from "../../friendlyErrors";
 import { readLocalApi } from "../../localApi";
 import { openContainingFolder, revealFileInFolder } from "../../lib/openContainingFolder";
 import { toastManager } from "../ui/toast";
@@ -1966,6 +1967,11 @@ function stripReconnectPrefix(text: string): string {
   return stripped.length > 0 ? stripped : text.trim();
 }
 
+function runtimeIssueDisplayText(text: string): string {
+  const stripped = stripReconnectPrefix(text);
+  return sanitizeProviderErrorMessage(stripped) ?? stripped;
+}
+
 function parseReconnectAttempt(text: string): { current: number; total: number } | null {
   const match = RECONNECT_ATTEMPT_PATTERN.exec(text);
   if (!match) {
@@ -1997,7 +2003,7 @@ function summarizeRuntimeIssueGroup(
     )
       ? "error"
       : "warning";
-  const finalText = stripReconnectPrefix(texts[texts.length - 1]!);
+  const finalText = runtimeIssueDisplayText(texts[texts.length - 1]!);
   const reconnectAttempt = texts
     .map(parseReconnectAttempt)
     .filter((attempt): attempt is { current: number; total: number } => attempt !== null)

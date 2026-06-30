@@ -989,7 +989,9 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("重新连接失败 5/5");
-    expect(markup).toContain(retryMessage);
+    expect(markup).toContain("账户余额不足，请充值后重试。");
+    expect(markup).not.toContain("unexpected status");
+    expect(markup).not.toContain("url:");
     expect(markup).toContain('data-runtime-issue-card="true"');
     expect(markup).not.toContain("已处理 6 项");
   });

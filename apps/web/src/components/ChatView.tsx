@@ -474,6 +474,14 @@ const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+
+function shouldShowThreadErrorBanner(error: string | null): boolean {
+  if (error === null) {
+    return false;
+  }
+  return !/请求 ID：|账户余额不足|服务暂时不可用|模型不存在|内容安全网关|账号未激活/.test(error);
+}
+
 function getBrowserToolCallSequence(state: DesktopBrowserAutomationState): number {
   return Number.isFinite(state.toolCallSequence) ? state.toolCallSequence : 0;
 }
@@ -2025,7 +2033,9 @@ export default function ChatView(props: ChatViewProps) {
   const isWorking =
     phase === "running" || isSendBusy || isComposerConnecting || isRevertingCheckpoint;
   const timelineIsWorking = isWorking || isResubmittingEditedMessage;
-  const visibleThreadError = isSendBusy ? null : (activeThread?.error ?? null);
+  const activeThreadError = activeThread?.error ?? null;
+  const visibleThreadError =
+    isSendBusy || !shouldShowThreadErrorBanner(activeThreadError) ? null : activeThreadError;
   const canSteerActiveTurn =
     phase === "running" &&
     isServerThread &&
