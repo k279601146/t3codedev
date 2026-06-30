@@ -12,6 +12,8 @@ import {
   buildAutomationPermissionPolicyHints,
   buildAutomationPermissionPolicyEntries,
   createAutomationPermissionPolicyActionAuditEvent,
+  filterAutomationPermissionPolicyActionAuditEvents,
+  formatAutomationPermissionPolicyActionAuditExport,
   normalizeAutomationPermissionPolicyActionAuditEvents,
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
@@ -300,5 +302,65 @@ describe("automation permission audit", () => {
     expect(normalizeAutomationPermissionPolicyActionAuditEvents([event, { id: "bad" }])).toEqual([
       event,
     ]);
+  });
+
+  it("filters and formats policy action audit exports", () => {
+    const action = buildAutomationPermissionPolicyActions(
+      [
+        {
+          id: "chrome:billing.example.com",
+          source: "chrome",
+          subject: "billing.example.com",
+          decision: "allow",
+          scope: "always",
+          updatedAt: "2026-06-30T00:05:00.000Z",
+          lastUsedAt: null,
+          detail: "Chrome 站点权限已持久保存。",
+        },
+      ],
+      "chrome",
+    )[0]!;
+    const success = createAutomationPermissionPolicyActionAuditEvent({
+      action,
+      result: "success",
+      occurredAt: "2026-06-30T00:10:00.000Z",
+      detail: "已改为本次会话授权。",
+    });
+    const failure = createAutomationPermissionPolicyActionAuditEvent({
+      action,
+      result: "failure",
+      occurredAt: "2026-06-20T00:10:00.000Z",
+      detail: "网络失败",
+    });
+
+    expect(
+      filterAutomationPermissionPolicyActionAuditEvents([failure, success], {
+        result: "success",
+        query: "billing",
+        timeRange: "7d",
+        now: "2026-06-30T00:10:00.000Z",
+      }),
+    ).toEqual([success]);
+    expect(
+      filterAutomationPermissionPolicyActionAuditEvents([success, failure], {
+        result: "all",
+        query: "网络",
+        timeRange: "all",
+        now: "2026-06-30T00:10:00.000Z",
+      }),
+    ).toEqual([failure]);
+
+    expect(
+      JSON.parse(
+        formatAutomationPermissionPolicyActionAuditExport(
+          [success],
+          "2026-06-30T00:15:00.000Z",
+        ),
+      ),
+    ).toEqual({
+      exportedAt: "2026-06-30T00:15:00.000Z",
+      total: 1,
+      events: [success],
+    });
   });
 });

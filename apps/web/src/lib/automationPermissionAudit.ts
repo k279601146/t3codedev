@@ -39,6 +39,10 @@ export type AutomationPermissionPolicyActionKind =
   | "chrome-downgrade-persistent-host"
   | "computer-clear-persistent-apps";
 export type AutomationPermissionPolicyActionAuditResult = "success" | "failure";
+export type AutomationPermissionPolicyActionAuditResultFilter =
+  | AutomationPermissionPolicyActionAuditResult
+  | "all";
+export type AutomationPermissionPolicyActionAuditTimeRange = "all" | "24h" | "7d";
 
 export interface AutomationPermissionPolicyEntry {
   readonly id: string;
@@ -76,6 +80,19 @@ export interface AutomationPermissionPolicyActionAuditSummary {
   readonly succeeded: number;
   readonly failed: number;
   readonly lastOccurredAt: string | null;
+}
+
+export interface AutomationPermissionPolicyActionAuditFilters {
+  readonly result: AutomationPermissionPolicyActionAuditResultFilter;
+  readonly query: string;
+  readonly timeRange: AutomationPermissionPolicyActionAuditTimeRange;
+  readonly now: string;
+}
+
+export interface AutomationPermissionPolicyActionAuditExport {
+  readonly exportedAt: string;
+  readonly total: number;
+  readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
 }
 
 export function buildBrowserExternalPermissionAuditItems(
@@ -377,6 +394,46 @@ export function summarizeAutomationPermissionPolicyActionAudit(
   };
 }
 
+export function filterAutomationPermissionPolicyActionAuditEvents(
+  events: readonly AutomationPermissionPolicyActionAuditEvent[],
+  filters: AutomationPermissionPolicyActionAuditFilters,
+): readonly AutomationPermissionPolicyActionAuditEvent[] {
+  const query = filters.query.trim().toLowerCase();
+  const minOccurredAt = auditTimeRangeStart(filters.timeRange, filters.now);
+  return sortAutomationPermissionPolicyActionAuditEvents(
+    events.filter((event) => {
+      if (filters.result !== "all" && event.result !== filters.result) return false;
+      if (minOccurredAt !== null) {
+        const occurredAt = Date.parse(event.occurredAt);
+        if (Number.isNaN(occurredAt) || occurredAt < minOccurredAt) return false;
+      }
+      if (!query) return true;
+      return [
+        event.source,
+        event.actionKind,
+        event.actionLabel,
+        event.targetLabel,
+        event.targetId,
+        event.detail,
+      ]
+        .filter((value): value is string => typeof value === "string")
+        .some((value) => value.toLowerCase().includes(query));
+    }),
+  );
+}
+
+export function formatAutomationPermissionPolicyActionAuditExport(
+  events: readonly AutomationPermissionPolicyActionAuditEvent[],
+  exportedAt: string,
+): string {
+  const payload: AutomationPermissionPolicyActionAuditExport = {
+    exportedAt,
+    total: events.length,
+    events,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
 export function normalizeAutomationPermissionPolicyActionAuditEvents(
   raw: unknown,
 ): readonly AutomationPermissionPolicyActionAuditEvent[] {
@@ -456,6 +513,16 @@ function readPermissionPolicyActionAuditResult(
   return value === "success" || value === "failure" ? value : null;
 }
 
+function auditTimeRangeStart(
+  timeRange: AutomationPermissionPolicyActionAuditTimeRange,
+  now: string,
+): number | null {
+  const nowTime = Date.parse(now);
+  if (timeRange === "all" || Number.isNaN(nowTime)) return null;
+  const durationMs = timeRange === "24h" ? 24 * 60 * 60 * 1_000 : 7 * 24 * 60 * 60 * 1_000;
+  return nowTime - durationMs;
+}
+
 function sortAutomationPermissionAuditItems(
   items: readonly AutomationPermissionAuditItem[],
 ): readonly AutomationPermissionAuditItem[] {
@@ -467,5 +534,19 @@ function sortAutomationPermissionAuditItems(
     const timeDelta = safeRightTime - safeLeftTime;
     if (timeDelta !== 0) return timeDelta;
     return left.subject.localeCompare(right.subject);
+  });
+}
+
+function sortAutomationPermissionPolicyActionAuditEvents(
+  events: readonly AutomationPermissionPolicyActionAuditEvent[],
+): readonly AutomationPermissionPolicyActionAuditEvent[] {
+  return [...events].sort((left, right) => {
+    const leftTime = Date.parse(left.occurredAt);
+    const rightTime = Date.parse(right.occurredAt);
+    const safeLeftTime = Number.isNaN(leftTime) ? 0 : leftTime;
+    const safeRightTime = Number.isNaN(rightTime) ? 0 : rightTime;
+    const timeDelta = safeRightTime - safeLeftTime;
+    if (timeDelta !== 0) return timeDelta;
+    return left.id.localeCompare(right.id);
   });
 }

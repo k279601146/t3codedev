@@ -51,12 +51,16 @@ import {
   buildAutomationPermissionPolicyHints,
   buildAutomationPermissionPolicyEntries,
   createAutomationPermissionPolicyActionAuditEvent,
+  filterAutomationPermissionPolicyActionAuditEvents,
+  formatAutomationPermissionPolicyActionAuditExport,
   normalizeAutomationPermissionPolicyActionAuditEvents,
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
   type AutomationPermissionAuditItem,
   type AutomationPermissionPolicyAction,
   type AutomationPermissionPolicyActionAuditEvent,
+  type AutomationPermissionPolicyActionAuditResultFilter,
+  type AutomationPermissionPolicyActionAuditTimeRange,
   type AutomationPermissionPolicyHint,
   type AutomationPermissionPolicyEntry,
   type AutomationPermissionPolicyStatus,
@@ -124,6 +128,22 @@ const CHROME_EXTENSIONS_URL = "chrome://extensions";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY =
   "t3code:automation-permission-policy-action-audit:v1";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_LIMIT = 12;
+const POLICY_ACTION_AUDIT_RESULT_FILTERS: readonly {
+  readonly value: AutomationPermissionPolicyActionAuditResultFilter;
+  readonly label: string;
+}[] = [
+  { value: "all", label: "全部" },
+  { value: "success", label: "成功" },
+  { value: "failure", label: "失败" },
+];
+const POLICY_ACTION_AUDIT_TIME_FILTERS: readonly {
+  readonly value: AutomationPermissionPolicyActionAuditTimeRange;
+  readonly label: string;
+}[] = [
+  { value: "all", label: "全部时间" },
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7 天" },
+];
 
 function getPluginsClient() {
   return getPrimaryEnvironmentConnection().client.plugins;
@@ -585,44 +605,146 @@ function AutomationPermissionPolicyActionAuditSection({
   readonly title: string;
   readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
 }) {
-  const summary = summarizeAutomationPermissionPolicyActionAudit(events);
+  const [query, setQuery] = useState("");
+  const [resultFilter, setResultFilter] =
+    useState<AutomationPermissionPolicyActionAuditResultFilter>("all");
+  const [timeRange, setTimeRange] =
+    useState<AutomationPermissionPolicyActionAuditTimeRange>("all");
+  const [copied, setCopied] = useState(false);
+  const filteredEvents = useMemo(
+    () =>
+      filterAutomationPermissionPolicyActionAuditEvents(events, {
+        result: resultFilter,
+        query,
+        timeRange,
+        now: new Date().toISOString(),
+      }),
+    [events, query, resultFilter, timeRange],
+  );
+  const summary = summarizeAutomationPermissionPolicyActionAudit(filteredEvents);
+  const copyAuditExport = useCallback(() => {
+    if (filteredEvents.length === 0) return;
+    if (!navigator.clipboard?.writeText) {
+      toastManager.add({ type: "error", title: "复制失败", description: "当前环境不支持剪贴板。" });
+      return;
+    }
+    const payload = formatAutomationPermissionPolicyActionAuditExport(
+      filteredEvents,
+      new Date().toISOString(),
+    );
+    void navigator.clipboard
+      .writeText(payload)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1_200);
+        toastManager.add({ type: "success", title: "审计记录已复制" });
+      })
+      .catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: "复制失败",
+          description: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, [filteredEvents]);
   return (
     <section>
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
         {events.length > 0 ? (
           <span className="text-[11px] text-muted-foreground">
-            成功 {summary.succeeded} · 失败 {summary.failed} · 最近{" "}
+            匹配 {filteredEvents.length}/{events.length} · 成功 {summary.succeeded} · 失败{" "}
+            {summary.failed} · 最近{" "}
             {formatTimestamp(summary.lastOccurredAt)}
           </span>
         ) : null}
       </div>
+      {events.length > 0 ? (
+        <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="relative min-w-0">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+              placeholder="搜索目标、动作或详情"
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              {POLICY_ACTION_AUDIT_RESULT_FILTERS.map((filter) => (
+                <Button
+                  key={filter.value}
+                  type="button"
+                  variant={resultFilter === filter.value ? "default" : "outline"}
+                  size="xs"
+                  onClick={() => setResultFilter(filter.value)}
+                >
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1">
+              {POLICY_ACTION_AUDIT_TIME_FILTERS.map((filter) => (
+                <Button
+                  key={filter.value}
+                  type="button"
+                  variant={timeRange === filter.value ? "default" : "outline"}
+                  size="xs"
+                  onClick={() => setTimeRange(filter.value)}
+                >
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={filteredEvents.length === 0}
+              onClick={copyAuditExport}
+            >
+              {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+              {copied ? "已复制" : "复制 JSON"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <div className="mt-3 rounded-md border border-border/70 px-3">
         {events.length === 0 ? (
           <div className="py-6 text-sm text-muted-foreground">还没有策略动作记录。</div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="py-6 text-sm text-muted-foreground">没有匹配的策略动作记录。</div>
         ) : (
-          events.slice(0, 5).map((event) => (
-            <div
-              key={event.id}
-              className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
-            >
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-[13px] font-medium text-foreground">
-                    {event.targetLabel}
-                  </span>
-                  {permissionPolicyActionAuditResultPill(event.result)}
+          <>
+            {filteredEvents.slice(0, 5).map((event) => (
+              <div
+                key={event.id}
+                className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
+              >
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-[13px] font-medium text-foreground">
+                      {event.targetLabel}
+                    </span>
+                    {permissionPolicyActionAuditResultPill(event.result)}
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                    {event.actionLabel}
+                    {event.detail ? ` · ${event.detail}` : null}
+                  </div>
                 </div>
-                <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                  {event.actionLabel}
-                  {event.detail ? ` · ${event.detail}` : null}
+                <div className="text-right text-[11px] text-muted-foreground">
+                  {formatTimestamp(event.occurredAt)}
                 </div>
               </div>
-              <div className="text-right text-[11px] text-muted-foreground">
-                {formatTimestamp(event.occurredAt)}
+            ))}
+            {filteredEvents.length > 5 ? (
+              <div className="py-2 text-[11px] text-muted-foreground">
+                已显示 5/{filteredEvents.length} 条。
               </div>
-            </div>
-          ))
+            ) : null}
+          </>
         )}
       </div>
     </section>
