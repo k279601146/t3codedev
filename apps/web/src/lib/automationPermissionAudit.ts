@@ -43,6 +43,13 @@ export type AutomationPermissionPolicyActionAuditResultFilter =
   | AutomationPermissionPolicyActionAuditResult
   | "all";
 export type AutomationPermissionPolicyActionAuditTimeRange = "all" | "24h" | "7d";
+export type AutomationPermissionPolicyActionAuditActorKind = "local-user" | "team-user";
+export type AutomationPermissionPolicyActionAuditPolicySource = "local" | "team";
+export type AutomationPermissionPolicyActionAuditPersistenceScope =
+  | "local-browser"
+  | "server-audit-log";
+
+export const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION = 1;
 
 export interface AutomationPermissionPolicyEntry {
   readonly id: string;
@@ -63,7 +70,32 @@ export interface AutomationPermissionPolicyAction {
   readonly host?: string;
 }
 
+export interface AutomationPermissionPolicyActionAuditContext {
+  readonly actor: {
+    readonly kind: AutomationPermissionPolicyActionAuditActorKind;
+    readonly id: string | null;
+    readonly label: string | null;
+  };
+  readonly device: {
+    readonly id: string;
+    readonly label: string | null;
+  };
+  readonly workspace: {
+    readonly id: string | null;
+    readonly label: string | null;
+  };
+  readonly policy: {
+    readonly source: AutomationPermissionPolicyActionAuditPolicySource;
+    readonly version: string;
+  };
+  readonly persistence: {
+    readonly scope: AutomationPermissionPolicyActionAuditPersistenceScope;
+    readonly syncedAt: string | null;
+  };
+}
+
 export interface AutomationPermissionPolicyActionAuditEvent {
+  readonly schemaVersion: typeof AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION;
   readonly id: string;
   readonly source: AutomationPermissionAuditSource;
   readonly actionKind: AutomationPermissionPolicyActionKind;
@@ -73,6 +105,7 @@ export interface AutomationPermissionPolicyActionAuditEvent {
   readonly result: AutomationPermissionPolicyActionAuditResult;
   readonly occurredAt: string;
   readonly detail: string | null;
+  readonly context: AutomationPermissionPolicyActionAuditContext | null;
 }
 
 export interface AutomationPermissionPolicyActionAuditSummary {
@@ -90,6 +123,7 @@ export interface AutomationPermissionPolicyActionAuditFilters {
 }
 
 export interface AutomationPermissionPolicyActionAuditExport {
+  readonly schemaVersion: typeof AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION;
   readonly exportedAt: string;
   readonly total: number;
   readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
@@ -352,8 +386,10 @@ export function createAutomationPermissionPolicyActionAuditEvent(input: {
   readonly result: AutomationPermissionPolicyActionAuditResult;
   readonly occurredAt: string;
   readonly detail?: string | null;
+  readonly context?: AutomationPermissionPolicyActionAuditContext | null;
 }): AutomationPermissionPolicyActionAuditEvent {
   return {
+    schemaVersion: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
     id: `${input.occurredAt}:${input.result}:${input.action.id}`,
     source: input.action.source,
     actionKind: input.action.kind,
@@ -363,6 +399,45 @@ export function createAutomationPermissionPolicyActionAuditEvent(input: {
     result: input.result,
     occurredAt: input.occurredAt,
     detail: input.detail ?? null,
+    context: input.context ?? null,
+  };
+}
+
+export function createAutomationPermissionPolicyActionAuditContext(input: {
+  readonly actorKind?: AutomationPermissionPolicyActionAuditActorKind;
+  readonly actorId?: string | null;
+  readonly actorLabel?: string | null;
+  readonly deviceId: string;
+  readonly deviceLabel?: string | null;
+  readonly workspaceId?: string | null;
+  readonly workspaceLabel?: string | null;
+  readonly policySource?: AutomationPermissionPolicyActionAuditPolicySource;
+  readonly policyVersion: string;
+  readonly persistenceScope?: AutomationPermissionPolicyActionAuditPersistenceScope;
+  readonly syncedAt?: string | null;
+}): AutomationPermissionPolicyActionAuditContext {
+  return {
+    actor: {
+      kind: input.actorKind ?? "local-user",
+      id: input.actorId ?? null,
+      label: input.actorLabel ?? null,
+    },
+    device: {
+      id: input.deviceId,
+      label: input.deviceLabel ?? null,
+    },
+    workspace: {
+      id: input.workspaceId ?? null,
+      label: input.workspaceLabel ?? null,
+    },
+    policy: {
+      source: input.policySource ?? "local",
+      version: input.policyVersion,
+    },
+    persistence: {
+      scope: input.persistenceScope ?? "local-browser",
+      syncedAt: input.syncedAt ?? null,
+    },
   };
 }
 
@@ -415,6 +490,15 @@ export function filterAutomationPermissionPolicyActionAuditEvents(
         event.targetLabel,
         event.targetId,
         event.detail,
+        event.context?.actor.id,
+        event.context?.actor.label,
+        event.context?.device.id,
+        event.context?.device.label,
+        event.context?.workspace.id,
+        event.context?.workspace.label,
+        event.context?.policy.source,
+        event.context?.policy.version,
+        event.context?.persistence.scope,
       ]
         .filter((value): value is string => typeof value === "string")
         .some((value) => value.toLowerCase().includes(query));
@@ -427,6 +511,7 @@ export function formatAutomationPermissionPolicyActionAuditExport(
   exportedAt: string,
 ): string {
   const payload: AutomationPermissionPolicyActionAuditExport = {
+    schemaVersion: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
     exportedAt,
     total: events.length,
     events,
@@ -441,6 +526,9 @@ export function normalizeAutomationPermissionPolicyActionAuditEvents(
   return raw.flatMap((item) => {
     const record = asReadonlyRecord(item);
     if (!record) return [];
+    const schemaVersion =
+      readNumber(record, "schemaVersion") ??
+      AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION;
     const id = readString(record, "id");
     const source = readPermissionAuditSource(record.source);
     const actionKind = readPermissionPolicyActionKind(record.actionKind);
@@ -450,6 +538,7 @@ export function normalizeAutomationPermissionPolicyActionAuditEvents(
     const result = readPermissionPolicyActionAuditResult(record.result);
     const occurredAt = readString(record, "occurredAt");
     if (
+      schemaVersion !== AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION ||
       !id ||
       !source ||
       !actionKind ||
@@ -463,6 +552,7 @@ export function normalizeAutomationPermissionPolicyActionAuditEvents(
     }
     return [
       {
+        schemaVersion: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
         id,
         source,
         actionKind,
@@ -472,6 +562,7 @@ export function normalizeAutomationPermissionPolicyActionAuditEvents(
         result,
         occurredAt,
         detail: readString(record, "detail"),
+        context: readPermissionPolicyActionAuditContext(record.context),
       },
     ];
   });
@@ -494,6 +585,11 @@ function readString(record: Readonly<Record<string, unknown>>, key: string): str
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function readNumber(record: Readonly<Record<string, unknown>>, key: string): number | null {
+  const value = record[key];
+  return typeof value === "number" ? value : null;
+}
+
 function readPermissionAuditSource(value: unknown): AutomationPermissionAuditSource | null {
   return value === "chrome" || value === "computer" ? value : null;
 }
@@ -511,6 +607,68 @@ function readPermissionPolicyActionAuditResult(
   value: unknown,
 ): AutomationPermissionPolicyActionAuditResult | null {
   return value === "success" || value === "failure" ? value : null;
+}
+
+function readPermissionPolicyActionAuditContext(
+  value: unknown,
+): AutomationPermissionPolicyActionAuditContext | null {
+  const record = asReadonlyRecord(value);
+  if (!record) return null;
+  const actor = asReadonlyRecord(record.actor);
+  const device = asReadonlyRecord(record.device);
+  const workspace = asReadonlyRecord(record.workspace);
+  const policy = asReadonlyRecord(record.policy);
+  const persistence = asReadonlyRecord(record.persistence);
+  if (!actor || !device || !workspace || !policy || !persistence) return null;
+  const actorKind = readPermissionPolicyActionAuditActorKind(actor.kind);
+  const deviceId = readString(device, "id");
+  const policySource = readPermissionPolicyActionAuditPolicySource(policy.source);
+  const policyVersion = readString(policy, "version");
+  const persistenceScope = readPermissionPolicyActionAuditPersistenceScope(persistence.scope);
+  if (!actorKind || !deviceId || !policySource || !policyVersion || !persistenceScope) {
+    return null;
+  }
+  return {
+    actor: {
+      kind: actorKind,
+      id: readString(actor, "id"),
+      label: readString(actor, "label"),
+    },
+    device: {
+      id: deviceId,
+      label: readString(device, "label"),
+    },
+    workspace: {
+      id: readString(workspace, "id"),
+      label: readString(workspace, "label"),
+    },
+    policy: {
+      source: policySource,
+      version: policyVersion,
+    },
+    persistence: {
+      scope: persistenceScope,
+      syncedAt: readString(persistence, "syncedAt"),
+    },
+  };
+}
+
+function readPermissionPolicyActionAuditActorKind(
+  value: unknown,
+): AutomationPermissionPolicyActionAuditActorKind | null {
+  return value === "local-user" || value === "team-user" ? value : null;
+}
+
+function readPermissionPolicyActionAuditPolicySource(
+  value: unknown,
+): AutomationPermissionPolicyActionAuditPolicySource | null {
+  return value === "local" || value === "team" ? value : null;
+}
+
+function readPermissionPolicyActionAuditPersistenceScope(
+  value: unknown,
+): AutomationPermissionPolicyActionAuditPersistenceScope | null {
+  return value === "local-browser" || value === "server-audit-log" ? value : null;
 }
 
 function auditTimeRangeStart(

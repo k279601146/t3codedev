@@ -51,6 +51,7 @@ import {
   buildAutomationPermissionPolicyHints,
   buildAutomationPermissionPolicyEntries,
   createAutomationPermissionPolicyActionAuditEvent,
+  createAutomationPermissionPolicyActionAuditContext,
   filterAutomationPermissionPolicyActionAuditEvents,
   formatAutomationPermissionPolicyActionAuditExport,
   normalizeAutomationPermissionPolicyActionAuditEvents,
@@ -58,6 +59,7 @@ import {
   summarizeAutomationPermissionPolicyActionAudit,
   type AutomationPermissionAuditItem,
   type AutomationPermissionPolicyAction,
+  type AutomationPermissionPolicyActionAuditContext,
   type AutomationPermissionPolicyActionAuditEvent,
   type AutomationPermissionPolicyActionAuditResultFilter,
   type AutomationPermissionPolicyActionAuditTimeRange,
@@ -127,7 +129,11 @@ const CHROME_EXTENSION_DOWNLOAD_NAME = "t3-code-chrome-extension.zip";
 const CHROME_EXTENSIONS_URL = "chrome://extensions";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY =
   "t3code:automation-permission-policy-action-audit:v1";
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_DEVICE_STORAGE_KEY =
+  "t3code:automation-permission-policy-action-audit-device:v1";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_LIMIT = 12;
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_POLICY_VERSION =
+  "local-automation-permission-policy:v1";
 const POLICY_ACTION_AUDIT_RESULT_FILTERS: readonly {
   readonly value: AutomationPermissionPolicyActionAuditResultFilter;
   readonly label: string;
@@ -175,6 +181,35 @@ function writePolicyActionAuditEvents(
   } catch {
     // Ignore storage failures; the in-memory audit state still updates for this session.
   }
+}
+
+function readPolicyActionAuditDeviceId(): string {
+  if (typeof window === "undefined") return "browser:unknown";
+  try {
+    const existing = window.localStorage.getItem(
+      AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_DEVICE_STORAGE_KEY,
+    );
+    if (existing) return existing;
+    const next =
+      typeof window.crypto?.randomUUID === "function"
+        ? `browser:${window.crypto.randomUUID()}`
+        : `browser:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    window.localStorage.setItem(AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_DEVICE_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return "browser:ephemeral";
+  }
+}
+
+function createPolicyActionAuditContext(): AutomationPermissionPolicyActionAuditContext {
+  return createAutomationPermissionPolicyActionAuditContext({
+    actorLabel: "本机用户",
+    deviceId: readPolicyActionAuditDeviceId(),
+    deviceLabel:
+      typeof navigator === "undefined" || !navigator.platform ? "当前浏览器" : navigator.platform,
+    workspaceLabel: "全局自动化权限",
+    policyVersion: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_POLICY_VERSION,
+  });
 }
 
 function builtinPluginId(plugin: PluginSummary): BuiltinPluginId | null {
@@ -598,6 +633,18 @@ function permissionPolicyActionAuditResultPill(
   );
 }
 
+function formatPolicyActionAuditContext(
+  context: AutomationPermissionPolicyActionAuditContext | null,
+): string {
+  if (!context) return "旧版本地记录";
+  const actor = context.actor.label ?? context.actor.id ?? "本机用户";
+  const device = context.device.label ?? context.device.id;
+  const policy = `${context.policy.source}:${context.policy.version}`;
+  const persistence =
+    context.persistence.scope === "local-browser" ? "本地浏览器" : "服务端审计日志";
+  return `${actor} · ${device} · ${policy} · ${persistence}`;
+}
+
 function AutomationPermissionPolicyActionAuditSection({
   title,
   events,
@@ -732,6 +779,9 @@ function AutomationPermissionPolicyActionAuditSection({
                   <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
                     {event.actionLabel}
                     {event.detail ? ` · ${event.detail}` : null}
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                    {formatPolicyActionAuditContext(event.context)}
                   </div>
                 </div>
                 <div className="text-right text-[11px] text-muted-foreground">
@@ -950,6 +1000,7 @@ function BrowserExternalPluginDetails({
               result: "success",
               occurredAt: new Date().toISOString(),
               detail: "已改为本次会话授权。",
+              context: createPolicyActionAuditContext(),
             }),
           );
           toastManager.add({
@@ -967,6 +1018,7 @@ function BrowserExternalPluginDetails({
               result: "failure",
               occurredAt: new Date().toISOString(),
               detail: description,
+              context: createPolicyActionAuditContext(),
             }),
           );
           toastManager.add({
@@ -1283,6 +1335,7 @@ function ComputerPluginDetails({
               result: result.success ? "success" : "failure",
               occurredAt: new Date().toISOString(),
               detail: result.success ? "始终允许 App 已清空。" : (result.error ?? "清空失败。"),
+              context: createPolicyActionAuditContext(),
             }),
           );
         });

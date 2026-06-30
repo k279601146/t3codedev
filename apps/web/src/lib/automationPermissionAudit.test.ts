@@ -5,12 +5,14 @@ import type {
 } from "@t3tools/contracts";
 
 import {
+  AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
   appendAutomationPermissionPolicyActionAuditEvent,
   buildBrowserExternalPermissionAuditItems,
   buildComputerPermissionAuditItems,
   buildAutomationPermissionPolicyActions,
   buildAutomationPermissionPolicyHints,
   buildAutomationPermissionPolicyEntries,
+  createAutomationPermissionPolicyActionAuditContext,
   createAutomationPermissionPolicyActionAuditEvent,
   filterAutomationPermissionPolicyActionAuditEvents,
   formatAutomationPermissionPolicyActionAuditExport,
@@ -269,6 +271,7 @@ describe("automation permission audit", () => {
     });
 
     expect(event).toEqual({
+      schemaVersion: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
       id: "2026-06-30T00:10:00.000Z:success:chrome-downgrade:billing.example.com",
       source: "chrome",
       actionKind: "chrome-downgrade-persistent-host",
@@ -278,6 +281,7 @@ describe("automation permission audit", () => {
       result: "success",
       occurredAt: "2026-06-30T00:10:00.000Z",
       detail: "已改为本次会话授权。",
+      context: null,
     });
     expect(
       appendAutomationPermissionPolicyActionAuditEvent(
@@ -302,6 +306,21 @@ describe("automation permission audit", () => {
     expect(normalizeAutomationPermissionPolicyActionAuditEvents([event, { id: "bad" }])).toEqual([
       event,
     ]);
+    expect(
+      normalizeAutomationPermissionPolicyActionAuditEvents([
+        {
+          id: event.id,
+          source: event.source,
+          actionKind: event.actionKind,
+          actionLabel: event.actionLabel,
+          targetLabel: event.targetLabel,
+          targetId: event.targetId,
+          result: event.result,
+          occurredAt: event.occurredAt,
+          detail: event.detail,
+        },
+      ]),
+    ).toEqual([event]);
   });
 
   it("filters and formats policy action audit exports", () => {
@@ -320,11 +339,19 @@ describe("automation permission audit", () => {
       ],
       "chrome",
     )[0]!;
+    const context = createAutomationPermissionPolicyActionAuditContext({
+      actorLabel: "本机用户",
+      deviceId: "browser:device-1",
+      deviceLabel: "Windows",
+      workspaceLabel: "全局自动化权限",
+      policyVersion: "local-automation-permission-policy:v1",
+    });
     const success = createAutomationPermissionPolicyActionAuditEvent({
       action,
       result: "success",
       occurredAt: "2026-06-30T00:10:00.000Z",
       detail: "已改为本次会话授权。",
+      context,
     });
     const failure = createAutomationPermissionPolicyActionAuditEvent({
       action,
@@ -349,6 +376,14 @@ describe("automation permission audit", () => {
         now: "2026-06-30T00:10:00.000Z",
       }),
     ).toEqual([failure]);
+    expect(
+      filterAutomationPermissionPolicyActionAuditEvents([failure, success], {
+        result: "all",
+        query: "device-1",
+        timeRange: "all",
+        now: "2026-06-30T00:10:00.000Z",
+      }),
+    ).toEqual([success]);
 
     expect(
       JSON.parse(
@@ -358,6 +393,7 @@ describe("automation permission audit", () => {
         ),
       ),
     ).toEqual({
+      schemaVersion: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
       exportedAt: "2026-06-30T00:15:00.000Z",
       total: 1,
       events: [success],
