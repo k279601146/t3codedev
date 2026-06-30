@@ -2004,9 +2004,8 @@ function summarizeRuntimeIssueGroup(
     .at(-1);
 
   if (reconnectAttempt) {
-    const attemptText = `${reconnectAttempt.current}/${reconnectAttempt.total}`;
     return {
-      label: tone === "error" ? `重新连接失败 ${attemptText}` : `正在重新连接 ${attemptText}`,
+      label: resolveReconnectIssueLabel({ entries, tone, attempt: reconnectAttempt }),
       detail: finalText,
       cardText: finalText,
       tone,
@@ -2026,6 +2025,28 @@ function summarizeRuntimeIssueGroup(
     cardText: finalText,
     tone,
   };
+}
+
+function resolveReconnectIssueLabel({
+  entries,
+  tone,
+  attempt,
+}: {
+  entries: ReadonlyArray<TimelineWorkEntry>;
+  tone: RuntimeIssueGroupSummary["tone"];
+  attempt: { current: number; total: number };
+}): string {
+  const attemptText = `${attempt.current}/${attempt.total}`;
+  if (tone === "error") {
+    return `重新连接失败 ${attemptText}`;
+  }
+  if (entries.some((entry) => entry.status === "running")) {
+    return `正在重新连接 ${attemptText}`;
+  }
+  if (attempt.current >= attempt.total) {
+    return `重新连接已结束 ${attemptText}`;
+  }
+  return `已尝试重新连接 ${attemptText}`;
 }
 
 const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({

@@ -994,6 +994,36 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("已处理 6 项");
   });
 
+  it("uses past-tense reconnect wording for completed retry warnings", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const retryMessage =
+      "unexpected status 413 Payload Too Large: 当前转基分组不适合超长上下文";
+
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "runtime-warning-entry",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:36.000Z",
+            entry: {
+              id: "runtime-warning",
+              createdAt: "2026-03-17T19:12:36.000Z",
+              label: "Runtime warning",
+              detail: `Reconnecting... 2/5: ${retryMessage}`,
+              tone: "info",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("已尝试重新连接 2/5");
+    expect(markup).not.toContain("正在重新连接 2/5");
+  });
+
   it("renders the live working row with shimmer styling", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
