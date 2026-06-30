@@ -1848,10 +1848,21 @@ const WorkGroupSection = memo(function WorkGroupSection({
   turnDiffSummary: TurnDiffSummary | undefined;
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
-  const [isExpanded, setIsExpanded] = useState(false);
   const compactRequestErrorMessage = getCompactRequestErrorMessage(groupedEntries);
+  const runtimeIssueSummary = summarizeRuntimeIssueGroup(groupedEntries);
   const summary = summarizeWorkGroup(groupedEntries);
+  const [isExpanded, setIsExpanded] = useState(runtimeIssueSummary !== null);
   const showLiveScan = groupedEntries.some((entry) => entry.status === "running");
+
+  if (runtimeIssueSummary) {
+    return (
+      <RuntimeIssueWorkGroup
+        summary={runtimeIssueSummary}
+        isExpanded={isExpanded}
+        onToggle={() => setIsExpanded((value) => !value)}
+      />
+    );
+  }
 
   if (compactRequestErrorMessage) {
     return <CompactRequestErrorRow message={compactRequestErrorMessage} />;
@@ -1924,6 +1935,159 @@ const WorkGroupSection = memo(function WorkGroupSection({
     </div>
   );
 });
+
+interface RuntimeIssueGroupSummary {
+  readonly label: string;
+  readonly detail: string | null;
+  readonly cardText: string;
+  readonly tone: "warning" | "error";
+}
+
+const RUNTIME_ISSUE_LABELS = new Set(["runtime warning", "runtime error"]);
+const RECONNECT_ATTEMPT_PATTERN = /\breconnecting(?:\.\.\.|…)?\s*(\d+)\s*\/\s*(\d+)/i;
+const RECONNECT_PREFIX_PATTERN =
+  /^\s*reconnecting(?:\.\.\.|…)?\s*\d+\s*\/\s*\d+\s*:?\s*/i;
+
+function isRuntimeIssueEntry(entry: TimelineWorkEntry): boolean {
+  return RUNTIME_ISSUE_LABELS.has(entry.label.trim().toLowerCase());
+}
+
+function isRuntimeErrorEntry(entry: TimelineWorkEntry): boolean {
+  return entry.label.trim().toLowerCase() === "runtime error";
+}
+
+function runtimeIssueText(entry: TimelineWorkEntry): string | null {
+  const text = (entry.detail || entry.output || entry.label).trim();
+  return text.length > 0 ? text : null;
+}
+
+function stripReconnectPrefix(text: string): string {
+  const stripped = text.replace(RECONNECT_PREFIX_PATTERN, "").trim();
+  return stripped.length > 0 ? stripped : text.trim();
+}
+
+function parseReconnectAttempt(text: string): { current: number; total: number } | null {
+  const match = RECONNECT_ATTEMPT_PATTERN.exec(text);
+  if (!match) {
+    return null;
+  }
+  const current = Number.parseInt(match[1] ?? "", 10);
+  const total = Number.parseInt(match[2] ?? "", 10);
+  if (!Number.isFinite(current) || !Number.isFinite(total)) {
+    return null;
+  }
+  return { current, total };
+}
+
+function summarizeRuntimeIssueGroup(
+  entries: ReadonlyArray<TimelineWorkEntry>,
+): RuntimeIssueGroupSummary | null {
+  if (entries.length === 0 || !entries.every(isRuntimeIssueEntry)) {
+    return null;
+  }
+
+  const texts = entries.map(runtimeIssueText).filter((text): text is string => text !== null);
+  if (texts.length === 0) {
+    return null;
+  }
+
+  const tone =
+    entries.some(
+      (entry) => isRuntimeErrorEntry(entry) || entry.tone === "error" || entry.status === "failed",
+    )
+      ? "error"
+      : "warning";
+  const finalText = stripReconnectPrefix(texts[texts.length - 1]!);
+  const reconnectAttempt = texts
+    .map(parseReconnectAttempt)
+    .filter((attempt): attempt is { current: number; total: number } => attempt !== null)
+    .at(-1);
+
+  if (reconnectAttempt) {
+    const attemptText = `${reconnectAttempt.current}/${reconnectAttempt.total}`;
+    return {
+      label: tone === "error" ? `重新连接失败 ${attemptText}` : `正在重新连接 ${attemptText}`,
+      detail: finalText,
+      cardText: finalText,
+      tone,
+    };
+  }
+
+  return {
+    label:
+      tone === "error"
+        ? entries.length > 1
+          ? `运行时错误 ${entries.length} 项`
+          : "运行时错误"
+        : entries.length > 1
+          ? `运行时警告 ${entries.length} 项`
+          : "运行时警告",
+    detail: finalText,
+    cardText: finalText,
+    tone,
+  };
+}
+
+const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({
+  summary,
+  isExpanded,
+  onToggle,
+}: {
+  summary: RuntimeIssueGroupSummary;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="pt-2 pb-3 pl-1">
+      <button
+        type="button"
+        className={cn(
+          "chat-text group/runtime-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 transition-colors hover:text-foreground/78",
+          summary.tone === "error" ? "text-rose-500/78" : "text-muted-foreground/72",
+        )}
+        aria-expanded={isExpanded}
+        data-runtime-issue-summary="true"
+        onClick={onToggle}
+      >
+        <CircleAlertIcon
+          className={cn(
+            "size-4 shrink-0",
+            summary.tone === "error" ? "text-rose-500/72" : "text-muted-foreground/62",
+          )}
+        />
+        <span className="min-w-0 truncate">{summary.label}</span>
+        {isExpanded ? (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/52 transition-colors group-hover/runtime-summary:text-muted-foreground/75" />
+        ) : (
+          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/42 transition-colors group-hover/runtime-summary:text-muted-foreground/70" />
+        )}
+      </button>
+      {isExpanded ? (
+        <div className="mt-1.5 space-y-2" data-runtime-issue-details="true">
+          {summary.detail ? (
+            <p className="px-0.5 text-[13px] leading-5 text-muted-foreground/72 wrap-break-word">
+              {summary.detail}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      <RuntimeIssueNoticeCard text={summary.cardText} />
+    </div>
+  );
+});
+
+function RuntimeIssueNoticeCard({ text }: { text: string }) {
+  return (
+    <div
+      className="mt-2 flex min-h-10 items-center gap-3 rounded-2xl border border-border/75 bg-background px-4 py-2.5 text-[13px] leading-5 text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+      title={text}
+      data-runtime-issue-card="true"
+    >
+      <CircleAlertIcon className="size-4 shrink-0 text-foreground/80" />
+      <p className="min-w-0 flex-1 wrap-break-word">{text}</p>
+    </div>
+  );
+}
 
 function isSearchWorkEntry(entry: TimelineWorkEntry): boolean {
   return entry.toolFamily === "search" || entry.itemType === "web_search";

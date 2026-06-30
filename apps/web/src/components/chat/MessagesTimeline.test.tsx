@@ -951,6 +951,49 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("image-generation-shimmer");
   });
 
+  it("renders reconnect runtime issues as a persistent inline notice", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const retryMessage =
+      "unexpected status 403 Forbidden: insufficient balance, url: https://sub.bahew.com/v1/responses";
+    const timelineEntries = [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        id: `warning-entry-${index + 1}`,
+        kind: "work" as const,
+        createdAt: `2026-03-17T19:12:3${index}.000Z`,
+        entry: {
+          id: `warning-${index + 1}`,
+          createdAt: `2026-03-17T19:12:3${index}.000Z`,
+          label: "Runtime warning",
+          detail: `Reconnecting... ${index + 1}/5: ${retryMessage}`,
+          tone: "info" as const,
+          status: "completed" as const,
+        },
+      })),
+      {
+        id: "runtime-error-entry",
+        kind: "work" as const,
+        createdAt: "2026-03-17T19:12:36.000Z",
+        entry: {
+          id: "runtime-error",
+          createdAt: "2026-03-17T19:12:36.000Z",
+          label: "Runtime error",
+          detail: retryMessage,
+          tone: "error" as const,
+          status: "failed" as const,
+        },
+      },
+    ];
+
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={timelineEntries} />,
+    );
+
+    expect(markup).toContain("重新连接失败 5/5");
+    expect(markup).toContain(retryMessage);
+    expect(markup).toContain('data-runtime-issue-card="true"');
+    expect(markup).not.toContain("已处理 6 项");
+  });
+
   it("renders the live working row with shimmer styling", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
