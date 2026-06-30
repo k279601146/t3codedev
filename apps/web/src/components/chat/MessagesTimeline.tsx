@@ -477,7 +477,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const renderTimelineRow = useCallback(
-    (_index: number, row: MessagesTimelineRow) => {
+    (index: number) => {
+      const row = rows[index - firstItemIndex];
+      if (!row) {
+        return null;
+      }
       const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
       const isCollapsedProcessMember = ownerId
         ? collapsedAssistantMessageIds.has(ownerId)
@@ -496,7 +500,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         </div>
       );
     },
-    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId],
+    [collapsedAssistantMessageIds, firstItemIndex, ownerAssistantMessageIdByRowId, rows],
   );
 
   const followOutput = useCallback((isAtBottom: boolean) => (isAtBottom ? "auto" : false), []);
@@ -595,11 +599,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         <Virtuoso<MessagesTimelineRow>
           ref={virtuosoRef}
           className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
-          data={rows}
+          totalCount={rows.length}
           firstItemIndex={firstItemIndex}
           initialItemCount={Math.min(rows.length, TIMELINE_INITIAL_RENDER_COUNT)}
           initialTopMostItemIndex={initialTopMostItemIndex}
-          computeItemKey={(_index, row) => keyExtractor(row)}
+          computeItemKey={(index) => rows[index - firstItemIndex]?.id ?? `timeline:${index}`}
           components={timelineComponents}
           itemContent={renderTimelineRow}
           scrollerRef={handleScrollerRef}
@@ -654,10 +658,6 @@ function MessagesTimelineHistorySkeleton() {
       </div>
     </div>
   );
-}
-
-function keyExtractor(item: MessagesTimelineRow) {
-  return item.id;
 }
 
 // ---------------------------------------------------------------------------
