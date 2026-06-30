@@ -23,4 +23,5 @@ export * from "./filesystem.ts";
 export * from "./skills.ts";
 export * from "./plugins.ts";
 export * from "./automations.ts";
+export * from "./automationPermissionAudit.ts";
 export * from "./rpc.ts";

@@ -1,10 +1,38 @@
 import type {
+  AutomationPermissionAuditDecision,
+  AutomationPermissionAuditSource,
+  AutomationPermissionPolicyActionAuditActorKind,
+  AutomationPermissionPolicyActionAuditContext,
+  AutomationPermissionPolicyActionAuditEvent,
+  AutomationPermissionPolicyActionAuditExport,
+  AutomationPermissionPolicyActionAuditFilters,
+  AutomationPermissionPolicyActionAuditPersistenceScope,
+  AutomationPermissionPolicyActionAuditPolicySource,
+  AutomationPermissionPolicyActionAuditResult,
+  AutomationPermissionPolicyActionAuditResultFilter,
+  AutomationPermissionPolicyActionAuditTimeRange,
+  AutomationPermissionPolicyActionKind,
   DesktopBrowserExternalAutomationState,
   DesktopComputerAutomationState,
 } from "@t3tools/contracts";
+import { AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION } from "@t3tools/contracts";
 
-export type AutomationPermissionAuditSource = "chrome" | "computer";
-export type AutomationPermissionAuditDecision = "allow" | "block";
+export { AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION } from "@t3tools/contracts";
+export type {
+  AutomationPermissionAuditDecision,
+  AutomationPermissionAuditSource,
+  AutomationPermissionPolicyActionAuditActorKind,
+  AutomationPermissionPolicyActionAuditContext,
+  AutomationPermissionPolicyActionAuditEvent,
+  AutomationPermissionPolicyActionAuditExport,
+  AutomationPermissionPolicyActionAuditFilters,
+  AutomationPermissionPolicyActionAuditPersistenceScope,
+  AutomationPermissionPolicyActionAuditPolicySource,
+  AutomationPermissionPolicyActionAuditResult,
+  AutomationPermissionPolicyActionAuditResultFilter,
+  AutomationPermissionPolicyActionAuditTimeRange,
+  AutomationPermissionPolicyActionKind,
+} from "@t3tools/contracts";
 
 export interface AutomationPermissionAuditItem {
   readonly id: string;
@@ -35,22 +63,6 @@ export interface AutomationPermissionPolicyHint {
 
 export type AutomationPermissionPolicyScope = AutomationPermissionAuditSource | "all";
 export type AutomationPermissionPolicyStatus = "satisfied" | "review" | "action-required";
-export type AutomationPermissionPolicyActionKind =
-  | "chrome-downgrade-persistent-host"
-  | "computer-clear-persistent-apps";
-export type AutomationPermissionPolicyActionAuditResult = "success" | "failure";
-export type AutomationPermissionPolicyActionAuditResultFilter =
-  | AutomationPermissionPolicyActionAuditResult
-  | "all";
-export type AutomationPermissionPolicyActionAuditTimeRange = "all" | "24h" | "7d";
-export type AutomationPermissionPolicyActionAuditActorKind = "local-user" | "team-user";
-export type AutomationPermissionPolicyActionAuditPolicySource = "local" | "team";
-export type AutomationPermissionPolicyActionAuditPersistenceScope =
-  | "local-browser"
-  | "server-audit-log";
-
-export const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION = 1;
-
 export interface AutomationPermissionPolicyEntry {
   readonly id: string;
   readonly status: AutomationPermissionPolicyStatus;
@@ -70,63 +82,11 @@ export interface AutomationPermissionPolicyAction {
   readonly host?: string;
 }
 
-export interface AutomationPermissionPolicyActionAuditContext {
-  readonly actor: {
-    readonly kind: AutomationPermissionPolicyActionAuditActorKind;
-    readonly id: string | null;
-    readonly label: string | null;
-  };
-  readonly device: {
-    readonly id: string;
-    readonly label: string | null;
-  };
-  readonly workspace: {
-    readonly id: string | null;
-    readonly label: string | null;
-  };
-  readonly policy: {
-    readonly source: AutomationPermissionPolicyActionAuditPolicySource;
-    readonly version: string;
-  };
-  readonly persistence: {
-    readonly scope: AutomationPermissionPolicyActionAuditPersistenceScope;
-    readonly syncedAt: string | null;
-  };
-}
-
-export interface AutomationPermissionPolicyActionAuditEvent {
-  readonly schemaVersion: typeof AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION;
-  readonly id: string;
-  readonly source: AutomationPermissionAuditSource;
-  readonly actionKind: AutomationPermissionPolicyActionKind;
-  readonly actionLabel: string;
-  readonly targetLabel: string;
-  readonly targetId: string;
-  readonly result: AutomationPermissionPolicyActionAuditResult;
-  readonly occurredAt: string;
-  readonly detail: string | null;
-  readonly context: AutomationPermissionPolicyActionAuditContext | null;
-}
-
 export interface AutomationPermissionPolicyActionAuditSummary {
   readonly total: number;
   readonly succeeded: number;
   readonly failed: number;
   readonly lastOccurredAt: string | null;
-}
-
-export interface AutomationPermissionPolicyActionAuditFilters {
-  readonly result: AutomationPermissionPolicyActionAuditResultFilter;
-  readonly query: string;
-  readonly timeRange: AutomationPermissionPolicyActionAuditTimeRange;
-  readonly now: string;
-}
-
-export interface AutomationPermissionPolicyActionAuditExport {
-  readonly schemaVersion: typeof AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION;
-  readonly exportedAt: string;
-  readonly total: number;
-  readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
 }
 
 export function buildBrowserExternalPermissionAuditItems(
