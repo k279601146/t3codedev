@@ -341,9 +341,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     summaryAssistantMessageIds,
   ]);
 
-  /** Keep collapsed member rows in the DOM and animate their height to zero.
-   *  Removing them entirely would shift the transcript while the user reads. */
-  const rows = stableRows;
+  const rows = useMemo(
+    () =>
+      stableRows.filter((row) => {
+        const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
+        if (!ownerId || !collapsedAssistantMessageIds.has(ownerId)) {
+          return true;
+        }
+        return summaryButtonHostByRowId.has(row.id);
+      }),
+    [
+      collapsedAssistantMessageIds,
+      ownerAssistantMessageIdByRowId,
+      stableRows,
+      summaryButtonHostByRowId,
+    ],
+  );
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const isAtBottomRef = useRef(true);
@@ -480,7 +493,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     (index: number) => {
       const row = rows[index - firstItemIndex];
       if (!row) {
-        return null;
+        return <div className="h-px" aria-hidden="true" />;
       }
       const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
       const isCollapsedProcessMember = ownerId
