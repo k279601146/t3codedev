@@ -68,6 +68,7 @@ import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
 import { SkillsService } from "./skills/SkillsService.ts";
 import { AutomationService } from "./automations/Services/AutomationService.ts";
+import { AutomationPermissionAuditService } from "./automationPermissionAudit/Services/AutomationPermissionAuditService.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
@@ -248,6 +249,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const sessions = yield* SessionCredentialService;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
+      const automationPermissionAudit = yield* AutomationPermissionAuditService;
       const providerWindowsSandboxReadiness = (
         input: Parameters<NonNullable<typeof providerService.windowsSandboxReadiness>>[0],
       ) => {
@@ -1497,6 +1499,18 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               return service.stream;
             }),
             { "rpc.aggregate": "automations" },
+          ),
+        [WS_METHODS.automationPermissionAuditIngest]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationPermissionAuditIngest,
+            automationPermissionAudit.ingest(input),
+            { "rpc.aggregate": "automationPermissionAudit" },
+          ),
+        [WS_METHODS.automationPermissionAuditList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.automationPermissionAuditList,
+            automationPermissionAudit.list(input),
+            { "rpc.aggregate": "automationPermissionAudit" },
           ),
         [WS_METHODS.projectsSearchEntries]: (input) =>
           observeRpcEffect(

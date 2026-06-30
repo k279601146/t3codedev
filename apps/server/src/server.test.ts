@@ -129,6 +129,10 @@ import {
   AutomationService,
   type AutomationServiceShape,
 } from "./automations/Services/AutomationService.ts";
+import {
+  AutomationPermissionAuditService,
+  type AutomationPermissionAuditServiceShape,
+} from "./automationPermissionAudit/Services/AutomationPermissionAuditService.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -353,6 +357,7 @@ const buildAppUnderTest = (options?: {
     skillsService?: Partial<SkillsServiceShape>;
     codexPluginService?: Partial<CodexPluginServiceShape>;
     automationService?: Partial<AutomationServiceShape>;
+    automationPermissionAuditService?: Partial<AutomationPermissionAuditServiceShape>;
   };
 }) =>
   Effect.gen(function* () {
@@ -609,6 +614,20 @@ const buildAppUnderTest = (options?: {
           },
         }),
         ...options?.layers?.automationService,
+      }),
+      Layer.mock(AutomationPermissionAuditService)({
+        ingest: () =>
+          Effect.succeed({
+            accepted: 0,
+            ignored: 0,
+            syncedAt: "2026-01-01T00:00:00.000Z",
+          }),
+        list: () =>
+          Effect.succeed({
+            events: [],
+            nextCursor: null,
+          }),
+        ...options?.layers?.automationPermissionAuditService,
       }),
     );
 

@@ -214,6 +214,10 @@ export interface WsRpcClient {
     readonly markRunRead: RpcUnaryMethod<typeof WS_METHODS.automationsMarkRunRead>;
     readonly subscribe: RpcStreamMethod<typeof WS_METHODS.automationsSubscribe>;
   };
+  readonly automationPermissionAudit: {
+    readonly ingest: RpcUnaryMethod<typeof WS_METHODS.automationPermissionAuditIngest>;
+    readonly list: RpcUnaryMethod<typeof WS_METHODS.automationPermissionAuditList>;
+  };
 }
 
 export function createWsRpcClient(transport: WsTransport): WsRpcClient {
@@ -455,6 +459,14 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
           ...options,
           tag: WS_METHODS.automationsSubscribe,
         }),
+    },
+    automationPermissionAudit: {
+      ingest: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.automationPermissionAuditIngest](input),
+        ),
+      list: (input) =>
+        transport.request((client) => client[WS_METHODS.automationPermissionAuditList](input)),
     },
   };
 }

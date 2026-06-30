@@ -54,6 +54,8 @@ import {
   createAutomationPermissionPolicyActionAuditContext,
   filterAutomationPermissionPolicyActionAuditEvents,
   formatAutomationPermissionPolicyActionAuditExport,
+  isAutomationPermissionPolicyActionAuditEventServerSynced,
+  markAutomationPermissionPolicyActionAuditEventsServerSynced,
   normalizeAutomationPermissionPolicyActionAuditEvents,
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
@@ -159,6 +161,10 @@ function getMarketplaceClient() {
   return getPrimaryEnvironmentConnection().client.marketplace;
 }
 
+function getAutomationPermissionAuditClient() {
+  return getPrimaryEnvironmentConnection().client.automationPermissionAudit;
+}
+
 function readPolicyActionAuditEvents(): readonly AutomationPermissionPolicyActionAuditEvent[] {
   if (typeof window === "undefined") return [];
   try {
@@ -181,6 +187,16 @@ function writePolicyActionAuditEvents(
   } catch {
     // Ignore storage failures; the in-memory audit state still updates for this session.
   }
+}
+
+function serverSyncablePolicyActionAuditEvents(
+  events: readonly AutomationPermissionPolicyActionAuditEvent[],
+): readonly AutomationPermissionPolicyActionAuditEvent[] {
+  return events.filter(
+    (event) =>
+      event.context !== null &&
+      !isAutomationPermissionPolicyActionAuditEventServerSynced(event),
+  );
 }
 
 function readPolicyActionAuditDeviceId(): string {
@@ -1867,6 +1883,45 @@ export function PluginsPage() {
       });
     },
   });
+
+  const markPolicyActionAuditEventsSynced = useCallback(
+    (eventIds: readonly string[], syncedAt: string) => {
+      setPolicyActionAuditEvents((events) => {
+        const next = markAutomationPermissionPolicyActionAuditEventsServerSynced(
+          events,
+          eventIds,
+          syncedAt,
+        );
+        writePolicyActionAuditEvents(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const syncPolicyActionAuditEventsToServer = useCallback(
+    (events: readonly AutomationPermissionPolicyActionAuditEvent[]) => {
+      const pending = serverSyncablePolicyActionAuditEvents(events);
+      if (pending.length === 0) {
+        return;
+      }
+      const eventIds = pending.map((event) => event.id);
+      void Promise.resolve()
+        .then(() =>
+          getAutomationPermissionAuditClient().ingest({
+            events: pending,
+            idempotencyKey: `plugins-policy-action-audit:${Date.now().toString(36)}`,
+          }),
+        )
+        .then((result) => markPolicyActionAuditEventsSynced(eventIds, result.syncedAt))
+        .catch(() => undefined);
+    },
+    [markPolicyActionAuditEventsSynced],
+  );
+
+  useEffect(() => {
+    syncPolicyActionAuditEventsToServer(policyActionAuditEvents);
+  }, [policyActionAuditEvents, syncPolicyActionAuditEventsToServer]);
 
   const recordPolicyActionAuditEvent = useCallback(
     (event: AutomationPermissionPolicyActionAuditEvent) => {

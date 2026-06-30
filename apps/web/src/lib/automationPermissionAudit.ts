@@ -412,6 +412,35 @@ export function appendAutomationPermissionPolicyActionAuditEvent(
   );
 }
 
+export function isAutomationPermissionPolicyActionAuditEventServerSynced(
+  event: AutomationPermissionPolicyActionAuditEvent,
+): boolean {
+  return event.context?.persistence.scope === "server-audit-log";
+}
+
+export function markAutomationPermissionPolicyActionAuditEventsServerSynced(
+  events: readonly AutomationPermissionPolicyActionAuditEvent[],
+  eventIds: readonly string[],
+  syncedAt: string,
+): readonly AutomationPermissionPolicyActionAuditEvent[] {
+  const ids = new Set(eventIds);
+  return events.map((event) => {
+    if (!ids.has(event.id) || event.context === null) {
+      return event;
+    }
+    return {
+      ...event,
+      context: {
+        ...event.context,
+        persistence: {
+          scope: "server-audit-log",
+          syncedAt,
+        },
+      },
+    };
+  });
+}
+
 export function summarizeAutomationPermissionPolicyActionAudit(
   events: readonly AutomationPermissionPolicyActionAuditEvent[],
 ): AutomationPermissionPolicyActionAuditSummary {

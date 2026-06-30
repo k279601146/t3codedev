@@ -93,6 +93,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { AutomationRepositoryLive } from "./automations/Layers/AutomationRepository.ts";
 import { AutomationServiceLive } from "./automations/Layers/AutomationService.ts";
+import { AutomationPermissionAuditServiceLive } from "./automationPermissionAudit/Layers/AutomationPermissionAuditService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -293,6 +294,10 @@ const AutomationLayerLive = AutomationServiceLive.pipe(
   Layer.provideMerge(GitWorkflowLayerLive),
 );
 
+const AutomationPermissionAuditLayerLive = AutomationPermissionAuditServiceLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationRuntimeLayerLive),
@@ -340,6 +345,7 @@ const RuntimeCoreDependenciesLive = RuntimeCoreBaseDependenciesLive.pipe(
   Layer.provideMerge(SkillsLayerLive),
   Layer.provideMerge(PluginsLayerLive),
   Layer.provideMerge(AutomationLayerLive),
+  Layer.provideMerge(AutomationPermissionAuditLayerLive),
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(

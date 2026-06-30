@@ -164,6 +164,13 @@ import {
   Automation,
 } from "./automations.ts";
 import {
+  AutomationPermissionPolicyActionAuditError,
+  AutomationPermissionPolicyActionAuditIngestInput,
+  AutomationPermissionPolicyActionAuditIngestResult,
+  AutomationPermissionPolicyActionAuditListInput,
+  AutomationPermissionPolicyActionAuditListResult,
+} from "./automationPermissionAudit.ts";
+import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
@@ -272,6 +279,10 @@ export const WS_METHODS = {
   automationsArchiveRun: "automations.archiveRun",
   automationsMarkRunRead: "automations.markRunRead",
   automationsSubscribe: "automations.subscribe",
+
+  // Automation permission audit methods
+  automationPermissionAuditIngest: "automationPermissionAudit.ingest",
+  automationPermissionAuditList: "automationPermissionAudit.list",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -545,6 +556,24 @@ export const WsAutomationsSubscribeRpc = Rpc.make(WS_METHODS.automationsSubscrib
   error: AutomationServiceError,
   stream: true,
 });
+
+export const WsAutomationPermissionAuditIngestRpc = Rpc.make(
+  WS_METHODS.automationPermissionAuditIngest,
+  {
+    payload: AutomationPermissionPolicyActionAuditIngestInput,
+    success: AutomationPermissionPolicyActionAuditIngestResult,
+    error: AutomationPermissionPolicyActionAuditError,
+  },
+);
+
+export const WsAutomationPermissionAuditListRpc = Rpc.make(
+  WS_METHODS.automationPermissionAuditList,
+  {
+    payload: AutomationPermissionPolicyActionAuditListInput,
+    success: AutomationPermissionPolicyActionAuditListResult,
+    error: AutomationPermissionPolicyActionAuditError,
+  },
+);
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
@@ -883,6 +912,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsAutomationsArchiveRunRpc,
   WsAutomationsMarkRunReadRpc,
   WsAutomationsSubscribeRpc,
+  WsAutomationPermissionAuditIngestRpc,
+  WsAutomationPermissionAuditListRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsListDirectoryRpc,

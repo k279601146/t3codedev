@@ -16,6 +16,8 @@ import {
   createAutomationPermissionPolicyActionAuditEvent,
   filterAutomationPermissionPolicyActionAuditEvents,
   formatAutomationPermissionPolicyActionAuditExport,
+  isAutomationPermissionPolicyActionAuditEventServerSynced,
+  markAutomationPermissionPolicyActionAuditEventsServerSynced,
   normalizeAutomationPermissionPolicyActionAuditEvents,
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
@@ -398,5 +400,53 @@ describe("automation permission audit", () => {
       total: 1,
       events: [success],
     });
+  });
+
+  it("marks server synced policy action audit events without changing legacy events", () => {
+    const action = buildAutomationPermissionPolicyActions(
+      [
+        {
+          id: "chrome:billing.example.com",
+          source: "chrome",
+          subject: "billing.example.com",
+          decision: "allow",
+          scope: "always",
+          updatedAt: "2026-06-30T00:05:00.000Z",
+          lastUsedAt: null,
+          detail: "Chrome 站点权限已持久保存。",
+        },
+      ],
+      "chrome",
+    )[0]!;
+    const context = createAutomationPermissionPolicyActionAuditContext({
+      actorLabel: "本机用户",
+      deviceId: "browser:device-1",
+      workspaceLabel: "全局自动化权限",
+      policyVersion: "local-automation-permission-policy:v1",
+    });
+    const current = createAutomationPermissionPolicyActionAuditEvent({
+      action,
+      result: "success",
+      occurredAt: "2026-06-30T00:10:00.000Z",
+      context,
+    });
+    const legacy = createAutomationPermissionPolicyActionAuditEvent({
+      action,
+      result: "failure",
+      occurredAt: "2026-06-30T00:09:00.000Z",
+    });
+
+    const marked = markAutomationPermissionPolicyActionAuditEventsServerSynced(
+      [current, legacy],
+      [current.id, legacy.id],
+      "2026-06-30T00:11:00.000Z",
+    );
+
+    expect(isAutomationPermissionPolicyActionAuditEventServerSynced(marked[0]!)).toBe(true);
+    expect(marked[0]!.context?.persistence).toEqual({
+      scope: "server-audit-log",
+      syncedAt: "2026-06-30T00:11:00.000Z",
+    });
+    expect(marked[1]).toBe(legacy);
   });
 });
