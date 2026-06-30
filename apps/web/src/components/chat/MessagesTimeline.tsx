@@ -93,7 +93,6 @@ import {
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
-import { setPerformanceModeActive } from "~/performanceMode";
 import { readEnvironmentApi } from "../../environmentApi";
 import { sanitizeProviderErrorMessage } from "../../friendlyErrors";
 import { readLocalApi } from "../../localApi";
@@ -412,7 +411,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       window.requestAnimationFrame(() => {
         if (isScrollingRef.current) {
           setIsVirtualScrollActive(true);
-          setPerformanceModeActive("scrolling", true);
         }
       });
     }
@@ -424,7 +422,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (isScrollingRef.current) {
         isScrollingRef.current = false;
         setIsVirtualScrollActive(false);
-        setPerformanceModeActive("scrolling", false);
       }
     }, 160);
     if (scrollMeasureFrameRef.current === null) {
@@ -496,7 +493,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
       if (isScrollingRef.current) {
         isScrollingRef.current = false;
-        setPerformanceModeActive("scrolling", false);
       }
     },
     [],
@@ -806,6 +802,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <div
             ref={scrollRef}
             className="h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
+            data-chat-timeline-scrolling={isVirtualScrollActive ? "true" : undefined}
           >
             {TIMELINE_LIST_HEADER}
             {hasMoreBefore ? (
@@ -1582,6 +1579,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           text={messageText}
           cwd={ctx.markdownCwd}
           isStreaming={Boolean(row.message.streaming)}
+          enableCodeHighlight={false}
           skills={ctx.skills}
           onOpenFile={ctx.onOpenMarkdownFile}
         />

@@ -140,31 +140,18 @@ body[data-performance-lite="true"] [class*="backdrop-blur"] {
   backdrop-filter: none !important;
 }
 
-body[data-performance-mode="window-dragging"] *,
-body[data-performance-mode="scrolling"] * {
+body[data-performance-mode="window-dragging"] * {
   transition-duration: 0s !important;
 }
 
 body[data-performance-mode="window-dragging"] .shadow-lg,
 body[data-performance-mode="window-dragging"] .shadow-md,
-body[data-performance-mode="window-dragging"] .shadow-sm,
-body[data-performance-mode="scrolling"] .shadow-lg,
-body[data-performance-mode="scrolling"] .shadow-md,
-body[data-performance-mode="scrolling"] .shadow-sm {
+body[data-performance-mode="window-dragging"] .shadow-sm {
   box-shadow: none !important;
 }
 
-body[data-performance-mode="scrolling"] .chat-markdown-codeblock,
-body[data-performance-mode="scrolling"] [data-command-work-panel="true"],
-body[data-performance-mode="scrolling"] [data-command-output-scroll="true"] {
-  box-shadow: none !important;
-  filter: none !important;
-  transition-duration: 0s !important;
-}
-
-body[data-performance-mode="scrolling"] .chat-markdown-copy-button,
-body[data-performance-mode="scrolling"] [data-command-work-panel="true"] button {
-  transition-duration: 0s !important;
+[data-chat-timeline-scrolling="true"] [data-timeline-root="true"] {
+  pointer-events: none;
 }
 
 /* =========================================================================

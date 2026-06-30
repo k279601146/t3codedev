@@ -12,7 +12,6 @@ import React, {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { Components } from "react-markdown";
@@ -36,7 +35,6 @@ import {
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 import { LRUCache } from "../lib/lruCache";
-import { getPerformanceModeSnapshot, subscribePerformanceMode } from "../performanceMode";
 import { truncateTextForPreview } from "../lib/textPreview";
 
 const LazyChatMarkdownHighlighter = lazy(() => import("./ChatMarkdownHighlighter"));
@@ -66,6 +64,7 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   isStreaming?: boolean;
+  enableCodeHighlight?: boolean;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   onOpenFile?: ((file: MarkdownFileLinkMeta) => void) | undefined;
 }
@@ -373,7 +372,7 @@ interface SuspenseShikiCodeBlockProps {
   code: string;
   themeName: DiffThemeName;
   isStreaming: boolean;
-  suppressHighlight: boolean;
+  enableHighlight: boolean;
 }
 
 function SuspenseShikiCodeBlock({
@@ -381,11 +380,11 @@ function SuspenseShikiCodeBlock({
   code,
   themeName,
   isStreaming,
-  suppressHighlight,
+  enableHighlight,
 }: SuspenseShikiCodeBlockProps) {
   const shouldHydrate = useIdleHydration();
   const language = extractFenceLanguage(className);
-  if (!shouldHydrate || suppressHighlight) {
+  if (!enableHighlight || !shouldHydrate) {
     return <pre className={className}>{code}</pre>;
   }
   return (
@@ -403,7 +402,7 @@ function MarkdownCodeBlockContent({
   code,
   themeName,
   isStreaming,
-  suppressHighlight,
+  enableHighlight,
 }: SuspenseShikiCodeBlockProps) {
   const preview = useMemo(() => truncateMarkdownCodeForPreview(code), [code]);
   const [expanded, setExpanded] = useState(false);
@@ -418,7 +417,7 @@ function MarkdownCodeBlockContent({
             code={visibleCode}
             themeName={themeName}
             isStreaming={isStreaming}
-            suppressHighlight={suppressHighlight}
+            enableHighlight={enableHighlight}
           />
         </Suspense>
       </CodeHighlightErrorBoundary>
@@ -1021,17 +1020,12 @@ function ChatMarkdown({
   text,
   cwd,
   isStreaming = false,
+  enableCodeHighlight = true,
   skills = EMPTY_MARKDOWN_SKILLS,
   onOpenFile,
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
-  const performanceMode = useSyncExternalStore(
-    subscribePerformanceMode,
-    getPerformanceModeSnapshot,
-    getPerformanceModeSnapshot,
-  );
-  const suppressCodeHighlight = performanceMode === "scrolling";
   const { renderedText, markdownFileLinkMetaByHref, fileLinkParentSuffixByPath } = useMemo(
     () => getMarkdownRenderCacheEntry(text, cwd),
     [cwd, text],
@@ -1134,7 +1128,7 @@ function ChatMarkdown({
               code={codeBlock.code}
               themeName={diffThemeName}
               isStreaming={isStreaming}
-              suppressHighlight={suppressCodeHighlight}
+              enableHighlight={enableCodeHighlight}
             />
           </MarkdownCodeBlock>
         );
@@ -1148,7 +1142,7 @@ function ChatMarkdown({
       onOpenFile,
       resolvedTheme,
       skills,
-      suppressCodeHighlight,
+      enableCodeHighlight,
     ],
   );
 
