@@ -155,6 +155,8 @@ interface TimelineRowSharedState {
   /** 首个过程成员行 → 成果 owner；开关渲染在这个成员行上方。 */
   summaryButtonHostByRowId: ReadonlyMap<string, string>;
   toggleAssistantTurnCollapsed: (assistantMessageId: string) => void;
+  toggleWorkGroupExpanded: (workGroupId: string) => void;
+  suppressAutoFollowForUserResize: () => void;
   /** Resolves the transcript scroller for viewport-pinned summary toggles. */
   getScrollContainer: () => HTMLElement | null;
 }
@@ -183,6 +185,7 @@ const TIMELINE_INCREASE_VIEWPORT_TOP_PX = 500;
 const TIMELINE_INCREASE_VIEWPORT_BOTTOM_PX = 700;
 const TIMELINE_SCROLL_SEEK_ENTER_VELOCITY = 720;
 const TIMELINE_SCROLL_SEEK_EXIT_VELOCITY = 120;
+const TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS = 700;
 const COMMAND_OUTPUT_DEFAULT_ITEM_HEIGHT_PX = 20;
 const COMMAND_OUTPUT_SCROLL_SEEK_ENTER_VELOCITY = 900;
 const COMMAND_OUTPUT_SCROLL_SEEK_EXIT_VELOCITY = 160;
@@ -230,6 +233,40 @@ interface MessagesTimelineProps {
   isLoadingBefore?: boolean;
   onLoadMoreBefore?: () => void;
 }
+
+type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
+
+type TimelineWorkGroupSummaryRow = {
+  kind: "work-group-summary";
+  id: string;
+  createdAt: string;
+  groupedEntries: TimelineWorkEntry[];
+  turnDiffSummary?: TurnDiffSummary | undefined;
+  isExpanded: boolean;
+};
+
+type TimelineWorkEntryRow = {
+  kind: "work-entry";
+  id: string;
+  createdAt: string;
+  groupId: string;
+  workEntry: TimelineWorkEntry;
+  turnDiffSummary?: TurnDiffSummary | undefined;
+};
+
+type TimelineSearchWorkGroupDetailsRow = {
+  kind: "work-group-search-details";
+  id: string;
+  createdAt: string;
+  groupId: string;
+  groupedEntries: TimelineWorkEntry[];
+};
+
+type TimelineRow =
+  | MessagesTimelineRow
+  | TimelineWorkGroupSummaryRow
+  | TimelineWorkEntryRow
+  | TimelineSearchWorkGroupDetailsRow;
 
 // ---------------------------------------------------------------------------
 // MessagesTimeline — list owner
@@ -309,6 +346,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   /** The active in-flight turn stays expanded automatically. We resolve its
    *  assistant message id by looking for the assistant row whose turnId
@@ -353,7 +393,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     summaryAssistantMessageIds,
   ]);
 
-  const rows = useMemo(
+  const baseRows = useMemo(
     () =>
       stableRows.filter((row) => {
         const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
@@ -370,19 +410,88 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
 
+  const rows = useMemo<TimelineRow[]>(() => {
+    const nextRows: TimelineRow[] = [];
+    for (const row of baseRows) {
+      if (!shouldRenderWorkGroupAsNestedRows(row)) {
+        nextRows.push(row);
+        continue;
+      }
+
+      const isExpanded = expandedWorkGroupIds.has(row.id);
+      nextRows.push({
+        kind: "work-group-summary",
+        id: row.id,
+        createdAt: row.createdAt,
+        groupedEntries: row.groupedEntries,
+        ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
+        isExpanded,
+      });
+      if (!isExpanded) {
+        continue;
+      }
+      const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
+      if (ownerId && collapsedAssistantMessageIds.has(ownerId)) {
+        continue;
+      }
+
+      if (isSearchWorkGroup(row.groupedEntries)) {
+        nextRows.push({
+          kind: "work-group-search-details",
+          id: `${row.id}:search-details`,
+          createdAt: row.createdAt,
+          groupId: row.id,
+          groupedEntries: row.groupedEntries,
+        });
+        continue;
+      }
+
+      row.groupedEntries.forEach((workEntry, index) => {
+        nextRows.push({
+          kind: "work-entry",
+          id: `${row.id}:entry:${index}:${workEntry.id}`,
+          createdAt: workEntry.createdAt ?? row.createdAt,
+          groupId: row.id,
+          workEntry,
+          ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
+        });
+      });
+    }
+    return nextRows;
+  }, [baseRows, collapsedAssistantMessageIds, expandedWorkGroupIds, ownerAssistantMessageIdByRowId]);
+
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
   const didInitialScrollRef = useRef(false);
+  const suppressAutoFollowUntilRef = useRef(0);
   const isTimelineScrollingRef = useRef(false);
   const previousRowCountRef = useRef(rows.length);
-  const previousRowsRef = useRef<ReadonlyArray<MessagesTimelineRow>>(rows);
+  const previousRowsRef = useRef<ReadonlyArray<TimelineRow>>(rows);
   const [firstItemIndex, setFirstItemIndex] = useState(TIMELINE_INITIAL_FIRST_ITEM_INDEX);
   const [isTimelineScrolling, setIsTimelineScrolling] = useState(false);
 
   const getScrollContainer = useCallback(() => {
     return scrollRef.current;
   }, [scrollRef]);
+
+  const suppressAutoFollowForUserResize = useCallback(() => {
+    suppressAutoFollowUntilRef.current =
+      performance.now() + TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS;
+  }, []);
+
+  const toggleWorkGroupExpanded = useCallback(
+    (workGroupId: string) => {
+      suppressAutoFollowForUserResize();
+      setExpandedWorkGroupIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(workGroupId)) next.delete(workGroupId);
+        else next.add(workGroupId);
+        return next;
+      });
+    },
+    [suppressAutoFollowForUserResize],
+  );
 
   useEffect(() => {
     if (!isLoadingBefore) {
@@ -458,6 +567,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     if (!didInitialScrollRef.current || !isAtBottomRef.current) {
       return;
     }
+    if (performance.now() < suppressAutoFollowUntilRef.current) {
+      return;
+    }
     scrollToEnd();
   }, [scrollToEnd]);
 
@@ -511,7 +623,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const handleTimelineItemsRendered = useCallback(
-    (items: ListItem<MessagesTimelineRow>[]) => {
+    (items: ListItem<TimelineRow>[]) => {
       if (!import.meta.env.DEV) {
         return;
       }
@@ -548,7 +660,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [scrollRef],
   );
 
-  const timelineComponents = useMemo<VirtuosoComponents<MessagesTimelineRow>>(
+  const timelineComponents = useMemo<VirtuosoComponents<TimelineRow>>(
     () => ({
       Header: function TimelineHeader() {
         return (
@@ -655,6 +767,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
+      toggleWorkGroupExpanded,
+      suppressAutoFollowForUserResize,
       getScrollContainer,
     }),
     [
@@ -681,6 +795,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
+      toggleWorkGroupExpanded,
+      suppressAutoFollowForUserResize,
       getScrollContainer,
     ],
   );
@@ -722,7 +838,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   return (
     <TimelineRowCtx.Provider value={sharedState}>
       <TimelineRowActivityCtx.Provider value={activityState}>
-        <Virtuoso<MessagesTimelineRow>
+        <Virtuoso<TimelineRow>
           ref={virtuosoRef}
           className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
           totalCount={rows.length}
@@ -823,8 +939,6 @@ function MessagesTimelineHistorySkeleton() {
 
 type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
 type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
-type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
-type TimelineRow = MessagesTimelineRow;
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const ctx = use(TimelineRowCtx);
@@ -850,6 +964,11 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           groupedEntries={row.groupedEntries}
           turnDiffSummary={row.turnDiffSummary}
         />
+      ) : null}
+      {row.kind === "work-group-summary" ? <WorkGroupSummaryTimelineRow row={row} /> : null}
+      {row.kind === "work-entry" ? <WorkEntryTimelineRow row={row} /> : null}
+      {row.kind === "work-group-search-details" ? (
+        <SearchWorkGroupDetailsTimelineRow row={row} />
       ) : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
@@ -882,7 +1001,8 @@ function timelineRowSpacingClass(row: TimelineRow): string {
     }
     return "pb-3";
   }
-  if (row.kind === "work") return "pb-2";
+  if (row.kind === "work" || row.kind === "work-group-summary") return "pb-2";
+  if (row.kind === "work-entry" || row.kind === "work-group-search-details") return "pb-1";
   return "pb-3";
 }
 
@@ -1852,6 +1972,88 @@ function LiveMessageMeta({
 // re-render only the affected row, not the entire list.
 // ---------------------------------------------------------------------------
 
+function shouldRenderWorkGroupAsNestedRows(row: MessagesTimelineRow): row is Extract<
+  MessagesTimelineRow,
+  { kind: "work" }
+> {
+  if (row.kind !== "work" || row.groupedEntries.length <= 1) {
+    return false;
+  }
+  if (
+    summarizeRuntimeIssueGroup(row.groupedEntries) ||
+    getCompactRequestErrorMessage(row.groupedEntries)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+const WorkGroupSummaryTimelineRow = memo(function WorkGroupSummaryTimelineRow({
+  row,
+}: {
+  row: TimelineWorkGroupSummaryRow;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const summary = summarizeWorkGroup(row.groupedEntries);
+  const isSearchGroup = isSearchWorkGroup(row.groupedEntries);
+  const SummaryIcon = isSearchGroup ? GlobeIcon : TerminalSquareIcon;
+  const showLiveScan = row.groupedEntries.some((entry) => entry.status === "running");
+
+  return (
+    <div className="pt-2 pb-1 pl-1">
+      <button
+        type="button"
+        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
+        aria-expanded={row.isExpanded}
+        data-work-group-summary="true"
+        onClick={() => ctx.toggleWorkGroupExpanded(row.id)}
+      >
+        <SummaryIcon className="size-4 shrink-0 text-muted-foreground/58" />
+        {showLiveScan ? (
+          <RunningStatusShimmer className="-my-0.5" label={summary.liveLabel} />
+        ) : (
+          <span className="min-w-0 truncate">{summary.label}</span>
+        )}
+        {row.isExpanded ? (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/52 transition-colors group-hover/work-summary:text-muted-foreground/75" />
+        ) : (
+          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/42 transition-colors group-hover/work-summary:text-muted-foreground/70" />
+        )}
+      </button>
+    </div>
+  );
+});
+
+const WorkEntryTimelineRow = memo(function WorkEntryTimelineRow({
+  row,
+}: {
+  row: TimelineWorkEntryRow;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { workspaceRoot } = ctx;
+  return (
+    <div className="pl-5">
+      <SimpleWorkEntryRow
+        workEntry={row.workEntry}
+        workspaceRoot={workspaceRoot}
+        turnDiffSummary={row.turnDiffSummary}
+      />
+    </div>
+  );
+});
+
+const SearchWorkGroupDetailsTimelineRow = memo(function SearchWorkGroupDetailsTimelineRow({
+  row,
+}: {
+  row: TimelineSearchWorkGroupDetailsRow;
+}) {
+  return (
+    <div className="pl-5">
+      <SearchWorkGroupDetails groupedEntries={row.groupedEntries} />
+    </div>
+  );
+});
+
 /** Owns its own expand/collapse state so toggling re-renders only this row.
  *  State resets on unmount which is fine — work groups start collapsed. */
 const WorkGroupSection = memo(function WorkGroupSection({
@@ -1861,7 +2063,8 @@ const WorkGroupSection = memo(function WorkGroupSection({
   groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
   turnDiffSummary: TurnDiffSummary | undefined;
 }) {
-  const { workspaceRoot } = use(TimelineRowCtx);
+  const ctx = use(TimelineRowCtx);
+  const { workspaceRoot } = ctx;
   const compactRequestErrorMessage = getCompactRequestErrorMessage(groupedEntries);
   const runtimeIssueSummary = summarizeRuntimeIssueGroup(groupedEntries);
   const summary = summarizeWorkGroup(groupedEntries);
@@ -1873,7 +2076,10 @@ const WorkGroupSection = memo(function WorkGroupSection({
       <RuntimeIssueWorkGroup
         summary={runtimeIssueSummary}
         isExpanded={isExpanded}
-        onToggle={() => setIsExpanded((value) => !value)}
+        onToggle={() => {
+          ctx.suppressAutoFollowForUserResize();
+          setIsExpanded((value) => !value);
+        }}
       />
     );
   }
@@ -1916,7 +2122,10 @@ const WorkGroupSection = memo(function WorkGroupSection({
         className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
         aria-expanded={isExpanded}
         data-work-group-summary="true"
-        onClick={() => setIsExpanded((value) => !value)}
+        onClick={() => {
+          ctx.suppressAutoFollowForUserResize();
+          setIsExpanded((value) => !value);
+        }}
       >
         <SummaryIcon className="size-4 shrink-0 text-muted-foreground/58" />
         {showLiveScan ? (
@@ -3569,6 +3778,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
 
   const toggleFileDiff = useCallback(
     async (file: InlineDiffFileSummary) => {
+      ctx.suppressAutoFollowForUserResize();
       if (diffFilePath === file.path) {
         setDiffFilePath(null);
         return;
@@ -3580,7 +3790,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
         setLoadingDiffFilePath(null);
       }
     },
-    [canLoadTurnDiff, diffFilePath, loadTurnDiffPatch],
+    [canLoadTurnDiff, ctx, diffFilePath, loadTurnDiffPatch],
   );
 
   if (visibleFiles.length === 0) {
@@ -3594,7 +3804,10 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
         className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/68 transition-colors hover:text-foreground/80"
         aria-expanded={isExpanded}
         title={title}
-        onClick={() => setIsExpanded((value) => !value)}
+        onClick={() => {
+          ctx.suppressAutoFollowForUserResize();
+          setIsExpanded((value) => !value);
+        }}
       >
         <SquarePenIcon className="size-3.5 shrink-0 text-muted-foreground/65" />
         <span className="shrink-0">{verb}</span>
@@ -3729,7 +3942,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           "flex items-center gap-2 transition-[opacity,translate] duration-200 rounded-md px-1 py-0.5",
           hasDetail && "cursor-pointer hover:bg-muted/15 select-none",
         )}
-        onClick={hasDetail ? () => setIsDetailExpanded((v) => !v) : undefined}
+        onClick={
+          hasDetail
+            ? () => {
+                ctx.suppressAutoFollowForUserResize();
+                setIsDetailExpanded((v) => !v);
+              }
+            : undefined
+        }
       >
         <span
           className={cn("flex size-4 shrink-0 items-center justify-center", iconConfig.className)}
@@ -3916,6 +4136,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
   workEntry: TimelineWorkEntry;
   initiallyExpanded?: boolean;
 }) {
+  const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const [fullOutputOpen, setFullOutputOpen] = useState(false);
@@ -3946,7 +4167,10 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
         className="group/command-summary flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:bg-muted/15 hover:text-foreground/78"
         aria-expanded={isExpanded}
         title={summaryText}
-        onClick={() => setIsExpanded((value) => !value)}
+        onClick={() => {
+          ctx.suppressAutoFollowForUserResize();
+          setIsExpanded((value) => !value);
+        }}
       >
         <TerminalSquareIcon className="size-3.5 shrink-0 text-muted-foreground/58" />
         {workEntry.status === "running" && !activity.isTimelineScrolling ? (
