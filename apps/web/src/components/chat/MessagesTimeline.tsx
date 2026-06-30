@@ -162,7 +162,9 @@ const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 const TIMELINE_VIRTUALIZATION_ROW_THRESHOLD = 80;
 const TIMELINE_ESTIMATED_ROW_HEIGHT = 160;
 const TIMELINE_COLLAPSED_SUMMARY_HOST_ESTIMATED_ROW_HEIGHT = 32;
-const TIMELINE_OVERSCAN_PX = 1_200;
+const TIMELINE_OVERSCAN_PX = 640;
+const COMMAND_OUTPUT_PREVIEW_MAX_CHARS = 24_000;
+const COMMAND_OUTPUT_PREVIEW_MAX_LINES = 400;
 type TimelineRowMeasurementMode = "expanded" | "collapsed";
 interface TimelineRowHeightMeasurement {
   expanded?: number | undefined;
@@ -3231,6 +3233,44 @@ function commandWorkEntryOutput(workEntry: TimelineWorkEntry): string {
   return detail;
 }
 
+function truncateCommandOutputForPreview(output: string): {
+  text: string;
+  truncated: boolean;
+} {
+  if (output.length <= COMMAND_OUTPUT_PREVIEW_MAX_CHARS) {
+    const lineCount = output.split("\n").length;
+    if (lineCount <= COMMAND_OUTPUT_PREVIEW_MAX_LINES) {
+      return { text: output, truncated: false };
+    }
+  }
+
+  const lines = output.split("\n");
+  let visibleChars = 0;
+  const visibleLines: string[] = [];
+  for (const line of lines) {
+    if (visibleLines.length >= COMMAND_OUTPUT_PREVIEW_MAX_LINES) {
+      break;
+    }
+    const nextLength = visibleChars + line.length + (visibleLines.length > 0 ? 1 : 0);
+    if (nextLength > COMMAND_OUTPUT_PREVIEW_MAX_CHARS) {
+      const remaining = COMMAND_OUTPUT_PREVIEW_MAX_CHARS - visibleChars;
+      if (remaining > 0) {
+        visibleLines.push(line.slice(0, remaining));
+        visibleChars = COMMAND_OUTPUT_PREVIEW_MAX_CHARS;
+      }
+      break;
+    }
+    visibleLines.push(line);
+    visibleChars = nextLength;
+  }
+
+  const text = visibleLines.join("\n").trimEnd();
+  return {
+    text,
+    truncated: text.length < output.length,
+  };
+}
+
 function commandWorkEntryCopyText(workEntry: TimelineWorkEntry): string {
   const command = commandWorkEntryCommand(workEntry);
   const output = commandWorkEntryOutput(workEntry);
@@ -3980,6 +4020,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const command = commandWorkEntryCommand(workEntry);
   const output = commandWorkEntryOutput(workEntry);
+  const outputPreview = useMemo(() => truncateCommandOutputForPreview(output), [output]);
   const status = commandWorkEntryStatus(workEntry);
   const StatusIcon = status.icon;
   const copyText = commandWorkEntryCopyText(workEntry);
@@ -4059,8 +4100,14 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
               {output ? (
                 <div className="group/output-copy relative mt-2 pr-7">
                   <pre className="whitespace-pre-wrap break-words pb-1 text-neutral-700 dark:text-neutral-200">
-                    {output}
+                    {outputPreview.text}
                   </pre>
+                  {outputPreview.truncated ? (
+                    <div className="mt-2 rounded-md border border-neutral-300/70 bg-white/45 px-2 py-1.5 text-[11px] leading-4 text-neutral-500 dark:border-neutral-700/70 dark:bg-black/20 dark:text-neutral-400">
+                      输出较长，已仅渲染前 {outputPreview.text.length.toLocaleString()} 个字符；
+                      复制仍包含完整输出。
+                    </div>
+                  ) : null}
                   <MessageCopyButton
                     text={output}
                     size="icon-xs"
