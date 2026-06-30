@@ -20,6 +20,10 @@ import {
 import {
   Virtuoso,
   type Components as VirtuosoComponents,
+  type ListItem,
+  type ListRange,
+  type ScrollSeekConfiguration,
+  type ScrollSeekPlaceholderProps,
   type VirtuosoHandle,
 } from "react-virtuoso";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
@@ -161,6 +165,7 @@ interface TimelineRowActivityState {
   isWorking: boolean;
   isRevertingCheckpoint: boolean;
   completionSummary: string | null;
+  isTimelineScrolling: boolean;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -172,8 +177,15 @@ const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
 const TIMELINE_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 const TIMELINE_INITIAL_RENDER_COUNT = 24;
 const TIMELINE_TOP_LOAD_THRESHOLD_PX = 240;
-const TIMELINE_OVERSCAN_PX = 360;
-const TIMELINE_INCREASE_VIEWPORT_PX = 900;
+const TIMELINE_DEFAULT_ITEM_HEIGHT_PX = 160;
+const TIMELINE_OVERSCAN_PX = 200;
+const TIMELINE_INCREASE_VIEWPORT_TOP_PX = 500;
+const TIMELINE_INCREASE_VIEWPORT_BOTTOM_PX = 700;
+const TIMELINE_SCROLL_SEEK_ENTER_VELOCITY = 720;
+const TIMELINE_SCROLL_SEEK_EXIT_VELOCITY = 120;
+const COMMAND_OUTPUT_DEFAULT_ITEM_HEIGHT_PX = 20;
+const COMMAND_OUTPUT_SCROLL_SEEK_ENTER_VELOCITY = 900;
+const COMMAND_OUTPUT_SCROLL_SEEK_EXIT_VELOCITY = 160;
 const COMMAND_OUTPUT_PREVIEW_MAX_CHARS = 24_000;
 const COMMAND_OUTPUT_PREVIEW_MAX_LINES = 400;
 
@@ -362,9 +374,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
   const didInitialScrollRef = useRef(false);
+  const isTimelineScrollingRef = useRef(false);
   const previousRowCountRef = useRef(rows.length);
   const previousRowsRef = useRef<ReadonlyArray<MessagesTimelineRow>>(rows);
   const [firstItemIndex, setFirstItemIndex] = useState(TIMELINE_INITIAL_FIRST_ITEM_INDEX);
+  const [isTimelineScrolling, setIsTimelineScrolling] = useState(false);
 
   const getScrollContainer = useCallback(() => {
     return scrollRef.current;
@@ -447,6 +461,85 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     scrollToEnd();
   }, [scrollToEnd]);
 
+  const handleTimelineIsScrolling = useCallback((scrolling: boolean) => {
+    if (isTimelineScrollingRef.current === scrolling) {
+      return;
+    }
+    isTimelineScrollingRef.current = scrolling;
+    setIsTimelineScrolling(scrolling);
+    if (import.meta.env.DEV) {
+      const target = window as Window & {
+        __T3_CHAT_VIRTUOSO__?: {
+          isScrolling?: boolean;
+          rowCount?: number;
+          firstItemIndex?: number;
+          updatedAt?: number;
+        };
+      };
+      target.__T3_CHAT_VIRTUOSO__ = {
+        ...target.__T3_CHAT_VIRTUOSO__,
+        isScrolling: scrolling,
+        rowCount: rows.length,
+        firstItemIndex,
+        updatedAt: performance.now(),
+      };
+    }
+  }, [firstItemIndex, rows.length]);
+
+  const handleTimelineRangeChanged = useCallback(
+    (range: ListRange) => {
+      if (!import.meta.env.DEV) {
+        return;
+      }
+      const target = window as Window & {
+        __T3_CHAT_VIRTUOSO__?: {
+          range?: ListRange;
+          rowCount?: number;
+          firstItemIndex?: number;
+          updatedAt?: number;
+        };
+      };
+      target.__T3_CHAT_VIRTUOSO__ = {
+        ...target.__T3_CHAT_VIRTUOSO__,
+        range,
+        rowCount: rows.length,
+        firstItemIndex,
+        updatedAt: performance.now(),
+      };
+    },
+    [firstItemIndex, rows.length],
+  );
+
+  const handleTimelineItemsRendered = useCallback(
+    (items: ListItem<MessagesTimelineRow>[]) => {
+      if (!import.meta.env.DEV) {
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const target = window as Window & {
+        __T3_CHAT_VIRTUOSO__?: {
+          renderedCount?: number;
+          firstRenderedIndex?: number;
+          lastRenderedIndex?: number;
+          rowCount?: number;
+          firstItemIndex?: number;
+          updatedAt?: number;
+        };
+      };
+      target.__T3_CHAT_VIRTUOSO__ = {
+        ...target.__T3_CHAT_VIRTUOSO__,
+        renderedCount: items.length,
+        firstRenderedIndex: first?.index,
+        lastRenderedIndex: last?.index,
+        rowCount: rows.length,
+        firstItemIndex,
+        updatedAt: performance.now(),
+      };
+    },
+    [firstItemIndex, rows.length],
+  );
+
   const handleScrollerRef = useCallback(
     (ref: HTMLElement | Window | null) => {
       (scrollRef as { current: HTMLDivElement | null }).current =
@@ -485,6 +578,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       Footer: function TimelineFooter() {
         return TIMELINE_LIST_FOOTER;
       },
+      ScrollSeekPlaceholder: TimelineScrollSeekPlaceholder,
     }),
     [hasMoreBefore, isLoadingBefore, onLoadMoreBefore],
   );
@@ -514,6 +608,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       );
     },
     [collapsedAssistantMessageIds, firstItemIndex, ownerAssistantMessageIdByRowId, rows],
+  );
+
+  const timelineScrollSeekConfiguration = useMemo<ScrollSeekConfiguration>(
+    () => ({
+      enter: (velocity) => Math.abs(velocity) > TIMELINE_SCROLL_SEEK_ENTER_VELOCITY,
+      exit: (velocity) => Math.abs(velocity) < TIMELINE_SCROLL_SEEK_EXIT_VELOCITY,
+      change: (_velocity, range) => {
+        handleTimelineRangeChanged(range);
+      },
+    }),
+    [handleTimelineRangeChanged],
   );
 
   const followOutput = useCallback((isAtBottom: boolean) => (isAtBottom ? "auto" : false), []);
@@ -586,8 +691,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       isRevertingCheckpoint,
       completionSummary,
+      isTimelineScrolling,
     }),
-    [activeTurnInProgress, activeTurnId, completionSummary, isRevertingCheckpoint, isWorking],
+    [
+      activeTurnInProgress,
+      activeTurnId,
+      completionSummary,
+      isRevertingCheckpoint,
+      isTimelineScrolling,
+      isWorking,
+    ],
   );
 
   // Rows read shared state from context; scroll state is kept outside rows.
@@ -614,6 +727,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
           totalCount={rows.length}
           firstItemIndex={firstItemIndex}
+          defaultItemHeight={TIMELINE_DEFAULT_ITEM_HEIGHT_PX}
           initialItemCount={Math.min(rows.length, TIMELINE_INITIAL_RENDER_COUNT)}
           initialTopMostItemIndex={initialTopMostItemIndex}
           computeItemKey={(index) => rows[index - firstItemIndex]?.id ?? `timeline:${index}`}
@@ -625,9 +739,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           atTopThreshold={TIMELINE_TOP_LOAD_THRESHOLD_PX}
           followOutput={followOutput}
           totalListHeightChanged={handleTotalListHeightChanged}
+          isScrolling={handleTimelineIsScrolling}
+          rangeChanged={handleTimelineRangeChanged}
+          itemsRendered={handleTimelineItemsRendered}
+          scrollSeekConfiguration={timelineScrollSeekConfiguration}
           increaseViewportBy={{
-            top: TIMELINE_INCREASE_VIEWPORT_PX,
-            bottom: TIMELINE_INCREASE_VIEWPORT_PX,
+            top: TIMELINE_INCREASE_VIEWPORT_TOP_PX,
+            bottom: TIMELINE_INCREASE_VIEWPORT_BOTTOM_PX,
           }}
           overscan={{ main: TIMELINE_OVERSCAN_PX, reverse: TIMELINE_OVERSCAN_PX }}
         />
@@ -635,6 +753,32 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </TimelineRowCtx.Provider>
   );
 });
+
+function TimelineScrollSeekPlaceholder({ height }: ScrollSeekPlaceholderProps) {
+  const placeholderHeight = Math.max(32, Math.ceil(height));
+  const lineCount = placeholderHeight > 180 ? 4 : placeholderHeight > 110 ? 3 : 2;
+
+  return (
+    <div
+      className="mx-auto w-full min-w-0 max-w-[736px] overflow-hidden px-1 py-2"
+      data-timeline-scroll-seek-placeholder="true"
+      style={{ height: placeholderHeight }}
+      aria-hidden="true"
+    >
+      <div className="flex h-full min-h-0 flex-col justify-center gap-2">
+        {Array.from({ length: lineCount }).map((_, index) => (
+          <div
+            key={index}
+            className={cn(
+              "h-3 rounded-full bg-muted/45 dark:bg-muted/30",
+              index === 0 ? "w-11/12" : index === lineCount - 1 ? "w-7/12" : "w-9/12",
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function MessagesTimelineHistorySkeleton() {
   return (
@@ -3536,6 +3680,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   turnDiffSummary?: TurnDiffSummary | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
+  const activity = use(TimelineRowActivityCtx);
   const { workEntry, workspaceRoot, turnDiffSummary } = props;
   if (workEntry.userInputSummary) {
     return <UserInputSummaryTimelineRow workEntry={workEntry} compact />;
@@ -3574,7 +3719,8 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
 
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
-  const animateText = shouldAnimateWorkEntryText(workEntry, displayText);
+  const animateText =
+    !activity.isTimelineScrolling && shouldAnimateWorkEntryText(workEntry, displayText);
 
   return (
     <div className="chat-text rounded-md px-1 py-0.5">
@@ -3770,6 +3916,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
   workEntry: TimelineWorkEntry;
   initiallyExpanded?: boolean;
 }) {
+  const activity = use(TimelineRowActivityCtx);
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const [fullOutputOpen, setFullOutputOpen] = useState(false);
   const command = commandWorkEntryCommand(workEntry);
@@ -3802,7 +3949,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
         onClick={() => setIsExpanded((value) => !value)}
       >
         <TerminalSquareIcon className="size-3.5 shrink-0 text-muted-foreground/58" />
-        {workEntry.status === "running" ? (
+        {workEntry.status === "running" && !activity.isTimelineScrolling ? (
           <RunningStatusShimmer className="-my-0.5 min-w-0" label={summaryText} />
         ) : (
           <span className="min-w-0 truncate">{summaryText}</span>
@@ -3976,15 +4123,31 @@ const VirtualizedCommandOutput = memo(function VirtualizedCommandOutput({
   output: string;
 }) {
   const lines = useMemo(() => output.split("\n"), [output]);
+  const commandOutputComponents = useMemo<VirtuosoComponents<string>>(
+    () => ({
+      ScrollSeekPlaceholder: CommandOutputScrollSeekPlaceholder,
+    }),
+    [],
+  );
+  const commandOutputScrollSeekConfiguration = useMemo<ScrollSeekConfiguration>(
+    () => ({
+      enter: (velocity) => Math.abs(velocity) > COMMAND_OUTPUT_SCROLL_SEEK_ENTER_VELOCITY,
+      exit: (velocity) => Math.abs(velocity) < COMMAND_OUTPUT_SCROLL_SEEK_EXIT_VELOCITY,
+    }),
+    [],
+  );
 
   return (
     <Virtuoso<string>
       className="max-h-[min(58dvh,34rem)] min-h-64 overflow-auto rounded-md bg-neutral-950 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-100 [scrollbar-gutter:stable]"
       data-command-output-dialog-scroll="true"
       data={lines}
+      defaultItemHeight={COMMAND_OUTPUT_DEFAULT_ITEM_HEIGHT_PX}
       initialItemCount={Math.min(lines.length, 80)}
-      increaseViewportBy={480}
-      overscan={240}
+      components={commandOutputComponents}
+      scrollSeekConfiguration={commandOutputScrollSeekConfiguration}
+      increaseViewportBy={260}
+      overscan={120}
       itemContent={(_index, line) => (
         <div className="min-h-5 whitespace-pre-wrap break-words">
           {line.length > 0 ? line : "\u00A0"}
@@ -3993,6 +4156,17 @@ const VirtualizedCommandOutput = memo(function VirtualizedCommandOutput({
     />
   );
 });
+
+function CommandOutputScrollSeekPlaceholder({ height }: ScrollSeekPlaceholderProps) {
+  return (
+    <div
+      className="min-h-5 rounded-sm bg-neutral-800/85"
+      data-command-output-scroll-seek-placeholder="true"
+      style={{ height: Math.max(COMMAND_OUTPUT_DEFAULT_ITEM_HEIGHT_PX, Math.ceil(height)) }}
+      aria-hidden="true"
+    />
+  );
+}
 
 const UserInputSummaryTimelineRow = memo(function UserInputSummaryTimelineRow({
   workEntry,
