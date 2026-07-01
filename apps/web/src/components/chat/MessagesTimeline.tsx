@@ -159,8 +159,6 @@ interface TimelineRowSharedState {
   toggleAssistantTurnCollapsed: (assistantMessageId: string) => void;
   toggleWorkGroupExpanded: (workGroupId: string) => void;
   suppressAutoFollowForUserResize: () => void;
-  /** Resolves the transcript scroller for viewport-pinned summary toggles. */
-  getScrollContainer: () => HTMLElement | null;
 }
 
 interface TimelineRowActivityState {
@@ -267,11 +265,67 @@ type TimelineSearchWorkGroupDetailsRow = {
   groupedEntries: TimelineWorkEntry[];
 };
 
-type TimelineRow =
+type TimelineRenderableRow =
   | MessagesTimelineRow
   | TimelineWorkGroupSummaryRow
   | TimelineWorkEntryRow
   | TimelineSearchWorkGroupDetailsRow;
+
+type TimelineTurnProcessSpanRow = {
+  kind: "turn-process-span";
+  id: string;
+  createdAt: string;
+  ownerId: string;
+  memberRows: TimelineRenderableRow[];
+};
+
+type TimelineRow = TimelineRenderableRow | TimelineTurnProcessSpanRow;
+
+function appendMaterializedTimelineRows(
+  target: { push: (...items: TimelineRenderableRow[]) => number },
+  row: MessagesTimelineRow,
+  expandedWorkGroupIds: ReadonlySet<string>,
+) {
+  if (!shouldRenderWorkGroupAsNestedRows(row)) {
+    target.push(row);
+    return;
+  }
+
+  const isExpanded = expandedWorkGroupIds.has(row.id);
+  target.push({
+    kind: "work-group-summary",
+    id: row.id,
+    createdAt: row.createdAt,
+    groupedEntries: row.groupedEntries,
+    ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
+    isExpanded,
+  });
+  if (!isExpanded) {
+    return;
+  }
+
+  if (isSearchWorkGroup(row.groupedEntries)) {
+    target.push({
+      kind: "work-group-search-details",
+      id: `${row.id}:search-details`,
+      createdAt: row.createdAt,
+      groupId: row.id,
+      groupedEntries: row.groupedEntries,
+    });
+    return;
+  }
+
+  row.groupedEntries.forEach((workEntry, index) => {
+    target.push({
+      kind: "work-entry",
+      id: `${row.id}:entry:${index}:${workEntry.id}`,
+      createdAt: workEntry.createdAt ?? row.createdAt,
+      groupId: row.id,
+      workEntry,
+      ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // MessagesTimeline — list owner
@@ -401,75 +455,44 @@ export const MessagesTimeline = memo(
     summaryAssistantMessageIds,
   ]);
 
-  const baseRows = useMemo(
-    () =>
-      stableRows.filter((row) => {
-        const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
-        if (!ownerId || !collapsedAssistantMessageIds.has(ownerId)) {
-          return true;
-        }
-        return summaryButtonHostByRowId.has(row.id);
-      }),
-    [
-      collapsedAssistantMessageIds,
-      ownerAssistantMessageIdByRowId,
-      stableRows,
-      summaryButtonHostByRowId,
-    ],
-  );
-
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
-    for (const row of baseRows) {
-      if (!shouldRenderWorkGroupAsNestedRows(row)) {
-        nextRows.push(row);
-        continue;
-      }
-
-      const isExpanded = expandedWorkGroupIds.has(row.id);
-      nextRows.push({
-        kind: "work-group-summary",
-        id: row.id,
-        createdAt: row.createdAt,
-        groupedEntries: row.groupedEntries,
-        ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
-        isExpanded,
-      });
-      if (!isExpanded) {
-        continue;
-      }
+    const processMemberRowsByOwnerId = new Map<string, TimelineRenderableRow[]>();
+    for (const row of stableRows) {
       const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
-      if (ownerId && collapsedAssistantMessageIds.has(ownerId)) {
+      if (!ownerId) continue;
+      const memberRows = processMemberRowsByOwnerId.get(ownerId) ?? [];
+      appendMaterializedTimelineRows(memberRows, row, expandedWorkGroupIds);
+      processMemberRowsByOwnerId.set(ownerId, memberRows);
+    }
+
+    for (const row of stableRows) {
+      const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
+      if (ownerId) {
+        if (summaryButtonHostByRowId.get(row.id) === ownerId) {
+          const memberRows = processMemberRowsByOwnerId.get(ownerId) ?? [row];
+          nextRows.push({
+            kind: "turn-process-span",
+            id: `turn-process:${ownerId}:${row.id}`,
+            createdAt: row.createdAt ?? "",
+            ownerId,
+            memberRows,
+          });
+        }
         continue;
       }
 
-      if (isSearchWorkGroup(row.groupedEntries)) {
-        nextRows.push({
-          kind: "work-group-search-details",
-          id: `${row.id}:search-details`,
-          createdAt: row.createdAt,
-          groupId: row.id,
-          groupedEntries: row.groupedEntries,
-        });
-        continue;
-      }
-
-      row.groupedEntries.forEach((workEntry, index) => {
-        nextRows.push({
-          kind: "work-entry",
-          id: `${row.id}:entry:${index}:${workEntry.id}`,
-          createdAt: workEntry.createdAt ?? row.createdAt,
-          groupId: row.id,
-          workEntry,
-          ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
-        });
-      });
+      appendMaterializedTimelineRows(nextRows, row, expandedWorkGroupIds);
     }
     return nextRows;
-  }, [baseRows, collapsedAssistantMessageIds, expandedWorkGroupIds, ownerAssistantMessageIdByRowId]);
+  }, [
+    expandedWorkGroupIds,
+    ownerAssistantMessageIdByRowId,
+    stableRows,
+    summaryButtonHostByRowId,
+  ]);
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
   const didInitialScrollRef = useRef(false);
@@ -479,10 +502,6 @@ export const MessagesTimeline = memo(
   const previousRowsRef = useRef<ReadonlyArray<TimelineRow>>(rows);
   const [firstItemIndex, setFirstItemIndex] = useState(TIMELINE_INITIAL_FIRST_ITEM_INDEX);
   const [isTimelineScrolling, setIsTimelineScrolling] = useState(false);
-
-  const getScrollContainer = useCallback(() => {
-    return scrollContainerRef.current;
-  }, []);
 
   const suppressAutoFollowForUserResize = useCallback(() => {
     suppressAutoFollowUntilRef.current =
@@ -674,10 +693,6 @@ export const MessagesTimeline = memo(
     [firstItemIndex, rows.length],
   );
 
-  const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
-    scrollContainerRef.current = ref instanceof HTMLElement ? (ref as HTMLDivElement) : null;
-  }, []);
-
   const timelineComponents = useMemo<VirtuosoComponents<TimelineRow>>(
     () => ({
       Header: function TimelineHeader() {
@@ -718,7 +733,7 @@ export const MessagesTimeline = memo(
       if (!row) {
         return <div className="h-px" aria-hidden="true" />;
       }
-      const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
+      const ownerId = resolveTimelineRowOwnerId(row, ownerAssistantMessageIdByRowId);
       const isCollapsedProcessMember = ownerId
         ? collapsedAssistantMessageIds.has(ownerId)
         : false;
@@ -784,7 +799,6 @@ export const MessagesTimeline = memo(
       toggleAssistantTurnCollapsed,
       toggleWorkGroupExpanded,
       suppressAutoFollowForUserResize,
-      getScrollContainer,
     }),
     [
       timestampFormat,
@@ -812,7 +826,6 @@ export const MessagesTimeline = memo(
       toggleAssistantTurnCollapsed,
       toggleWorkGroupExpanded,
       suppressAutoFollowForUserResize,
-      getScrollContainer,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -864,7 +877,6 @@ export const MessagesTimeline = memo(
           computeItemKey={(index, row) => row?.id ?? `timeline:${index}`}
           components={timelineComponents}
           itemContent={renderTimelineRow}
-          scrollerRef={handleScrollerRef}
           atBottomStateChange={handleAtBottomStateChange}
           atTopStateChange={handleAtTopStateChange}
           atTopThreshold={TIMELINE_TOP_LOAD_THRESHOLD_PX}
@@ -957,14 +969,15 @@ type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
 type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
-  const ctx = use(TimelineRowCtx);
-  const hostAssistantMessageId = ctx.summaryButtonHostByRowId.get(row.id);
-  const ownerAssistantMessageId = ctx.ownerAssistantMessageIdByRowId.get(row.id);
-  const isCollapsedMember =
-    ownerAssistantMessageId !== undefined &&
-    ctx.collapsedAssistantMessageIds.has(ownerAssistantMessageId);
+  if (row.kind === "turn-process-span") {
+    return <TurnProcessSpanTimelineRow row={row} />;
+  }
 
-  const innerRow = (
+  return <TimelineRowBody row={row} />;
+});
+
+function TimelineRowBody({ row }: { row: TimelineRenderableRow }) {
+  return (
     <div
       className={cn(
         timelineRowSpacingClass(row),
@@ -995,20 +1008,36 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
+}
 
+function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }) {
+  const ctx = use(TimelineRowCtx);
+  const isCollapsed = ctx.collapsedAssistantMessageIds.has(row.ownerId);
   return (
-    <>
-      {hostAssistantMessageId ? (
-        <TurnSummaryToggleHeader assistantMessageId={hostAssistantMessageId} />
-      ) : null}
-      {ownerAssistantMessageId ? (
-        <CollapsibleMember collapsed={isCollapsedMember}>{innerRow}</CollapsibleMember>
-      ) : (
-        innerRow
-      )}
-    </>
+    <div data-turn-process-span="true" data-turn-process-owner-id={row.ownerId}>
+      <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
+      <CollapsibleMember collapsed={isCollapsed}>
+        {isCollapsed
+          ? null
+          : row.memberRows.map((memberRow) => (
+              <TimelineRowBody key={memberRow.id} row={memberRow} />
+            ))}
+      </CollapsibleMember>
+    </div>
   );
-});
+}
+
+function resolveTimelineRowOwnerId(
+  row: TimelineRow,
+  ownerByRowId: ReadonlyMap<string, string>,
+): string | undefined {
+  const ownerId = ownerByRowId.get(row.id);
+  if (ownerId) return ownerId;
+  if (row.kind === "work-entry" || row.kind === "work-group-search-details") {
+    return ownerByRowId.get(row.groupId);
+  }
+  return undefined;
+}
 
 function timelineRowSpacingClass(row: TimelineRow): string {
   if (row.kind === "message") {
@@ -1027,65 +1056,14 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(assistantMessageId);
   const elapsed = ctx.elapsedByAssistantMessageId.get(assistantMessageId) ?? null;
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-
-  // Keep the toggle button visually pinned at its current viewport
-  // position across the expand/collapse animation. The content grows
-  // (or collapses) below it instead of pushing the button out of view.
-  // We retry the alignment for several frames because async row content can
-  // settle after the first commit and otherwise move the toggle.
   const handleToggle = useCallback(() => {
-    const button = buttonRef.current;
-    const container = ctx.getScrollContainer();
-
-    // Capture the button's pre-toggle viewport offset so we can pin it
-    // to the same y-coordinate after the layout commits.
-    let pinnedTopOffset: number | null = null;
-    if (button && container) {
-      const buttonRect = button.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      pinnedTopOffset = buttonRect.top - containerRect.top;
-    }
-
+    ctx.suppressAutoFollowForUserResize();
     ctx.toggleAssistantTurnCollapsed(assistantMessageId);
-
-    if (pinnedTopOffset == null || !button || !container) return;
-
-    const SETTLE_TOLERANCE = 1.5;
-    const MAX_ATTEMPTS = 16; // ~16 * 16ms ≈ 256ms — covers grid-row anim.
-
-    let attempt = 0;
-    let frameId = 0;
-    let cancelled = false;
-
-    const align = () => {
-      if (cancelled) return;
-      attempt += 1;
-      const buttonRect = button.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      const currentTopOffset = buttonRect.top - containerRect.top;
-      const delta = currentTopOffset - pinnedTopOffset!;
-      if (Math.abs(delta) > SETTLE_TOLERANCE) {
-        // Direct scrollTop assignment — repeated smooth scrolls cancel
-        // each other and never converge while the grid-row transition
-        // is still resizing the rows.
-        container.scrollTop += delta;
-      }
-      if (attempt < MAX_ATTEMPTS) {
-        frameId = window.requestAnimationFrame(align);
-      }
-    };
-    frameId = window.requestAnimationFrame(align);
-    return () => {
-      cancelled = true;
-      if (frameId) window.cancelAnimationFrame(frameId);
-    };
   }, [assistantMessageId, ctx]);
 
   return (
     <div className="pt-1 pb-1.5">
       <button
-        ref={buttonRef}
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
@@ -1106,14 +1084,6 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   );
 }
 
-/** Collapsible wrapper using the CSS Grid `1fr ↔ 0fr` trick so the inner
- *  row's natural height animates without measuring it.
- *
- *  We deliberately suppress transitions on the very first render so that
- *  switching threads or re-mounting the timeline doesn't replay the open
- *  animation — that's where the "page is jittering" feeling comes from.
- *  Transitions only kick in once the `collapsed` prop actually changes
- *  while this instance is alive (i.e. the user clicked the toggle). */
 function CollapsibleMember({
   collapsed,
   children,
@@ -1121,48 +1091,14 @@ function CollapsibleMember({
   collapsed: boolean;
   children: React.ReactNode;
 }) {
-  const initialCollapsedRef = useRef(collapsed);
-  const [hasUserToggled, setHasUserToggled] = useState(false);
-  const [keepCollapsedContentMounted, setKeepCollapsedContentMounted] = useState(!collapsed);
-  useEffect(() => {
-    if (collapsed !== initialCollapsedRef.current && !hasUserToggled) {
-      setHasUserToggled(true);
-    }
-  }, [collapsed, hasUserToggled]);
-
-  useEffect(() => {
-    if (!collapsed) {
-      setKeepCollapsedContentMounted(true);
-      return;
-    }
-    if (!keepCollapsedContentMounted) {
-      return;
-    }
-    if (!hasUserToggled) {
-      setKeepCollapsedContentMounted(false);
-      return;
-    }
-    const timeoutId = window.setTimeout(() => {
-      setKeepCollapsedContentMounted(false);
-    }, 220);
-    return () => window.clearTimeout(timeoutId);
-  }, [collapsed, hasUserToggled, keepCollapsedContentMounted]);
-
-  const shouldRenderChildren = !collapsed || keepCollapsedContentMounted;
-
   return (
     <div
-      className={cn(
-        "grid",
-        hasUserToggled &&
-          "transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
-        collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
-      )}
+      className={collapsed ? "hidden" : undefined}
       aria-hidden={collapsed}
       data-collapsible-member="true"
       data-collapsed={collapsed ? "true" : "false"}
     >
-      <div className="min-h-0 overflow-hidden">{shouldRenderChildren ? children : null}</div>
+      {collapsed ? null : children}
     </div>
   );
 }

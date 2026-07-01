@@ -36,8 +36,12 @@ beforeAll(() => {
     desktopBridge: undefined,
   });
   vi.stubGlobal("document", {
+    createElement: () => ({
+      style: {},
+    }),
     documentElement: {
       classList,
+      style: {},
       offsetHeight: 0,
     },
   });
