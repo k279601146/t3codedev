@@ -1205,14 +1205,47 @@ function CollapsibleMember({
   collapsed: boolean;
   children: React.ReactNode;
 }) {
+  const initialCollapsedRef = useRef(collapsed);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [keepContentMounted, setKeepContentMounted] = useState(!collapsed);
+
+  useEffect(() => {
+    if (collapsed !== initialCollapsedRef.current) {
+      setHasAnimated(true);
+    }
+  }, [collapsed]);
+
+  useEffect(() => {
+    if (!collapsed) {
+      setKeepContentMounted(true);
+      return;
+    }
+    if (!keepContentMounted) {
+      return;
+    }
+    if (!hasAnimated) {
+      setKeepContentMounted(false);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setKeepContentMounted(false);
+    }, 180);
+    return () => window.clearTimeout(timeoutId);
+  }, [collapsed, hasAnimated, keepContentMounted]);
+
   return (
     <div
-      className={collapsed ? "hidden" : "[overflow-anchor:none]"}
+      className={cn(
+        "grid [overflow-anchor:none]",
+        hasAnimated &&
+          "transition-[grid-template-rows,opacity,transform] duration-180 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
+        collapsed ? "grid-rows-[0fr] opacity-0 -translate-y-0.5" : "grid-rows-[1fr] opacity-100 translate-y-0",
+      )}
       aria-hidden={collapsed}
       data-collapsible-member="true"
       data-collapsed={collapsed ? "true" : "false"}
     >
-      {collapsed ? null : children}
+      <div className="min-h-0 overflow-hidden">{keepContentMounted ? children : null}</div>
     </div>
   );
 }
