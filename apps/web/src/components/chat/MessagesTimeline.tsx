@@ -2158,7 +2158,7 @@ const WorkGroupSummaryTimelineRow = memo(function WorkGroupSummaryTimelineRow({
   const showLiveScan = row.groupedEntries.some((entry) => entry.status === "running");
 
   return (
-    <div className="pt-2 pb-1 pl-1">
+    <div className="pt-1.5 pb-0.5 pl-1">
       <button
         type="button"
         className="chat-text chat-text-summary group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left transition-colors"
@@ -2252,7 +2252,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
 
   if (groupedEntries.length === 1 && isFileChangeWorkEntry(groupedEntries[0]!, turnDiffSummary)) {
     return (
-      <div className="pt-2 pb-3 pl-1">
+      <div className="pt-1.5 pb-2 pl-1">
         <SimpleWorkEntryRow
           workEntry={groupedEntries[0]!}
           workspaceRoot={workspaceRoot}
@@ -2264,7 +2264,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
 
   if (groupedEntries.length === 1 && isCommandWorkEntry(groupedEntries[0]!)) {
     return (
-      <div className="pt-2 pb-3 pl-1">
+      <div className="pt-1.5 pb-2 pl-1">
         <CommandWorkEntryRow workEntry={groupedEntries[0]!} />
       </div>
     );
@@ -2274,7 +2274,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
   const SummaryIcon = isSearchGroup ? GlobeIcon : TerminalSquareIcon;
 
   return (
-    <div className="pt-2 pb-3 pl-1">
+    <div className="pt-1.5 pb-2 pl-1">
       <button
         type="button"
         className="chat-text chat-text-summary group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left transition-colors"
@@ -2445,7 +2445,7 @@ const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({
   onToggle: () => void;
 }) {
   return (
-    <div className="pt-2 pb-3 pl-1">
+    <div className="pt-1.5 pb-2 pl-1">
       <button
         type="button"
         className={cn(
@@ -2469,28 +2469,35 @@ const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/42 transition-colors group-hover/runtime-summary:text-muted-foreground/70" />
         )}
       </button>
-      {isExpanded ? (
-        <div className="mt-1.5 space-y-2" data-runtime-issue-details="true">
-          {summary.detail ? (
-            <p className="px-0.5 text-[13px] leading-5 text-muted-foreground/72 wrap-break-word">
-              {summary.detail}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      <RuntimeIssueNoticeCard text={summary.cardText} />
+      {isExpanded ? <RuntimeIssueNoticeCard text={summary.cardText} tone={summary.tone} /> : null}
     </div>
   );
 });
 
-function RuntimeIssueNoticeCard({ text }: { text: string }) {
+function RuntimeIssueNoticeCard({
+  text,
+  tone,
+}: {
+  text: string;
+  tone: RuntimeIssueGroupSummary["tone"];
+}) {
   return (
     <div
-      className="mt-2 flex min-h-10 items-center gap-3 rounded-2xl border border-border/75 bg-background px-4 py-2.5 text-[13px] leading-5 text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+      className={cn(
+        "mt-1.5 flex min-h-8 items-start gap-2 rounded-lg border px-3 py-2 text-[12.5px] leading-5 shadow-none",
+        tone === "error"
+          ? "border-rose-500/20 bg-rose-500/[0.04] text-rose-950/88 dark:text-rose-50/92"
+          : "border-amber-500/20 bg-amber-500/[0.04] text-foreground/82 dark:text-amber-50/92",
+      )}
       title={text}
       data-runtime-issue-card="true"
     >
-      <CircleAlertIcon className="size-4 shrink-0 text-foreground/80" />
+      <CircleAlertIcon
+        className={cn(
+          "mt-0.5 size-3.5 shrink-0",
+          tone === "error" ? "text-rose-500/78" : "text-amber-500/78",
+        )}
+      />
       <p className="min-w-0 flex-1 wrap-break-word">{text}</p>
     </div>
   );
