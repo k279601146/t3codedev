@@ -301,7 +301,7 @@ export function resolveThreadRowClassName(input: {
   isPendingOpen?: boolean;
 }): string {
   const baseClassName =
-    "t3-sidebar-thread-row h-7.5 w-full translate-x-0 cursor-pointer justify-start rounded-[7px] px-2 text-left text-[13px] font-normal select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+    "t3-sidebar-thread-row h-7.5 w-full translate-x-0 cursor-pointer justify-start rounded-[7px] px-2 text-left font-normal select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 
   if (input.isPendingOpen) {
     return cn(
@@ -333,7 +333,7 @@ export function resolveThreadRowClassName(input: {
 
   return cn(
     baseClassName,
-    "text-foreground/64 hover:bg-[color-mix(in_srgb,var(--foreground)_4.5%,transparent)] hover:text-foreground/78",
+    "hover:bg-[color-mix(in_srgb,var(--foreground)_4.5%,transparent)]",
   );
 }
 

@@ -630,7 +630,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-[13px] leading-5 text-inherit"
+                    className="t3-sidebar-thread-title min-w-0 flex-1 truncate"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -824,7 +824,7 @@ const SidebarThreadListToggle = memo(function SidebarThreadListToggle(
         render={buttonRender}
         data-thread-selection-safe
         size="sm"
-        className="t3-sidebar-thread-row h-7.5 w-full translate-x-0 justify-start rounded-[7px] px-2 text-left text-[13px] font-normal text-foreground/58 hover:bg-[color-mix(in_srgb,var(--foreground)_4.5%,transparent)] hover:text-foreground/74"
+        className="t3-sidebar-thread-row h-7.5 w-full translate-x-0 justify-start rounded-[7px] px-2 text-left font-normal hover:bg-[color-mix(in_srgb,var(--foreground)_4.5%,transparent)]"
         onClick={expanded ? onCollapse : onExpand}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -2181,7 +2181,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <SidebarMenuButton
           ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
           size="sm"
-          className="t3-sidebar-project-row h-[30px] cursor-default gap-2.5 rounded-[7px] px-2 py-0 pr-7 text-left text-[13px] font-normal leading-[1.45] text-foreground/54 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/72 group-hover/project-header:text-foreground/72 max-sm:pr-14"
+          className="t3-sidebar-project-row h-[30px] cursor-default gap-2.5 rounded-[7px] px-2 py-0 pr-7 text-left font-normal hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] max-sm:pr-14"
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
           {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
           onPointerDownCapture={handleProjectButtonPointerDownCapture}
@@ -2191,7 +2191,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         >
           <SidebarProjectIcon project={project} />
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-[13px] font-normal leading-[1.45] text-foreground/54 group-hover/project-header:text-foreground/72">
+            <span className="t3-sidebar-project-title truncate">
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
