@@ -476,6 +476,36 @@ export function resolveAssistantMessageCopyState({
   };
 }
 
+export interface StableAssistantMessageTextState {
+  messageId: string | null;
+  text: string;
+}
+
+export function resolveStableAssistantMessageText({
+  messageId,
+  text,
+  previous,
+}: {
+  messageId: string;
+  text: string | null | undefined;
+  previous: StableAssistantMessageTextState;
+}): { state: StableAssistantMessageTextState; text: string } {
+  const normalizedText = text?.trim().length ? text : "";
+  if (previous.messageId !== messageId) {
+    const nextState = { messageId, text: normalizedText };
+    return { state: nextState, text: nextState.text };
+  }
+  if (normalizedText) {
+    const nextState = { messageId, text: normalizedText };
+    return { state: nextState, text: normalizedText };
+  }
+  if (previous.text) {
+    return { state: previous, text: previous.text };
+  }
+  const nextState = { messageId, text: "" };
+  return { state: nextState, text: nextState.text };
+}
+
 export type FileChangeAction = "create" | "delete" | "rename" | "edit" | "change";
 export type FileChangeTense = "running" | "completed" | "bare";
 

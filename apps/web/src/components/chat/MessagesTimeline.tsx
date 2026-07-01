@@ -84,8 +84,10 @@ import {
   resolveAggregateFileChangeAction,
   resolveFileChangeActionFromKind,
   resolveAssistantMessageCopyState,
+  resolveStableAssistantMessageText,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
+  type StableAssistantMessageTextState,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
 import { parseRenderableUnifiedDiff } from "../DiffPanel.logic";
@@ -1685,7 +1687,7 @@ function UrlPreviewCard({ url }: { url: string }) {
 
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const messageText = useStableAssistantTimelineText(row.message.id, row.message.text);
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
 
   return (
@@ -1731,6 +1733,20 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       {row.showCompletionDivider && <AssistantCompletionDivider />}
     </>
   );
+}
+
+function useStableAssistantTimelineText(messageId: string, text: string | null | undefined): string {
+  const stateRef = useRef<StableAssistantMessageTextState>({
+    messageId: null,
+    text: "",
+  });
+  const next = resolveStableAssistantMessageText({
+    messageId,
+    text,
+    previous: stateRef.current,
+  });
+  stateRef.current = next.state;
+  return next.text;
 }
 
 function SteerConversationMarker() {
