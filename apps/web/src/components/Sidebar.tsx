@@ -618,7 +618,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           {renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
-              className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-[14px] leading-5 outline-none"
+              className="t3-sidebar-thread-title min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 outline-none"
               value={renamingTitle}
               onChange={handleRenameInputChange}
               onKeyDown={handleRenameInputKeyDown}
@@ -887,7 +887,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
           <div
             data-thread-selection-safe
-            className="flex h-8.5 w-full translate-x-0 items-center px-2 text-left text-[14px] text-muted-foreground/55"
+            className="t3-sidebar-thread-row flex h-8.5 w-full translate-x-0 items-center px-2 text-left"
           >
             <span>{t("sidebar.noThreads")}</span>
           </div>
@@ -3178,7 +3178,7 @@ function SidebarNavButton({
         render={buttonRender}
         size="sm"
         isActive={isActive}
-        className="t3-sidebar-nav-row h-[30px] gap-2.5 rounded-[7px] px-2 text-[13px] font-normal leading-[1.45] text-foreground/62 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/76 focus-visible:ring-0"
+        className="t3-sidebar-nav-row h-[30px] gap-2.5 rounded-[7px] px-2 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] focus-visible:ring-0"
         onClick={onClick}
       >
         <Icon className="size-3.5 text-foreground/50" />
@@ -3767,7 +3767,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="t3-sidebar-nav-row h-[30px] gap-2.5 rounded-[7px] px-2 text-[13px] font-normal leading-[1.45] text-foreground/62 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-foreground/76 focus-visible:ring-0"
+                  className="t3-sidebar-nav-row h-[30px] gap-2.5 rounded-[7px] px-2 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] focus-visible:ring-0"
                   data-testid="command-palette-trigger"
                 />
               }

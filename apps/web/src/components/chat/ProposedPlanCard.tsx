@@ -81,21 +81,21 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
 
   return (
     <div
-      className="proposed-plan-card overflow-hidden rounded-[10px] border border-transparent bg-[#f4f4f5] px-4 pb-4 pt-3 text-[#18181b] shadow-none dark:border-border/45 dark:bg-muted/25 dark:text-foreground sm:px-5"
+      className="proposed-plan-card overflow-hidden rounded-[10px] border border-transparent px-4 pb-4 pt-3 shadow-none dark:border-border/45 dark:bg-muted/25 sm:px-5"
       data-environment-id={environmentId}
       data-workspace-root={workspaceRoot ?? undefined}
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 text-[14px] font-medium leading-5 text-[#09090b] dark:text-foreground/92">
+        <div className="proposed-plan-card-title min-w-0">
           计划
         </div>
-        <div className="flex shrink-0 items-center gap-1 text-[#71717a] dark:text-muted-foreground">
+        <div className="proposed-plan-card-actions flex shrink-0 items-center gap-1">
           <Button
             aria-label="下载计划"
             title="下载计划"
             size="icon-xs"
             variant="ghost"
-            className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 hover:text-[#3f3f46] dark:hover:bg-white/8 dark:hover:text-foreground"
+            className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 dark:hover:bg-white/8"
             onClick={handleDownload}
           >
             <DownloadIcon aria-hidden="true" className="size-3.5" />
@@ -105,7 +105,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             title={isCopied ? "已复制" : "复制计划"}
             size="icon-xs"
             variant="ghost"
-            className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 hover:text-[#3f3f46] dark:hover:bg-white/8 dark:hover:text-foreground"
+            className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 dark:hover:bg-white/8"
             onClick={handleCopyPlan}
           >
             {isCopied ? (
@@ -120,7 +120,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               title={expanded ? "收起计划" : "展开计划"}
               size="icon-xs"
               variant="ghost"
-              className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 hover:text-[#3f3f46] dark:hover:bg-white/8 dark:hover:text-foreground"
+              className="size-7 rounded-md border-transparent bg-transparent text-inherit shadow-none hover:bg-black/5 dark:hover:bg-white/8"
               data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
             >
@@ -153,14 +153,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             />
           )}
           {canCollapse && !expanded ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-linear-to-t from-[#f4f4f5] via-[#f4f4f5]/88 to-transparent dark:from-[color-mix(in_srgb,var(--muted)_25%,var(--background))] dark:via-background/65" />
+            <div className="proposed-plan-card-fade pointer-events-none absolute inset-x-0 bottom-0 h-32" />
           ) : null}
         </div>
         {canCollapse ? (
           <div className={cn("flex justify-center", expanded ? "mt-4" : "-mt-10 relative z-10")}>
             <button
               type="button"
-              className="inline-flex h-8 items-center rounded-full bg-[#18181b] px-3 text-[13px] font-medium text-white shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition-colors hover:bg-[#27272a] dark:bg-foreground dark:text-background"
+              className="proposed-plan-card-toggle inline-flex h-8 items-center rounded-full px-3 text-[13px] font-medium shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition-colors"
               data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
             >

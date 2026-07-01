@@ -153,6 +153,7 @@ interface TimelineRowSharedState {
   summaryAssistantMessageIds: ReadonlySet<string>;
   /** 每个成果 owner 对应的人类可读耗时。 */
   elapsedByAssistantMessageId: ReadonlyMap<string, string>;
+  manuallyToggledAssistantMessageIds: ReadonlySet<string>;
   /** 过程成员行 → 成果 owner；出现在这里的行会跟随“已处理”开关收展。 */
   ownerAssistantMessageIdByRowId: ReadonlyMap<string, string>;
   /** 首个过程成员行 → 成果 owner；开关渲染在这个成员行上方。 */
@@ -410,6 +411,9 @@ export const MessagesTimeline = memo(
   const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [manuallyToggledAssistantMessageIds, setManuallyToggledAssistantMessageIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -429,6 +433,12 @@ export const MessagesTimeline = memo(
   }, [activeTurnId, activeTurnInProgress, stableRows]);
 
   const toggleAssistantTurnCollapsed = useCallback((assistantMessageId: string) => {
+    setManuallyToggledAssistantMessageIds((prev) => {
+      if (prev.has(assistantMessageId)) return prev;
+      const next = new Set(prev);
+      next.add(assistantMessageId);
+      return next;
+    });
     setExpandedAssistantMessageIds((prev) => {
       const next = new Set(prev);
       if (next.has(assistantMessageId)) next.delete(assistantMessageId);
@@ -892,6 +902,7 @@ export const MessagesTimeline = memo(
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
+      manuallyToggledAssistantMessageIds,
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
@@ -920,6 +931,8 @@ export const MessagesTimeline = memo(
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
+      expandedAssistantMessageIds,
+      manuallyToggledAssistantMessageIds,
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
       toggleAssistantTurnCollapsed,
@@ -1114,6 +1127,7 @@ function TimelineRowBody({ row }: { row: TimelineRenderableRow }) {
 function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }) {
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(row.ownerId);
+  const animate = ctx.manuallyToggledAssistantMessageIds.has(row.ownerId);
   return (
     <div
       className="[overflow-anchor:none]"
@@ -1121,12 +1135,10 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
       data-turn-process-owner-id={row.ownerId}
     >
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
-      <CollapsibleMember collapsed={isCollapsed}>
-        {isCollapsed
-          ? null
-          : row.memberRows.map((memberRow) => (
-              <TimelineRowBody key={memberRow.id} row={memberRow} />
-            ))}
+      <CollapsibleMember collapsed={isCollapsed} animate={animate}>
+        {row.memberRows.map((memberRow) => (
+          <TimelineRowBody key={memberRow.id} row={memberRow} />
+        ))}
       </CollapsibleMember>
     </div>
   );
@@ -1181,7 +1193,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
-        className="chat-text group/turn-summary inline-flex items-center gap-1 rounded-md px-0 py-0.5 text-[14px] leading-[1.68] text-muted-foreground/70 transition-colors hover:text-foreground/75"
+        className="chat-text chat-text-summary group/turn-summary inline-flex items-center gap-1 rounded-md px-0 py-0.5 transition-colors"
         data-turn-summary-toggle="true"
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
         data-scroll-anchor-ignore
@@ -1199,9 +1211,11 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
 }
 
 function CollapsibleMember({
+  animate,
   collapsed,
   children,
 }: {
+  animate: boolean;
   collapsed: boolean;
   children: React.ReactNode;
 }) {
@@ -1223,7 +1237,7 @@ function CollapsibleMember({
     if (!keepContentMounted) {
       return;
     }
-    if (!hasAnimated) {
+    if (!animate || !hasAnimated) {
       setKeepContentMounted(false);
       return;
     }
@@ -1231,13 +1245,14 @@ function CollapsibleMember({
       setKeepContentMounted(false);
     }, 180);
     return () => window.clearTimeout(timeoutId);
-  }, [collapsed, hasAnimated, keepContentMounted]);
+  }, [animate, collapsed, hasAnimated, keepContentMounted]);
 
   return (
     <div
       className={cn(
         "grid [overflow-anchor:none]",
-        hasAnimated &&
+        animate &&
+          hasAnimated &&
           "transition-[grid-template-rows,opacity,transform] duration-180 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none",
         collapsed ? "grid-rows-[0fr] opacity-0 -translate-y-0.5" : "grid-rows-[1fr] opacity-100 translate-y-0",
       )}
@@ -1348,7 +1363,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     void submitEdit();
                   }
                 }}
-                className="chat-text block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14px] leading-[1.68] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
+                className="chat-text chat-text-input block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
                 aria-label="编辑用户消息"
               />
               <div className="mt-3 flex items-center justify-end gap-2">
@@ -1639,7 +1654,7 @@ function UrlPreviewCard({ url }: { url: string }) {
           onClick={() => onOpenUrl(url, "preview")}
           title={url}
         >
-          <div className="chat-text truncate text-[14px] font-medium leading-[1.68] text-foreground">
+          <div className="chat-text chat-text-title truncate">
             网页预览
           </div>
           <div className="truncate text-[13px] leading-5 text-muted-foreground">网站</div>
@@ -2102,7 +2117,7 @@ const WorkGroupSummaryTimelineRow = memo(function WorkGroupSummaryTimelineRow({
     <div className="pt-2 pb-1 pl-1">
       <button
         type="button"
-        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[14px] leading-[1.68] text-muted-foreground/62 transition-colors hover:text-foreground/78"
+        className="chat-text chat-text-summary group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left transition-colors"
         aria-expanded={row.isExpanded}
         data-work-group-summary="true"
         onClick={() => ctx.toggleWorkGroupExpanded(row.id)}
@@ -2218,7 +2233,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
     <div className="pt-2 pb-3 pl-1">
       <button
         type="button"
-        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[14px] leading-[1.68] text-muted-foreground/62 transition-colors hover:text-foreground/78"
+        className="chat-text chat-text-summary group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left transition-colors"
         aria-expanded={isExpanded}
         data-work-group-summary="true"
         onClick={() => {
@@ -2390,7 +2405,7 @@ const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({
       <button
         type="button"
         className={cn(
-          "chat-text group/runtime-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[14px] leading-[1.68] transition-colors hover:text-foreground/78",
+          "chat-text chat-text-summary group/runtime-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left transition-colors",
           summary.tone === "error" ? "text-rose-500/78" : "text-muted-foreground/72",
         )}
         aria-expanded={isExpanded}
@@ -2697,15 +2712,15 @@ function AssistantChangedFilesSectionInner({
   };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-[#E5E5E5] bg-white shadow-[0_1px_2px_rgb(0_0_0/0.04)] dark:border-border/70 dark:bg-card">
+    <div className="chat-changed-files-card mt-3 overflow-hidden rounded-xl border shadow-[0_1px_2px_rgb(0_0_0/0.04)]">
       <div className="flex min-h-[64px] items-center gap-3 px-3 py-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#F8F8F8] text-[#6B7280] dark:bg-muted/60 dark:text-muted-foreground">
+        <div className="chat-changed-files-icon flex size-10 shrink-0 items-center justify-center rounded-xl">
           <FilePlus2Icon className="size-4.5 stroke-[1.8]" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="chat-text truncate text-[14px] font-medium leading-[1.68] text-foreground/92">
+              <div className="chat-text chat-text-title truncate">
                 {isSingleFile && firstFile ? (
                   <span className="inline-flex min-w-0 max-w-full items-baseline gap-1">
                     <span className="shrink-0">已编辑</span>
@@ -2757,7 +2772,7 @@ function AssistantChangedFilesSectionInner({
         </div>
       </div>
       {!isSingleFile ? (
-        <div className="border-t border-[#EDEDED] px-3 pb-3 pt-2.5 dark:border-border/70">
+        <div className="chat-changed-files-list border-t px-3 pb-3 pt-2.5">
           <div className="space-y-2.5">
             {visibleFiles.map((file) => {
               const displayPath = formatChangedFilePath(file.path, workspaceRoot);
@@ -3900,7 +3915,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
     <div className="chat-text rounded-md px-1 py-0.5">
       <button
         type="button"
-        className="group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/68 transition-colors hover:text-foreground/80"
+        className="chat-text-compact-muted group/file-change flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors"
         aria-expanded={isExpanded}
         title={title}
         onClick={() => {
@@ -3933,7 +3948,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
             return (
               <div key={`${workEntry.id}:${file.path}`} className="space-y-0.5">
                 <div
-                  className="group/file-row flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-[13px] leading-5 text-foreground/86 transition-colors hover:text-foreground"
+                  className="chat-text-compact group/file-row flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 transition-colors"
                   title={file.displayPath}
                 >
                   <span className="shrink-0 text-muted-foreground/74">
@@ -4263,7 +4278,7 @@ const CommandWorkEntryRow = memo(function CommandWorkEntryRow({
     <div className="chat-text rounded-md px-1 py-0.5">
       <button
         type="button"
-        className="group/command-summary flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:bg-muted/15 hover:text-foreground/78"
+        className="chat-text-compact-muted group/command-summary flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/15"
         aria-expanded={isExpanded}
         title={summaryText}
         onClick={() => {
@@ -4516,11 +4531,11 @@ const UserInputSummaryTimelineRow = memo(function UserInputSummaryTimelineRow({
       data-user-input-summary="true"
     >
       <div className="max-w-full rounded-md px-0.5 py-0.5">
-        <div className="flex items-center gap-1.5 text-[13px] leading-5 text-muted-foreground/62">
+        <div className="chat-text-compact-muted flex items-center gap-1.5">
           <span className="min-w-0 truncate">{title}</span>
           <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/45" />
         </div>
-        <div className="mt-2 space-y-3 text-[13px] leading-5">
+        <div className="chat-text-compact mt-2 space-y-3">
           {summary.questions.map((question) => {
             const answer = summary.answers?.[question.id];
             const answerText = Array.isArray(answer) ? answer.join("、") : answer;

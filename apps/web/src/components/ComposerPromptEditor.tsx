@@ -1667,7 +1667,7 @@ function ComposerPromptEditorInner({
           contentEditable={
             <ContentEditable
               className={cn(
-                "block max-h-50 min-h-14 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent font-sans text-[15px] leading-6 text-foreground antialiased focus:outline-none sm:text-[14px]",
+                "block max-h-50 min-h-14 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent font-sans focus:outline-none",
                 className,
               )}
               data-testid="composer-editor"
@@ -1680,9 +1680,10 @@ function ComposerPromptEditorInner({
             terminalContexts.length > 0 ? null : (
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-0 font-sans text-[15px] leading-6 text-muted-foreground/45 antialiased sm:text-[14px]",
+                  "pointer-events-none absolute inset-0 font-sans",
                   placeholderClassName,
                 )}
+                data-chat-composer-placeholder="true"
               >
                 {placeholder}
               </div>

@@ -3566,12 +3566,12 @@ export const ChatComposer = memo(
                   }
                   skills={selectedProviderStatus?.skills ?? []}
                   className={cn(
-                    newThreadMode && "min-h-[42px] max-h-[280px] text-[14px] leading-[1.55]",
+                    newThreadMode && "min-h-[42px] max-h-[280px]",
                     showMobilePendingAnswerActions && "max-sm:pb-11",
                   )}
                   {...(newThreadMode
                     ? {
-                        placeholderClassName: "text-[14px] leading-[1.55] text-muted-foreground/42",
+                        placeholderClassName: "text-muted-foreground/42",
                       }
                     : {})}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}

@@ -624,6 +624,53 @@ body {
   color: inherit;
 }
 
+.chat-text-input {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.chat-text-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.68;
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+}
+
+.chat-text-summary {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.68;
+  color: color-mix(in srgb, var(--foreground) 68%, transparent);
+}
+
+.chat-text-summary:hover {
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+.chat-text-compact {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.54;
+  color: color-mix(in srgb, var(--foreground) 86%, transparent);
+}
+
+.chat-text-compact:hover {
+  color: var(--foreground);
+}
+
+.chat-text-compact-muted {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.54;
+  color: color-mix(in srgb, var(--foreground) 66%, transparent);
+}
+
+.chat-text-compact-muted:hover {
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+
 .chat-text > code,
 .chat-text :not(pre) > code {
   border-radius: 4px;
@@ -996,6 +1043,113 @@ code {
 
 [data-chat-composer-form="true"] {
   font-family: var(--t3-chat-font-family);
+}
+
+[data-chat-composer-form="true"] [data-testid="composer-editor"],
+[data-chat-composer-placeholder="true"] {
+  font-family: var(--t3-chat-font-family);
+  font-size: 14.5px;
+  font-weight: 400;
+  line-height: 1.7;
+  color: #1a1f27;
+  letter-spacing: 0;
+  -webkit-font-smoothing: auto;
+  font-synthesis-weight: none;
+}
+
+[data-chat-composer-placeholder="true"] {
+  color: color-mix(in srgb, var(--foreground) 45%, transparent);
+}
+
+.proposed-plan-card {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.proposed-plan-card-title {
+  color: #09090b;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+}
+
+.proposed-plan-card-actions {
+  color: #71717a;
+}
+
+.proposed-plan-card-actions [data-slot="button"]:hover {
+  color: #3f3f46;
+}
+
+.proposed-plan-card-fade {
+  background: linear-gradient(to top, #f4f4f5, rgb(244 244 245 / 88%), transparent);
+}
+
+.proposed-plan-card-toggle {
+  background: #18181b;
+  color: #ffffff;
+}
+
+.proposed-plan-card-toggle:hover {
+  background: #27272a;
+}
+
+.dark .proposed-plan-card {
+  color: var(--foreground);
+}
+
+.dark .proposed-plan-card-title {
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
+}
+
+.dark .proposed-plan-card-actions {
+  color: var(--muted-foreground);
+}
+
+.dark .proposed-plan-card-actions [data-slot="button"]:hover {
+  color: var(--foreground);
+}
+
+.dark .proposed-plan-card-fade {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--muted) 25%, var(--background)),
+    color-mix(in srgb, var(--background) 65%, transparent),
+    transparent
+  );
+}
+
+.dark .proposed-plan-card-toggle {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.chat-changed-files-card {
+  border-color: #e5e5e5;
+  background: #ffffff;
+}
+
+.chat-changed-files-icon {
+  background: #f8f8f8;
+  color: #6b7280;
+}
+
+.chat-changed-files-list {
+  border-color: #ededed;
+}
+
+.dark .chat-changed-files-card {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.dark .chat-changed-files-icon {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  color: var(--muted-foreground);
+}
+
+.dark .chat-changed-files-list {
+  border-color: var(--border);
 }
 
 [data-slot="sidebar-menu-button"] svg,
