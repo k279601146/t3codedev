@@ -19,6 +19,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   Virtuoso,
   type Components as VirtuosoComponents,
@@ -159,6 +160,7 @@ interface TimelineRowSharedState {
   toggleAssistantTurnCollapsed: (assistantMessageId: string) => void;
   toggleWorkGroupExpanded: (workGroupId: string) => void;
   suppressAutoFollowForUserResize: () => void;
+  pinElementDuringUserResize: (element: HTMLElement, resize: () => void) => void;
 }
 
 interface TimelineRowActivityState {
@@ -185,7 +187,7 @@ const TIMELINE_INCREASE_VIEWPORT_TOP_PX = 500;
 const TIMELINE_INCREASE_VIEWPORT_BOTTOM_PX = 700;
 const TIMELINE_SCROLL_SEEK_ENTER_VELOCITY = 720;
 const TIMELINE_SCROLL_SEEK_EXIT_VELOCITY = 120;
-const TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS = 700;
+const TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS = 1_500;
 const COMMAND_OUTPUT_DEFAULT_ITEM_HEIGHT_PX = 20;
 const COMMAND_OUTPUT_SCROLL_SEEK_ENTER_VELOCITY = 900;
 const COMMAND_OUTPUT_SCROLL_SEEK_EXIT_VELOCITY = 160;
@@ -493,11 +495,13 @@ export const MessagesTimeline = memo(
   ]);
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
   const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
   const didInitialScrollRef = useRef(false);
   const suppressAutoFollowUntilRef = useRef(0);
   const isTimelineScrollingRef = useRef(false);
+  const activePinnedResizeCleanupRef = useRef<(() => void) | null>(null);
   const previousRowCountRef = useRef(rows.length);
   const previousRowsRef = useRef<ReadonlyArray<TimelineRow>>(rows);
   const [firstItemIndex, setFirstItemIndex] = useState(TIMELINE_INITIAL_FIRST_ITEM_INDEX);
@@ -506,6 +510,95 @@ export const MessagesTimeline = memo(
   const suppressAutoFollowForUserResize = useCallback(() => {
     suppressAutoFollowUntilRef.current =
       performance.now() + TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS;
+  }, []);
+
+  const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
+    scrollContainerRef.current = ref instanceof HTMLElement ? ref : null;
+  }, []);
+
+  const pinElementDuringUserResize = useCallback(
+    (element: HTMLElement, resize: () => void) => {
+      const container = scrollContainerRef.current;
+      activePinnedResizeCleanupRef.current?.();
+      activePinnedResizeCleanupRef.current = null;
+      suppressAutoFollowForUserResize();
+      isAtBottomRef.current = false;
+      onIsAtEndChange(false);
+
+      const pinnedTopOffset = container
+        ? element.getBoundingClientRect().top - container.getBoundingClientRect().top
+        : null;
+
+      flushSync(resize);
+
+      if (!container || pinnedTopOffset == null) {
+        return;
+      }
+
+      const tolerance = 0.75;
+      const maxAttempts = 18;
+      let attempt = 0;
+      let frameId = 0;
+      let timeoutId = 0;
+      let observer: ResizeObserver | null = null;
+
+      const align = () => {
+        attempt += 1;
+        if (!element.isConnected) {
+          return;
+        }
+        const currentTopOffset =
+          element.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        const delta = currentTopOffset - pinnedTopOffset;
+        if (Math.abs(delta) > tolerance) {
+          container.scrollTop += delta;
+        }
+        if (attempt < maxAttempts && performance.now() < suppressAutoFollowUntilRef.current) {
+          frameId = window.requestAnimationFrame(align);
+        }
+      };
+
+      const cleanup = () => {
+        if (frameId) {
+          window.cancelAnimationFrame(frameId);
+        }
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+        observer?.disconnect();
+        if (activePinnedResizeCleanupRef.current === cleanup) {
+          activePinnedResizeCleanupRef.current = null;
+        }
+      };
+      activePinnedResizeCleanupRef.current = cleanup;
+
+      if (typeof ResizeObserver !== "undefined") {
+        const span = element.closest<HTMLElement>("[data-turn-process-span='true']");
+        const collapsible = span?.querySelector<HTMLElement>("[data-collapsible-member='true']");
+        observer = new ResizeObserver(() => {
+          if (performance.now() < suppressAutoFollowUntilRef.current) {
+            align();
+          }
+        });
+        if (span) {
+          observer.observe(span);
+        }
+        if (collapsible) {
+          observer.observe(collapsible);
+        }
+      }
+
+      align();
+      timeoutId = window.setTimeout(cleanup, TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS);
+    },
+    [onIsAtEndChange, suppressAutoFollowForUserResize],
+  );
+
+  useEffect(() => {
+    return () => {
+      activePinnedResizeCleanupRef.current?.();
+      activePinnedResizeCleanupRef.current = null;
+    };
   }, []);
 
   const toggleWorkGroupExpanded = useCallback(
@@ -763,7 +856,12 @@ export const MessagesTimeline = memo(
     [handleTimelineRangeChanged],
   );
 
-  const followOutput = useCallback((isAtBottom: boolean) => (isAtBottom ? "auto" : false), []);
+  const followOutput = useCallback((isAtBottom: boolean) => {
+    if (performance.now() < suppressAutoFollowUntilRef.current) {
+      return false;
+    }
+    return isAtBottom ? "auto" : false;
+  }, []);
 
   const initialTopMostItemIndex = useMemo(() => {
     if (rows.length === 0) {
@@ -799,6 +897,7 @@ export const MessagesTimeline = memo(
       toggleAssistantTurnCollapsed,
       toggleWorkGroupExpanded,
       suppressAutoFollowForUserResize,
+      pinElementDuringUserResize,
     }),
     [
       timestampFormat,
@@ -826,6 +925,7 @@ export const MessagesTimeline = memo(
       toggleAssistantTurnCollapsed,
       toggleWorkGroupExpanded,
       suppressAutoFollowForUserResize,
+      pinElementDuringUserResize,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -868,7 +968,7 @@ export const MessagesTimeline = memo(
       <TimelineRowActivityCtx.Provider value={activityState}>
         <Virtuoso<TimelineRow>
           ref={virtuosoRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
+          className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [overflow-anchor:none] [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
           data={rows}
           firstItemIndex={firstItemIndex}
           defaultItemHeight={TIMELINE_DEFAULT_ITEM_HEIGHT_PX}
@@ -877,6 +977,7 @@ export const MessagesTimeline = memo(
           computeItemKey={(index, row) => row?.id ?? `timeline:${index}`}
           components={timelineComponents}
           itemContent={renderTimelineRow}
+          scrollerRef={handleScrollerRef}
           atBottomStateChange={handleAtBottomStateChange}
           atTopStateChange={handleAtTopStateChange}
           atTopThreshold={TIMELINE_TOP_LOAD_THRESHOLD_PX}
@@ -1014,7 +1115,11 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(row.ownerId);
   return (
-    <div data-turn-process-span="true" data-turn-process-owner-id={row.ownerId}>
+    <div
+      className="[overflow-anchor:none]"
+      data-turn-process-span="true"
+      data-turn-process-owner-id={row.ownerId}
+    >
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
       <CollapsibleMember collapsed={isCollapsed}>
         {isCollapsed
@@ -1056,14 +1161,23 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(assistantMessageId);
   const elapsed = ctx.elapsedByAssistantMessageId.get(assistantMessageId) ?? null;
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const handleToggle = useCallback(() => {
-    ctx.suppressAutoFollowForUserResize();
-    ctx.toggleAssistantTurnCollapsed(assistantMessageId);
+    const button = buttonRef.current;
+    if (!button) {
+      ctx.suppressAutoFollowForUserResize();
+      ctx.toggleAssistantTurnCollapsed(assistantMessageId);
+      return;
+    }
+    ctx.pinElementDuringUserResize(button, () => {
+      ctx.toggleAssistantTurnCollapsed(assistantMessageId);
+    });
   }, [assistantMessageId, ctx]);
 
   return (
     <div className="pt-1 pb-1.5">
       <button
+        ref={buttonRef}
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
@@ -1093,7 +1207,7 @@ function CollapsibleMember({
 }) {
   return (
     <div
-      className={collapsed ? "hidden" : undefined}
+      className={collapsed ? "hidden" : "[overflow-anchor:none]"}
       aria-hidden={collapsed}
       data-collapsible-member="true"
       data-collapsed={collapsed ? "true" : "false"}
