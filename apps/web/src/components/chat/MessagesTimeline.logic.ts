@@ -476,34 +476,26 @@ export function resolveAssistantMessageCopyState({
   };
 }
 
-export interface StableAssistantMessageTextState {
-  messageId: string | null;
-  text: string;
+export interface StableAssistantMessageTextCache {
+  get(messageId: string): string | undefined;
+  set(messageId: string, text: string): void;
 }
 
-export function resolveStableAssistantMessageText({
+export function resolveStableAssistantMessageTextFromCache({
   messageId,
   text,
-  previous,
+  cache,
 }: {
   messageId: string;
   text: string | null | undefined;
-  previous: StableAssistantMessageTextState;
-}): { state: StableAssistantMessageTextState; text: string } {
+  cache: StableAssistantMessageTextCache;
+}): string {
   const normalizedText = text?.trim().length ? text : "";
-  if (previous.messageId !== messageId) {
-    const nextState = { messageId, text: normalizedText };
-    return { state: nextState, text: nextState.text };
-  }
   if (normalizedText) {
-    const nextState = { messageId, text: normalizedText };
-    return { state: nextState, text: normalizedText };
+    cache.set(messageId, normalizedText);
+    return normalizedText;
   }
-  if (previous.text) {
-    return { state: previous, text: previous.text };
-  }
-  const nextState = { messageId, text: "" };
-  return { state: nextState, text: nextState.text };
+  return cache.get(messageId) ?? "";
 }
 
 export type FileChangeAction = "create" | "delete" | "rename" | "edit" | "change";

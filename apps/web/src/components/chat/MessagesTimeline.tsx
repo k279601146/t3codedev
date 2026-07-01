@@ -84,10 +84,10 @@ import {
   resolveAggregateFileChangeAction,
   resolveFileChangeActionFromKind,
   resolveAssistantMessageCopyState,
-  resolveStableAssistantMessageText,
+  resolveStableAssistantMessageTextFromCache,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
-  type StableAssistantMessageTextState,
+  type StableAssistantMessageTextCache,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
 import { parseRenderableUnifiedDiff } from "../DiffPanel.logic";
@@ -164,6 +164,7 @@ interface TimelineRowSharedState {
   toggleWorkGroupExpanded: (workGroupId: string) => void;
   suppressAutoFollowForUserResize: () => void;
   pinElementDuringUserResize: (element: HTMLElement, resize: () => void) => void;
+  stableAssistantTextByMessageId: StableAssistantMessageTextCache;
 }
 
 interface TimelineRowActivityState {
@@ -508,6 +509,7 @@ export const MessagesTimeline = memo(
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const stableAssistantTextByMessageIdRef = useRef(new Map<string, string>());
   const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
   const didInitialScrollRef = useRef(false);
@@ -612,6 +614,20 @@ export const MessagesTimeline = memo(
       activePinnedResizeCleanupRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const visibleAssistantMessageIds = new Set<string>();
+    for (const row of stableRows) {
+      if (row.kind === "message" && row.message.role === "assistant") {
+        visibleAssistantMessageIds.add(row.message.id);
+      }
+    }
+    for (const messageId of stableAssistantTextByMessageIdRef.current.keys()) {
+      if (!visibleAssistantMessageIds.has(messageId)) {
+        stableAssistantTextByMessageIdRef.current.delete(messageId);
+      }
+    }
+  }, [stableRows]);
 
   const toggleWorkGroupExpanded = useCallback(
     (workGroupId: string) => {
@@ -911,6 +927,7 @@ export const MessagesTimeline = memo(
       toggleWorkGroupExpanded,
       suppressAutoFollowForUserResize,
       pinElementDuringUserResize,
+      stableAssistantTextByMessageId: stableAssistantTextByMessageIdRef.current,
     }),
     [
       timestampFormat,
@@ -1687,7 +1704,11 @@ function UrlPreviewCard({ url }: { url: string }) {
 
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const messageText = useStableAssistantTimelineText(row.message.id, row.message.text);
+  const messageText = resolveStableAssistantMessageTextFromCache({
+    messageId: row.message.id,
+    text: row.message.text,
+    cache: ctx.stableAssistantTextByMessageId,
+  });
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
 
   return (
@@ -1733,20 +1754,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       {row.showCompletionDivider && <AssistantCompletionDivider />}
     </>
   );
-}
-
-function useStableAssistantTimelineText(messageId: string, text: string | null | undefined): string {
-  const stateRef = useRef<StableAssistantMessageTextState>({
-    messageId: null,
-    text: "",
-  });
-  const next = resolveStableAssistantMessageText({
-    messageId,
-    text,
-    previous: stateRef.current,
-  });
-  stateRef.current = next.state;
-  return next.text;
 }
 
 function SteerConversationMarker() {

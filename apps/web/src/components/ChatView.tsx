@@ -2033,6 +2033,11 @@ export default function ChatView(props: ChatViewProps) {
   const isWorking =
     phase === "running" || isSendBusy || isComposerConnecting || isRevertingCheckpoint;
   const timelineIsWorking = isWorking || isResubmittingEditedMessage;
+  const timelineActiveTurnInProgress =
+    phase === "running" &&
+    activeLatestTurn !== null &&
+    activeThread?.session?.orchestrationStatus === "running" &&
+    activeThread.session.activeTurnId === activeLatestTurn.turnId;
   const activeThreadError = activeThread?.error ?? null;
   const visibleThreadError =
     isSendBusy || !shouldShowThreadErrorBanner(activeThreadError) ? null : activeThreadError;
@@ -5371,7 +5376,7 @@ export default function ChatView(props: ChatViewProps) {
                   key={activeThread.id}
                   ref={timelineRef}
                   isWorking={timelineIsWorking}
-                  activeTurnInProgress={timelineIsWorking || !latestTurnSettled}
+                  activeTurnInProgress={timelineActiveTurnInProgress}
                   activeTurnId={activeLatestTurn?.turnId ?? null}
                   activeTurnStartedAt={activeWorkStartedAt}
                   timelineEntries={timelineEntries}

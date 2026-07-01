@@ -6,6 +6,7 @@ import {
   deriveTurnProcessCollapseState,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
+  resolveStableAssistantMessageTextFromCache,
 } from "./MessagesTimeline.logic";
 
 describe("computeMessageDurationStart", () => {
@@ -202,6 +203,40 @@ describe("resolveAssistantMessageCopyState", () => {
       text: "Interim thought",
       visible: false,
     });
+  });
+});
+
+describe("resolveStableAssistantMessageTextFromCache", () => {
+  it("keeps the last non-empty text when a completed event carries empty text", () => {
+    const cache = new Map<string, string>();
+
+    expect(
+      resolveStableAssistantMessageTextFromCache({
+        messageId: "assistant-1",
+        text: "\n\nhello",
+        cache,
+      }),
+    ).toBe("\n\nhello");
+
+    expect(
+      resolveStableAssistantMessageTextFromCache({
+        messageId: "assistant-1",
+        text: "",
+        cache,
+      }),
+    ).toBe("\n\nhello");
+  });
+
+  it("does not reuse text across different assistant messages", () => {
+    const cache = new Map<string, string>([["assistant-1", "first"]]);
+
+    expect(
+      resolveStableAssistantMessageTextFromCache({
+        messageId: "assistant-2",
+        text: "",
+        cache,
+      }),
+    ).toBe("");
   });
 });
 
