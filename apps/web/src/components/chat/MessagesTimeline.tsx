@@ -399,13 +399,34 @@ export const MessagesTimeline = memo(
     ],
   );
   const stableRows = useStableRows(rawRows);
+  const previousNonEmptyStableRowsRef = useRef<MessagesTimelineRow[] | null>(null);
+  const shouldUsePreviousStableRows =
+    stableRows.length === 0 &&
+    (isWorking || activeTurnInProgress || activeTurnId !== null) &&
+    previousNonEmptyStableRowsRef.current !== null;
+  const effectiveStableRows = shouldUsePreviousStableRows
+    ? previousNonEmptyStableRowsRef.current!
+    : stableRows;
+
+  useEffect(() => {
+    if (stableRows.length > 0) {
+      previousNonEmptyStableRowsRef.current = stableRows;
+      return;
+    }
+
+    if (!shouldUsePreviousStableRows) {
+      if (!isWorking && !activeTurnInProgress && activeTurnId === null) {
+        previousNonEmptyStableRowsRef.current = null;
+      }
+    }
+  }, [activeTurnId, activeTurnInProgress, isWorking, shouldUsePreviousStableRows, stableRows]);
 
   const {
     ownerAssistantMessageIdByRowId,
     summaryAssistantMessageIds,
     elapsedByAssistantMessageId,
     summaryButtonHostByRowId,
-  } = useMemo(() => deriveTurnProcessCollapseState(stableRows), [stableRows]);
+  } = useMemo(() => deriveTurnProcessCollapseState(effectiveStableRows), [effectiveStableRows]);
 
   /** Default collapse policy: every turn-summary owner is collapsed by
    *  default (mirrors the screenshot — only the "已处理 X ›" button is
@@ -426,14 +447,14 @@ export const MessagesTimeline = memo(
    *  matches the activeTurnId. */
   const activeAssistantMessageId = useMemo(() => {
     if (!activeTurnInProgress || activeTurnId == null) return null;
-    for (let i = stableRows.length - 1; i >= 0; i -= 1) {
-      const row = stableRows[i];
+    for (let i = effectiveStableRows.length - 1; i >= 0; i -= 1) {
+      const row = effectiveStableRows[i];
       if (!row || row.kind !== "message") continue;
       if (row.message.role !== "assistant") continue;
       if (row.message.turnId === activeTurnId) return row.message.id;
     }
     return null;
-  }, [activeTurnId, activeTurnInProgress, stableRows]);
+  }, [activeTurnId, activeTurnInProgress, effectiveStableRows]);
 
   const toggleAssistantTurnCollapsed = useCallback((assistantMessageId: string) => {
     setManuallyToggledAssistantMessageIds((prev) => {
@@ -473,7 +494,7 @@ export const MessagesTimeline = memo(
   const rows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
     const processMemberRowsByOwnerId = new Map<string, TimelineRenderableRow[]>();
-    for (const row of stableRows) {
+    for (const row of effectiveStableRows) {
       const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
       if (!ownerId) continue;
       const memberRows = processMemberRowsByOwnerId.get(ownerId) ?? [];
@@ -481,7 +502,7 @@ export const MessagesTimeline = memo(
       processMemberRowsByOwnerId.set(ownerId, memberRows);
     }
 
-    for (const row of stableRows) {
+    for (const row of effectiveStableRows) {
       const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
       if (ownerId) {
         if (summaryButtonHostByRowId.get(row.id) === ownerId) {
@@ -501,9 +522,9 @@ export const MessagesTimeline = memo(
     }
     return nextRows;
   }, [
+    effectiveStableRows,
     expandedWorkGroupIds,
     ownerAssistantMessageIdByRowId,
-    stableRows,
     summaryButtonHostByRowId,
   ]);
 
@@ -617,7 +638,7 @@ export const MessagesTimeline = memo(
 
   useEffect(() => {
     const visibleAssistantMessageIds = new Set<string>();
-    for (const row of stableRows) {
+    for (const row of effectiveStableRows) {
       if (row.kind === "message" && row.message.role === "assistant") {
         visibleAssistantMessageIds.add(row.message.id);
       }
@@ -627,7 +648,7 @@ export const MessagesTimeline = memo(
         stableAssistantTextByMessageIdRef.current.delete(messageId);
       }
     }
-  }, [stableRows]);
+  }, [effectiveStableRows]);
 
   const toggleWorkGroupExpanded = useCallback(
     (workGroupId: string) => {
