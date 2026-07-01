@@ -1462,10 +1462,6 @@ export default function ChatView(props: ChatViewProps) {
     });
   }, [activeThreadKey, existingOpenTerminalThreadKeys, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
-  const promotedServerThreadSettled = isLatestTurnSettled(
-    promotedServerThread?.latestTurn ?? null,
-    promotedServerThread?.session ?? null,
-  );
   const isConversationDraft = routeKind === "draft" && isConversationDraftThread(draftThread);
   const isConversationThread = Boolean(
     isConversationDraft || activeThread?.projectId === CONVERSATION_PROJECT_ID,
@@ -1512,28 +1508,6 @@ export default function ChatView(props: ChatViewProps) {
       { initialDetailMode: "recent" },
     );
   }, [threadDetailSubscriptionRef]);
-
-  useEffect(() => {
-    if (
-      routeKind !== "draft" ||
-      !draftThread?.promotedTo ||
-      !threadHasStarted(promotedServerThread) ||
-      !promotedServerThreadSettled
-    ) {
-      return;
-    }
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(draftThread.promotedTo),
-      replace: true,
-    });
-  }, [
-    draftThread?.promotedTo,
-    navigate,
-    promotedServerThread,
-    promotedServerThreadSettled,
-    routeKind,
-  ]);
 
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.

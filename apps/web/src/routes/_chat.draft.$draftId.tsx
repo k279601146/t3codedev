@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { ThreadId } from "@t3tools/contracts";
+import { useEffect, useMemo, useRef } from "react";
 import ChatView from "../components/ChatView";
 import { LazyCursorLayout } from "../components/layout/LazyCursorLayout";
 import { threadHasStarted } from "../components/ChatView.logic";
@@ -17,10 +18,11 @@ function DraftChatThreadRouteView() {
   const { draftId: rawDraftId } = Route.useParams();
   const draftId = DraftId.make(rawDraftId);
   const draftSession = useComposerDraftStore((store) => store.getDraftSession(draftId));
+  const candidateServerThreadId = draftSession?.threadId ?? ThreadId.make(draftId);
   const serverThread = useStore(
     useMemo(
-      () => createThreadSelectorAcrossEnvironments(draftSession?.threadId ?? null),
-      [draftSession?.threadId],
+      () => createThreadSelectorAcrossEnvironments(candidateServerThreadId),
+      [candidateServerThreadId],
     ),
   );
   const serverThreadStarted = threadHasStarted(serverThread);
@@ -43,9 +45,13 @@ function DraftChatThreadRouteView() {
       : null;
   }, [draftSession, draftSession?.promotedTo, serverThread, serverThreadStarted]);
   const shouldRenderCanonicalThread = Boolean(canonicalThreadRef);
+  const startedAsLiveDraftRef = useRef(Boolean(draftSession && !draftSession.promotedTo));
+  const shouldCanonicalizeStaleDraft = Boolean(
+    canonicalThreadRef && serverThreadSettled && !startedAsLiveDraftRef.current,
+  );
 
   useEffect(() => {
-    if (!canonicalThreadRef || !serverThreadSettled) {
+    if (!canonicalThreadRef || !shouldCanonicalizeStaleDraft) {
       return;
     }
     void navigate({
@@ -53,7 +59,19 @@ function DraftChatThreadRouteView() {
       params: buildThreadRouteParams(canonicalThreadRef),
       replace: true,
     });
-  }, [canonicalThreadRef, navigate, serverThreadSettled]);
+  }, [canonicalThreadRef, navigate, shouldCanonicalizeStaleDraft]);
+
+  useEffect(() => {
+    if (
+      !startedAsLiveDraftRef.current ||
+      !draftSession?.promotedTo ||
+      !serverThreadStarted ||
+      !serverThreadSettled
+    ) {
+      return;
+    }
+    useComposerDraftStore.getState().finalizePromotedDraftThread(draftId);
+  }, [draftId, draftSession?.promotedTo, serverThreadSettled, serverThreadStarted]);
 
   useEffect(() => {
     if (draftSession || canonicalThreadRef) {
@@ -65,6 +83,18 @@ function DraftChatThreadRouteView() {
   if (canonicalThreadRef && shouldRenderCanonicalThread) {
     if (layoutMode === "cursor") {
       return <LazyCursorLayout />;
+    }
+    if (draftSession) {
+      return (
+        <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+          <ChatView
+            draftId={draftId}
+            environmentId={canonicalThreadRef.environmentId}
+            threadId={canonicalThreadRef.threadId}
+            routeKind="draft"
+          />
+        </SidebarInset>
+      );
     }
     return (
       <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
