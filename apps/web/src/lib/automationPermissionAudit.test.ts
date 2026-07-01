@@ -7,6 +7,7 @@ import type {
 import {
   AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SCHEMA_VERSION,
   appendAutomationPermissionPolicyActionAuditEvent,
+  buildAutomationPermissionPolicyActionAuditListInput,
   buildBrowserExternalPermissionAuditItems,
   buildComputerPermissionAuditItems,
   buildAutomationPermissionPolicyActions,
@@ -491,5 +492,44 @@ describe("automation permission audit", () => {
         [localDuplicate, localOnly],
       ),
     ).toEqual([localOnly, serverDuplicate]);
+  });
+
+  it("builds server list input from action audit filters", () => {
+    expect(
+      buildAutomationPermissionPolicyActionAuditListInput({
+        source: "chrome",
+        filters: {
+          result: "all",
+          query: "  ",
+          timeRange: "24h",
+          now: "2026-07-01T12:00:00.000Z",
+        },
+        limit: 20,
+      }),
+    ).toEqual({
+      source: "chrome",
+      occurredAfter: "2026-06-30T12:00:00.000Z",
+      limit: 20,
+    });
+
+    expect(
+      buildAutomationPermissionPolicyActionAuditListInput({
+        source: "computer",
+        filters: {
+          result: "failure",
+          query: "  terminal  ",
+          timeRange: "all",
+          now: "2026-07-01T12:00:00.000Z",
+        },
+        limit: 50,
+        cursor: "cursor-1",
+      }),
+    ).toEqual({
+      source: "computer",
+      result: "failure",
+      query: "terminal",
+      limit: 50,
+      cursor: "cursor-1",
+    });
   });
 });

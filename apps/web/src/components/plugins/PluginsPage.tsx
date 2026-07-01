@@ -7,7 +7,7 @@ import type {
   PluginDetail,
   PluginSummary,
 } from "@t3tools/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangleIcon,
   BlocksIcon,
@@ -28,7 +28,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -45,6 +45,7 @@ import { toastManager } from "~/components/ui/toast";
 import { cn } from "~/lib/utils";
 import {
   appendAutomationPermissionPolicyActionAuditEvent,
+  buildAutomationPermissionPolicyActionAuditListInput,
   buildBrowserExternalPermissionAuditItems,
   buildComputerPermissionAuditItems,
   buildAutomationPermissionPolicyActions,
@@ -61,6 +62,7 @@ import {
   summarizeAutomationPermissionAudit,
   summarizeAutomationPermissionPolicyActionAudit,
   type AutomationPermissionAuditItem,
+  type AutomationPermissionAuditSource,
   type AutomationPermissionPolicyAction,
   type AutomationPermissionPolicyActionAuditContext,
   type AutomationPermissionPolicyActionAuditEvent,
@@ -135,7 +137,7 @@ const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_STORAGE_KEY =
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_DEVICE_STORAGE_KEY =
   "t3code:automation-permission-policy-action-audit-device:v1";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_LIMIT = 12;
-const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_LIMIT = 100;
+const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_PAGE_SIZE = 20;
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_POLICY_VERSION =
   "local-automation-permission-policy:v1";
 const AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_QUERY = [
@@ -669,38 +671,105 @@ function formatPolicyActionAuditContext(
 
 function AutomationPermissionPolicyActionAuditSection({
   title,
+  source,
+  enabled,
   events,
-  sourceLabel,
 }: {
   readonly title: string;
+  readonly source: AutomationPermissionAuditSource;
+  readonly enabled: boolean;
   readonly events: readonly AutomationPermissionPolicyActionAuditEvent[];
-  readonly sourceLabel: string;
 }) {
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [resultFilter, setResultFilter] =
     useState<AutomationPermissionPolicyActionAuditResultFilter>("all");
   const [timeRange, setTimeRange] =
     useState<AutomationPermissionPolicyActionAuditTimeRange>("all");
   const [copied, setCopied] = useState(false);
-  const filteredEvents = useMemo(
-    () =>
-      filterAutomationPermissionPolicyActionAuditEvents(events, {
-        result: resultFilter,
-        query,
-        timeRange,
-        now: new Date().toISOString(),
-      }),
-    [events, query, resultFilter, timeRange],
+  const filters = useMemo(
+    () => ({
+      result: resultFilter,
+      query: deferredQuery,
+      timeRange,
+      now: new Date().toISOString(),
+    }),
+    [deferredQuery, resultFilter, timeRange],
   );
-  const summary = summarizeAutomationPermissionPolicyActionAudit(filteredEvents);
+  const serverQuery = useInfiniteQuery({
+    queryKey: [
+      ...AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_QUERY,
+      source,
+      resultFilter,
+      deferredQuery.trim(),
+      timeRange,
+    ] as const,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      getAutomationPermissionAuditClient().list(
+        buildAutomationPermissionPolicyActionAuditListInput({
+          source,
+          filters,
+          limit: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_PAGE_SIZE,
+          cursor: pageParam,
+        }),
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled,
+    retry: false,
+    staleTime: 10_000,
+  });
+  const serverEvents = useMemo(
+    () => serverQuery.data?.pages.flatMap((page) => page.events) ?? [],
+    [serverQuery.data?.pages],
+  );
+  const localFilteredEvents = useMemo(
+    () => filterAutomationPermissionPolicyActionAuditEvents(events, filters),
+    [events, filters],
+  );
+  const displayedEvents = useMemo(
+    () =>
+      serverQuery.data
+        ? mergeAutomationPermissionPolicyActionAuditEvents(
+            serverEvents,
+            localFilteredEvents,
+            Math.max(1, serverEvents.length + localFilteredEvents.length),
+          )
+        : localFilteredEvents,
+    [localFilteredEvents, serverEvents, serverQuery.data],
+  );
+  const sourceLabel = !enabled
+    ? "本地浏览器记录"
+    : serverQuery.isError
+      ? "本地浏览器记录 · 服务端查询失败"
+      : serverQuery.data
+        ? serverQuery.isFetchingNextPage
+        ? "服务端审计日志 · 正在加载更多"
+        : serverQuery.isFetching
+          ? "服务端审计日志 · 正在刷新"
+          : "服务端审计日志"
+      : "本地记录，正在连接服务端";
+  const showControls =
+    displayedEvents.length > 0 ||
+    query.trim().length > 0 ||
+    resultFilter !== "all" ||
+    timeRange !== "all";
+  const isInitialServerLoad = enabled && serverQuery.isPending && displayedEvents.length === 0;
+  const summary = summarizeAutomationPermissionPolicyActionAudit(displayedEvents);
+  const loadMore = useCallback(() => {
+    if (!serverQuery.hasNextPage || serverQuery.isFetchingNextPage) {
+      return;
+    }
+    void serverQuery.fetchNextPage().catch(() => undefined);
+  }, [serverQuery]);
   const copyAuditExport = useCallback(() => {
-    if (filteredEvents.length === 0) return;
+    if (displayedEvents.length === 0) return;
     if (!navigator.clipboard?.writeText) {
       toastManager.add({ type: "error", title: "复制失败", description: "当前环境不支持剪贴板。" });
       return;
     }
     const payload = formatAutomationPermissionPolicyActionAuditExport(
-      filteredEvents,
+      displayedEvents,
       new Date().toISOString(),
     );
     void navigator.clipboard
@@ -717,22 +786,22 @@ function AutomationPermissionPolicyActionAuditSection({
           description: error instanceof Error ? error.message : String(error),
         });
       });
-  }, [filteredEvents]);
+  }, [displayedEvents]);
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
         <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-muted-foreground">
           <span>{sourceLabel}</span>
-          {events.length > 0 ? (
+          {displayedEvents.length > 0 ? (
             <span>
-              匹配 {filteredEvents.length}/{events.length} · 成功 {summary.succeeded} · 失败{" "}
+              已载入 {displayedEvents.length} · 成功 {summary.succeeded} · 失败{" "}
               {summary.failed} · 最近 {formatTimestamp(summary.lastOccurredAt)}
             </span>
           ) : null}
         </div>
       </div>
-      {events.length > 0 ? (
+      {showControls ? (
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="relative min-w-0">
             <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -774,7 +843,7 @@ function AutomationPermissionPolicyActionAuditSection({
               type="button"
               variant="outline"
               size="xs"
-              disabled={filteredEvents.length === 0}
+              disabled={displayedEvents.length === 0}
               onClick={copyAuditExport}
             >
               {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
@@ -783,14 +852,19 @@ function AutomationPermissionPolicyActionAuditSection({
           </div>
         </div>
       ) : null}
-      <div className="mt-3 rounded-md border border-border/70 px-3">
-        {events.length === 0 ? (
+      <div className="mt-3 max-h-80 overflow-y-auto rounded-md border border-border/70 px-3">
+        {isInitialServerLoad ? (
+          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2Icon className="size-4 animate-spin" />
+            正在读取服务端审计日志。
+          </div>
+        ) : displayedEvents.length === 0 && !showControls ? (
           <div className="py-6 text-sm text-muted-foreground">还没有策略动作记录。</div>
-        ) : filteredEvents.length === 0 ? (
+        ) : displayedEvents.length === 0 ? (
           <div className="py-6 text-sm text-muted-foreground">没有匹配的策略动作记录。</div>
         ) : (
           <>
-            {filteredEvents.slice(0, 5).map((event) => (
+            {displayedEvents.map((event) => (
               <div
                 key={event.id}
                 className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0"
@@ -815,9 +889,29 @@ function AutomationPermissionPolicyActionAuditSection({
                 </div>
               </div>
             ))}
-            {filteredEvents.length > 5 ? (
-              <div className="py-2 text-[11px] text-muted-foreground">
-                已显示 5/{filteredEvents.length} 条。
+            {serverQuery.data ? (
+              <div className="flex items-center justify-between gap-3 border-t border-border/50 py-2 text-[11px] text-muted-foreground">
+                <span>
+                  {serverQuery.hasNextPage
+                    ? "服务端还有更多匹配记录。"
+                    : serverEvents.length > 0
+                      ? "已载入当前筛选下的全部服务端记录。"
+                      : "当前筛选下暂无服务端记录。"}
+                </span>
+                {serverQuery.hasNextPage ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={serverQuery.isFetchingNextPage}
+                    onClick={loadMore}
+                  >
+                    {serverQuery.isFetchingNextPage ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    ) : null}
+                    加载更多
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </>
@@ -990,14 +1084,14 @@ function BrowserExternalPluginDetails({
   state,
   refresh,
   actionAuditEvents,
-  actionAuditSourceLabel,
+  actionAuditQueryEnabled,
   onRestartSetup,
   onRecordPolicyActionAuditEvent,
 }: {
   readonly state: DesktopBrowserExternalAutomationState | null;
   readonly refresh: () => void;
   readonly actionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
-  readonly actionAuditSourceLabel: string;
+  readonly actionAuditQueryEnabled: boolean;
   readonly onRestartSetup: () => void;
   readonly onRecordPolicyActionAuditEvent: (
     event: AutomationPermissionPolicyActionAuditEvent,
@@ -1149,8 +1243,9 @@ function BrowserExternalPluginDetails({
       />
       <AutomationPermissionPolicyActionAuditSection
         title="站点权限动作审计"
+        source="chrome"
+        enabled={actionAuditQueryEnabled}
         events={actionAuditEvents}
-        sourceLabel={actionAuditSourceLabel}
       />
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="flex items-start gap-2">
@@ -1328,7 +1423,7 @@ function ComputerPluginDetails({
   state,
   refresh,
   actionAuditEvents,
-  actionAuditSourceLabel,
+  actionAuditQueryEnabled,
   onTogglePaused,
   onAllowForeground,
   onRemovePermission,
@@ -1339,7 +1434,7 @@ function ComputerPluginDetails({
   readonly state: DesktopComputerAutomationState | null;
   readonly refresh: () => void;
   readonly actionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
-  readonly actionAuditSourceLabel: string;
+  readonly actionAuditQueryEnabled: boolean;
   readonly onTogglePaused: () => void;
   readonly onAllowForeground: () => void;
   readonly onRemovePermission: (appKey: string) => void;
@@ -1496,8 +1591,9 @@ function ComputerPluginDetails({
       />
       <AutomationPermissionPolicyActionAuditSection
         title="App 权限动作审计"
+        source="computer"
+        enabled={actionAuditQueryEnabled}
         events={actionAuditEvents}
-        sourceLabel={actionAuditSourceLabel}
       />
 
       <section className="rounded-md border border-border/70 bg-muted/20 p-3">
@@ -1677,7 +1773,6 @@ function PluginDetailsDialog({
   onRemovePermission,
   onClearPermissions,
   policyActionAuditEvents,
-  policyActionAuditSourceLabel,
   onRecordPolicyActionAuditEvent,
   onInstall,
   onUninstall,
@@ -1706,7 +1801,6 @@ function PluginDetailsDialog({
   readonly onRemovePermission: (appKey: string) => void;
   readonly onClearPermissions: () => Promise<DesktopAutomationActionResult>;
   readonly policyActionAuditEvents: readonly AutomationPermissionPolicyActionAuditEvent[];
-  readonly policyActionAuditSourceLabel: string;
   readonly onRecordPolicyActionAuditEvent: (
     event: AutomationPermissionPolicyActionAuditEvent,
   ) => void;
@@ -1739,7 +1833,7 @@ function PluginDetailsDialog({
                   actionAuditEvents={policyActionAuditEvents.filter(
                     (event) => event.source === "chrome",
                   )}
-                  actionAuditSourceLabel={policyActionAuditSourceLabel}
+                  actionAuditQueryEnabled={open}
                   onRestartSetup={onRestartBrowserExternalSetup}
                   onRecordPolicyActionAuditEvent={onRecordPolicyActionAuditEvent}
                 />
@@ -1757,7 +1851,7 @@ function PluginDetailsDialog({
                 actionAuditEvents={policyActionAuditEvents.filter(
                   (event) => event.source === "computer",
                 )}
-                actionAuditSourceLabel={policyActionAuditSourceLabel}
+                actionAuditQueryEnabled={open}
                 onRecordPolicyActionAuditEvent={onRecordPolicyActionAuditEvent}
                 busyAction={busyAction}
               />
@@ -1809,38 +1903,10 @@ export function PluginsPage() {
     staleTime: 30_000,
   });
 
-  const policyActionAuditServerQuery = useQuery({
-    queryKey: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_QUERY,
-    queryFn: () =>
-      getAutomationPermissionAuditClient().list({
-        limit: AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_LIMIT,
-      }),
-    retry: false,
-    staleTime: 10_000,
-  });
-
   const allPlugins = useMemo(
     () => pluginsQuery.data?.marketplaces.flatMap((marketplace) => marketplace.plugins) ?? [],
     [pluginsQuery.data],
   );
-
-  const displayedPolicyActionAuditEvents = useMemo(
-    () =>
-      policyActionAuditServerQuery.data
-        ? mergeAutomationPermissionPolicyActionAuditEvents(
-            policyActionAuditServerQuery.data.events,
-            policyActionAuditEvents,
-            AUTOMATION_PERMISSION_POLICY_ACTION_AUDIT_SERVER_LIMIT,
-          )
-        : policyActionAuditEvents,
-    [policyActionAuditEvents, policyActionAuditServerQuery.data],
-  );
-
-  const policyActionAuditSourceLabel = policyActionAuditServerQuery.isSuccess
-    ? "服务端审计日志"
-    : policyActionAuditServerQuery.isError
-      ? "本地浏览器记录"
-      : "本地记录，正在连接服务端";
 
   const selectedPlugin =
     allPlugins.find((plugin) => plugin.id === selectedPluginId) ?? allPlugins[0] ?? null;
@@ -2269,8 +2335,7 @@ export function PluginsPage() {
         onAllowForegroundApp={allowForegroundApp}
         onRemovePermission={removePermission}
         onClearPermissions={clearPermissions}
-        policyActionAuditEvents={displayedPolicyActionAuditEvents}
-        policyActionAuditSourceLabel={policyActionAuditSourceLabel}
+        policyActionAuditEvents={policyActionAuditEvents}
         onRecordPolicyActionAuditEvent={recordPolicyActionAuditEvent}
         onInstall={() => {
           if (selectedPlugin) installMutation.mutate(selectedPlugin);

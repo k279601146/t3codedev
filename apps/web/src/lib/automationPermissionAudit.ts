@@ -6,6 +6,7 @@ import type {
   AutomationPermissionPolicyActionAuditEvent,
   AutomationPermissionPolicyActionAuditExport,
   AutomationPermissionPolicyActionAuditFilters,
+  AutomationPermissionPolicyActionAuditListInput,
   AutomationPermissionPolicyActionAuditPersistenceScope,
   AutomationPermissionPolicyActionAuditPolicySource,
   AutomationPermissionPolicyActionAuditResult,
@@ -26,6 +27,7 @@ export type {
   AutomationPermissionPolicyActionAuditEvent,
   AutomationPermissionPolicyActionAuditExport,
   AutomationPermissionPolicyActionAuditFilters,
+  AutomationPermissionPolicyActionAuditListInput,
   AutomationPermissionPolicyActionAuditPersistenceScope,
   AutomationPermissionPolicyActionAuditPolicySource,
   AutomationPermissionPolicyActionAuditResult,
@@ -511,6 +513,26 @@ export function filterAutomationPermissionPolicyActionAuditEvents(
         .some((value) => value.toLowerCase().includes(query));
     }),
   );
+}
+
+export function buildAutomationPermissionPolicyActionAuditListInput(input: {
+  readonly source: AutomationPermissionAuditSource;
+  readonly filters: AutomationPermissionPolicyActionAuditFilters;
+  readonly limit: number;
+  readonly cursor?: string | null;
+}): AutomationPermissionPolicyActionAuditListInput {
+  const query = input.filters.query.trim();
+  const occurredAfterTime = auditTimeRangeStart(input.filters.timeRange, input.filters.now);
+  const occurredAfter =
+    occurredAfterTime === null ? undefined : new Date(occurredAfterTime).toISOString();
+  return {
+    source: input.source,
+    ...(input.filters.result === "all" ? {} : { result: input.filters.result }),
+    ...(query.length === 0 ? {} : { query }),
+    ...(occurredAfter === undefined ? {} : { occurredAfter }),
+    limit: input.limit,
+    ...(input.cursor ? { cursor: input.cursor } : {}),
+  };
 }
 
 export function formatAutomationPermissionPolicyActionAuditExport(

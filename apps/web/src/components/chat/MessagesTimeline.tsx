@@ -7,10 +7,12 @@ import {
 } from "@t3tools/contracts";
 import {
   createContext,
+  forwardRef,
   memo,
   use,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -234,6 +236,10 @@ interface MessagesTimelineProps {
   onLoadMoreBefore?: () => void;
 }
 
+export interface MessagesTimelineHandle {
+  scrollToEnd: (animated?: boolean) => void;
+}
+
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 
 type TimelineWorkGroupSummaryRow = {
@@ -272,41 +278,45 @@ type TimelineRow =
 // MessagesTimeline — list owner
 // ---------------------------------------------------------------------------
 
-export const MessagesTimeline = memo(function MessagesTimeline({
-  isWorking,
-  activeTurnInProgress,
-  activeTurnId,
-  activeTurnStartedAt,
-  scrollRef,
-  timelineEntries,
-  completionDividerBeforeEntryId,
-  completionSummary,
-  turnDiffSummaryByAssistantMessageId,
-  turnDiffSummaries = [],
-  routeThreadKey,
-  threadId,
-  inferredCheckpointTurnCountByTurnId = {},
-  onOpenTurnDiff,
-  onOpenMarkdownFile,
-  onOpenUrl,
-  revertTurnCountByUserMessageId,
-  onRevertUserMessage,
-  onSubmitEditedUserMessage,
-  goalMessageIds = EMPTY_GOAL_MESSAGE_IDS,
-  isRevertingCheckpoint,
-  onImageExpand,
-  activeThreadEnvironmentId,
-  markdownCwd,
-  resolvedTheme,
-  timestampFormat,
-  workspaceRoot,
-  skills = EMPTY_TIMELINE_SKILLS,
-  onIsAtEndChange,
-  isLoadingHistory = false,
-  hasMoreBefore = false,
-  isLoadingBefore = false,
-  onLoadMoreBefore,
-}: MessagesTimelineProps) {
+export const MessagesTimeline = memo(
+  forwardRef<MessagesTimelineHandle, MessagesTimelineProps>(function MessagesTimeline(
+    {
+      isWorking,
+      activeTurnInProgress,
+      activeTurnId,
+      activeTurnStartedAt,
+      scrollRef,
+      timelineEntries,
+      completionDividerBeforeEntryId,
+      completionSummary,
+      turnDiffSummaryByAssistantMessageId,
+      turnDiffSummaries = [],
+      routeThreadKey,
+      threadId,
+      inferredCheckpointTurnCountByTurnId = {},
+      onOpenTurnDiff,
+      onOpenMarkdownFile,
+      onOpenUrl,
+      revertTurnCountByUserMessageId,
+      onRevertUserMessage,
+      onSubmitEditedUserMessage,
+      goalMessageIds = EMPTY_GOAL_MESSAGE_IDS,
+      isRevertingCheckpoint,
+      onImageExpand,
+      activeThreadEnvironmentId,
+      markdownCwd,
+      resolvedTheme,
+      timestampFormat,
+      workspaceRoot,
+      skills = EMPTY_TIMELINE_SKILLS,
+      onIsAtEndChange,
+      isLoadingHistory = false,
+      hasMoreBefore = false,
+      isLoadingBefore = false,
+      onLoadMoreBefore,
+    },
+    ref,
+  ) {
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -517,6 +527,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior });
   }, []);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToEnd: (animated = false) => {
+        scrollToEnd(animated ? "smooth" : "auto");
+      },
+    }),
+    [scrollToEnd],
+  );
+
   useEffect(() => {
     const previousRowCount = previousRowCountRef.current;
     previousRowCountRef.current = rows.length;
@@ -629,6 +649,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
       const first = items[0];
       const last = items[items.length - 1];
+      const renderedWindow = {
+        renderedCount: items.length,
+        ...(first?.index !== undefined ? { firstRenderedIndex: first.index } : {}),
+        ...(last?.index !== undefined ? { lastRenderedIndex: last.index } : {}),
+      };
       const target = window as Window & {
         __T3_CHAT_VIRTUOSO__?: {
           renderedCount?: number;
@@ -641,9 +666,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       };
       target.__T3_CHAT_VIRTUOSO__ = {
         ...target.__T3_CHAT_VIRTUOSO__,
-        renderedCount: items.length,
-        firstRenderedIndex: first?.index,
-        lastRenderedIndex: last?.index,
+        ...renderedWindow,
         rowCount: rows.length,
         firstItemIndex,
         updatedAt: performance.now(),
@@ -708,10 +731,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       return (
         <div
           className={cn(
-            "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip [contain:layout_paint]",
-            isCollapsedProcessMember
-              ? null
-              : "[contain-intrinsic-size:0_160px] [content-visibility:auto]",
+            "mx-auto w-full min-w-0 max-w-[736px] overflow-x-clip",
+            isCollapsedProcessMember ? null : "[contain:layout_paint]",
           )}
           data-timeline-root="true"
         >
@@ -868,7 +889,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       </TimelineRowActivityCtx.Provider>
     </TimelineRowCtx.Provider>
   );
-});
+  }),
+);
 
 function TimelineScrollSeekPlaceholder({ height }: ScrollSeekPlaceholderProps) {
   const placeholderHeight = Math.max(32, Math.ceil(height));

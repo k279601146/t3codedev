@@ -172,7 +172,7 @@ import {
 } from "./chat/ChatComposer";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { MessagesTimeline } from "./chat/MessagesTimeline";
+import { MessagesTimeline, type MessagesTimelineHandle } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import {
   getLauncherModeLabel,
@@ -1242,6 +1242,7 @@ export default function ChatView(props: ChatViewProps) {
     LastInvokedScriptByProjectSchema,
   );
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
+  const timelineRef = useRef<MessagesTimelineHandle | null>(null);
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
@@ -3041,14 +3042,9 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, serverThread],
   );
 
-  // Scroll helpers for the transcript document flow.
+  // 聊天记录滚动由 Virtuoso 统一接管。
   const scrollToEnd = useCallback((animated = false) => {
-    const el = timelineScrollRef.current;
-    if (!el) return;
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior: animated ? "smooth" : "auto",
-    });
+    timelineRef.current?.scrollToEnd(animated);
   }, []);
 
   // Debounce *showing* the scroll-to-bottom pill so it doesn't flash during
@@ -5374,6 +5370,7 @@ export default function ChatView(props: ChatViewProps) {
                 {/* Messages */}
                 <MessagesTimeline
                   key={activeThread.id}
+                  ref={timelineRef}
                   isWorking={timelineIsWorking}
                   activeTurnInProgress={timelineIsWorking || !latestTurnSettled}
                   activeTurnId={activeLatestTurn?.turnId ?? null}
