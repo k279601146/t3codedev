@@ -1,5 +1,4 @@
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
-import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -54,7 +53,6 @@ function buildProps() {
     activeTurnInProgress: false,
     activeTurnId: null,
     activeTurnStartedAt: null,
-    scrollRef: createRef<HTMLDivElement | null>(),
     completionDividerBeforeEntryId: null,
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: new Map(),

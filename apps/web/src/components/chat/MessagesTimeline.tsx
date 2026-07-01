@@ -205,7 +205,6 @@ interface MessagesTimelineProps {
   activeTurnInProgress: boolean;
   activeTurnId?: TurnId | null;
   activeTurnStartedAt: string | null;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
@@ -285,7 +284,6 @@ export const MessagesTimeline = memo(
       activeTurnInProgress,
       activeTurnId,
       activeTurnStartedAt,
-      scrollRef,
       timelineEntries,
       completionDividerBeforeEntryId,
       completionSummary,
@@ -471,6 +469,7 @@ export const MessagesTimeline = memo(
   }, [baseRows, collapsedAssistantMessageIds, expandedWorkGroupIds, ownerAssistantMessageIdByRowId]);
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isAtBottomRef = useRef(true);
   const loadMoreBeforeInFlightRef = useRef(false);
   const didInitialScrollRef = useRef(false);
@@ -482,8 +481,8 @@ export const MessagesTimeline = memo(
   const [isTimelineScrolling, setIsTimelineScrolling] = useState(false);
 
   const getScrollContainer = useCallback(() => {
-    return scrollRef.current;
-  }, [scrollRef]);
+    return scrollContainerRef.current;
+  }, []);
 
   const suppressAutoFollowForUserResize = useCallback(() => {
     suppressAutoFollowUntilRef.current =
@@ -590,8 +589,8 @@ export const MessagesTimeline = memo(
     if (performance.now() < suppressAutoFollowUntilRef.current) {
       return;
     }
-    scrollToEnd();
-  }, [scrollToEnd]);
+    virtuosoRef.current?.autoscrollToBottom();
+  }, []);
 
   const handleTimelineIsScrolling = useCallback((scrolling: boolean) => {
     if (isTimelineScrollingRef.current === scrolling) {
@@ -675,13 +674,9 @@ export const MessagesTimeline = memo(
     [firstItemIndex, rows.length],
   );
 
-  const handleScrollerRef = useCallback(
-    (ref: HTMLElement | Window | null) => {
-      (scrollRef as { current: HTMLDivElement | null }).current =
-        ref instanceof HTMLElement ? (ref as HTMLDivElement) : null;
-    },
-    [scrollRef],
-  );
+  const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
+    scrollContainerRef.current = ref instanceof HTMLElement ? (ref as HTMLDivElement) : null;
+  }, []);
 
   const timelineComponents = useMemo<VirtuosoComponents<TimelineRow>>(
     () => ({
@@ -719,8 +714,7 @@ export const MessagesTimeline = memo(
   );
 
   const renderTimelineRow = useCallback(
-    (index: number) => {
-      const row = rows[index - firstItemIndex];
+    (_index: number, row: TimelineRow) => {
       if (!row) {
         return <div className="h-px" aria-hidden="true" />;
       }
@@ -740,7 +734,7 @@ export const MessagesTimeline = memo(
         </div>
       );
     },
-    [collapsedAssistantMessageIds, firstItemIndex, ownerAssistantMessageIdByRowId, rows],
+    [collapsedAssistantMessageIds, ownerAssistantMessageIdByRowId],
   );
 
   const timelineScrollSeekConfiguration = useMemo<ScrollSeekConfiguration>(
@@ -862,12 +856,12 @@ export const MessagesTimeline = memo(
         <Virtuoso<TimelineRow>
           ref={virtuosoRef}
           className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
-          totalCount={rows.length}
+          data={rows}
           firstItemIndex={firstItemIndex}
           defaultItemHeight={TIMELINE_DEFAULT_ITEM_HEIGHT_PX}
           initialItemCount={Math.min(rows.length, TIMELINE_INITIAL_RENDER_COUNT)}
           initialTopMostItemIndex={initialTopMostItemIndex}
-          computeItemKey={(index) => rows[index - firstItemIndex]?.id ?? `timeline:${index}`}
+          computeItemKey={(index, row) => row?.id ?? `timeline:${index}`}
           components={timelineComponents}
           itemContent={renderTimelineRow}
           scrollerRef={handleScrollerRef}

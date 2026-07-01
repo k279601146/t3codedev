@@ -1,7 +1,6 @@
 import "../../index.css";
 
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
-import { createRef } from "react";
 import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
@@ -29,7 +28,6 @@ function buildProps() {
     activeTurnInProgress: false,
     activeTurnId: null,
     activeTurnStartedAt: null,
-    scrollRef: createRef<HTMLDivElement | null>(),
     completionDividerBeforeEntryId: null,
     completionSummary: null,
     turnDiffSummaryByAssistantMessageId: new Map(),

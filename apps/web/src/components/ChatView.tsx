@@ -1241,7 +1241,6 @@ export default function ChatView(props: ChatViewProps) {
     {},
     LastInvokedScriptByProjectSchema,
   );
-  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<MessagesTimelineHandle | null>(null);
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
@@ -5375,7 +5374,6 @@ export default function ChatView(props: ChatViewProps) {
                   activeTurnInProgress={timelineIsWorking || !latestTurnSettled}
                   activeTurnId={activeLatestTurn?.turnId ?? null}
                   activeTurnStartedAt={activeWorkStartedAt}
-                  scrollRef={timelineScrollRef}
                   timelineEntries={timelineEntries}
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
