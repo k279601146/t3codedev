@@ -1181,7 +1181,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
-        className="chat-text group/turn-summary inline-flex items-center gap-1 rounded-md px-0 py-0.5 text-[13px] leading-5 text-muted-foreground/70 transition-colors hover:text-foreground/75"
+        className="chat-text group/turn-summary inline-flex items-center gap-1 rounded-md px-0 py-0.5 text-[14px] leading-[1.68] text-muted-foreground/70 transition-colors hover:text-foreground/75"
         data-turn-summary-toggle="true"
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
         data-scroll-anchor-ignore
@@ -1348,7 +1348,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     void submitEdit();
                   }
                 }}
-                className="chat-text block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14px] leading-[1.62] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
+                className="chat-text block max-h-64 min-h-16 w-full resize-none border-none bg-transparent px-0 py-0 text-[14px] leading-[1.68] text-foreground outline-none placeholder:text-muted-foreground/50 disabled:cursor-wait"
                 aria-label="编辑用户消息"
               />
               <div className="mt-3 flex items-center justify-end gap-2">
@@ -1639,7 +1639,7 @@ function UrlPreviewCard({ url }: { url: string }) {
           onClick={() => onOpenUrl(url, "preview")}
           title={url}
         >
-          <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground">
+          <div className="chat-text truncate text-[14px] font-medium leading-[1.68] text-foreground">
             网页预览
           </div>
           <div className="truncate text-[13px] leading-5 text-muted-foreground">网站</div>
@@ -2102,7 +2102,7 @@ const WorkGroupSummaryTimelineRow = memo(function WorkGroupSummaryTimelineRow({
     <div className="pt-2 pb-1 pl-1">
       <button
         type="button"
-        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
+        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[14px] leading-[1.68] text-muted-foreground/62 transition-colors hover:text-foreground/78"
         aria-expanded={row.isExpanded}
         data-work-group-summary="true"
         onClick={() => ctx.toggleWorkGroupExpanded(row.id)}
@@ -2218,7 +2218,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
     <div className="pt-2 pb-3 pl-1">
       <button
         type="button"
-        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 text-muted-foreground/62 transition-colors hover:text-foreground/78"
+        className="chat-text group/work-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[14px] leading-[1.68] text-muted-foreground/62 transition-colors hover:text-foreground/78"
         aria-expanded={isExpanded}
         data-work-group-summary="true"
         onClick={() => {
@@ -2390,7 +2390,7 @@ const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({
       <button
         type="button"
         className={cn(
-          "chat-text group/runtime-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[13px] leading-5 transition-colors hover:text-foreground/78",
+          "chat-text group/runtime-summary flex max-w-full items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[14px] leading-[1.68] transition-colors hover:text-foreground/78",
           summary.tone === "error" ? "text-rose-500/78" : "text-muted-foreground/72",
         )}
         aria-expanded={isExpanded}
@@ -2705,7 +2705,7 @@ function AssistantChangedFilesSectionInner({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="chat-text truncate text-[14px] font-medium leading-5 text-foreground/92">
+              <div className="chat-text truncate text-[14px] font-medium leading-[1.68] text-foreground/92">
                 {isSingleFile && firstFile ? (
                   <span className="inline-flex min-w-0 max-w-full items-baseline gap-1">
                     <span className="shrink-0">已编辑</span>
@@ -3289,7 +3289,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.62] text-foreground/92">
+          <div className="chat-text chat-text-body whitespace-pre-wrap wrap-break-word">
             {inlineNodes}
           </div>
         );
@@ -3321,7 +3321,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.62] text-foreground/92">
+      <div className="chat-text chat-text-body whitespace-pre-wrap wrap-break-word">
         {inlineNodes}
       </div>
     );
@@ -3332,7 +3332,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="chat-text whitespace-pre-wrap wrap-break-word text-[14px] leading-[1.62] text-foreground/92">
+    <div className="chat-text chat-text-body whitespace-pre-wrap wrap-break-word">
       <SkillInlineText text={props.text} skills={props.skills} renderUnknownSkills />
     </div>
   );
