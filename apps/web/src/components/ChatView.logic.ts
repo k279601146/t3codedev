@@ -490,6 +490,52 @@ export function inferRevertTurnCountBeforeUserMessage(
   return null;
 }
 
+export function estimateConversationTurnCountForRollback(input: {
+  messages: ReadonlyArray<Pick<ChatMessage, "role">>;
+  turnDiffSummaries: ReadonlyArray<Pick<TurnDiffSummary, "checkpointTurnCount">>;
+}): number {
+  const checkpointTurnCount = input.turnDiffSummaries.reduce(
+    (maxTurnCount, summary) =>
+      typeof summary.checkpointTurnCount === "number"
+        ? Math.max(maxTurnCount, summary.checkpointTurnCount)
+        : maxTurnCount,
+    0,
+  );
+  const userMessageCount = input.messages.filter((message) => message.role === "user").length;
+  const assistantMessageCount = input.messages.filter(
+    (message) => message.role === "assistant",
+  ).length;
+  return Math.max(checkpointTurnCount, userMessageCount, assistantMessageCount);
+}
+
+export function deriveEditedMessageResendRollback(input: {
+  messages: ReadonlyArray<Pick<ChatMessage, "id" | "role">>;
+  turnDiffSummaries: ReadonlyArray<Pick<TurnDiffSummary, "checkpointTurnCount">>;
+  targetMessageId: MessageId;
+  mappedTargetTurnCount?: number | null | undefined;
+}): { targetTurnCount: number; numTurns: number } | null {
+  const targetTurnCount =
+    typeof input.mappedTargetTurnCount === "number"
+      ? input.mappedTargetTurnCount
+      : inferRevertTurnCountBeforeUserMessage(input.messages, input.targetMessageId);
+  if (typeof targetTurnCount !== "number" || targetTurnCount < 0) {
+    return null;
+  }
+
+  const currentTurnCount = estimateConversationTurnCountForRollback({
+    messages: input.messages,
+    turnDiffSummaries: input.turnDiffSummaries,
+  });
+  if (currentTurnCount <= targetTurnCount) {
+    return null;
+  }
+
+  return {
+    targetTurnCount,
+    numTurns: currentTurnCount - targetTurnCount,
+  };
+}
+
 export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[] {
   if (message.role !== "user" || !message.attachments) {
     return [];
@@ -730,16 +776,11 @@ export async function waitForThreadRevertedAfter(
   baseline: {
     previousUpdatedAt: string;
     targetMessageId?: MessageId | undefined;
+    targetTurnCount?: number | undefined;
   },
   timeoutMs = 30_000,
 ): Promise<boolean> {
-  const hasReverted = (thread: Thread | null | undefined) => {
-    if (!thread) {
-      return false;
-    }
-    if (baseline.targetMessageId !== undefined) {
-      return !thread.messages.some((message) => message.id === baseline.targetMessageId);
-    }
+  const didThreadAdvance = (thread: Thread) => {
     if (!thread.updatedAt) {
       return false;
     }
@@ -747,6 +788,25 @@ export async function waitForThreadRevertedAfter(
       thread.updatedAt !== baseline.previousUpdatedAt &&
       thread.updatedAt.localeCompare(baseline.previousUpdatedAt) >= 0
     );
+  };
+
+  const hasReverted = (thread: Thread | null | undefined) => {
+    if (!thread) {
+      return false;
+    }
+    if (baseline.targetTurnCount !== undefined) {
+      return (
+        didThreadAdvance(thread) &&
+        estimateConversationTurnCountForRollback({
+          messages: thread.messages,
+          turnDiffSummaries: thread.turnDiffSummaries,
+        }) <= baseline.targetTurnCount
+      );
+    }
+    if (baseline.targetMessageId !== undefined) {
+      return !thread.messages.some((message) => message.id === baseline.targetMessageId);
+    }
+    return didThreadAdvance(thread);
   };
 
   const getThread = () => selectThreadByRef(useStore.getState(), threadRef);

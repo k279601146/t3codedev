@@ -197,6 +197,7 @@ import {
   createChatTimelineDerivedStateCache,
   createLocalDispatchSnapshot,
   deriveEditedMessageResubmissionTimelineMessages,
+  deriveEditedMessageResendRollback,
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -3600,6 +3601,16 @@ export default function ChatView(props: ChatViewProps) {
         effort: ctxSelectedPromptEffort,
         text: trimmed,
       });
+      const rollbackTarget = deriveEditedMessageResendRollback({
+        messages: activeThread.messages,
+        turnDiffSummaries: activeThread.turnDiffSummaries,
+        targetMessageId: messageId,
+        mappedTargetTurnCount: revertTurnCountByUserMessageId.get(messageId),
+      });
+      if (!rollbackTarget) {
+        setThreadError(threadIdForSend, "无法确定编辑消息的回退位置，请刷新后重试。");
+        return;
+      }
 
       sendInFlightRef.current = true;
       beginLocalDispatch({ preparingWorktree: false });
@@ -3632,7 +3643,7 @@ export default function ChatView(props: ChatViewProps) {
           type: "thread.conversation.rollback",
           commandId: newCommandId(),
           threadId: threadIdForSend,
-          numTurns: 1,
+          numTurns: rollbackTarget.numTurns,
           createdAt: messageCreatedAt,
         });
         const reverted = await waitForThreadRevertedAfter(
@@ -3640,6 +3651,7 @@ export default function ChatView(props: ChatViewProps) {
           {
             previousUpdatedAt: activeThread.updatedAt ?? messageCreatedAt,
             targetMessageId: messageId,
+            targetTurnCount: rollbackTarget.targetTurnCount,
           },
         );
         if (!reverted) {
@@ -3707,6 +3719,7 @@ export default function ChatView(props: ChatViewProps) {
       isServerThread,
       persistThreadSettingsForNextTurn,
       phase,
+      revertTurnCountByUserMessageId,
       resetLocalDispatch,
       runtimeMode,
       setOptimisticUserMessages,

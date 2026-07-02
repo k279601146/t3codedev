@@ -19,10 +19,12 @@ import {
   buildRightPanelArtifacts,
   createChatTimelineDerivedStateCache,
   deriveEditedMessageResubmissionTimelineMessages,
+  deriveEditedMessageResendRollback,
   buildExpiredTerminalContextToastCopy,
   buildRevertTurnCountByUserMessageId,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  estimateConversationTurnCountForRollback,
   hasServerAcknowledgedLocalDispatch,
   inferRevertTurnCountBeforeUserMessage,
   reconcileMountedTerminalThreadIds,
@@ -495,6 +497,69 @@ describe("inferRevertTurnCountBeforeUserMessage", () => {
         MessageId.make("assistant-1"),
       ),
     ).toBeNull();
+  });
+});
+
+describe("deriveEditedMessageResendRollback", () => {
+  it("按目标用户消息前的 turnCount 计算真实 rollback 轮数", () => {
+    const target = MessageId.make("user-2");
+
+    expect(
+      deriveEditedMessageResendRollback({
+        messages: [
+          { id: MessageId.make("user-1"), role: "user" },
+          { id: MessageId.make("assistant-1"), role: "assistant" },
+          { id: target, role: "user" },
+          { id: MessageId.make("assistant-2"), role: "assistant" },
+          { id: MessageId.make("user-3"), role: "user" },
+          { id: MessageId.make("assistant-3"), role: "assistant" },
+        ],
+        turnDiffSummaries: [{ checkpointTurnCount: 3 }],
+        targetMessageId: target,
+      }),
+    ).toEqual({ targetTurnCount: 1, numTurns: 2 });
+  });
+
+  it("优先使用 checkpoint 映射中的目标 turnCount", () => {
+    const target = MessageId.make("user-2");
+
+    expect(
+      deriveEditedMessageResendRollback({
+        messages: [
+          { id: MessageId.make("user-1"), role: "user" },
+          { id: target, role: "user" },
+          { id: MessageId.make("assistant-2"), role: "assistant" },
+        ],
+        turnDiffSummaries: [{ checkpointTurnCount: 4 }],
+        targetMessageId: target,
+        mappedTargetTurnCount: 2,
+      }),
+    ).toEqual({ targetTurnCount: 2, numTurns: 2 });
+  });
+
+  it("无法定位目标用户消息时返回 null", () => {
+    expect(
+      deriveEditedMessageResendRollback({
+        messages: [{ id: MessageId.make("assistant-1"), role: "assistant" }],
+        turnDiffSummaries: [],
+        targetMessageId: MessageId.make("assistant-1"),
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("estimateConversationTurnCountForRollback", () => {
+  it("与服务端 conversation rollback 使用同一估算口径", () => {
+    expect(
+      estimateConversationTurnCountForRollback({
+        messages: [
+          { role: "user" },
+          { role: "assistant" },
+          { role: "user" },
+        ],
+        turnDiffSummaries: [{ checkpointTurnCount: 5 }, { checkpointTurnCount: undefined }],
+      }),
+    ).toBe(5);
   });
 });
 
@@ -1088,6 +1153,83 @@ describe("waitForThreadRevertedAfter", () => {
         id: threadId,
         updatedAt: "2026-03-29T00:00:02.000Z",
         messages: [],
+      }),
+    ]);
+
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it("resolves by target turn count even when projection keeps the edited message visible", async () => {
+    const threadId = ThreadId.make("thread-revert-target-turn-count");
+    const targetMessageId = MessageId.make("message-before-revert");
+    const targetMessage = {
+      id: targetMessageId,
+      role: "user" as const,
+      text: "old message",
+      createdAt: "2026-03-29T00:00:01.000Z",
+      streaming: false,
+    };
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:00.000Z",
+        messages: [
+          {
+            id: MessageId.make("message-earlier"),
+            role: "user",
+            text: "earlier",
+            createdAt: "2026-03-29T00:00:00.000Z",
+            streaming: false,
+          },
+          targetMessage,
+          {
+            id: MessageId.make("assistant-after-target"),
+            role: "assistant",
+            text: "after target",
+            createdAt: "2026-03-29T00:00:02.000Z",
+            streaming: false,
+          },
+        ],
+        turnDiffSummaries: [
+          {
+            turnId: TurnId.make("turn-1"),
+            completedAt: "2026-03-29T00:00:01.000Z",
+            checkpointTurnCount: 1,
+            files: [],
+          },
+          {
+            turnId: TurnId.make("turn-2"),
+            completedAt: "2026-03-29T00:00:02.000Z",
+            checkpointTurnCount: 2,
+            files: [],
+          },
+        ],
+      }),
+    ]);
+
+    const promise = waitForThreadRevertedAfter(
+      scopeThreadRef(localEnvironmentId, threadId),
+      {
+        previousUpdatedAt: "2026-03-29T00:00:00.000Z",
+        targetMessageId,
+        targetTurnCount: 1,
+      },
+      500,
+    );
+
+    setStoreThreads([
+      makeThread({
+        id: threadId,
+        updatedAt: "2026-03-29T00:00:03.000Z",
+        messages: [targetMessage],
+        turnDiffSummaries: [
+          {
+            turnId: TurnId.make("turn-1"),
+            completedAt: "2026-03-29T00:00:01.000Z",
+            checkpointTurnCount: 1,
+            files: [],
+          },
+        ],
       }),
     ]);
 
