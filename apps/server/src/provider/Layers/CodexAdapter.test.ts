@@ -1289,6 +1289,44 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("normalizes commercial insufficient balance errors to runtime.error", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-insufficient-balance"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "error",
+        turnId: asTurnId("turn-1"),
+        payload: {
+          error: {
+            message:
+              'unexpected status 403 Forbidden: {"code":"billing_error","message":"insufficient balance"}',
+          },
+          willRetry: false,
+        },
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "runtime.error");
+      if (firstEvent.value.type !== "runtime.error") {
+        return;
+      }
+      assert.equal(firstEvent.value.turnId, "turn-1");
+      assert.equal(firstEvent.value.payload.class, "provider_error");
+      assert.equal(firstEvent.value.payload.message, "账户余额不足，请充值或等待额度刷新后继续使用。");
+    }),
+  );
+
   it.effect("preserves request type when mapping serverRequest/resolved", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

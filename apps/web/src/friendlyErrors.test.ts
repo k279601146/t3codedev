@@ -14,6 +14,17 @@ describe("friendlyErrors", () => {
     expect(friendly.primaryActionLabel).toBe("充值");
   });
 
+  it("maps legacy billing_error balance responses to insufficient balance copy", () => {
+    const friendly = resolveFriendlyErrorMessage(
+      'unexpected status 403 Forbidden: {"code":"billing_error","message":"insufficient balance"}',
+    );
+
+    expect(friendly.variant).toBe("warning");
+    expect(friendly.title.length).toBeGreaterThan(0);
+    expect(friendly.description).not.toContain("billing_error");
+    expect(friendly.description).not.toContain("unexpected status");
+  });
+
   it("normalizes gateway provider errors for thread surfaces", () => {
     const cases = [
       {

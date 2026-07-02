@@ -113,6 +113,32 @@ const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
 const PROVIDER = ProviderDriverKind.make("codex");
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+const COMMERCIAL_USAGE_LIMIT_MESSAGE = "账户余额不足，请充值或等待额度刷新后继续使用。";
+
+function stringifyUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isCommercialUsageLimitSignal(message: string | null | undefined, detail?: unknown): boolean {
+  const source = `${message ?? ""} ${detail === undefined ? "" : stringifyUnknown(detail)}`;
+  const normalized = source.toLowerCase();
+  return (
+    /\binsufficient_balance\b/i.test(source) ||
+    /insufficient (?:account )?balance/i.test(source) ||
+    /余额不足/.test(source) ||
+    /\busage_limit_exceeded\b/i.test(source) ||
+    (/\bbilling_error\b/i.test(source) && /balance|余额/.test(normalized))
+  );
+}
+
+function normalizeCommercialUsageLimitMessage(message: string, detail?: unknown): string {
+  return isCommercialUsageLimitSignal(message, detail) ? COMMERCIAL_USAGE_LIMIT_MESSAGE : message;
+}
 
 export interface CodexAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
@@ -174,7 +200,7 @@ function mapCodexRuntimeError(
   return new ProviderAdapterRequestError({
     provider: PROVIDER,
     method,
-    detail: error.message,
+    detail: normalizeCommercialUsageLimitMessage(error.message),
     cause: error,
   });
 }
@@ -782,7 +808,7 @@ function mapToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "runtime.error",
         payload: {
-          message: event.message,
+          message: normalizeCommercialUsageLimitMessage(event.message, event.payload),
           class: "provider_error",
           ...(event.payload !== undefined ? { detail: event.payload } : {}),
         },
@@ -1069,7 +1095,11 @@ function mapToRuntimeEvents(
     if (!payload) {
       return [];
     }
-    const errorMessage = trimText(payload.turn.error?.message);
+    const errorMessage = trimText(
+      payload.turn.error?.message
+        ? normalizeCommercialUsageLimitMessage(payload.turn.error.message, event.payload)
+        : undefined,
+    );
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1582,7 +1612,10 @@ function mapToRuntimeEvents(
 
   if (event.method === "error") {
     const payload = readPayload(EffectCodexSchema.V2ErrorNotification, event.payload);
-    const message = payload?.error.message ?? event.message ?? "Provider runtime error";
+    const message = normalizeCommercialUsageLimitMessage(
+      payload?.error.message ?? event.message ?? "Provider runtime error",
+      event.payload,
+    );
     const willRetry = payload?.willRetry === true;
     return [
       {
@@ -1598,8 +1631,12 @@ function mapToRuntimeEvents(
   }
 
   if (event.method === "process/stderr") {
-    const message = event.message ?? "Codex process stderr";
-    const isFatal = isFatalCodexProcessStderrMessage(message);
+    const isUsageLimit = isCommercialUsageLimitSignal(event.message, event.payload);
+    const message = normalizeCommercialUsageLimitMessage(
+      event.message ?? "Codex process stderr",
+      event.payload,
+    );
+    const isFatal = isUsageLimit || isFatalCodexProcessStderrMessage(message);
     if (!isFatal && shouldSuppressCodexProcessStderrMessage(message)) {
       return [];
     }
