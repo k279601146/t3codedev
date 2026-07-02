@@ -14,12 +14,16 @@
   type TurnId,
   DEFAULT_RUNTIME_MODE,
 } from "@t3tools/contracts";
+import { isGoalTerminal, mergeGoalTiming } from "@t3tools/shared/goal";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -109,6 +113,9 @@ const serverCommandId = (tag: string): CommandId =>
 const HANDLED_TURN_START_KEY_MAX = 10_000;
 const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
 const DEFAULT_THREAD_TITLE = "New thread";
+const GOAL_ADVANCE_INITIAL_DELAY = Duration.millis(200);
+const GOAL_RETRY_BASE_DELAY_MS = 1_000;
+const GOAL_RETRY_MAX_DELAY_MS = 60_000;
 
 export function providerErrorLabel(value: string | undefined): string {
   const normalized = value?.trim();
@@ -215,6 +222,8 @@ const make = Effect.gen(function* () {
     lookup: () => Effect.succeed(true),
   });
   const deferredFirstTurnEnhancements = new Map<ThreadId, DeferredFirstTurnEnhancement>();
+  const goalRetryAttempts = new Map<ThreadId, number>();
+  const goalAdvanceFibers = new Map<ThreadId, Fiber.Fiber<void, never>>();
 
   const hasHandledTurnStartRecently = (key: string) =>
     Cache.getOption(handledTurnStartKeys, key).pipe(
@@ -224,6 +233,8 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+
+  const currentIso = Effect.map(DateTime.now, DateTime.formatIso);
 
   const resolveProviderWorkspaceCwd = Effect.fn("resolveProviderWorkspaceCwd")(function* (input: {
     readonly threadId: ThreadId;
@@ -1086,6 +1097,8 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    yield* cancelGoalAdvance(event.payload.threadId);
+
     const now = event.payload.createdAt;
     if (thread.session && thread.session.status !== "stopped") {
       yield* providerService.stopSession({ threadId: thread.id });
@@ -1109,17 +1122,157 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const goalRetryDelay = (attempt: number): Duration.Duration =>
+    Duration.millis(
+      Math.min(
+        GOAL_RETRY_MAX_DELAY_MS,
+        GOAL_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1),
+      ),
+    );
+
+  function cancelGoalAdvance(threadId: ThreadId): Effect.Effect<void> {
+    return Effect.gen(function* () {
+      goalRetryAttempts.delete(threadId);
+      const fiber = goalAdvanceFibers.get(threadId);
+      if (!fiber) return;
+      goalAdvanceFibers.delete(threadId);
+      yield* Fiber.interrupt(fiber).pipe(Effect.ignore);
+    });
+  }
+
+  function scheduleGoalAdvance(input: {
+    readonly threadId: ThreadId;
+    readonly reason: string;
+    readonly delay?: Duration.Duration;
+  }): Effect.Effect<void> {
+    return Effect.gen(function* () {
+    const existing = goalAdvanceFibers.get(input.threadId);
+    if (existing) {
+      return;
+    }
+
+    const delay = input.delay ?? GOAL_ADVANCE_INITIAL_DELAY;
+    const fiber = yield* Effect.gen(function* () {
+      yield* Effect.sleep(delay);
+      goalAdvanceFibers.delete(input.threadId);
+      const thread = yield* resolveThread(input.threadId);
+      if (!thread) {
+        yield* cancelGoalAdvance(input.threadId);
+        return;
+      }
+
+      const goal = thread.goal;
+      if (!goal || goal.status !== "active" || isGoalTerminal(goal.status)) {
+        yield* cancelGoalAdvance(input.threadId);
+        return;
+      }
+
+      if (
+        thread.session?.status === "stopped" ||
+        thread.session?.status === "starting" ||
+        thread.session?.status === "running" ||
+        thread.session?.activeTurnId != null ||
+        thread.latestTurn?.state === "running"
+      ) {
+        return;
+      }
+
+      const createdAt = yield* currentIso;
+      const sendTurnRequest = yield* buildSendTurnRequestForThread({
+        threadId: input.threadId,
+        messageText: goal.objective,
+        interactionMode: thread.interactionMode,
+        createdAt,
+      });
+
+      yield* providerService
+        .sendTurn(sendTurnRequest)
+        .pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              goalRetryAttempts.delete(input.threadId);
+            }),
+          ),
+          Effect.catchCause((cause) =>
+            Effect.gen(function* () {
+              const attempt = (goalRetryAttempts.get(input.threadId) ?? 0) + 1;
+              goalRetryAttempts.set(input.threadId, attempt);
+              yield* Effect.logWarning("provider command reactor failed to advance active goal", {
+                threadId: input.threadId,
+                reason: input.reason,
+                attempt,
+                cause: Cause.pretty(cause),
+              });
+              yield* scheduleGoalAdvance({
+                threadId: input.threadId,
+                reason: "goal-send-turn-failed",
+                delay: goalRetryDelay(attempt),
+              });
+            }),
+          ),
+          Effect.forkDetach,
+        );
+    }).pipe(
+      Effect.catchCause((cause) => {
+        goalAdvanceFibers.delete(input.threadId);
+        if (Cause.hasInterruptsOnly(cause)) {
+          return Effect.void;
+        }
+        return Effect.gen(function* () {
+          const attempt = (goalRetryAttempts.get(input.threadId) ?? 0) + 1;
+          goalRetryAttempts.set(input.threadId, attempt);
+          yield* Effect.logWarning("provider command reactor failed before advancing active goal", {
+            threadId: input.threadId,
+            reason: input.reason,
+            attempt,
+            cause: Cause.pretty(cause),
+          });
+          yield* scheduleGoalAdvance({
+            threadId: input.threadId,
+            reason: "goal-advance-preflight-failed",
+            delay: goalRetryDelay(attempt),
+          });
+        });
+      }),
+      Effect.forkDetach,
+    );
+    goalAdvanceFibers.set(input.threadId, fiber);
+    });
+  }
+
+  function reconcileGoalRunner(input: {
+    readonly threadId: ThreadId;
+    readonly goal: Extract<OrchestrationEvent, { type: "thread.goal-synced" }>["payload"]["goal"];
+    readonly reason: string;
+  }): Effect.Effect<void> {
+    return Effect.gen(function* () {
+      if (!input.goal || input.goal.status !== "active" || isGoalTerminal(input.goal.status)) {
+        yield* cancelGoalAdvance(input.threadId);
+        return;
+      }
+      yield* scheduleGoalAdvance({ threadId: input.threadId, reason: input.reason });
+    });
+  }
+
   const syncGoal = Effect.fn("syncGoal")(function* (input: {
     readonly threadId: ThreadId;
     readonly goal: Extract<OrchestrationEvent, { type: "thread.goal-synced" }>["payload"]["goal"];
     readonly createdAt: string;
   }) {
+    const thread = yield* resolveThread(input.threadId);
+    const mergedGoal =
+      input.goal === null ? null : mergeGoalTiming(thread?.goal ?? null, input.goal, input.createdAt);
     yield* orchestrationEngine.dispatch({
       type: "thread.goal.synced",
       commandId: CommandId.make(`provider-goal:${input.threadId}:${crypto.randomUUID()}`),
       threadId: input.threadId,
-      goal: input.goal,
+      goal: mergedGoal,
       createdAt: input.createdAt,
+    });
+    yield* reconcileGoalRunner({
+      threadId: input.threadId,
+      goal: mergedGoal,
+      reason: input.goal === null ? "goal-cleared" : "goal-synced",
     });
   });
 
@@ -1255,6 +1408,17 @@ const make = Effect.gen(function* () {
     ) {
       if (event.type === "turn.completed") {
         yield* processDeferredFirstTurnEnhancement(event);
+        yield* scheduleGoalAdvance({
+          threadId: event.threadId,
+          reason: "turn-completed",
+        });
+      }
+      if (event.type === "runtime.error") {
+        yield* scheduleGoalAdvance({
+          threadId: event.threadId,
+          reason: "runtime-error",
+          delay: goalRetryDelay((goalRetryAttempts.get(event.threadId) ?? 0) + 1),
+        });
       }
       if (event.type === "thread.goal.updated") {
         yield* syncGoal({
@@ -1276,6 +1440,15 @@ const make = Effect.gen(function* () {
       Stream.runForEach(orchestrationEngine.streamDomainEvents, processEvent),
     );
     yield* Effect.forkScoped(Stream.runForEach(providerService.streamEvents, processRuntimeEvent));
+    const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+    for (const thread of snapshot.threads) {
+      if (thread.goal?.status === "active") {
+        yield* scheduleGoalAdvance({
+          threadId: thread.id,
+          reason: "reactor-start",
+        });
+      }
+    }
   });
 
   return {

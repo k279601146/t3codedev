@@ -155,6 +155,7 @@ interface TimelineRowSharedState {
   summaryAssistantMessageIds: ReadonlySet<string>;
   /** 每个成果 owner 对应的人类可读耗时。 */
   elapsedByAssistantMessageId: ReadonlyMap<string, string>;
+  completedGoalDurationByAssistantMessageId: ReadonlyMap<string, string>;
   manuallyToggledAssistantMessageIds: ReadonlySet<string>;
   /** 过程成员行 → 成果 owner；出现在这里的行会跟随“已处理”开关收展。 */
   ownerAssistantMessageIdByRowId: ReadonlyMap<string, string>;
@@ -182,6 +183,7 @@ const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 const EMPTY_GOAL_MESSAGE_IDS = new Set<MessageId>();
+const EMPTY_COMPLETED_GOAL_DURATIONS = new Map<MessageId, string>();
 const TIMELINE_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 const TIMELINE_INITIAL_RENDER_COUNT = 24;
 const TIMELINE_TOP_LOAD_THRESHOLD_PX = 240;
@@ -224,6 +226,7 @@ interface MessagesTimelineProps {
   onRevertUserMessage: (messageId: MessageId) => void;
   onSubmitEditedUserMessage?: (messageId: MessageId, text: string) => Promise<void>;
   goalMessageIds?: ReadonlySet<MessageId>;
+  completedGoalDurationByAssistantMessageId?: ReadonlyMap<MessageId, string>;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
@@ -359,6 +362,7 @@ export const MessagesTimeline = memo(
       onRevertUserMessage,
       onSubmitEditedUserMessage,
       goalMessageIds = EMPTY_GOAL_MESSAGE_IDS,
+      completedGoalDurationByAssistantMessageId = EMPTY_COMPLETED_GOAL_DURATIONS,
       isRevertingCheckpoint,
       onImageExpand,
       activeThreadEnvironmentId,
@@ -941,6 +945,7 @@ export const MessagesTimeline = memo(
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
+      completedGoalDurationByAssistantMessageId,
       manuallyToggledAssistantMessageIds,
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
@@ -964,6 +969,7 @@ export const MessagesTimeline = memo(
       onRevertUserMessage,
       onSubmitEditedUserMessage,
       goalMessageIds,
+      completedGoalDurationByAssistantMessageId,
       onImageExpand,
       onOpenTurnDiff,
       onOpenMarkdownFile,
@@ -1731,6 +1737,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
     cache: ctx.stableAssistantTextByMessageId,
   });
   const previewUrl = row.showUrlPreviewCard ? (extractAssistantUrls(messageText)[0] ?? null) : null;
+  const completedGoalDuration =
+    ctx.completedGoalDurationByAssistantMessageId.get(row.message.id) ?? null;
 
   return (
     <>
@@ -1769,6 +1777,9 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
               )}
             </p>
             <AssistantCopyButton row={row} />
+            {completedGoalDuration ? (
+              <GoalCompletionMarker duration={completedGoalDuration} />
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1813,6 +1824,18 @@ function AssistantCopyButton({ row }: { row: Extract<TimelineRow, { kind: "messa
         className="border-border/50 bg-background/35 text-muted-foreground/45 shadow-none hover:border-border/70 hover:bg-background/55 hover:text-muted-foreground/70"
       />
     </div>
+  );
+}
+
+function GoalCompletionMarker({ duration }: { duration: string }) {
+  return (
+    <span
+      className="inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-[12px] text-muted-foreground/70"
+      data-goal-completion-duration="true"
+    >
+      <GoalIcon className="size-3.5" />
+      <span>已在 {duration} 内达成目标</span>
+    </span>
   );
 }
 

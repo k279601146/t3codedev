@@ -1098,6 +1098,10 @@ function toOrchestrationGoal(
     objective: goal.objective,
     status: toOrchestrationGoalStatus(goal.status),
     updatedAt,
+    startedAt: updatedAt,
+    activeSince: goal.status === "active" ? updatedAt : null,
+    elapsedMs: 0,
+    completedAt: goal.status === "complete" ? updatedAt : null,
   };
 }
 

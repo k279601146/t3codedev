@@ -1377,6 +1377,10 @@ function mapToRuntimeEvents(
       objective: payload.goal.objective,
       status: payload.goal.status,
       updatedAt: event.createdAt,
+      startedAt: event.createdAt,
+      activeSince: payload.goal.status === "active" ? event.createdAt : null,
+      elapsedMs: 0,
+      completedAt: payload.goal.status === "complete" ? event.createdAt : null,
     };
     return [
       {

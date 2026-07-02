@@ -237,6 +237,10 @@ describe("ProviderCommandReactor", () => {
           objective: input.objective,
           status: input.status ?? "active",
           updatedAt: now,
+          startedAt: now,
+          activeSince: (input.status ?? "active") === "active" ? now : null,
+          elapsedMs: 0,
+          completedAt: null,
         },
       }),
     );
@@ -247,6 +251,10 @@ describe("ProviderCommandReactor", () => {
           objective: "测试目标",
           status: input.status,
           updatedAt: now,
+          startedAt: now,
+          activeSince: input.status === "active" ? now : null,
+          elapsedMs: 0,
+          completedAt: input.status === "complete" ? now : null,
         },
       }),
     );
@@ -467,6 +475,9 @@ describe("ProviderCommandReactor", () => {
       interruptTurn,
       respondToRequest,
       respondToUserInput,
+      setGoal,
+      setGoalStatus,
+      clearGoal,
       stopSession,
       renameBranch,
       refreshStatus,
@@ -516,6 +527,45 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("syncs goal set through provider API and advances the active goal", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.goal.set",
+        commandId: CommandId.make("cmd-goal-set"),
+        threadId: ThreadId.make("thread-1"),
+        objective: "持续完成目标",
+        status: "active",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.setGoal.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.setGoal.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      objective: "持续完成目标",
+      status: "active",
+    });
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      input: "持续完成目标",
+    });
+
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.goal).toMatchObject({
+      objective: "持续完成目标",
+      status: "active",
+      startedAt: now,
+      activeSince: now,
+      elapsedMs: 0,
+      completedAt: null,
+    });
   });
 
   it("reacts to thread.turn.steer by steering the active provider turn", async () => {

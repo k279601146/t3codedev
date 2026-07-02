@@ -9,6 +9,7 @@ import {
   ModelSelection,
   OrchestrationCommand,
   OrchestrationEvent,
+  OrchestrationGoal,
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetTurnDiffInput,
   OrchestrationLatestTurn,
@@ -41,6 +42,7 @@ const decodeThreadTurnStartRequestedPayload = Schema.decodeUnknownEffect(
 const decodeOrchestrationLatestTurn = Schema.decodeUnknownEffect(OrchestrationLatestTurn);
 const decodeOrchestrationProposedPlan = Schema.decodeUnknownEffect(OrchestrationProposedPlan);
 const decodeOrchestrationSession = Schema.decodeUnknownEffect(OrchestrationSession);
+const decodeOrchestrationGoal = Schema.decodeUnknownEffect(OrchestrationGoal);
 const encodeThreadCreatedPayload = Schema.encodeEffect(ThreadCreatedPayload);
 
 function getOptionValue(
@@ -63,6 +65,20 @@ const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPaylo
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
+
+it.effect("decodes historical goals without local timing fields", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeOrchestrationGoal({
+      objective: "完成迁移",
+      status: "active",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.startedAt, "2026-01-01T00:00:00.000Z");
+    assert.strictEqual(parsed.activeSince, "2026-01-01T00:00:00.000Z");
+    assert.strictEqual(parsed.elapsedMs, 0);
+    assert.strictEqual(parsed.completedAt, null);
+  }),
+);
 
 it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
   Effect.gen(function* () {

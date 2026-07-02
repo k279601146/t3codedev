@@ -40,6 +40,8 @@ import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/proje
 import { truncate } from "@t3tools/shared/String";
 import {
   GOAL_OBJECTIVE_MAX_CHARS,
+  computeGoalElapsedMs,
+  formatGoalDuration,
   isValidGoalObjective,
   normalizeGoalObjective,
 } from "@t3tools/shared/goal";
@@ -2304,6 +2306,16 @@ export default function ChatView(props: ChatViewProps) {
   ]);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
+  const completedGoalDurationByAssistantMessageId = useMemo(() => {
+    const goal = activeThread?.goal;
+    const assistantMessageId = activeThread?.latestTurn?.assistantMessageId ?? null;
+    if (!goal || goal.status !== "complete" || !assistantMessageId) {
+      return new Map<MessageId, string>();
+    }
+    return new Map<MessageId, string>([
+      [assistantMessageId, formatGoalDuration(computeGoalElapsedMs(goal, Date.now()))],
+    ]);
+  }, [activeThread?.goal, activeThread?.latestTurn?.assistantMessageId]);
   const {
     timelineEntries,
     rightPanelArtifacts,
@@ -4131,6 +4143,15 @@ export default function ChatView(props: ChatViewProps) {
       setInterruptPendingTurn(pendingTurn);
     }
     try {
+      if (activeThread.goal?.status === "active") {
+        await api.orchestration.dispatchCommand({
+          type: "thread.goal.status.set",
+          commandId: newCommandId(),
+          threadId: activeThread.id,
+          status: "paused",
+          createdAt: new Date().toISOString(),
+        });
+      }
       await api.orchestration.dispatchCommand({
         type: "thread.turn.interrupt",
         commandId: newCommandId(),
@@ -4966,7 +4987,16 @@ export default function ChatView(props: ChatViewProps) {
       threadId: activeThreadId,
       createdAt,
     });
-  }, [activeThreadId, environmentId]);
+    if (activeThread?.session?.activeTurnId || activeThread?.latestTurn?.state === "running") {
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.interrupt",
+        commandId: newCommandId(),
+        threadId: activeThreadId,
+        ...(activeThread.session?.activeTurnId ? { turnId: activeThread.session.activeTurnId } : {}),
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }, [activeThread?.latestTurn?.state, activeThread?.session?.activeTurnId, activeThreadId, environmentId]);
   const onGoalModeChange = useCallback(
     (enabled: boolean) => {
       if (!activeThreadKey) return;
@@ -4978,6 +5008,25 @@ export default function ChatView(props: ChatViewProps) {
       }
     },
     [activeThread?.goal, activeThreadId, activeThreadKey, clearThreadGoal, setThreadError],
+  );
+  const onSetGoalObjective = useCallback(
+    (objective: string) => {
+      const api = readEnvironmentApi(environmentId);
+      if (!api || !activeThreadId) return;
+      void api.orchestration
+        .dispatchCommand({
+          type: "thread.goal.set",
+          commandId: newCommandId(),
+          threadId: activeThreadId,
+          objective,
+          status: activeThread?.goal?.status ?? "active",
+          createdAt: new Date().toISOString(),
+        })
+        .catch((error) => {
+          setThreadError(activeThreadId, error instanceof Error ? error.message : "更新目标失败。");
+        });
+    },
+    [activeThread?.goal?.status, activeThreadId, environmentId, setThreadError],
   );
   const onSetGoalStatus = useCallback(
     (status: OrchestrationGoalStatus) => {
@@ -5240,6 +5289,7 @@ export default function ChatView(props: ChatViewProps) {
       handleRuntimeModeChange={handleRuntimeModeChange}
       handleInteractionModeChange={handleInteractionModeChange}
       onGoalModeChange={onGoalModeChange}
+      onSetGoalObjective={onSetGoalObjective}
       onSetGoalStatus={onSetGoalStatus}
       togglePlanSidebar={togglePlanSidebar}
       focusComposer={focusComposer}
@@ -5369,6 +5419,9 @@ export default function ChatView(props: ChatViewProps) {
                   onRevertUserMessage={onRevertUserMessage}
                   onSubmitEditedUserMessage={onSubmitEditedUserMessage}
                   goalMessageIds={goalMessageIds}
+                  completedGoalDurationByAssistantMessageId={
+                    completedGoalDurationByAssistantMessageId
+                  }
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImage}
                   markdownCwd={markdownCwd}

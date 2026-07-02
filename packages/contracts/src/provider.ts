@@ -11,6 +11,7 @@ import {
 import {
   ChatAttachment,
   ModelSelection,
+  ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS,
   OrchestrationGoal,
   OrchestrationGoalStatus,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -192,7 +193,9 @@ export type ProviderRespondToUserInputInput = typeof ProviderRespondToUserInputI
 
 export const ProviderGoalSetInput = Schema.Struct({
   threadId: ThreadId,
-  objective: OrchestrationGoal.fields.objective,
+  objective: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS),
+  ),
   status: Schema.optional(OrchestrationGoalStatus),
 });
 export type ProviderGoalSetInput = typeof ProviderGoalSetInput.Type;

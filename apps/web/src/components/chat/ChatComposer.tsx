@@ -24,6 +24,12 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import {
+  computeGoalElapsedMs,
+  formatGoalDuration,
+  isValidGoalObjective,
+  normalizeGoalObjective,
+} from "@t3tools/shared/goal";
+import {
   forwardRef,
   memo,
   useCallback,
@@ -90,6 +96,24 @@ import { buildExpandedImagePreview, type ExpandedImagePreview } from "./Expanded
 import { basenameOfPath } from "../../vscode-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import { Textarea } from "../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   Menu,
@@ -891,7 +915,7 @@ const ComposerGoalProgressPanel = memo(function ComposerGoalProgressPanel(props:
   const paused = goal?.status === "paused";
   const canPauseResume = goal?.status === "active" || goal?.status === "paused";
   const title = resolveGoalPanelTitle(goal?.status);
-  const elapsed = goal ? formatGoalElapsed(goal.updatedAt, nowMs) : null;
+  const elapsed = goal ? formatGoalDuration(computeGoalElapsedMs(goal, nowMs)) : null;
 
   return (
     <div
@@ -989,18 +1013,6 @@ function resolveGoalPanelTitle(status: OrchestrationGoalStatus | undefined): str
     case undefined:
       return "进行中的目标";
   }
-}
-
-function formatGoalElapsed(startIso: string, nowMs: number): string | null {
-  const startedAt = Date.parse(startIso);
-  if (Number.isNaN(startedAt) || nowMs < startedAt) return null;
-  const seconds = Math.max(1, Math.floor((nowMs - startedAt) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
 }
 
 export interface PendingSteerDraftView {
@@ -1248,6 +1260,7 @@ export interface ChatComposerProps {
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
   onGoalModeChange: (enabled: boolean) => void;
+  onSetGoalObjective: (objective: string) => void;
   onSetGoalStatus: (status: OrchestrationGoalStatus) => void;
   togglePlanSidebar: () => void;
 
@@ -1338,6 +1351,7 @@ export const ChatComposer = memo(
       handleRuntimeModeChange,
       handleInteractionModeChange,
       onGoalModeChange,
+      onSetGoalObjective,
       onSetGoalStatus,
       togglePlanSidebar,
       focusComposer,
@@ -1649,8 +1663,16 @@ export const ChatComposer = memo(
     const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
     const [isComposerFocused, setIsComposerFocused] = useState(false);
     const [goalPanelExpanded, setGoalPanelExpanded] = useState(false);
+    const [goalEditOpen, setGoalEditOpen] = useState(false);
+    const [goalEditDraft, setGoalEditDraft] = useState("");
+    const [goalClearConfirmOpen, setGoalClearConfirmOpen] = useState(false);
     const isMobileViewport = useMediaQuery("max-sm");
     const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
+
+    useEffect(() => {
+      if (goalEditOpen) return;
+      setGoalEditDraft(goal?.objective ?? "");
+    }, [goal?.objective, goalEditOpen]);
 
     // ------------------------------------------------------------------
     // Refs
@@ -1937,14 +1959,18 @@ export const ChatComposer = memo(
     );
 
     const editGoalFromPanel = useCallback(() => {
-      const nextPrompt = goal?.objective ?? prompt;
-      promptRef.current = nextPrompt;
-      setPrompt(nextPrompt);
-      const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
-      setComposerCursor(nextCursor);
-      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
-      scheduleComposerFocus();
-    }, [goal?.objective, prompt, promptRef, scheduleComposerFocus, setPrompt]);
+      setGoalEditDraft(goal?.objective ?? "");
+      setGoalEditOpen(true);
+    }, [goal?.objective]);
+
+    const saveGoalEdit = useCallback(() => {
+      const objective = normalizeGoalObjective(goalEditDraft);
+      if (!isValidGoalObjective(objective)) {
+        return;
+      }
+      onSetGoalObjective(objective);
+      setGoalEditOpen(false);
+    }, [goalEditDraft, onSetGoalObjective]);
 
     const toggleGoalPaused = useCallback(() => {
       if (!goal) return;
@@ -1952,6 +1978,11 @@ export const ChatComposer = memo(
     }, [goal, onSetGoalStatus]);
 
     const clearGoalFromPanel = useCallback(() => {
+      setGoalClearConfirmOpen(true);
+    }, []);
+
+    const confirmClearGoal = useCallback(() => {
+      setGoalClearConfirmOpen(false);
       onGoalModeChange(false);
     }, [onGoalModeChange]);
 
@@ -3135,15 +3166,63 @@ export const ChatComposer = memo(
         onModelOptionsChange={handleModelOptionsChange}
       />
     );
+    const normalizedGoalEditDraft = normalizeGoalObjective(goalEditDraft);
+    const canSaveGoalEdit =
+      goal !== null &&
+      isValidGoalObjective(normalizedGoalEditDraft) &&
+      normalizedGoalEditDraft !== goal.objective;
 
     return (
-      <form
-        ref={composerFormRef}
-        onSubmit={submitComposer}
-        className={cn("mx-auto w-full min-w-0", newThreadMode ? "max-w-none" : "max-w-[43.5rem]")}
-        data-chat-composer-form="true"
-        data-chat-composer-new-thread={newThreadMode ? "true" : "false"}
-      >
+      <>
+        <Dialog open={goalEditOpen} onOpenChange={setGoalEditOpen}>
+          <DialogPopup className="max-w-lg rounded-xl" showCloseButton>
+            <DialogHeader>
+              <DialogTitle>编辑目标</DialogTitle>
+              <DialogDescription>保存后通过 Codex goal 协议更新当前目标。</DialogDescription>
+            </DialogHeader>
+            <DialogPanel className="space-y-3" scrollFade={false}>
+              <Textarea
+                value={goalEditDraft}
+                onChange={(event) => setGoalEditDraft(event.target.value)}
+                rows={5}
+                autoFocus
+                placeholder="输入新的目标"
+                className="min-h-32 resize-y"
+              />
+            </DialogPanel>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setGoalEditOpen(false)}>
+                取消
+              </Button>
+              <Button type="button" disabled={!canSaveGoalEdit} onClick={saveGoalEdit}>
+                保存
+              </Button>
+            </DialogFooter>
+          </DialogPopup>
+        </Dialog>
+        <AlertDialog open={goalClearConfirmOpen} onOpenChange={setGoalClearConfirmOpen}>
+          <AlertDialogPopup>
+            <AlertDialogTitle>清除当前目标？</AlertDialogTitle>
+            <AlertDialogDescription>
+              清除后会停止当前目标模式，并中断正在进行的目标任务。
+            </AlertDialogDescription>
+            <AlertDialogFooter>
+              <AlertDialogClose render={<Button type="button" variant="outline" />}>
+                取消
+              </AlertDialogClose>
+              <Button type="button" variant="destructive" onClick={confirmClearGoal}>
+                清除目标
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
+        <form
+          ref={composerFormRef}
+          onSubmit={submitComposer}
+          className={cn("mx-auto w-full min-w-0", newThreadMode ? "max-w-none" : "max-w-[43.5rem]")}
+          data-chat-composer-form="true"
+          data-chat-composer-new-thread={newThreadMode ? "true" : "false"}
+        >
         <input
           ref={composerAttachmentInputRef}
           type="file"
@@ -3688,7 +3767,8 @@ export const ChatComposer = memo(
             )}
           </div>
         </div>
-      </form>
+        </form>
+      </>
     );
   }),
 );

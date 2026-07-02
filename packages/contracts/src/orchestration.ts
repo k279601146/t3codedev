@@ -139,13 +139,53 @@ export const OrchestrationGoalStatus = Schema.Literals([
   "complete",
 ]);
 export type OrchestrationGoalStatus = typeof OrchestrationGoalStatus.Type;
-export const OrchestrationGoal = Schema.Struct({
+const OrchestrationGoalWire = Schema.Struct({
   objective: TrimmedNonEmptyString.check(
     Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS),
   ),
   status: OrchestrationGoalStatus,
   updatedAt: IsoDateTime,
+  startedAt: IsoDateTime,
+  activeSince: Schema.NullOr(IsoDateTime),
+  elapsedMs: NonNegativeInt,
+  completedAt: Schema.NullOr(IsoDateTime),
 });
+const OrchestrationGoalSource = Schema.Struct({
+  objective: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS),
+  ),
+  status: OrchestrationGoalStatus,
+  updatedAt: IsoDateTime,
+  startedAt: Schema.optionalKey(IsoDateTime),
+  activeSince: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
+  elapsedMs: Schema.optionalKey(NonNegativeInt),
+  completedAt: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
+});
+export const OrchestrationGoal = OrchestrationGoalSource.pipe(
+  Schema.decodeTo(
+    OrchestrationGoalWire,
+    SchemaTransformation.transform({
+      decode: (raw) => {
+        const startedAt = raw.startedAt ?? raw.updatedAt;
+        return {
+          objective: raw.objective,
+          status: raw.status,
+          updatedAt: raw.updatedAt,
+          startedAt,
+          activeSince:
+            raw.activeSince !== undefined
+              ? raw.activeSince
+              : raw.status === "active"
+                ? raw.updatedAt
+                : null,
+          elapsedMs: raw.elapsedMs ?? 0,
+          completedAt: raw.completedAt ?? null,
+        };
+      },
+      encode: (value) => value,
+    }),
+  ),
+);
 export type OrchestrationGoal = typeof OrchestrationGoal.Type;
 export const ProviderRequestKind = Schema.Literals(["command", "file-read", "file-change"]);
 export type ProviderRequestKind = typeof ProviderRequestKind.Type;
