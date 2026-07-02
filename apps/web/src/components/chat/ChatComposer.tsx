@@ -874,13 +874,12 @@ const ComposerGoalStatusChip = memo(function ComposerGoalStatusChip(props: {
 });
 
 const ComposerGoalProgressPanel = memo(function ComposerGoalProgressPanel(props: {
-  goal: OrchestrationGoal | null;
-  draftObjective: string;
-  collapsed: boolean;
+  goal: OrchestrationGoal;
+  expanded: boolean;
   onEdit: () => void;
   onTogglePaused: () => void;
   onClear: () => void;
-  onToggleCollapsed: () => void;
+  onToggleExpanded: () => void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -889,27 +888,30 @@ const ComposerGoalProgressPanel = memo(function ComposerGoalProgressPanel(props:
   }, []);
 
   const goal = props.goal;
-  const objective = goal?.objective ?? props.draftObjective.trim();
-  const hasSyncedGoal = goal !== null;
   const paused = goal?.status === "paused";
   const canPauseResume = goal?.status === "active" || goal?.status === "paused";
   const title = resolveGoalPanelTitle(goal?.status);
   const elapsed = goal ? formatGoalElapsed(goal.updatedAt, nowMs) : null;
-  const displayObjective = objective || "发送下一条消息后会作为目标";
 
   return (
-    <div className="mb-2 rounded-2xl border border-border/75 bg-background px-3 py-2 shadow-sm">
-      <div className="flex min-w-0 items-center gap-2">
-        <GoalIcon className="size-4 shrink-0 text-muted-foreground/75" />
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">{title}</span>
+    <div
+      data-chat-composer-goal-panel="true"
+      className="mb-1.5 rounded-xl border border-border/70 bg-card/98 px-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.045)]"
+    >
+      <div className="flex h-9 min-w-0 items-center gap-2">
+        <GoalIcon className="size-3.5 shrink-0 text-muted-foreground/75" />
+        <span className="shrink-0 text-[13px] font-medium text-foreground">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+          {goal.objective}
+        </span>
         {elapsed ? <span className="shrink-0 text-xs text-muted-foreground">{elapsed}</span> : null}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           <IconToolbarButton label="编辑目标" onClick={props.onEdit}>
             <PencilIcon className="size-3.5" />
           </IconToolbarButton>
           <IconToolbarButton
             label={paused ? "恢复目标" : "暂停目标"}
-            disabled={!hasSyncedGoal || !canPauseResume}
+            disabled={!canPauseResume}
             onClick={props.onTogglePaused}
           >
             {paused ? (
@@ -922,18 +924,18 @@ const ComposerGoalProgressPanel = memo(function ComposerGoalProgressPanel(props:
             <Trash2Icon className="size-3.5" />
           </IconToolbarButton>
           <IconToolbarButton
-            label={props.collapsed ? "展开目标" : "收起目标"}
-            onClick={props.onToggleCollapsed}
+            label={props.expanded ? "收起目标" : "展开目标"}
+            onClick={props.onToggleExpanded}
           >
             <ChevronDownIcon
-              className={cn("size-3.5 transition-transform", props.collapsed && "-rotate-90")}
+              className={cn("size-3.5 transition-transform", !props.expanded && "-rotate-90")}
             />
           </IconToolbarButton>
         </div>
       </div>
-      {!props.collapsed ? (
-        <p className="mt-1.5 line-clamp-2 break-words pl-6 text-[13px] leading-5 text-muted-foreground">
-          {displayObjective}
+      {props.expanded ? (
+        <p className="break-words border-t border-border/55 pb-2 pt-1.5 text-[13px] leading-5 text-muted-foreground">
+          {goal.objective}
         </p>
       ) : null}
     </div>
@@ -1345,10 +1347,7 @@ export const ChatComposer = memo(
     } = props;
     const navigate = useNavigate();
     const { t } = useI18n();
-    const {
-      browserExternalPlugin,
-      items: toolBridgeHealthItems,
-    } = useToolBridgeHealth();
+    const { browserExternalPlugin, items: toolBridgeHealthItems } = useToolBridgeHealth();
     const composerSurface: ComposerSurface = newThreadMode ? "new-thread" : "reply";
     const visiblePluginMentions = useMemo(
       () =>
@@ -1649,7 +1648,7 @@ export const ChatComposer = memo(
     const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
     const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
     const [isComposerFocused, setIsComposerFocused] = useState(false);
-    const [goalPanelCollapsed, setGoalPanelCollapsed] = useState(false);
+    const [goalPanelExpanded, setGoalPanelExpanded] = useState(false);
     const isMobileViewport = useMediaQuery("max-sm");
     const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
 
@@ -2011,6 +2010,10 @@ export const ChatComposer = memo(
     useEffect(() => {
       onComposerEmptyChange?.(promptIsEmpty);
     }, [onComposerEmptyChange, promptIsEmpty]);
+
+    useEffect(() => {
+      setGoalPanelExpanded(false);
+    }, [goal?.objective]);
 
     useEffect(() => {
       composerImagesRef.current = composerImages;
@@ -3148,6 +3151,16 @@ export const ChatComposer = memo(
           className="hidden"
           onChange={handleAttachmentInputChange}
         />
+        {goal ? (
+          <ComposerGoalProgressPanel
+            goal={goal}
+            expanded={goalPanelExpanded}
+            onEdit={editGoalFromPanel}
+            onTogglePaused={toggleGoalPaused}
+            onClear={clearGoalFromPanel}
+            onToggleExpanded={() => setGoalPanelExpanded((value) => !value)}
+          />
+        ) : null}
         <div
           className={cn(
             "group transition-colors duration-200",
@@ -3435,21 +3448,6 @@ export const ChatComposer = memo(
                 newThreadMode && isDragOverComposer && "opacity-20 blur-[1px]",
               )}
             >
-              {!isComposerCollapsedMobile &&
-              !isComposerApprovalState &&
-              pendingUserInputs.length === 0 &&
-              goalModeEnabled ? (
-                <ComposerGoalProgressPanel
-                  goal={goal}
-                  draftObjective={prompt}
-                  collapsed={goalPanelCollapsed}
-                  onEdit={editGoalFromPanel}
-                  onTogglePaused={toggleGoalPaused}
-                  onClear={clearGoalFromPanel}
-                  onToggleCollapsed={() => setGoalPanelCollapsed((value) => !value)}
-                />
-              ) : null}
-
               {!isComposerCollapsedMobile &&
                 !isComposerApprovalState &&
                 pendingUserInputs.length === 0 &&
