@@ -83,7 +83,7 @@ describe("商业用量发送门禁", () => {
     expect(block?.reason).toBe("weekly");
   });
 
-  it("有可用积分余额时允许超出窗口额度继续发送", () => {
+  it("可用积分余额足够覆盖预留补差时允许继续发送", () => {
     const block = resolveCommercialUsageLimitBlock(
       providerWithUsage(
         {
@@ -107,6 +107,35 @@ describe("商业用量发送门禁", () => {
     );
 
     expect(block).toBeNull();
+  });
+
+  it("可用积分余额不足覆盖预留补差时仍阻止发送", () => {
+    const block = resolveCommercialUsageLimitBlock(
+      providerWithUsage(
+        {
+          plan: "free",
+          currentWindow: {
+            usedUnits: 198,
+            limitUnits: 200,
+            usedPercent: 99,
+            resetsAt: "2026-05-27T03:00:00.000Z",
+          },
+          weeklyWindow: {
+            usedUnits: 300,
+            limitUnits: 1_400,
+            usedPercent: 21,
+            resetsAt: "2026-06-01T00:00:00.000Z",
+          },
+          totalTokens: 300,
+        },
+        { balance: "$3", hasCredits: true, unlimited: false },
+      ),
+    );
+
+    expect(block).toEqual({
+      reason: "current",
+      resetsAt: "2026-05-27T03:00:00.000Z",
+    });
   });
 
   it("为当前窗口满额生成升级和账单操作文案", () => {
