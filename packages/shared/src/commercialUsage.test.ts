@@ -13,11 +13,13 @@ describe("commercial usage snapshot", () => {
         current_window: {
           used_units: 122.7,
           limit_units: 200,
+          remaining_units: 77.3,
           resets_at: "2026-05-27T03:00:00.000Z",
         },
         weekly_window: {
           used_units: 333.7,
           limit_units: 1_400,
+          remaining_units: 1_066.3,
           resets_at: "2026-06-01T00:00:00.000Z",
         },
       },
@@ -30,12 +32,14 @@ describe("commercial usage snapshot", () => {
       currentWindow: {
         usedUnits: 122.7,
         limitUnits: 200,
+        remainingUnits: 77.3,
         usedPercent: 61.35,
         resetsAt: "2026-05-27T03:00:00.000Z",
       },
       weeklyWindow: {
         usedUnits: 333.7,
         limitUnits: 1_400,
+        remainingUnits: 1_066.3,
         usedPercent: 23.835714285714285,
         resetsAt: "2026-06-01T00:00:00.000Z",
       },
@@ -109,5 +113,51 @@ describe("commercial usage snapshot", () => {
       limitUnits: 700,
       resetsAt: "2026-06-01T00:00:00Z",
     });
+  });
+
+  it("caps current window remaining units by weekly remaining units", () => {
+    const snapshot = buildCommercialUsageLimitSnapshot({
+      data: {
+        plan: "free",
+        current_window: {
+          used_units: 20,
+          limit_units: 100,
+          remaining_units: 80,
+          resets_at: "2026-05-27T03:00:00.000Z",
+        },
+        weekly_window: {
+          used_units: 695,
+          limit_units: 700,
+          remaining_units: 5,
+          resets_at: "2026-06-01T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(snapshot.currentWindow.remainingUnits).toBe(5);
+    expect(snapshot.currentWindow.resetsAt).toBe("2026-05-27T03:00:00.000Z");
+  });
+
+  it("uses weekly reset for current window when weekly limit is full", () => {
+    const snapshot = buildCommercialUsageLimitSnapshot({
+      data: {
+        plan: "free",
+        current_window: {
+          used_units: 0,
+          limit_units: 100,
+          remaining_units: 100,
+          resets_at: "2026-05-27T03:00:00.000Z",
+        },
+        weekly_window: {
+          used_units: 700,
+          limit_units: 700,
+          remaining_units: 0,
+          resets_at: "2026-06-01T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(snapshot.currentWindow.remainingUnits).toBe(0);
+    expect(snapshot.currentWindow.resetsAt).toBe("2026-06-01T00:00:00.000Z");
   });
 });

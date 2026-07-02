@@ -1,6 +1,8 @@
 import type { ServerProvider } from "@t3tools/contracts";
 
-type ProviderUsage = NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]>;
+type ProviderUsage = NonNullable<
+  NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]
+>;
 type UsageWindow = NonNullable<ProviderUsage["currentWindow"]>;
 
 export interface CommercialUsageLimitBlock {
@@ -28,6 +30,10 @@ const COMMERCIAL_TURN_RESERVE_UNITS = 8;
 
 function isWindowExhausted(window: UsageWindow | null | undefined): boolean {
   if (!window) return false;
+  const remainingUnits = window.remainingUnits;
+  if (typeof remainingUnits === "number" && Number.isFinite(remainingUnits) && remainingUnits <= 0) {
+    return true;
+  }
   if (Number.isFinite(window.usedPercent) && window.usedPercent >= 100) {
     return true;
   }
@@ -39,18 +45,29 @@ function isWindowExhausted(window: UsageWindow | null | undefined): boolean {
   );
 }
 
-function readSpendableCreditUnits(provider: ServerProvider | null | undefined): number | "unlimited" {
+function readSpendableCreditUnits(
+  provider: ServerProvider | null | undefined,
+): number | "unlimited" {
   const credits = provider?.auth.rateLimits?.credits ?? null;
   if (!credits) return 0;
   if (credits.unlimited) return "unlimited";
   const numericBalance =
-    typeof credits.balance === "string" ? Number(credits.balance.replace(/[^0-9.-]/g, "")) : 0;
-  if (Number.isFinite(numericBalance) && numericBalance > 0) return numericBalance;
+    typeof credits.balance === "string"
+      ? Number(credits.balance.replace(/[^0-9.-]/g, ""))
+      : 0;
+  if (Number.isFinite(numericBalance) && numericBalance > 0)
+    return numericBalance;
   return credits.hasCredits ? COMMERCIAL_TURN_RESERVE_UNITS : 0;
 }
 
-function readWindowRemainingUnits(window: UsageWindow | null | undefined): number | null {
+function readWindowRemainingUnits(
+  window: UsageWindow | null | undefined,
+): number | null {
   if (!window) return null;
+  const remainingUnits = window.remainingUnits;
+  if (typeof remainingUnits === "number" && Number.isFinite(remainingUnits)) {
+    return Math.max(remainingUnits, 0);
+  }
   if (Number.isFinite(window.usedUnits) && Number.isFinite(window.limitUnits)) {
     return Math.max(window.limitUnits - window.usedUnits, 0);
   }
@@ -62,16 +79,22 @@ function windowLacksReserve(window: UsageWindow | null | undefined): boolean {
   return remaining !== null && remaining < COMMERCIAL_TURN_RESERVE_UNITS;
 }
 
-function bonusBalanceCoversReserve(provider: ServerProvider | null | undefined): boolean {
+function bonusBalanceCoversReserve(
+  provider: ServerProvider | null | undefined,
+): boolean {
   const usage = provider?.auth.rateLimits?.usage ?? null;
   if (!usage) return false;
   const credits = readSpendableCreditUnits(provider);
   if (credits === "unlimited") return true;
   const currentRemaining = readWindowRemainingUnits(usage.currentWindow);
   const weeklyRemaining = readWindowRemainingUnits(usage.weeklyWindow);
-  if (currentRemaining === null || weeklyRemaining === null) return credits >= COMMERCIAL_TURN_RESERVE_UNITS;
+  if (currentRemaining === null || weeklyRemaining === null)
+    return credits >= COMMERCIAL_TURN_RESERVE_UNITS;
   const quotaRemaining = Math.min(currentRemaining, weeklyRemaining);
-  const bonusRequired = Math.max(COMMERCIAL_TURN_RESERVE_UNITS - quotaRemaining, 0);
+  const bonusRequired = Math.max(
+    COMMERCIAL_TURN_RESERVE_UNITS - quotaRemaining,
+    0,
+  );
   return bonusRequired <= 0 || credits >= bonusRequired;
 }
 
@@ -81,22 +104,30 @@ export function resolveCommercialUsageLimitBlock(
   const usage = provider?.auth.rateLimits?.usage ?? null;
   if (!usage) return null;
   if (bonusBalanceCoversReserve(provider)) return null;
-  if (isWindowExhausted(usage.currentWindow) || windowLacksReserve(usage.currentWindow)) {
-    return {
-      reason: "current",
-      resetsAt: usage.currentWindow?.resetsAt ?? null,
-    };
-  }
-  if (isWindowExhausted(usage.weeklyWindow) || windowLacksReserve(usage.weeklyWindow)) {
+  if (
+    isWindowExhausted(usage.weeklyWindow) ||
+    windowLacksReserve(usage.weeklyWindow)
+  ) {
     return {
       reason: "weekly",
       resetsAt: usage.weeklyWindow?.resetsAt ?? null,
     };
   }
+  if (
+    isWindowExhausted(usage.currentWindow) ||
+    windowLacksReserve(usage.currentWindow)
+  ) {
+    return {
+      reason: "current",
+      resetsAt: usage.currentWindow?.resetsAt ?? null,
+    };
+  }
   return null;
 }
 
-export function formatUsageLimitResetHint(block: CommercialUsageLimitBlock): string {
+export function formatUsageLimitResetHint(
+  block: CommercialUsageLimitBlock,
+): string {
   const resetTime = formatUsageLimitResetTime(block.resetsAt);
   const windowLabel = block.reason === "weekly" ? "每周上限" : "当前用量";
   return resetTime
@@ -124,7 +155,9 @@ export function buildCommercialUsageLimitToastCopy(
   };
 }
 
-function readWindowUsedPercent(window: UsageWindow | null | undefined): number | null {
+function readWindowUsedPercent(
+  window: UsageWindow | null | undefined,
+): number | null {
   if (!window) return null;
   if (Number.isFinite(window.usedPercent)) {
     return window.usedPercent;
@@ -165,9 +198,16 @@ export function resolveCommercialUsageModelRecommendation(
   const candidates = [
     buildUsageModelRecommendationCandidate("current", usage.currentWindow),
     buildUsageModelRecommendationCandidate("weekly", usage.weeklyWindow),
-  ].filter((candidate): candidate is CommercialUsageModelRecommendation => candidate !== null);
+  ].filter(
+    (candidate): candidate is CommercialUsageModelRecommendation =>
+      candidate !== null,
+  );
 
-  return candidates.toSorted((left, right) => right.usedPercent - left.usedPercent)[0] ?? null;
+  return (
+    candidates.toSorted(
+      (left, right) => right.usedPercent - left.usedPercent,
+    )[0] ?? null
+  );
 }
 
 function formatUsageLimitResetTime(value: string | null): string | null {

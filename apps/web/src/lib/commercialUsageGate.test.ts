@@ -9,8 +9,12 @@ import {
 } from "./commercialUsageGate";
 
 function providerWithUsage(
-  usage: NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]>,
-  credits?: NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["credits"]>,
+  usage: NonNullable<
+    NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]
+  >,
+  credits?: NonNullable<
+    NonNullable<ServerProvider["auth"]["rateLimits"]>["credits"]
+  >,
 ): ServerProvider {
   return {
     instanceId: ProviderInstanceId.make("codex"),
@@ -81,6 +85,34 @@ describe("商业用量发送门禁", () => {
     );
 
     expect(block?.reason).toBe("weekly");
+  });
+
+  it("每周剩余额度为 0 时优先返回每周阻断", () => {
+    const block = resolveCommercialUsageLimitBlock(
+      providerWithUsage({
+        plan: "free",
+        currentWindow: {
+          usedUnits: 0,
+          limitUnits: 100,
+          remainingUnits: 0,
+          usedPercent: 0,
+          resetsAt: "2026-05-27T03:00:00.000Z",
+        },
+        weeklyWindow: {
+          usedUnits: 700,
+          limitUnits: 700,
+          remainingUnits: 0,
+          usedPercent: 100,
+          resetsAt: "2026-06-01T00:00:00.000Z",
+        },
+        totalTokens: 700,
+      }),
+    );
+
+    expect(block).toEqual({
+      reason: "weekly",
+      resetsAt: "2026-06-01T00:00:00.000Z",
+    });
   });
 
   it("可用积分余额足够覆盖预留补差时允许继续发送", () => {
@@ -163,9 +195,9 @@ describe("商业用量发送门禁", () => {
   });
 
   it("无重置时间时保留兼容提示", () => {
-    expect(formatUsageLimitResetHint({ reason: "current", resetsAt: null })).toBe(
-      "当前用量已达上限，请升级套餐或等待额度重置后继续。",
-    );
+    expect(
+      formatUsageLimitResetHint({ reason: "current", resetsAt: null }),
+    ).toBe("当前用量已达上限，请升级套餐或等待额度重置后继续。");
   });
 
   it("当前窗口接近上限时推荐省额度模型", () => {
@@ -227,7 +259,11 @@ describe("商业用量发送门禁", () => {
       { balance: null, hasCredits: true, unlimited: true },
     );
 
-    expect(resolveCommercialUsageModelRecommendation(exhaustedProvider)).toBeNull();
-    expect(resolveCommercialUsageModelRecommendation(unlimitedProvider)).toBeNull();
+    expect(
+      resolveCommercialUsageModelRecommendation(exhaustedProvider),
+    ).toBeNull();
+    expect(
+      resolveCommercialUsageModelRecommendation(unlimitedProvider),
+    ).toBeNull();
   });
 });

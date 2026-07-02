@@ -220,6 +220,7 @@ export type CommercialSubscriptionPlanSchema = typeof CommercialSubscriptionPlan
 export const CommercialUsageWindowSchema = Schema.Struct({
   usedUnits: Schema.Number,
   limitUnits: Schema.Number,
+  remainingUnits: Schema.optional(Schema.Number),
   usedPercent: Schema.Number,
   resetsAt: Schema.NullOr(Schema.String),
 });
