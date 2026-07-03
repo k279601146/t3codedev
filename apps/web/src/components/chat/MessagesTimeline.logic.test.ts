@@ -314,11 +314,11 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
-    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-plan");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("assistant-1");
     expect(state.ownerAssistantMessageIdByRowId.has("row-plan")).toBe(false);
     expect(state.ownerAssistantMessageIdByRowId.has("row-assistant")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-plan");
-    expect(state.elapsedByAssistantMessageId.get("row-plan")).toBe("6.0s");
+    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("assistant-1");
+    expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("7.0s");
   });
 
   it("keeps work started after an assistant update below that assistant update", () => {
@@ -411,8 +411,152 @@ describe("deriveTurnProcessCollapseState", () => {
 
     expect(state.ownerAssistantMessageIdByRowId.get("row-work-before")).toBe("assistant-good");
     expect(state.ownerAssistantMessageIdByRowId.has("row-good")).toBe(false);
-    expect(state.ownerAssistantMessageIdByRowId.has("row-work-after")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-work-before")).toBe("assistant-good");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work-after")).toBe("assistant-good");
+    expect(state.summaryButtonHostByRowId.has("row-work-before")).toBe(false);
+    expect(state.summaryButtonHostByRowId.get("row-work-after")).toBe("assistant-good");
+    expect(state.summaryAssistantMessageIds.size).toBe(1);
+  });
+
+  it("uses one processed toggle for interleaved assistant updates and work", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "message",
+        id: "row-user",
+        createdAt: "2026-01-01T00:00:00Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "user-1" as never,
+          role: "user",
+          text: "Build dashboard",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-fetch",
+        createdAt: "2026-01-01T00:00:05Z",
+        groupedEntries: [
+          {
+            id: "work-fetch",
+            createdAt: "2026-01-01T00:00:05Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+        ],
+      },
+      {
+        kind: "message",
+        id: "row-data-ready",
+        createdAt: "2026-01-01T00:00:10Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: false,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-data-ready" as never,
+          role: "assistant",
+          text: "数据已获取。",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:10Z",
+          completedAt: "2026-01-01T00:00:10Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-process",
+        createdAt: "2026-01-01T00:00:20Z",
+        groupedEntries: [
+          {
+            id: "work-process",
+            createdAt: "2026-01-01T00:00:20Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+        ],
+      },
+      {
+        kind: "message",
+        id: "row-processing",
+        createdAt: "2026-01-01T00:00:30Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: false,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-processing" as never,
+          role: "assistant",
+          text: "继续处理。",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:30Z",
+          completedAt: "2026-01-01T00:00:30Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-write",
+        createdAt: "2026-01-01T00:00:40Z",
+        groupedEntries: [
+          {
+            id: "work-write",
+            createdAt: "2026-01-01T00:00:40Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+        ],
+      },
+      {
+        kind: "message",
+        id: "row-final",
+        createdAt: "2026-01-01T00:01:05Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: true,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant",
+          text: "HTML dashboard 已完成。",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:01:05Z",
+          completedAt: "2026-01-01T00:01:05Z",
+          streaming: false,
+        },
+      },
+    ]);
+
+    expect(state.summaryAssistantMessageIds).toEqual(new Set(["assistant-final"]));
+    expect(state.ownerAssistantMessageIdByRowId.get("row-fetch")).toBe("assistant-final");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-data-ready")).toBe("assistant-final");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-process")).toBe("assistant-final");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-processing")).toBe("assistant-final");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-write")).toBe("assistant-final");
+    expect(state.ownerAssistantMessageIdByRowId.has("row-final")).toBe(false);
+    expect(state.summaryButtonHostByRowId.has("row-fetch")).toBe(false);
+    expect(state.summaryButtonHostByRowId.has("row-process")).toBe(false);
+    expect(state.summaryButtonHostByRowId.get("row-write")).toBe("assistant-final");
+    expect(state.elapsedByAssistantMessageId.get("assistant-final")).toBe("1m");
   });
 
   it("keeps generated images visible while collapsing the preceding process", () => {
@@ -488,8 +632,8 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
+    expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-image");
-    expect(state.ownerAssistantMessageIdByRowId.has("row-intro")).toBe(false);
     expect(state.ownerAssistantMessageIdByRowId.has("row-image")).toBe(false);
     expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-image");
     expect(state.elapsedByAssistantMessageId.get("row-image")).toBe("9.0s");

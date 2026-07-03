@@ -522,64 +522,83 @@ export function deriveTurnProcessCollapseState(
   const elapsedMap = new Map<string, string>();
   const hostByRowId = new Map<string, string>();
 
-  type PendingProcess = {
+  type TurnProcessSpan = {
     firstProcessAt: string | null;
     memberRowIds: string[];
     hasProcessRow: boolean;
+    lastResultRow: MessagesTimelineRow | null;
+    hostRowId: string | null;
+    openSegmentHostRowId: string | null;
   };
-  const createPendingProcess = (): PendingProcess => ({
+  const createTurnProcessSpan = (): TurnProcessSpan => ({
     firstProcessAt: null,
     memberRowIds: [],
     hasProcessRow: false,
+    lastResultRow: null,
+    hostRowId: null,
+    openSegmentHostRowId: null,
   });
 
-  let pendingProcess = createPendingProcess();
-  const flushPendingProcess = (resultRow: MessagesTimelineRow) => {
-    if (!pendingProcess.hasProcessRow) {
-      pendingProcess = createPendingProcess();
+  const flushTurnProcessSpan = (span: TurnProcessSpan) => {
+    if (!span.hasProcessRow || !span.lastResultRow) {
       return;
     }
-    const ownerId = resolveResultOwnerId(resultRow);
+    const ownerId = resolveResultOwnerId(span.lastResultRow);
     if (!ownerId) {
-      pendingProcess = createPendingProcess();
+      return;
+    }
+
+    const memberRowIds = span.memberRowIds.filter((id) => id !== span.lastResultRow?.id);
+    if (memberRowIds.length === 0) {
       return;
     }
 
     summaries.add(ownerId);
-    for (const rowId of pendingProcess.memberRowIds) {
+    for (const rowId of memberRowIds) {
       owner.set(rowId, ownerId);
     }
-    const firstMemberRowId = pendingProcess.memberRowIds[0];
-    if (firstMemberRowId) {
-      hostByRowId.set(firstMemberRowId, ownerId);
+    const hostRowId =
+      span.hostRowId && memberRowIds.includes(span.hostRowId) ? span.hostRowId : memberRowIds[0];
+    if (hostRowId) {
+      hostByRowId.set(hostRowId, ownerId);
     }
 
-    const completedAt = resolveResultCompletedAt(resultRow);
-    if (pendingProcess.firstProcessAt && completedAt) {
-      const elapsed = formatElapsed(pendingProcess.firstProcessAt, completedAt);
+    const completedAt = resolveResultCompletedAt(span.lastResultRow);
+    if (span.firstProcessAt && completedAt) {
+      const elapsed = formatElapsed(span.firstProcessAt, completedAt);
       if (elapsed) elapsedMap.set(ownerId, elapsed);
     }
-
-    pendingProcess = createPendingProcess();
   };
 
+  let currentSpan = createTurnProcessSpan();
   for (const row of rows) {
     if (row.kind === "message" && row.message.role === "user") {
-      pendingProcess = createPendingProcess();
+      flushTurnProcessSpan(currentSpan);
+      currentSpan = createTurnProcessSpan();
       continue;
     }
 
     if (row.kind === "work") {
-      if (!pendingProcess.firstProcessAt) pendingProcess.firstProcessAt = row.createdAt;
-      pendingProcess.memberRowIds.push(row.id);
-      pendingProcess.hasProcessRow = true;
+      if (!currentSpan.firstProcessAt) currentSpan.firstProcessAt = row.createdAt;
+      currentSpan.memberRowIds.push(row.id);
+      currentSpan.hasProcessRow = true;
+      if (!currentSpan.openSegmentHostRowId) {
+        currentSpan.openSegmentHostRowId = row.id;
+        currentSpan.hostRowId = row.id;
+      }
       continue;
     }
 
+    if (row.kind === "message" && row.message.role === "assistant") {
+      currentSpan.memberRowIds.push(row.id);
+    }
+
     if (isVisibleResultRow(row)) {
-      flushPendingProcess(row);
+      currentSpan.lastResultRow = row;
+      currentSpan.openSegmentHostRowId = null;
     }
   }
+  flushTurnProcessSpan(currentSpan);
 
   return {
     ownerAssistantMessageIdByRowId: owner,
