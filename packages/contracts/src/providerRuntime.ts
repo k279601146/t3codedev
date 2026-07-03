@@ -319,6 +319,10 @@ export type ThreadGoalClearedPayload = typeof ThreadGoalClearedPayload.Type;
 export const ThreadTokenUsageSnapshot = Schema.Struct({
   usedTokens: NonNegativeInt,
   totalProcessedTokens: Schema.optional(NonNegativeInt),
+  totalInputTokens: Schema.optional(NonNegativeInt),
+  totalCachedInputTokens: Schema.optional(NonNegativeInt),
+  totalOutputTokens: Schema.optional(NonNegativeInt),
+  totalReasoningOutputTokens: Schema.optional(NonNegativeInt),
   maxTokens: Schema.optional(PositiveInt),
   inputTokens: Schema.optional(NonNegativeInt),
   cachedInputTokens: Schema.optional(NonNegativeInt),

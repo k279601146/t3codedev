@@ -405,6 +405,10 @@ function normalizeCodexTokenUsage(
   usage: EffectCodexSchema.V2ThreadTokenUsageUpdatedNotification["tokenUsage"],
 ): ThreadTokenUsageSnapshot | undefined {
   const totalProcessedTokens = usage.total.totalTokens;
+  const totalInputTokens = usage.total.inputTokens;
+  const totalCachedInputTokens = usage.total.cachedInputTokens;
+  const totalOutputTokens = usage.total.outputTokens;
+  const totalReasoningOutputTokens = usage.total.reasoningOutputTokens;
   const usedTokens = usage.last.totalTokens;
   if (usedTokens === undefined || usedTokens <= 0) {
     return undefined;
@@ -421,6 +425,10 @@ function normalizeCodexTokenUsage(
     ...(totalProcessedTokens !== undefined && totalProcessedTokens > usedTokens
       ? { totalProcessedTokens }
       : {}),
+    ...(totalInputTokens !== undefined ? { totalInputTokens } : {}),
+    ...(totalCachedInputTokens !== undefined ? { totalCachedInputTokens } : {}),
+    ...(totalOutputTokens !== undefined ? { totalOutputTokens } : {}),
+    ...(totalReasoningOutputTokens !== undefined ? { totalReasoningOutputTokens } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(inputTokens !== undefined ? { inputTokens } : {}),
     ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),

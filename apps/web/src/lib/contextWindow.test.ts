@@ -56,6 +56,10 @@ describe("contextWindow", () => {
       makeActivity("activity-1", "context-window.updated", {
         usedTokens: 81_659,
         totalProcessedTokens: 748_126,
+        totalInputTokens: 700_000,
+        totalCachedInputTokens: 350_000,
+        totalOutputTokens: 40_000,
+        totalReasoningOutputTokens: 8_126,
         maxTokens: 258_400,
         lastUsedTokens: 81_659,
       }),
@@ -63,5 +67,7 @@ describe("contextWindow", () => {
 
     expect(snapshot?.usedTokens).toBe(81_659);
     expect(snapshot?.totalProcessedTokens).toBe(748_126);
+    expect(snapshot?.totalInputTokens).toBe(700_000);
+    expect(snapshot?.totalCachedInputTokens).toBe(350_000);
   });
 });

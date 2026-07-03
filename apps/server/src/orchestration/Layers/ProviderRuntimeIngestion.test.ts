@@ -2997,6 +2997,10 @@ describe("ProviderRuntimeIngestion", () => {
         usage: {
           usedTokens: 1075,
           totalProcessedTokens: 10_200,
+          totalInputTokens: 10_000,
+          totalCachedInputTokens: 4_000,
+          totalOutputTokens: 150,
+          totalReasoningOutputTokens: 50,
           maxTokens: 128_000,
           inputTokens: 1000,
           cachedInputTokens: 500,
@@ -3025,6 +3029,10 @@ describe("ProviderRuntimeIngestion", () => {
     expect(usageActivity?.payload).toMatchObject({
       usedTokens: 1075,
       totalProcessedTokens: 10_200,
+      totalInputTokens: 10_000,
+      totalCachedInputTokens: 4_000,
+      totalOutputTokens: 150,
+      totalReasoningOutputTokens: 50,
       maxTokens: 128_000,
       inputTokens: 1000,
       cachedInputTokens: 500,
