@@ -1705,6 +1705,7 @@ export const ChatComposer = memo(
     const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
     const composerFormRef = useRef<HTMLFormElement>(null);
     const composerSurfaceRef = useRef<HTMLDivElement>(null);
+    const personalityMenuRef = useRef<HTMLDivElement>(null);
     const composerAttachmentInputRef = useRef<HTMLInputElement>(null);
     const composerFormHeightRef = useRef(0);
     const composerSelectLockRef = useRef(false);
@@ -2177,6 +2178,22 @@ export const ChatComposer = memo(
       dragDepthRef.current = 0;
       setIsDragOverComposer(false);
     }, [draftId, activeThreadId, promptRef]);
+
+    useEffect(() => {
+      if (!personalityMenuOpen) return;
+      const closePersonalityMenuOnOutsidePointerDown = (event: PointerEvent) => {
+        const menuElement = personalityMenuRef.current;
+        const target = event.target;
+        if (menuElement && target instanceof Node && menuElement.contains(target)) {
+          return;
+        }
+        setPersonalityMenuOpen(false);
+      };
+      window.addEventListener("pointerdown", closePersonalityMenuOnOutsidePointerDown, true);
+      return () => {
+        window.removeEventListener("pointerdown", closePersonalityMenuOnOutsidePointerDown, true);
+      };
+    }, [personalityMenuOpen]);
 
     // ------------------------------------------------------------------
     // Footer compact layout observation
@@ -3596,7 +3613,10 @@ export const ChatComposer = memo(
                     newThreadMode ? "top-0 -translate-y-[calc(100%+0.5rem)]" : "bottom-full mb-2",
                   )}
                 >
-                  <div className="mx-auto grid w-full max-w-[22rem] gap-1 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+                  <div
+                    ref={personalityMenuRef}
+                    className="mx-auto grid w-full max-w-[22rem] gap-1 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
+                  >
                     {PERSONALITY_SLASH_OPTIONS.map((option) => {
                       const isActive =
                         (settings.defaultProviderPersonality ?? DEFAULT_PROVIDER_PERSONALITY) ===
