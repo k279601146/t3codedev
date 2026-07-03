@@ -5,7 +5,6 @@ import { describe, it } from "vitest";
 import {
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
   COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV,
-  COMMERCIAL_ENGINE_WIRE_API,
   COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
   DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL,
@@ -105,20 +104,17 @@ describe("commercialEngine", () => {
     );
   });
 
-  it("generates non-secret codex provider configuration for the bundled engine", () => {
+  it("generates persistent engine configuration without commercial provider routing details", () => {
     const toml = generateCommercialEngineTomlConfig({
       MYIDE_GATEWAY_BASE_URL: "https://api.example.com/v1",
       MYIDE_API_KEY: "must-not-appear",
       [COMMERCIAL_ENGINE_IDE_JWT_ENV]: "jwt-token",
     });
 
-    assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
     assert.match(toml, /sandbox_mode = "workspace-write"/);
     assert.match(toml, /approval_policy = "on-request"/);
     assert.match(toml, /approvals_reviewer = "user"/);
     assert.match(toml, /\[sandbox_workspace_write\]\s+network_access = false/);
-    assert.match(toml, new RegExp(`wire_api = "${COMMERCIAL_ENGINE_WIRE_API}"`));
-    assert.match(toml, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
     assert.match(toml, /image_generation = true/);
     assert.match(toml, /imagegenext = true/);
     assert.match(toml, /plugins = true/);
@@ -126,9 +122,15 @@ describe("commercialEngine", () => {
     assert.match(toml, /browser_use = true/);
     assert.match(toml, /in_app_browser = true/);
     assert.match(toml, /computer_use = true/);
+    assert.doesNotMatch(toml, /model_provider = "myservice"/);
+    assert.doesNotMatch(toml, /\[model_providers\.myservice\]/);
+    assert.doesNotMatch(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
+    assert.doesNotMatch(toml, /wire_api = "responses"/);
+    assert.doesNotMatch(toml, /requires_openai_auth/);
     assert.doesNotMatch(toml, /must-not-appear/);
     assert.doesNotMatch(toml, /jwt-token/);
     assert.doesNotMatch(toml, /"OPENAI_API_KEY"/);
+    assert.doesNotMatch(toml, new RegExp(COMMERCIAL_ENGINE_IDE_JWT_ENV));
     assert.doesNotMatch(toml, new RegExp(`"${COMMERCIAL_ENGINE_IDE_JWT_ENV}"[^\\n]*\\]`));
   });
 

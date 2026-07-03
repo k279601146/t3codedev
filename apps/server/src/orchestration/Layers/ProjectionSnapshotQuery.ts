@@ -142,7 +142,7 @@ const ProjectionFullThreadDiffContextRowSchema = Schema.Struct({
 });
 const ProjectionTurnWindowRowSchema = Schema.Struct({
   rowId: NonNegativeInt,
-  turnId: TurnId,
+  turnId: Schema.NullOr(TurnId),
   requestedAt: IsoDateTime,
 });
 const ThreadTurnWindowLookupInput = Schema.Struct({
@@ -959,7 +959,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           requested_at AS "requestedAt"
         FROM projection_turns
         WHERE thread_id = ${threadId}
-          AND turn_id IS NOT NULL
           AND (
             ${cursorRequestedAt} IS NULL
             OR requested_at < ${cursorRequestedAt}
@@ -992,10 +991,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     execute: ({ threadId, cursorRequestedAt, cursorRowId, limit }) =>
       sql`
         WITH selected_page AS (
-          SELECT turn_id
+          SELECT turn_id, pending_message_id
           FROM projection_turns
           WHERE thread_id = ${threadId}
-            AND turn_id IS NOT NULL
             AND (
               ${cursorRequestedAt} IS NULL
               OR requested_at < ${cursorRequestedAt}
@@ -1016,11 +1014,15 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           LIMIT 1
         ),
         selected_turns AS (
-          SELECT turn_id FROM selected_page
+          SELECT turn_id FROM selected_page WHERE turn_id IS NOT NULL
           UNION
           SELECT turn_id FROM forced_running_turn
         ),
         selected_message_ids AS (
+          SELECT pending_message_id AS message_id
+          FROM selected_page
+          WHERE pending_message_id IS NOT NULL
+          UNION
           SELECT pending_message_id AS message_id
           FROM projection_turns
           WHERE thread_id = ${threadId}
@@ -1056,7 +1058,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           SELECT turn_id
           FROM projection_turns
           WHERE thread_id = ${threadId}
-            AND turn_id IS NOT NULL
             AND (
               ${cursorRequestedAt} IS NULL
               OR requested_at < ${cursorRequestedAt}
@@ -1077,7 +1078,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           LIMIT 1
         ),
         selected_turns AS (
-          SELECT turn_id FROM selected_page
+          SELECT turn_id FROM selected_page WHERE turn_id IS NOT NULL
           UNION
           SELECT turn_id FROM forced_running_turn
         )
@@ -1106,7 +1107,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           SELECT turn_id
           FROM projection_turns
           WHERE thread_id = ${threadId}
-            AND turn_id IS NOT NULL
             AND (
               ${cursorRequestedAt} IS NULL
               OR requested_at < ${cursorRequestedAt}
@@ -1127,7 +1127,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           LIMIT 1
         ),
         selected_turns AS (
-          SELECT turn_id FROM selected_page
+          SELECT turn_id FROM selected_page WHERE turn_id IS NOT NULL
           UNION
           SELECT turn_id FROM forced_running_turn
         ),
@@ -1174,7 +1174,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           SELECT turn_id
           FROM projection_turns
           WHERE thread_id = ${threadId}
-            AND turn_id IS NOT NULL
             AND (
               ${cursorRequestedAt} IS NULL
               OR requested_at < ${cursorRequestedAt}
@@ -1195,7 +1194,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           LIMIT 1
         ),
         selected_turns AS (
-          SELECT turn_id FROM selected_page
+          SELECT turn_id FROM selected_page WHERE turn_id IS NOT NULL
           UNION
           SELECT turn_id FROM forced_running_turn
         )

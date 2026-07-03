@@ -172,14 +172,12 @@ function tomlStringArray(values: ReadonlyArray<string>): string {
 export function generateCommercialEngineTomlConfig(
   env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): string {
-  const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(env);
   const windowsConfig =
     getProcessPlatform() === "win32"
       ? `[windows]\nsandbox = ${tomlString(resolveCommercialEngineWindowsSandboxMode(env))}`
       : "";
 
   return `
-model_provider = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_ID)}
 sandbox_mode = "workspace-write"
 approval_policy = "on-request"
 approvals_reviewer = "user"
@@ -187,16 +185,6 @@ disable_telemetry = true
 
 [sandbox_workspace_write]
 network_access = false
-
-[model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}]
-name = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME)}
-base_url = ${tomlString(gatewayBaseUrl)}
-wire_api = ${tomlString(COMMERCIAL_ENGINE_WIRE_API)}
-env_key = ${tomlString(COMMERCIAL_ENGINE_IDE_JWT_ENV)}
-requires_openai_auth = false
-
-[model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}.capabilities]
-image_generation = true
 
 [features]
 image_generation = true

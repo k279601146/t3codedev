@@ -479,6 +479,164 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
     }),
   );
 
+  it.effect("includes pending turn-start user messages in thread history windows", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-pending-start',
+          'Pending Start Project',
+          '/tmp/project-pending-start',
+          NULL,
+          '[]',
+          '2026-07-03T17:37:20.000Z',
+          '2026-07-03T17:37:20.000Z',
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          archived_at,
+          deleted_at
+        )
+        VALUES (
+          'thread-pending-start',
+          'project-pending-start',
+          'Pending Start Thread',
+          '{"instanceId":"codex","model":"gpt-5-codex"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          '2026-07-03T17:37:25.000Z',
+          0,
+          0,
+          0,
+          '2026-07-03T17:37:20.000Z',
+          '2026-07-03T17:37:25.000Z',
+          NULL,
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          is_streaming,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'message-pending-user',
+          'thread-pending-start',
+          NULL,
+          'user',
+          '用户启动消息',
+          0,
+          '2026-07-03T17:37:25.000Z',
+          '2026-07-03T17:37:25.000Z'
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_turns (
+          thread_id,
+          turn_id,
+          pending_message_id,
+          source_proposed_plan_thread_id,
+          source_proposed_plan_id,
+          assistant_message_id,
+          state,
+          requested_at,
+          started_at,
+          completed_at,
+          checkpoint_turn_count,
+          checkpoint_ref,
+          checkpoint_status,
+          checkpoint_files_json
+        )
+        VALUES (
+          'thread-pending-start',
+          NULL,
+          'message-pending-user',
+          NULL,
+          NULL,
+          NULL,
+          'pending',
+          '2026-07-03T17:37:25.000Z',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          '[]'
+        )
+      `;
+
+      assert.ok(snapshotQuery.getThreadDetailWindowByTurns);
+      const threadWindow = yield* snapshotQuery.getThreadDetailWindowByTurns(
+        ThreadId.make("thread-pending-start"),
+        40,
+      );
+
+      assert.equal(threadWindow._tag, "Some");
+      if (threadWindow._tag === "Some") {
+        assert.deepEqual(
+          threadWindow.value.thread.messages.map((message) => ({
+            id: message.id,
+            role: message.role,
+            text: message.text,
+            turnId: message.turnId,
+          })),
+          [
+            {
+              id: asMessageId("message-pending-user"),
+              role: "user",
+              text: "用户启动消息",
+              turnId: null,
+            },
+          ],
+        );
+        assert.equal(threadWindow.value.thread.latestTurn, null);
+        assert.equal(threadWindow.value.historyWindow.loadedTurnCount, 1);
+        assert.equal(threadWindow.value.historyWindow.hasMoreBefore, false);
+      }
+    }),
+  );
+
   it.effect("keeps archived threads out of the main shell snapshot", () =>
     Effect.gen(function* () {
       const snapshotQuery = yield* ProjectionSnapshotQuery;
