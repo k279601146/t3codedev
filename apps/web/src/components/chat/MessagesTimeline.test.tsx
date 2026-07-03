@@ -35,6 +35,11 @@ beforeAll(() => {
     cancelAnimationFrame: () => {},
     desktopBridge: undefined,
   });
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    callback(0);
+    return 0;
+  });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
   vi.stubGlobal("document", {
     createElement: () => ({
       style: {},
@@ -257,7 +262,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-user-message-collapsible="false"');
   });
 
-  it("renders a steer marker before the first assistant reply guided by a user steer", async () => {
+  it("hides a completed turn steer marker with nonterminal assistant replies by default", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const turnId = TurnId.make("turn-1");
     const markup = renderToStaticMarkup(
@@ -285,11 +290,9 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已引导对话");
-    expect(markup.indexOf("已引导对话")).toBeLessThan(markup.indexOf("收到，改成 5 页。"));
-    expect(markup.indexOf("已引导对话")).toBeGreaterThan(markup.indexOf("继续补充这点。"));
-    expect(markup.indexOf("已引导对话")).toBeLessThan(markup.indexOf("已改为 5 页并完成导出。"));
-    expect(markup).toContain('data-steer-conversation-marker="true"');
+    expect(markup).toContain("已改为 5 页并完成导出。");
+    expect(markup).not.toContain("已引导对话");
+    expect(markup).not.toContain("收到，改成 5 页。");
   });
 
   it("does not render a steer marker on a lone user steer message", async () => {
@@ -380,7 +383,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup.match(/data-assistant-message-meta="true"/g)).toHaveLength(1);
-    expect(markup).toContain("我先检查相关文件。");
+    expect(markup).not.toContain("我先检查相关文件。");
     expect(markup).toContain("已经完成。");
   });
 
@@ -489,7 +492,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已编辑");
+    expect(markup).toContain("已更新");
     expect(markup).toContain("1 个文件");
     expect(markup).not.toContain("session-logic.ts");
     expect(markup).not.toContain("+0");
@@ -577,10 +580,10 @@ describe("MessagesTimeline", () => {
             entry: {
               id: "work-1",
               createdAt: "2026-03-17T19:12:28.000Z",
-              label: "Ran command",
+              label: "Updated files",
               tone: "tool",
-              command: "pwsh -Command generate",
-              itemType: "command_execution",
+              requestKind: "file-change",
+              itemType: "file_change",
               status: "completed",
             },
           },
@@ -616,7 +619,82 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("<button");
     expect(markup).toContain("+1");
-    expect(markup).not.toContain("pwsh -Command generate");
+  });
+
+  it("summarizes turn diff file creations once for an ordinary command group", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const assistantId = MessageId.make("assistant-1");
+    const turnId = TurnId.make("turn-1");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "work-entry",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "python build_dashboard.py",
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+          {
+            id: "assistant-entry",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:40.000Z",
+            message: {
+              id: assistantId,
+              role: "assistant",
+              text: "Done",
+              turnId,
+              createdAt: "2026-03-17T19:12:40.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              assistantId,
+              {
+                turnId,
+                completedAt: "2026-03-17T19:12:45.000Z",
+                assistantMessageId: assistantId,
+                files: [
+                  { path: "aihot_dashboard.html", kind: "added", additions: 10, deletions: 0 },
+                  { path: "aihot_data_output.json", kind: "added", additions: 20, deletions: 0 },
+                  { path: "aihot_processed.json", kind: "added", additions: 30, deletions: 0 },
+                  { path: "test_enc.txt", kind: "added", additions: 1, deletions: 0 },
+                ],
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(markup).toContain("已创建 4 个文件");
+    expect(markup).not.toContain("已编辑 4 个文件");
+  });
+
+  it("filters invalid checkpoint file paths before rendering assistant file summaries", async () => {
+    const { buildCheckpointFileItems } = await import("./MessagesTimeline");
+
+    const items = buildCheckpointFileItems({
+      files: [
+        { path: "C:'", kind: "modified", additions: 0, deletions: 0 },
+        { path: "aihot_dashboard.html", kind: "modified", additions: 10, deletions: 1 },
+      ],
+      markdownCwd: undefined,
+      workspaceRoot: "C:/repo",
+    });
+
+    expect(items.map((item) => item.path)).toEqual(["aihot_dashboard.html"]);
   });
 
   it("labels synthetic new-file diffs as creating file work", async () => {
@@ -839,7 +917,7 @@ describe("MessagesTimeline", () => {
         changedFiles: ["C:/repo/apps/web/src/App.tsx"],
         status: "running" as const,
       },
-      "正在编辑",
+      "正在更新",
     ],
     [
       "file-change via changedFiles",
@@ -849,7 +927,7 @@ describe("MessagesTimeline", () => {
         changedFiles: ["C:/repo/apps/web/src/App.tsx"],
         status: "running" as const,
       },
-      "正在编辑",
+      "正在更新",
     ],
   ])("shows %s running work with the shimmer status treatment", async (_name, entry, label) => {
     const { MessagesTimeline } = await import("./MessagesTimeline");

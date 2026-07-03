@@ -1176,6 +1176,86 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.detail).toContain("+from datetime import datetime");
   });
 
+  it("does not treat malformed drive paths as command file changes", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-malformed-drive-path",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command:
+                '"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Write-Output data | Set-Content -Path \\"C:\'\\\\tmp\\\\aihot_daily.json\\""',
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.itemType).toBe("command_execution");
+    expect(entry?.requestKind).toBeUndefined();
+    expect(entry?.changedFiles).toBeUndefined();
+    expect(entry?.detail).toBeUndefined();
+  });
+
+  it("prefers provider commandActions over malformed wrapper command text", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-action-canonical",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command:
+                '"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command \'curl.exe -o "C:\'"\\\\tmp\\\\aihot_daily.json\\""\'',
+              commandActions: [
+                {
+                  command: 'curl.exe -o "C:\\tmp\\aihot_daily.json"',
+                  type: "unknown",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.command).toBe('curl.exe -o "C:\\tmp\\aihot_daily.json"');
+    expect(entry?.requestKind).toBeUndefined();
+    expect(entry?.changedFiles).toBeUndefined();
+  });
+
+  it("does not synthesize file-change rows for command writes without readable content", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-download-file",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command: 'curl.exe -s "https://example.test/data.json" > aihot_daily.json',
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.itemType).toBe("command_execution");
+    expect(entry?.command).toContain("curl.exe");
+    expect(entry?.requestKind).toBeUndefined();
+    expect(entry?.changedFiles).toBeUndefined();
+    expect(entry?.detail).toBeUndefined();
+  });
+
   it("does not treat stderr redirection as file creation work", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

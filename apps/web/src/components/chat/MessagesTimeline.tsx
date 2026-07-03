@@ -30,7 +30,7 @@ import {
   type VirtuosoHandle,
 } from "react-virtuoso";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
-import { type TurnDiffSummary } from "../../types";
+import { type TurnDiffFileChange, type TurnDiffSummary } from "../../types";
 import { getPatchDisplayPath, parseUnifiedDiff, type UnifiedDiffLine } from "../../lib/unifiedDiff";
 import { summarizeTurnDiffStats } from "../../lib/turnDiffTree";
 import ChatMarkdown from "../ChatMarkdown";
@@ -300,12 +300,20 @@ function appendMaterializedTimelineRows(
     return;
   }
 
+  const isSearchGroup = isSearchWorkGroup(row.groupedEntries);
+  const displayEntries = isSearchGroup
+    ? row.groupedEntries
+    : buildWorkGroupDisplayEntries(row.groupedEntries, row.turnDiffSummary);
+  if (displayEntries.length === 0) {
+    return;
+  }
+
   const isExpanded = expandedWorkGroupIds.has(row.id);
   target.push({
     kind: "work-group-summary",
     id: row.id,
     createdAt: row.createdAt,
-    groupedEntries: row.groupedEntries,
+    groupedEntries: displayEntries,
     ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
     isExpanded,
   });
@@ -313,18 +321,18 @@ function appendMaterializedTimelineRows(
     return;
   }
 
-  if (isSearchWorkGroup(row.groupedEntries)) {
+  if (isSearchGroup) {
     target.push({
       kind: "work-group-search-details",
       id: `${row.id}:search-details`,
       createdAt: row.createdAt,
       groupId: row.id,
-      groupedEntries: row.groupedEntries,
+      groupedEntries: displayEntries,
     });
     return;
   }
 
-  row.groupedEntries.forEach((workEntry, index) => {
+  displayEntries.forEach((workEntry, index) => {
     target.push({
       kind: "work-entry",
       id: `${row.id}:entry:${index}:${workEntry.id}`,
@@ -2175,7 +2183,7 @@ const WorkGroupSummaryTimelineRow = memo(function WorkGroupSummaryTimelineRow({
   row: TimelineWorkGroupSummaryRow;
 }) {
   const ctx = use(TimelineRowCtx);
-  const summary = summarizeWorkGroup(row.groupedEntries);
+  const summary = summarizeWorkGroup(row.groupedEntries, row.turnDiffSummary);
   const isSearchGroup = isSearchWorkGroup(row.groupedEntries);
   const SummaryIcon = isSearchGroup ? GlobeIcon : TerminalSquareIcon;
   const showLiveScan = row.groupedEntries.some((entry) => entry.status === "running");
@@ -2248,9 +2256,10 @@ const WorkGroupSection = memo(function WorkGroupSection({
   const { workspaceRoot } = ctx;
   const compactRequestErrorMessage = getCompactRequestErrorMessage(groupedEntries);
   const runtimeIssueSummary = summarizeRuntimeIssueGroup(groupedEntries);
-  const summary = summarizeWorkGroup(groupedEntries);
+  const displayEntries = buildWorkGroupDisplayEntries(groupedEntries, turnDiffSummary);
+  const summary = summarizeWorkGroup(groupedEntries, turnDiffSummary);
   const [isExpanded, setIsExpanded] = useState(runtimeIssueSummary !== null);
-  const showLiveScan = groupedEntries.some((entry) => entry.status === "running");
+  const showLiveScan = displayEntries.some((entry) => entry.status === "running");
 
   if (runtimeIssueSummary) {
     return (
@@ -2269,15 +2278,19 @@ const WorkGroupSection = memo(function WorkGroupSection({
     return <CompactRequestErrorRow message={compactRequestErrorMessage} />;
   }
 
-  if (groupedEntries.length === 1 && groupedEntries[0]?.userInputSummary) {
-    return <UserInputSummaryTimelineRow workEntry={groupedEntries[0]} />;
+  if (displayEntries.length === 1 && displayEntries[0]?.userInputSummary) {
+    return <UserInputSummaryTimelineRow workEntry={displayEntries[0]} />;
   }
 
-  if (groupedEntries.length === 1 && isFileChangeWorkEntry(groupedEntries[0]!, turnDiffSummary)) {
+  if (displayEntries.length === 0) {
+    return null;
+  }
+
+  if (displayEntries.length === 1 && isFileChangeWorkEntry(displayEntries[0]!, turnDiffSummary)) {
     return (
       <div className="pt-1.5 pb-2 pl-1">
         <SimpleWorkEntryRow
-          workEntry={groupedEntries[0]!}
+          workEntry={displayEntries[0]!}
           workspaceRoot={workspaceRoot}
           turnDiffSummary={turnDiffSummary}
         />
@@ -2285,10 +2298,10 @@ const WorkGroupSection = memo(function WorkGroupSection({
     );
   }
 
-  if (groupedEntries.length === 1 && isCommandWorkEntry(groupedEntries[0]!)) {
+  if (displayEntries.length === 1 && isRenderableCommandWorkEntry(displayEntries[0]!)) {
     return (
       <div className="pt-1.5 pb-2 pl-1">
-        <CommandWorkEntryRow workEntry={groupedEntries[0]!} />
+        <CommandWorkEntryRow workEntry={displayEntries[0]!} />
       </div>
     );
   }
@@ -2325,7 +2338,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
           {isSearchGroup ? (
             <SearchWorkGroupDetails groupedEntries={groupedEntries} />
           ) : (
-            groupedEntries.map((workEntry) => (
+            displayEntries.map((workEntry) => (
               <SimpleWorkEntryRow
                 key={`work-row:${workEntry.id}`}
                 workEntry={workEntry}
@@ -2538,17 +2551,27 @@ function isFileChangeWorkEntry(
   entry: TimelineWorkEntry,
   turnDiffSummary?: TurnDiffSummary | undefined,
 ): boolean {
+  const hasRenderablePatch = entry.detail
+    ? parseRenderableUnifiedDiff(entry.detail).some((patch) => {
+        const patchPath = getPatchDisplayPath(patch);
+        return patchPath ? isRenderableChangedFilePath(patchPath) : false;
+      })
+    : false;
   const hasStructuredFileChange =
     entry.requestKind === "file-change" ||
     entry.itemType === "file_change" ||
     (entry.changedFiles?.length ?? 0) > 0;
-  const hasOnlyTurnDiffFileChange =
-    entry.status === "completed" &&
-    (turnDiffSummary?.files.length ?? 0) > 0 &&
-    !(entry.detail?.trim() || entry.output?.trim()) &&
-    (entry.changedFiles?.length ?? 0) === 0;
 
-  return hasStructuredFileChange || hasOnlyTurnDiffFileChange;
+  if (!hasStructuredFileChange) {
+    return false;
+  }
+  if ((entry.changedFiles?.length ?? 0) > 0) {
+    return entry.changedFiles!.some(isRenderableChangedFilePath);
+  }
+  if (hasRenderablePatch) {
+    return true;
+  }
+  return (turnDiffSummary?.files.some((file) => isRenderableChangedFilePath(file.path)) ?? false);
 }
 
 function searchWorkEntryDetail(entry: TimelineWorkEntry): string | null {
@@ -2632,7 +2655,10 @@ const CompactRequestErrorRow = memo(function CompactRequestErrorRow({
   );
 });
 
-function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
+function summarizeWorkGroup(
+  entries: ReadonlyArray<TimelineWorkEntry>,
+  turnDiffSummary?: TurnDiffSummary | undefined,
+): {
   label: string;
   liveLabel: string;
 } {
@@ -2645,15 +2671,27 @@ function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
     };
   }
 
-  const commandCount = entries.filter(isCommandWorkEntry).length;
-  const changedFileCount = new Set(entries.flatMap((entry) => [...(entry.changedFiles ?? [])]))
-    .size;
+  const commandCount = entries.filter(isRenderableCommandWorkEntry).length;
+  const explicitChangedFiles = entries.flatMap((entry) =>
+    [...(entry.changedFiles ?? [])].filter(isRenderableChangedFilePath),
+  );
+  const changedFileCount = new Set(
+    explicitChangedFiles.length > 0
+      ? explicitChangedFiles
+      : (turnDiffSummary?.files ?? [])
+          .map((file) => file.path)
+          .filter(isRenderableChangedFilePath),
+  ).size;
+  const fileChangeLabel =
+    changedFileCount > 0
+      ? `${fileChangeVerbLabel(resolveAggregateFileChangeAction(resolveWorkGroupChangedFileKinds(entries, turnDiffSummary)), "completed")} ${changedFileCount} 个文件`
+      : null;
   const runningEntry = entries.find((entry) => entry.status === "running") ?? null;
   const runningAction = runningEntry ? runningWorkEntryLabel(runningEntry) : "正在处理";
 
-  if (commandCount > 0 && changedFileCount > 0) {
+  if (commandCount > 0 && fileChangeLabel) {
     return {
-      label: `已运行 ${commandCount} 条命令，已编辑 ${changedFileCount} 个文件`,
+      label: `已运行 ${commandCount} 条命令，${fileChangeLabel}`,
       liveLabel: runningAction,
     };
   }
@@ -2663,9 +2701,9 @@ function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
       liveLabel: runningAction,
     };
   }
-  if (changedFileCount > 0) {
+  if (fileChangeLabel) {
     return {
-      label: `已编辑 ${changedFileCount} 个文件`,
+      label: fileChangeLabel,
       liveLabel: runningAction,
     };
   }
@@ -2673,6 +2711,71 @@ function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
     label: `已处理 ${entries.length} 项`,
     liveLabel: runningAction,
   };
+}
+
+function hasExplicitRenderableFileChange(entries: ReadonlyArray<TimelineWorkEntry>): boolean {
+  return entries.some((entry) => {
+    if ((entry.changedFiles ?? []).some(isRenderableChangedFilePath)) {
+      return true;
+    }
+    if (entry.detail) {
+      return parseRenderableUnifiedDiff(entry.detail).some((patch) => {
+        const patchPath = getPatchDisplayPath(patch);
+        return patchPath ? isRenderableChangedFilePath(patchPath) : false;
+      });
+    }
+    return entry.requestKind === "file-change" || entry.itemType === "file_change";
+  });
+}
+
+function buildSyntheticTurnDiffWorkEntry(
+  entries: ReadonlyArray<TimelineWorkEntry>,
+  turnDiffSummary: TurnDiffSummary | undefined,
+): TimelineWorkEntry | null {
+  const files = (turnDiffSummary?.files ?? []).filter((file) =>
+    isRenderableChangedFilePath(file.path),
+  );
+  if (files.length === 0 || hasExplicitRenderableFileChange(entries)) {
+    return null;
+  }
+  const createdAt =
+    turnDiffSummary?.completedAt ?? entries.at(-1)?.createdAt ?? "1970-01-01T00:00:00.000Z";
+  return {
+    id: `turn-diff:${turnDiffSummary?.turnId ?? createdAt}`,
+    createdAt,
+    label: "Changed files",
+    tone: "tool",
+    status: "completed",
+    requestKind: "file-change",
+    itemType: "file_change",
+    changedFiles: files.map((file) => file.path),
+  };
+}
+
+function buildWorkGroupDisplayEntries(
+  entries: ReadonlyArray<TimelineWorkEntry>,
+  turnDiffSummary: TurnDiffSummary | undefined,
+): ReadonlyArray<TimelineWorkEntry> {
+  const visibleEntries = entries.filter((entry) => !isCompletedEmptyCommandWorkEntry(entry));
+  const syntheticEntry = buildSyntheticTurnDiffWorkEntry(entries, turnDiffSummary);
+  return syntheticEntry ? [...visibleEntries, syntheticEntry] : visibleEntries;
+}
+
+function resolveWorkGroupChangedFileKinds(
+  entries: ReadonlyArray<TimelineWorkEntry>,
+  turnDiffSummary: TurnDiffSummary | undefined,
+): ReadonlyArray<Pick<TurnDiffFileChange, "kind">> {
+  const summaryFiles = (turnDiffSummary?.files ?? []).filter((file) =>
+    isRenderableChangedFilePath(file.path),
+  );
+  if (summaryFiles.length > 0) {
+    return summaryFiles;
+  }
+  return entries.flatMap((entry) =>
+    parseRenderableUnifiedDiff(entry.detail ?? "").map((patch) => ({
+      kind: resolvePatchFileChangeKind(patch),
+    })),
+  );
 }
 
 function runningWorkEntryLabel(entry: TimelineWorkEntry): string {
@@ -2742,6 +2845,10 @@ function AssistantChangedFilesSectionInner({
 }) {
   const [showAllFiles, setShowAllFiles] = useState(false);
   const summaryStat = summarizeTurnDiffStats(checkpointFiles);
+  const fileChangeTitleVerb = fileChangeVerbLabel(
+    resolveAggregateFileChangeAction(checkpointFiles),
+    "completed",
+  );
   const isSingleFile = checkpointFiles.length === 1;
   const firstFile = checkpointFiles[0];
   const visibleFiles = showAllFiles ? checkpointFiles : checkpointFiles.slice(0, 3);
@@ -2797,7 +2904,7 @@ function AssistantChangedFilesSectionInner({
               <div className="chat-text chat-text-title truncate">
                 {isSingleFile && firstFile ? (
                   <span className="inline-flex min-w-0 max-w-full items-baseline gap-1">
-                    <span className="shrink-0">已编辑</span>
+                    <span className="shrink-0">{fileChangeTitleVerb}</span>
                     <ChangedFileOpenButton
                       filePath={firstFile.linkMeta?.filePath ?? firstFile.path}
                       displayPath={singleFileTitle}
@@ -2807,7 +2914,7 @@ function AssistantChangedFilesSectionInner({
                     />
                   </span>
                 ) : (
-                  `已编辑 ${checkpointFiles.length} 个文件`
+                  `${fileChangeTitleVerb} ${checkpointFiles.length} 个文件`
                 )}
               </div>
               {hasNonZeroStat(summaryStat) ? (
@@ -2926,7 +3033,7 @@ export function buildCheckpointFileItems({
 }): CheckpointFileItem[] {
   const rootPath = markdownCwd ?? workspaceRoot;
   return files.flatMap((file) => {
-    if (!file.path) {
+    if (!file.path || !isRenderableChangedFilePath(file.path)) {
       return [];
     }
     const linkMeta = isDeletedFileKind(file.kind)
@@ -3154,7 +3261,9 @@ function InlineDiffFile(props: {
         >
           {props.file.listLabel}
         </span>
-        <AnimatedDiffStatLabel additions={props.file.additions} deletions={props.file.deletions} />
+        {props.file.hasStats ? (
+          <AnimatedDiffStatLabel additions={props.file.additions} deletions={props.file.deletions} />
+        ) : null}
         <button
           type="button"
           className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-background/80 hover:text-foreground"
@@ -3554,6 +3663,24 @@ function commandWorkEntryOutput(workEntry: TimelineWorkEntry): string {
   return detail;
 }
 
+function isRenderableCommandWorkEntry(workEntry: TimelineWorkEntry): boolean {
+  return (
+    isCommandWorkEntry(workEntry) &&
+    Boolean(commandWorkEntryCommand(workEntry) || commandWorkEntryOutput(workEntry))
+  );
+}
+
+function isCompletedEmptyCommandWorkEntry(workEntry: TimelineWorkEntry): boolean {
+  return (
+    workEntry.status !== "running" &&
+    isCommandWorkEntry(workEntry) &&
+    !commandWorkEntryCommand(workEntry) &&
+    !commandWorkEntryOutput(workEntry) &&
+    !workEntry.detail?.trim() &&
+    (workEntry.changedFiles?.length ?? 0) === 0
+  );
+}
+
 function truncateCommandOutputForPreview(output: string): {
   text: string;
   truncated: boolean;
@@ -3692,6 +3819,20 @@ function normalizeComparablePath(value: string): string {
     .replace(/^\/+/, "");
 }
 
+function isRenderableChangedFilePath(filePath: string): boolean {
+  const trimmed = filePath.trim();
+  if (!trimmed || trimmed.includes("\0")) {
+    return false;
+  }
+  if (/^(?:https?:|data:|about:|blob:)/iu.test(trimmed)) {
+    return false;
+  }
+  if (/^[A-Za-z]:$/.test(trimmed) || /^[A-Za-z]:['"`]/u.test(trimmed)) {
+    return false;
+  }
+  return true;
+}
+
 function findPatchForChangedFile(
   filePath: string,
   patches: ReadonlyArray<ReturnType<typeof parseUnifiedDiff>[number]>,
@@ -3733,8 +3874,15 @@ function buildFileChangeSummaries(
   const patchPaths = new Set<string>();
   const summaryPaths = new Set<string>();
   const summaries: InlineDiffFileSummary[] = [];
+  const explicitChangedFiles = (workEntry.changedFiles ?? []).filter(isRenderableChangedFilePath);
+  const shouldAppendUnmatchedTurnDiffFiles =
+    explicitChangedFiles.length === 0 && patches.length === 0;
 
-  for (const filePath of workEntry.changedFiles ?? []) {
+  for (const filePath of explicitChangedFiles) {
+    const comparableFilePath = normalizeComparablePath(filePath);
+    if (summaryPaths.has(comparableFilePath)) {
+      continue;
+    }
     const patch = findPatchForChangedFile(filePath, patches);
     const summaryFile = findTurnDiffSummaryFile(filePath, turnDiffSummary);
     const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
@@ -3745,14 +3893,21 @@ function buildFileChangeSummaries(
         patchPaths.add(patchPath);
       }
     }
-    summaryPaths.add(normalizeComparablePath(filePath));
+    summaryPaths.add(comparableFilePath);
+    if (summaryFile) {
+      summaryPaths.add(normalizeComparablePath(summaryFile.path));
+    }
+    const hasStats =
+      patch !== null ||
+      summaryFile?.additions !== undefined ||
+      summaryFile?.deletions !== undefined;
     summaries.push({
       path: filePath,
       displayPath,
       listLabel,
       additions: patch ? countPatchLines(patch, "add") : (summaryFile?.additions ?? 0),
       deletions: patch ? countPatchLines(patch, "remove") : (summaryFile?.deletions ?? 0),
-      hasStats: true,
+      hasStats,
       kind: resolvePatchFileChangeKind(patch) ?? summaryFile?.kind,
       patch,
     });
@@ -3760,7 +3915,7 @@ function buildFileChangeSummaries(
 
   for (const patch of patches) {
     const patchPath = getPatchDisplayPath(patch);
-    if (!patchPath || patchPaths.has(patchPath)) {
+    if (!patchPath || patchPaths.has(patchPath) || !isRenderableChangedFilePath(patchPath)) {
       continue;
     }
     summaryPaths.add(normalizeComparablePath(patchPath));
@@ -3776,7 +3931,14 @@ function buildFileChangeSummaries(
     });
   }
 
+  if (!shouldAppendUnmatchedTurnDiffFiles) {
+    return summaries;
+  }
+
   for (const file of turnDiffSummary?.files ?? []) {
+    if (!isRenderableChangedFilePath(file.path)) {
+      continue;
+    }
     const comparablePath = normalizeComparablePath(file.path);
     if (summaryPaths.has(comparablePath)) {
       continue;
@@ -3787,7 +3949,7 @@ function buildFileChangeSummaries(
       listLabel: formatChangedFileListLabel(file.path),
       additions: file.additions ?? 0,
       deletions: file.deletions ?? 0,
-      hasStats: true,
+      hasStats: file.additions !== undefined || file.deletions !== undefined,
       kind: file.kind,
       patch: null,
     });
@@ -4010,10 +4172,11 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
         <div className="mt-0.5 space-y-0.5 pl-6">
           {visibleFiles.map((file) => {
             const fileHasDiff = file.patch !== null;
+            const canShowFileDiff = fileHasDiff || canLoadTurnDiff;
             const isDiffVisible = diffFilePath === file.path;
             const visibleDiffForFile = isDiffVisible ? visibleDiffFiles : [];
             const hasVisiblePatch = visibleDiffForFile.some((diffFile) => diffFile.patch !== null);
-            const showDiffPlaceholder = isDiffVisible && !hasVisiblePatch;
+            const showDiffPlaceholder = canShowFileDiff && isDiffVisible && !hasVisiblePatch;
             const placeholderState =
               loadingDiffFilePath === file.path || (canLoadTurnDiff && loadedTurnPatch === null)
                 ? "loading"
@@ -4027,7 +4190,7 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
                 >
                   <span className="shrink-0 text-muted-foreground/74">
                     {fileChangeVerbLabel(
-                      resolveFileChangeActionFromKind(file.kind) ?? "edit",
+                      resolveFileChangeActionFromKind(file.kind) ?? "change",
                       "completed",
                     )}
                   </span>
@@ -4038,28 +4201,32 @@ const FileChangeWorkEntryRow = memo(function FileChangeWorkEntryRow(props: {
                     className="min-w-0 max-w-[min(42ch,60vw)] flex-none"
                     onOpenFile={ctx.onOpenMarkdownFile}
                   />
-                  <AnimatedDiffStatLabel additions={file.additions} deletions={file.deletions} />
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/46 opacity-0 transition-[opacity,color] hover:text-muted-foreground/82 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/file-row:opacity-100",
-                      isDiffVisible && "opacity-100 text-muted-foreground/70",
-                    )}
-                    aria-label={isDiffVisible ? "收起文件 diff" : "展开文件 diff"}
-                    aria-expanded={isDiffVisible}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void toggleFileDiff(file);
-                    }}
-                  >
-                    {loadingDiffFilePath === file.path ? (
-                      <span className="size-1.5 rounded-full bg-current opacity-70" />
-                    ) : isDiffVisible ? (
-                      <ChevronDownIcon className="size-3.5" />
-                    ) : (
-                      <ChevronRightIcon className="size-3.5" />
-                    )}
-                  </button>
+                  {file.hasStats ? (
+                    <AnimatedDiffStatLabel additions={file.additions} deletions={file.deletions} />
+                  ) : null}
+                  {canShowFileDiff ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        "inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/46 opacity-0 transition-[opacity,color] hover:text-muted-foreground/82 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/file-row:opacity-100",
+                        isDiffVisible && "opacity-100 text-muted-foreground/70",
+                      )}
+                      aria-label={isDiffVisible ? "收起文件 diff" : "展开文件 diff"}
+                      aria-expanded={isDiffVisible}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void toggleFileDiff(file);
+                      }}
+                    >
+                      {loadingDiffFilePath === file.path ? (
+                        <span className="size-1.5 rounded-full bg-current opacity-70" />
+                      ) : isDiffVisible ? (
+                        <ChevronDownIcon className="size-3.5" />
+                      ) : (
+                        <ChevronRightIcon className="size-3.5" />
+                      )}
+                    </button>
+                  ) : null}
                 </div>
                 {hasVisiblePatch ? (
                   <InlineChangedFilesDiff files={visibleDiffForFile} />
@@ -4095,7 +4262,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       />
     );
   }
-  if (isCommandWorkEntry(workEntry)) {
+  if (isRenderableCommandWorkEntry(workEntry)) {
     return <CommandWorkEntryRow workEntry={workEntry} />;
   }
   const iconConfig = workToneIcon(workEntry.tone);

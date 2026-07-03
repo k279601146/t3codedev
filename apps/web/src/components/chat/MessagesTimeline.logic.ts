@@ -463,7 +463,7 @@ export function resolveAggregateFileChangeAction(
     .map((file) => resolveFileChangeActionFromKind(file.kind))
     .filter((action): action is FileChangeAction => action !== null);
   if (actions.length === 0) {
-    return "edit";
+    return "change";
   }
   const firstAction = actions[0];
   if (firstAction && actions.every((action) => action === firstAction)) {

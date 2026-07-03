@@ -1067,6 +1067,24 @@ function normalizeCommandValue(value: unknown): string | null {
   return formatted ? unwrapKnownShellCommandWrapper(formatted) : null;
 }
 
+function extractCommandActionCommand(payload: Record<string, unknown> | null): string | null {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  const commandActions = [item?.commandActions, data?.commandActions, payload?.commandActions].find(
+    Array.isArray,
+  );
+  if (!commandActions) {
+    return null;
+  }
+  for (const action of commandActions) {
+    const command = normalizeCommandValue(asRecord(action)?.command);
+    if (command) {
+      return command;
+    }
+  }
+  return null;
+}
+
 function escapeDiffPath(path: string): string {
   return path.replace(/\\/g, "/");
 }
@@ -1113,6 +1131,20 @@ function unquoteCommandToken(value: string): string {
 function isNullRedirectionTarget(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized === "$null" || normalized === "null:";
+}
+
+function isValidCommandFileChangeTarget(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized || normalized.includes("\0")) {
+    return false;
+  }
+  if (/^[A-Za-z]:$/.test(normalized) || /^[A-Za-z]:['"`]/u.test(normalized)) {
+    return false;
+  }
+  if (/^(?:https?:|data:|about:|blob:)/iu.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function extractShellRedirectionTarget(command: string): string | null {
@@ -1196,10 +1228,13 @@ function extractCommandFileChange(
   if (!path) {
     return null;
   }
-  if (isNullRedirectionTarget(path)) {
+  if (isNullRedirectionTarget(path) || !isValidCommandFileChangeTarget(path)) {
     return null;
   }
-  const content = extractPowerShellWriteContent(command) ?? "";
+  const content = extractPowerShellWriteContent(command);
+  if (content === null) {
+    return null;
+  }
   const isNewFile = /\|\s*Out-File\b/iu.test(command) || shellRedirectionTarget !== null;
   return {
     path,
@@ -1228,7 +1263,9 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   const itemType = asTrimmedString(payload?.itemType);
   const requestType = asTrimmedString(payload?.requestType);
   const detail = asTrimmedString(payload?.detail);
+  const commandActionCommand = extractCommandActionCommand(payload);
   const candidates: unknown[] = [
+    commandActionCommand,
     item?.command,
     itemInput?.command,
     itemResult?.command,
