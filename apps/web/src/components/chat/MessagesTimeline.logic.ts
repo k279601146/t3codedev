@@ -90,76 +90,8 @@ function isRuntimeWarningLikeEntry(entry: Pick<WorkLogEntry, "label">): boolean 
   return normalizedLabel === "runtime warning" || normalizedLabel === "runtime error";
 }
 
-const COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS = [
-  /^wall time:\s*/i,
-  /^output:\s*$/i,
-  /^stack trace:\s*$/i,
-  /^at\s.+/i,
-  /^file:\s.+/i,
-  /^\+\s.+/i,
-  /^~+\s*$/i,
-  /^cat\s*:/i,
-  /^get-content\s*:/i,
-  /^at line:\d+\s+char:\d+/i,
-  /^所在位置\s+行:\s*\d+\s+字符:\s*\d+[。.]*$/i,
-  /^fullyqualifiederrorid\s*:/i,
-  /^categoryinfo\s*:/i,
-  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=exit code:\s*\d+/i,
-  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=unsupported call:/i,
-  /^total output lines:\s*\d+/i,
-];
-
-const COMMAND_RUNTIME_WARNING_BODY_PATTERNS = [
-  /^rg:\s.+/i,
-  /^cat\s*:\s.+/i,
-  /^get-content\s*:\s.+/i,
-  /^select-string\s*:\s.+/i,
-  /^variable reference is not valid\./i,
-  /^the name\.$/i,
-  /^warning:\s.+/i,
-  /^\d+:\d+\s+(?:warning|error)\s+/i,
-  /^✖\s+\d+\s+problems?\s+\(\d+\s+errors?,\s+\d+\s+warnings?\)/i,
-  /^(?:>\s*)?(?:[a-z]:\\|\.{1,2}[\\/]|[\w.-]+[\\/]).+:\d+(?::|$)/i,
-  /^[a-z]:\\.+$/i,
-  /(?:^|['"`\s])(?:[a-z]:)?\\?[\w .-]+(?:\\[\w .-]+)+['"`]?\s+is denied\.$/i,
-  /filtered by the -include or -exclude parameter\./i,
-  /cannot be bound to any parameters for the command/i,
-  /^使用[“"]?\d+[”"]?个参数调用[“"].+[”"]?时发生异常[:：]/i,
-  /基础连接已经关闭[:：]/i,
-  /接收时发生错误[。.]*$/i,
-  /parameterbindingexception/i,
-  /unrecognized file type:/i,
-];
-
-function isCommandSummaryRuntimeWarning(entry: Pick<WorkLogEntry, "label" | "detail">): boolean {
-  if (!isRuntimeWarningLikeEntry(entry)) {
-    return false;
-  }
-  const detail = entry.detail?.trim();
-  if (!detail) {
-    return false;
-  }
-  return COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS.some((pattern) => pattern.test(detail));
-}
-
-function isCommandRelatedRuntimeWarning(entry: Pick<WorkLogEntry, "label" | "detail">): boolean {
-  if (!isRuntimeWarningLikeEntry(entry)) {
-    return false;
-  }
-  const detail = entry.detail?.trim();
-  if (!detail) {
-    return false;
-  }
-  return (
-    isCommandSummaryRuntimeWarning(entry) ||
-    COMMAND_RUNTIME_WARNING_BODY_PATTERNS.some((pattern) => pattern.test(detail))
-  );
-}
-
-function hasCommandSummaryEnvelope(
-  entries: ReadonlyArray<Pick<WorkLogEntry, "label" | "detail">>,
-): boolean {
-  return entries.some((entry) => isCommandSummaryRuntimeWarning(entry));
+function isRuntimeWarningEntry(entry: Pick<WorkLogEntry, "label">): boolean {
+  return entry.label.trim().toLowerCase() === "runtime warning";
 }
 
 function workEntrySourceTurnId(entry: WorkLogEntry): TurnId | null {
@@ -212,40 +144,6 @@ function shouldKeepSeparateFromAdjacentCommand(current: WorkLogEntry, next: Work
     (isCommandWorkEntry(current) && isRuntimeWarningLikeEntry(next)) ||
     (isRuntimeWarningLikeEntry(current) && isCommandWorkEntry(next))
   );
-}
-
-function mergeCommandOutput(
-  baseOutput: string | undefined,
-  runtimeMessages: ReadonlyArray<string>,
-): string | undefined {
-  const normalizedBase = baseOutput?.trim();
-  const normalizedMessages = runtimeMessages
-    .map((message) => message.trim())
-    .filter((message) => message.length > 0);
-  if (normalizedMessages.length === 0) {
-    return normalizedBase;
-  }
-  if (!normalizedBase) {
-    return normalizedMessages.join("\n");
-  }
-  return `${normalizedBase}\n${normalizedMessages.join("\n")}`;
-}
-
-function toSyntheticCommandSummaryEntry(
-  source: Pick<WorkLogEntry, "id" | "createdAt" | "status">,
-  runtimeMessages: ReadonlyArray<string>,
-): WorkLogEntry {
-  const output = mergeCommandOutput(undefined, runtimeMessages);
-  return {
-    id: source.id,
-    createdAt: source.createdAt,
-    label: "Ran command",
-    tone: "tool",
-    itemType: "command_execution",
-    requestKind: "command",
-    status: source.status ?? "completed",
-    ...(output ? { output } : {}),
-  };
 }
 
 export function resolveRunningWorkEntryStatusLabel(
@@ -819,57 +717,19 @@ export function deriveMessagesTimelineRows(input: {
         continue;
       }
 
-      if (isCommandRelatedRuntimeWarning(timelineEntry.entry)) {
-        const warningCluster = [timelineEntry.entry];
-        let warningCursor = index + 1;
-        while (warningCursor < input.timelineEntries.length) {
-          const nextEntry = input.timelineEntries[warningCursor];
-          if (!nextEntry || nextEntry.kind !== "work") break;
-          if (!isCommandRelatedRuntimeWarning(nextEntry.entry)) break;
-          warningCluster.push(nextEntry.entry);
-          warningCursor += 1;
-        }
-        if (warningCluster.length > 0 && hasCommandSummaryEnvelope(warningCluster)) {
-          const runtimeMessages = warningCluster
-            .map((entry) => entry.detail?.trim())
-            .filter((detail): detail is string => Boolean(detail));
-          nextRows.push({
-            kind: "work",
-            id: timelineEntry.id,
-            createdAt: timelineEntry.createdAt,
-            groupedEntries: [toSyntheticCommandSummaryEntry(timelineEntry.entry, runtimeMessages)],
-          });
-          index = warningCursor - 1;
-          continue;
-        }
+      if (isRuntimeWarningEntry(timelineEntry.entry)) {
+        continue;
       }
 
       const groupedEntries = [timelineEntry.entry];
       let cursor = index + 1;
-      if (isCommandWorkEntry(timelineEntry.entry)) {
-        const absorbedWarnings: string[] = [];
-        let absorptionCursor = cursor;
-        while (absorptionCursor < input.timelineEntries.length) {
-          const nextEntry = input.timelineEntries[absorptionCursor];
-          if (!nextEntry || nextEntry.kind !== "work") break;
-          if (!isCommandRelatedRuntimeWarning(nextEntry.entry)) break;
-          if (nextEntry.entry.detail) {
-            absorbedWarnings.push(nextEntry.entry.detail);
-          }
-          absorptionCursor += 1;
-        }
-        if (absorbedWarnings.length > 0) {
-          const output = mergeCommandOutput(timelineEntry.entry.output, absorbedWarnings);
-          groupedEntries[0] = {
-            ...timelineEntry.entry,
-            ...(output ? { output } : {}),
-          };
-          cursor = absorptionCursor;
-        }
-      }
       while (cursor < input.timelineEntries.length) {
         const nextEntry = input.timelineEntries[cursor];
         if (!nextEntry || nextEntry.kind !== "work") break;
+        if (isRuntimeWarningEntry(nextEntry.entry)) {
+          cursor += 1;
+          continue;
+        }
         if (isImageGenerationWorkEntry(nextEntry.entry)) break;
         if (
           shouldKeepSeparateFromAdjacentCommand(

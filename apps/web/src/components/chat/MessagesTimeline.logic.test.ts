@@ -580,7 +580,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
-  it("absorbs command-summary runtime warnings into the preceding command entry output", () => {
+  it("drops command-summary runtime warnings after a command entry", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -652,16 +652,10 @@ describe("deriveMessagesTimelineRows", () => {
     if (rows[0]?.kind !== "work") return;
     expect(rows[0].groupedEntries).toHaveLength(1);
     expect(rows[0].groupedEntries[0]?.label).toBe("Ran command");
-    expect(rows[0].groupedEntries[0]?.output).toBe(
-      [
-        "2026-06-19T08:31:29.783179Z ERROR codex_core::tools::router: error=Exit code: 1",
-        "Wall time: 2.6 seconds",
-        "Output:",
-      ].join("\n"),
-    );
+    expect(rows[0].groupedEntries[0]?.output).toBe("");
   });
 
-  it("absorbs PowerShell command failure summary lines into the preceding command output", () => {
+  it("drops PowerShell runtime warnings after a command entry", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -761,18 +755,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows[0]?.kind).toBe("work");
     if (rows[0]?.kind !== "work") return;
     expect(rows[0].groupedEntries).toHaveLength(1);
-    expect(rows[0].groupedEntries[0]?.output).toBe(
-      [
-        "cat : An object at the specified path apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx does not exist, or has been filtered by the -Include or -Exclude parameter.",
-        "At line:2 char:1",
-        '+ cat "apps\\\\web\\\\src\\\\app\\\\[locale]\\\\workspace\\\\plugins\\\\page.tsx"',
-        "CategoryInfo          : ObjectNotFound: (System.String[]:String[]) [Get-Content], Exception",
-        "FullyQualifiedErrorId : ItemNotFound,Microsoft.PowerShell.Commands.GetContentCommand",
-      ].join("\n"),
-    );
+    expect(rows[0].groupedEntries[0]?.output).toBeUndefined();
   });
 
-  it("absorbs Chinese PowerShell command failure summary lines into the preceding command output", () => {
+  it("drops Chinese PowerShell runtime warnings after a command entry", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -830,11 +816,10 @@ describe("deriveMessagesTimelineRows", () => {
     if (rows[0]?.kind !== "work") return;
     expect(rows[0].groupedEntries).toHaveLength(1);
     expect(rows[0].groupedEntries[0]?.label).toBe("Ran command");
-    expect(rows[0].groupedEntries[0]?.output).toContain("基础连接已经关闭");
-    expect(rows[0].groupedEntries[0]?.output).toContain("所在位置 行:2 字符: 253");
+    expect(rows[0].groupedEntries[0]?.output).toBeUndefined();
   });
 
-  it("turns a standalone command-warning cluster into a command output row", () => {
+  it("drops a standalone command-warning cluster instead of rendering a warning row", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -885,23 +870,10 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.kind).toBe("work");
-    if (rows[0]?.kind !== "work") return;
-    expect(rows[0].groupedEntries).toHaveLength(1);
-    expect(rows[0].groupedEntries[0]).toMatchObject({
-      label: "Ran command",
-      itemType: "command_execution",
-      requestKind: "command",
-      output: [
-        "Output:",
-        "2026-06-19T10:22:16.223045Z ERROR codex_core::tools::router: error=Exit code: 1",
-        "Wall time: 2.9 seconds",
-      ].join("\n"),
-    });
+    expect(rows).toEqual([]);
   });
 
-  it("turns rg stderr summary warnings into a command output row", () => {
+  it("drops standalone rg stderr summary warnings instead of rendering a warning row", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -965,23 +937,10 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.kind).toBe("work");
-    if (rows[0]?.kind !== "work") return;
-    expect(rows[0].groupedEntries[0]).toMatchObject({
-      label: "Ran command",
-      itemType: "command_execution",
-      requestKind: "command",
-      output: [
-        "Wall time: 4.2 seconds",
-        "Output:",
-        "rg: unrecognized file type: binary",
-        "2026-06-19T10:22:36.787195Z ERROR codex_core::tools::router: error=Exit code: 1",
-      ].join("\n"),
-    });
+    expect(rows).toEqual([]);
   });
 
-  it("turns split Select-String stderr output into one command output row", () => {
+  it("drops standalone split Select-String stderr output instead of rendering a warning row", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -1085,20 +1044,50 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.kind).toBe("work");
-    if (rows[0]?.kind !== "work") return;
-    expect(rows[0].groupedEntries).toHaveLength(1);
-    expect(rows[0].groupedEntries[0]).toMatchObject({
-      label: "Ran command",
-      itemType: "command_execution",
-      requestKind: "command",
-    });
-    expect(rows[0].groupedEntries[0]?.output).toContain("apps\\api\\api.log:52:INFO");
-    expect(rows[0].groupedEntries[0]?.output).toContain("is denied.");
+    expect(rows).toEqual([]);
   });
 
-  it("keeps actionable runtime warnings separate from command entries", () => {
+  it("drops standalone command exit and timeout summaries instead of rendering warning rows", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "runtime-warning-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "runtime-warning-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Runtime warning",
+            detail: "exit status 1",
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "runtime-warning-2",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Runtime warning",
+            detail: "command timed out after 5273 milliseconds",
+            tone: "info",
+            status: "completed",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toEqual([]);
+  });
+
+  it("drops actionable runtime warnings instead of rendering a separate warning row", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -1138,15 +1127,13 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(1);
     expect(rows[0]?.kind).toBe("work");
-    expect(rows[1]?.kind).toBe("work");
-    if (rows[0]?.kind !== "work" || rows[1]?.kind !== "work") return;
+    if (rows[0]?.kind !== "work") return;
     expect(rows[0].groupedEntries[0]?.label).toBe("Ran command");
-    expect(rows[1].groupedEntries[0]?.detail).toContain("failed to load skill");
   });
 
-  it("does not absorb ordinary runtime warnings that are not command summaries", () => {
+  it("drops ordinary runtime warnings instead of rendering warning rows", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -1183,14 +1170,7 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.kind).toBe("work");
-    if (rows[0]?.kind !== "work") return;
-    expect(rows[0].groupedEntries).toHaveLength(2);
-    expect(rows[0].groupedEntries.map((entry) => entry.detail)).toEqual([
-      "Exit code: 1",
-      "Wall time: 2.6 seconds",
-    ]);
+    expect(rows).toEqual([]);
   });
 
   it("suppresses the generic thinking row while a running work entry is visible", () => {

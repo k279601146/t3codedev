@@ -523,6 +523,7 @@ export function deriveWorkLogEntries(
   >();
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId !== null : true))
+    .filter((activity) => activity.kind !== "runtime.warning")
     .filter(
       (activity) => activity.kind !== "tool.started" || isImageGenerationStartActivity(activity),
     )
@@ -550,7 +551,7 @@ export function deriveWorkLogEntries(
         requestId ? requestedUserInputQuestionsByRequestId.get(requestId) : undefined,
       );
     });
-  return pruneRedundantRuntimeWarnings(collapseDerivedWorkLogEntries(entries)).map(
+  return collapseDerivedWorkLogEntries(entries).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
 }
@@ -695,135 +696,6 @@ function toDerivedWorkLogEntry(
     entry.collapseKey = collapseKey;
   }
   return entry;
-}
-
-const COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS = [
-  /^wall time:\s*/i,
-  /^output:\s*$/i,
-  /^stack trace:\s*$/i,
-  /^at\s.+/i,
-  /^at line:\d+\s+char:\d+/i,
-  /^所在位置\s+行:\s*\d+\s+字符:\s*\d+[。.]*$/i,
-  /^file:\s.+/i,
-  /^\+\s.+/i,
-  /^~+\s*$/i,
-  /^cat\s*:/i,
-  /^get-content\s*:/i,
-  /^rg:\s.+/i,
-  /^select-string\s*:\s.+/i,
-  /^variable reference is not valid\./i,
-  /^the name\.$/i,
-  /^warning:\s.+/i,
-  /^\d+:\d+\s+(?:warning|error)\s+/i,
-  /^✖\s+\d+\s+problems?\s+\(\d+\s+errors?,\s+\d+\s+warnings?\)/i,
-  /^(?:>\s*)?(?:[a-z]:\\|\.{1,2}[\\/]|[\w.-]+[\\/]).+:\d+(?::|$)/i,
-  /^[a-z]:\\.+$/i,
-  /(?:^|['"`\s])(?:[a-z]:)?\\?[\w .-]+(?:\\[\w .-]+)+['"`]?\s+is denied\.$/i,
-  /^total output lines:\s*\d+/i,
-  /^fullyqualifiederrorid\s*:/i,
-  /^categoryinfo\s*:/i,
-  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=exit code:\s*\d+/i,
-  /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=unsupported call:/i,
-  /^使用[“"]?\d+[”"]?个参数调用[“"].+[”"]?时发生异常[:：]/i,
-  /filtered by the -include or -exclude parameter\./i,
-  /cannot be bound to any parameters for the command/i,
-  /基础连接已经关闭[:：]/i,
-  /接收时发生错误[。.]*$/i,
-  /parameterbindingexception/i,
-  /unrecognized file type:/i,
-];
-
-function isRuntimeWarningDerivedEntry(entry: DerivedWorkLogEntry): boolean {
-  return entry.activityKind === "runtime.warning" || entry.activityKind === "runtime.error";
-}
-
-function isCommandDerivedEntry(entry: DerivedWorkLogEntry): boolean {
-  return (
-    entry.requestKind === "command" ||
-    entry.itemType === "command_execution" ||
-    typeof entry.command === "string" ||
-    typeof entry.rawCommand === "string"
-  );
-}
-
-function isCommandSummaryRuntimeWarningDetail(detail: string): boolean {
-  return COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS.some((pattern) => pattern.test(detail));
-}
-
-function normalizeRuntimeComparisonText(value: string): string {
-  return value.replace(/\r\n/g, "\n").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function commandOutputContainsRuntimeDetail(
-  entry: DerivedWorkLogEntry,
-  runtimeDetail: string,
-): boolean {
-  const output = asTrimmedString(entry.output);
-  if (!output) {
-    return false;
-  }
-  const normalizedOutput = normalizeRuntimeComparisonText(output);
-  const normalizedDetail = normalizeRuntimeComparisonText(runtimeDetail);
-  if (normalizedDetail.length === 0) {
-    return false;
-  }
-  return normalizedOutput.includes(normalizedDetail);
-}
-
-function findNearbyCommandEntry(
-  entries: ReadonlyArray<DerivedWorkLogEntry>,
-  index: number,
-): DerivedWorkLogEntry | null {
-  const current = entries[index];
-  if (!current) {
-    return null;
-  }
-  const maxDistance = 12;
-  for (let distance = 1; distance <= maxDistance; distance += 1) {
-    for (const offset of [-distance, distance]) {
-      const candidate = entries[index + offset];
-      if (!candidate || !isCommandDerivedEntry(candidate)) {
-        continue;
-      }
-      if (
-        current.sourceTurnId !== undefined &&
-        candidate.sourceTurnId !== undefined &&
-        current.sourceTurnId !== candidate.sourceTurnId
-      ) {
-        continue;
-      }
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function shouldSuppressRuntimeWarningEntry(
-  entries: ReadonlyArray<DerivedWorkLogEntry>,
-  index: number,
-): boolean {
-  const entry = entries[index];
-  if (!entry || !isRuntimeWarningDerivedEntry(entry)) {
-    return false;
-  }
-  const detail = asTrimmedString(entry.detail);
-  if (!detail) {
-    return false;
-  }
-  const nearbyCommand = findNearbyCommandEntry(entries, index);
-  if (!nearbyCommand) {
-    return false;
-  }
-  if (commandOutputContainsRuntimeDetail(nearbyCommand, detail)) {
-    return true;
-  }
-  return isCommandSummaryRuntimeWarningDetail(detail);
-}
-
-function pruneRedundantRuntimeWarnings(
-  entries: ReadonlyArray<DerivedWorkLogEntry>,
-): DerivedWorkLogEntry[] {
-  return entries.filter((_, index) => !shouldSuppressRuntimeWarningEntry(entries, index));
 }
 
 function extractActivityRequestId(activity: OrchestrationThreadActivity): string | null {

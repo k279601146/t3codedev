@@ -954,7 +954,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("image-generation-shimmer");
   });
 
-  it("renders reconnect runtime issues as a persistent inline notice", async () => {
+  it("renders runtime error notices while ignoring reconnect runtime warnings", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const retryMessage =
       "unexpected status 403 Forbidden: insufficient balance, url: https://sub.bahew.com/v1/responses";
@@ -991,7 +991,8 @@ describe("MessagesTimeline", () => {
       <MessagesTimeline {...buildProps()} timelineEntries={timelineEntries} />,
     );
 
-    expect(markup).toContain("重新连接失败 5/5");
+    expect(markup).toContain("运行时错误");
+    expect(markup).not.toContain("重新连接失败");
     expect(markup).toContain("账户余额不足，请充值后重试。");
     expect(markup).not.toContain("unexpected status");
     expect(markup).not.toContain("url:");
@@ -999,7 +1000,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("已处理 6 项");
   });
 
-  it("uses past-tense reconnect wording for completed retry warnings", async () => {
+  it("does not render completed retry runtime warnings", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const retryMessage =
       "unexpected status 413 Payload Too Large: 当前转基分组不适合超长上下文";
@@ -1025,8 +1026,10 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已尝试重新连接 2/5");
+    expect(markup).not.toContain("已尝试重新连接 2/5");
     expect(markup).not.toContain("正在重新连接 2/5");
+    expect(markup).not.toContain("运行时警告");
+    expect(markup).not.toContain('data-runtime-issue-card="true"');
   });
 
   it("renders the live working row with shimmer styling", async () => {

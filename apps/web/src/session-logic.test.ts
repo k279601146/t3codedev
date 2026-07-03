@@ -1369,6 +1369,33 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.label).toBe("Ran command");
   });
 
+  it("drops standalone command exit and timeout summaries", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "runtime-warning-exit-status",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "exit status 1",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-timeout",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "command timed out after 5273 milliseconds",
+        },
+      }),
+    ];
+
+    expect(deriveWorkLogEntries(activities, undefined)).toEqual([]);
+  });
+
   it("drops legacy PowerShell stderr fragments that belong to nearby command output", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
