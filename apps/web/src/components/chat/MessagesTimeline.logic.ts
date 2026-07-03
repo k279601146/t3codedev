@@ -101,6 +101,7 @@ const COMMAND_SUMMARY_RUNTIME_WARNING_PATTERNS = [
   /^cat\s*:/i,
   /^get-content\s*:/i,
   /^at line:\d+\s+char:\d+/i,
+  /^所在位置\s+行:\s*\d+\s+字符:\s*\d+[。.]*$/i,
   /^fullyqualifiederrorid\s*:/i,
   /^categoryinfo\s*:/i,
   /^202\d-\d\d-\d\d+t.+codex_core::tools::router:\s+error=exit code:\s*\d+/i,
@@ -123,6 +124,9 @@ const COMMAND_RUNTIME_WARNING_BODY_PATTERNS = [
   /(?:^|['"`\s])(?:[a-z]:)?\\?[\w .-]+(?:\\[\w .-]+)+['"`]?\s+is denied\.$/i,
   /filtered by the -include or -exclude parameter\./i,
   /cannot be bound to any parameters for the command/i,
+  /^使用[“"]?\d+[”"]?个参数调用[“"].+[”"]?时发生异常[:：]/i,
+  /基础连接已经关闭[:：]/i,
+  /接收时发生错误[。.]*$/i,
   /parameterbindingexception/i,
   /unrecognized file type:/i,
 ];

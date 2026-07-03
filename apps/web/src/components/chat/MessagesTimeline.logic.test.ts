@@ -772,6 +772,68 @@ describe("deriveMessagesTimelineRows", () => {
     );
   });
 
+  it("absorbs Chinese PowerShell command failure summary lines into the preceding command output", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "command-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "command-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Ran command",
+            command: "$wc.DownloadData('https://api.skillhub.cn/api/skills')",
+            tone: "tool",
+            itemType: "command_execution",
+            requestKind: "command",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "runtime-warning-1",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Runtime warning",
+            detail:
+              "使用“1”个参数调用“DownloadData”时发生异常:“基础连接已经关闭: 接收时发生错误。”",
+            tone: "info",
+            status: "completed",
+          },
+        },
+        {
+          id: "runtime-warning-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:02Z",
+          entry: {
+            id: "runtime-warning-2",
+            createdAt: "2026-01-01T00:00:02Z",
+            label: "Runtime warning",
+            detail: "所在位置 行:2 字符: 253。",
+            tone: "info",
+            status: "completed",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe("work");
+    if (rows[0]?.kind !== "work") return;
+    expect(rows[0].groupedEntries).toHaveLength(1);
+    expect(rows[0].groupedEntries[0]?.label).toBe("Ran command");
+    expect(rows[0].groupedEntries[0]?.output).toContain("基础连接已经关闭");
+    expect(rows[0].groupedEntries[0]?.output).toContain("所在位置 行:2 字符: 253");
+  });
+
   it("turns a standalone command-warning cluster into a command output row", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

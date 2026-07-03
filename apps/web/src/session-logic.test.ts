@@ -1477,6 +1477,56 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.output).toContain("FullyQualifiedErrorId");
   });
 
+  it("drops Chinese PowerShell stderr fragments that belong to nearby command output", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "command-completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "tool.completed",
+        summary: "Ran command",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          itemType: "command_execution",
+          requestKind: "command",
+          data: {
+            item: {
+              command: "$wc.DownloadData('https://api.skillhub.cn/api/skills')",
+              aggregatedOutput:
+                "使用“1”个参数调用“DownloadData”时发生异常:“基础连接已经关闭: 接收时发生错误。”\n" +
+                "所在位置 行:2 字符: 253\n",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-download",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message:
+            "使用“1”个参数调用“DownloadData”时发生异常:“基础连接已经关闭: 接收时发生错误。”",
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning-location",
+        createdAt: "2026-01-01T00:00:02.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "所在位置 行:2 字符: 253。",
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.requestKind).toBe("command");
+    expect(entries[0]?.label).toBe("Ran command");
+  });
+
   it("drops Select-String output fragments split into runtime warnings", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
