@@ -314,11 +314,105 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
-    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("assistant-1");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-plan");
     expect(state.ownerAssistantMessageIdByRowId.has("row-plan")).toBe(false);
     expect(state.ownerAssistantMessageIdByRowId.has("row-assistant")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("assistant-1");
-    expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("7.0s");
+    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-plan");
+    expect(state.elapsedByAssistantMessageId.get("row-plan")).toBe("6.0s");
+  });
+
+  it("keeps work started after an assistant update below that assistant update", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "message",
+        id: "row-user",
+        createdAt: "2026-01-01T00:00:00Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "user-1" as never,
+          role: "user",
+          text: "Build dashboard",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-work-before",
+        createdAt: "2026-01-01T00:00:03Z",
+        groupedEntries: [
+          {
+            id: "work-before-1",
+            createdAt: "2026-01-01T00:00:03Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+          {
+            id: "work-before-2",
+            createdAt: "2026-01-01T00:00:04Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+          {
+            id: "work-before-3",
+            createdAt: "2026-01-01T00:00:05Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+        ],
+      },
+      {
+        kind: "message",
+        id: "row-good",
+        createdAt: "2026-01-01T00:00:06Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: true,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-good" as never,
+          role: "assistant",
+          text:
+            "Good, I have data from both the daily and selected endpoints. Let me process everything and generate the HTML dashboard.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:06Z",
+          completedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-work-after",
+        createdAt: "2026-01-01T00:00:07Z",
+        groupedEntries: [
+          {
+            id: "work-after-1",
+            createdAt: "2026-01-01T00:00:07Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "running",
+          },
+        ],
+      },
+    ]);
+
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work-before")).toBe("assistant-good");
+    expect(state.ownerAssistantMessageIdByRowId.has("row-good")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.has("row-work-after")).toBe(false);
+    expect(state.summaryButtonHostByRowId.get("row-work-before")).toBe("assistant-good");
   });
 
   it("keeps generated images visible while collapsing the preceding process", () => {
@@ -394,10 +488,10 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
-    expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-image");
+    expect(state.ownerAssistantMessageIdByRowId.has("row-intro")).toBe(false);
     expect(state.ownerAssistantMessageIdByRowId.has("row-image")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-intro")).toBe("row-image");
+    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-image");
     expect(state.elapsedByAssistantMessageId.get("row-image")).toBe("9.0s");
   });
 });
