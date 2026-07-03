@@ -1218,9 +1218,6 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelFileWorkspaceRoot = useRightPanelStore((state) => state.fileWorkspaceRoot);
   const rightPanelBrowserUrl = useRightPanelStore((state) => state.browserUrl);
   const rightPanelWidthPx = useRightPanelStore((state) => state.widthPx);
-  const lastRightPanelSurfaceByThreadKey = useRightPanelStore(
-    (state) => state.lastSurfaceByThreadKey,
-  );
   const openRightPanelSurface = useRightPanelStore((state) => state.openSurface);
   const openRightPanelBrowser = useRightPanelStore((state) => state.openBrowser);
   const openRightPanelFile = useRightPanelStore((state) => state.openFile);
@@ -4839,11 +4836,7 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
       onDiffPanelOpen?.();
-      openRightPanelSurface(
-        (activeThreadKey ? lastRightPanelSurfaceByThreadKey[activeThreadKey] : undefined) ??
-          "review",
-        activeThreadKey,
-      );
+      openRightPanelSurface("review", activeThreadKey);
       void navigate({
         to: "/$environmentId/$threadId",
         params: {
@@ -4862,7 +4855,6 @@ export default function ChatView(props: ChatViewProps) {
       activeThreadKey,
       environmentId,
       isServerThread,
-      lastRightPanelSurfaceByThreadKey,
       navigate,
       onDiffPanelOpen,
       openRightPanelSurface,

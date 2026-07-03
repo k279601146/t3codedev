@@ -475,6 +475,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const patchViewportRef = useRef<HTMLDivElement>(null);
   const turnStripRef = useRef<HTMLDivElement>(null);
   const previousDiffOpenRef = useRef(false);
+  const appliedDiffTurnIdRef = useRef<TurnId | null>(null);
   const [canScrollTurnStripLeft, setCanScrollTurnStripLeft] = useState(false);
   const [canScrollTurnStripRight, setCanScrollTurnStripRight] = useState(false);
   const routeThreadRef = useParams({
@@ -721,6 +722,18 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   }, [diffOpen, settings.diffIgnoreWhitespace, settings.diffWordWrap]);
 
   useEffect(() => {
+    if (!diffOpen || selectedTurnId === null) {
+      appliedDiffTurnIdRef.current = null;
+      return;
+    }
+    if (appliedDiffTurnIdRef.current === selectedTurnId) {
+      return;
+    }
+    appliedDiffTurnIdRef.current = selectedTurnId;
+    setDiffScope("turn");
+  }, [diffOpen, selectedTurnId]);
+
+  useEffect(() => {
     if (!selectedFilePath || !patchViewportRef.current) {
       return;
     }
@@ -773,6 +786,17 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
         const rest = stripDiffSearchParams(previous);
         return { ...rest, diff: "1" };
       },
+    });
+  };
+  const selectDiffScope = (scope: DiffScope) => {
+    setDiffScope(scope);
+    if (scope === "turn" || !activeThread || !diffOpen) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(activeThread.environmentId, activeThread.id)),
+      search: (previous) => stripDiffSearchParams(previous),
     });
   };
   const updateTurnStripScrollState = useCallback(() => {
@@ -1133,7 +1157,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             value={diffScope}
             onValueChange={(value) => {
               if (value === "unstaged" || value === "staged" || value === "turn") {
-                setDiffScope(value);
+                selectDiffScope(value);
               }
             }}
           >
@@ -1167,7 +1191,7 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
             value={diffScope}
             onValueChange={(value) => {
               if (value === "turn") {
-                setDiffScope("turn");
+                selectDiffScope("turn");
               }
             }}
           >
