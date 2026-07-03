@@ -99,6 +99,24 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   });
 });
 
+describe("ServerSettings.defaultProviderPersonality", () => {
+  it("defaults to friendly and accepts supported Codex personalities", () => {
+    expect(DEFAULT_SERVER_SETTINGS.defaultProviderPersonality).toBe("friendly");
+    expect(decodeServerSettings({}).defaultProviderPersonality).toBe("friendly");
+    expect(
+      decodeServerSettingsPatch({ defaultProviderPersonality: "pragmatic" })
+        .defaultProviderPersonality,
+    ).toBe("pragmatic");
+    expect(
+      decodeServerSettingsPatch({ defaultProviderPersonality: "none" }).defaultProviderPersonality,
+    ).toBe("none");
+  });
+
+  it("rejects unsupported personalities", () => {
+    expect(() => decodeServerSettingsPatch({ defaultProviderPersonality: "verbose" })).toThrow();
+  });
+});
+
 describe("ServerSettingsPatch.providerInstances", () => {
   it("treats providerInstances as an optional whole-map replacement", () => {
     const patch = decodeServerSettingsPatch({});

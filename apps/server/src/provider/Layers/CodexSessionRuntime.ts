@@ -155,6 +155,7 @@ export interface CodexSessionRuntimeOptions {
   readonly runtimeMode: RuntimeMode;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
+  readonly personality?: EffectCodexSchema.V2ThreadStartParams__Personality | null;
   readonly resumeCursor?: CodexResumeCursor;
   readonly prewarmedChild?: ChildProcessSpawner.ChildProcessHandle;
   readonly jsonRpcLogPath?: string;
@@ -170,6 +171,7 @@ export interface CodexSessionRuntimeSendTurnInput {
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort | undefined;
   readonly interactionMode?: ProviderInteractionMode;
+  readonly personality?: EffectCodexSchema.V2TurnStartParams__Personality | null;
 }
 
 export interface CodexSessionRuntimeSteerTurnInput {
@@ -399,6 +401,7 @@ function buildThreadStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
+  readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
 }): ThreadStartParamsWithDynamicTools {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   return {
@@ -413,6 +416,7 @@ function buildThreadStartParams(input: {
     ],
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
+    ...(input.personality !== undefined ? { personality: input.personality } : {}),
   };
 }
 
@@ -517,6 +521,7 @@ export function buildTurnStartParams(input: {
   readonly serviceTier?: CodexServiceTier;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly interactionMode?: ProviderInteractionMode;
+  readonly personality?: EffectCodexSchema.V2TurnStartParams__Personality | null;
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
   CodexErrors.CodexAppServerProtocolParseError
@@ -539,6 +544,7 @@ export function buildTurnStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
+    ...(input.personality !== undefined ? { personality: input.personality } : {}),
     ...(collaborationMode ? { collaborationMode } : {}),
   }).pipe(
     Effect.mapError((error) => toProtocolParseError("Invalid turn/start request payload", error)),
@@ -657,6 +663,7 @@ export const openCodexThread = (input: {
   readonly cwd: string;
   readonly requestedModel: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
+  readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
   readonly resumeThreadId: string | undefined;
 }): Effect.Effect<CodexThreadOpenResponse, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
@@ -665,6 +672,7 @@ export const openCodexThread = (input: {
     runtimeMode: input.runtimeMode,
     model: input.requestedModel,
     serviceTier: input.serviceTier,
+    personality: input.personality,
   });
   const syncThreadSettings = (opened: CodexThreadOpenResponse) =>
     input.client
@@ -676,6 +684,7 @@ export const openCodexThread = (input: {
           runtimeMode: input.runtimeMode,
           model: input.requestedModel,
           serviceTier: input.serviceTier,
+          ...(input.personality !== undefined ? { personality: input.personality } : {}),
         }),
       )
       .pipe(Effect.as(opened));
@@ -1064,7 +1073,9 @@ function parseThreadTurnsPage(
       ...(turn.error !== undefined ? { error: turn.error } : {}),
     })),
     ...(response.nextCursor !== undefined ? { nextCursor: response.nextCursor } : {}),
-    ...(response.backwardsCursor !== undefined ? { backwardsCursor: response.backwardsCursor } : {}),
+    ...(response.backwardsCursor !== undefined
+      ? { backwardsCursor: response.backwardsCursor }
+      : {}),
   };
 }
 
@@ -1074,7 +1085,9 @@ function parseThreadTurnItemsPage(
   return {
     data: response.data,
     ...(response.nextCursor !== undefined ? { nextCursor: response.nextCursor } : {}),
-    ...(response.backwardsCursor !== undefined ? { backwardsCursor: response.backwardsCursor } : {}),
+    ...(response.backwardsCursor !== undefined
+      ? { backwardsCursor: response.backwardsCursor }
+      : {}),
   };
 }
 
@@ -1842,6 +1855,7 @@ export const makeCodexSessionRuntime = (
         cwd: options.cwd,
         requestedModel,
         serviceTier: options.serviceTier,
+        personality: options.personality,
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
       });
 
@@ -1893,9 +1907,7 @@ export const makeCodexSessionRuntime = (
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;
           const currentSession = yield* Ref.get(sessionRef);
-          const normalizedModel = normalizeCodexModelSlug(
-            input.model ?? currentSession.model,
-          );
+          const normalizedModel = normalizeCodexModelSlug(input.model ?? currentSession.model);
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: currentSession.runtimeMode,
@@ -1905,6 +1917,7 @@ export const makeCodexSessionRuntime = (
             ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
             ...(input.effort ? { effort: input.effort } : {}),
             ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+            ...(input.personality !== undefined ? { personality: input.personality } : {}),
           });
           const rawResponse = yield* client.raw.request("turn/start", params);
           const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(

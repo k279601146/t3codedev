@@ -4079,6 +4079,7 @@ export default function ChatView(props: ChatViewProps) {
           attachments: turnAttachments,
         },
         modelSelection: ctxSelectedModelSelection,
+        personality: settings.defaultProviderPersonality,
         titleSeed: title,
         runtimeMode,
         interactionMode,

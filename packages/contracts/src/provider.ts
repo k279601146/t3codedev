@@ -25,6 +25,7 @@ import {
   RuntimeMode,
 } from "./orchestration.ts";
 import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
+import { ProviderPersonality } from "./personality.ts";
 
 const ProviderSessionStatus = Schema.Literals([
   "connecting",
@@ -33,6 +34,9 @@ const ProviderSessionStatus = Schema.Literals([
   "error",
   "closed",
 ]);
+
+export const ProviderReasoningSummary = Schema.Literals(["auto", "concise", "detailed", "none"]);
+export type ProviderReasoningSummary = typeof ProviderReasoningSummary.Type;
 
 export const ProviderSession = Schema.Struct({
   provider: ProviderDriverKind,
@@ -63,6 +67,7 @@ export const ProviderSessionStartInput = Schema.Struct({
   resumeCursor: Schema.optional(Schema.Unknown),
   approvalPolicy: Schema.optional(ProviderApprovalPolicy),
   sandboxMode: Schema.optional(ProviderSandboxMode),
+  personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
   runtimeMode: RuntimeMode,
 });
 export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;
@@ -77,14 +82,9 @@ export const ProviderSendTurnInput = Schema.Struct({
   ),
   modelSelection: Schema.optional(ModelSelection),
   interactionMode: Schema.optional(ProviderInteractionMode),
+  personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
 });
 export type ProviderSendTurnInput = typeof ProviderSendTurnInput.Type;
-
-export const ProviderReasoningSummary = Schema.Literals(["auto", "concise", "detailed", "none"]);
-export type ProviderReasoningSummary = typeof ProviderReasoningSummary.Type;
-
-export const ProviderPersonality = Schema.Literals(["none", "friendly", "pragmatic"]);
-export type ProviderPersonality = typeof ProviderPersonality.Type;
 
 export const ProviderSandboxPolicy = Schema.Union([
   Schema.Struct({

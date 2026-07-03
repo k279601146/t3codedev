@@ -482,6 +482,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
             { id: "reasoningEffort", value: "high" },
             { id: "fastMode", value: true },
           ]),
+          personality: "friendly",
           attachments: [],
         }),
       );
@@ -491,6 +492,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         model: "gpt-5.3-codex",
         effort: "high",
         serviceTier: "fast",
+        personality: "friendly",
       });
     }),
   );
@@ -1323,7 +1325,10 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       }
       assert.equal(firstEvent.value.turnId, "turn-1");
       assert.equal(firstEvent.value.payload.class, "provider_error");
-      assert.equal(firstEvent.value.payload.message, "账户余额不足，请充值或等待额度刷新后继续使用。");
+      assert.equal(
+        firstEvent.value.payload.message,
+        "账户余额不足，请充值或等待额度刷新后继续使用。",
+      );
     }),
   );
 

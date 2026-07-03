@@ -1,11 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { ProviderSettingsPanel } from "../components/settings/SettingsPanels";
-
-function SettingsProvidersRoute() {
-  return <ProviderSettingsPanel />;
-}
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/settings/providers")({
-  component: SettingsProvidersRoute,
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/general", replace: true });
+  },
 });

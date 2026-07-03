@@ -502,12 +502,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.modelSelection !== undefined
             ? { modelSelection: command.modelSelection }
             : {}),
+          ...(command.personality !== undefined ? { personality: command.personality } : {}),
           ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
-          ...(command.goalObjective !== undefined
-            ? { goalObjective: command.goalObjective }
-            : {}),
+          ...(command.goalObjective !== undefined ? { goalObjective: command.goalObjective } : {}),
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),
           createdAt: command.createdAt,
         },

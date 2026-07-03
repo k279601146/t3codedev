@@ -3,7 +3,6 @@ import {
   ActivityIcon,
   ArchiveIcon,
   ArrowLeftIcon,
-  BotIcon,
   GitBranchIcon,
   InfoIcon,
   KeyboardIcon,
@@ -28,7 +27,6 @@ import { useI18n, type TranslationKey } from "../../i18n";
 
 export type SettingsSectionPath =
   | "/settings/general"
-  | "/settings/providers"
   | "/settings/keybindings"
   | "/settings/connections"
   | "/settings/source-control"
@@ -52,7 +50,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
     labelKey: "settings.nav.group.basic",
     items: [
       { labelKey: "settings.general", to: "/settings/general", icon: Settings2Icon },
-      { labelKey: "settings.nav.providers", to: "/settings/providers", icon: BotIcon },
       { labelKey: "settings.nav.keybindings", to: "/settings/keybindings", icon: KeyboardIcon },
     ],
   },

@@ -5,6 +5,7 @@ import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Struct from "effect/Struct";
 import { ProviderOptionSelections } from "./model.ts";
+import { ProviderPersonality } from "./personality.ts";
 import { RepositoryIdentity } from "./environment.ts";
 import {
   ApprovalRequestId,
@@ -269,11 +270,10 @@ const hasMessageContent = (message: {
 const nonEmptyMessageFilter = Schema.makeFilter<{
   readonly text: string;
   readonly attachments: ReadonlyArray<unknown>;
-}>(
-  (message) =>
-    hasMessageContent(message)
-      ? undefined
-      : { path: ["text"], issue: "Message text or attachments are required." },
+}>((message) =>
+  hasMessageContent(message)
+    ? undefined
+    : { path: ["text"], issue: "Message text or attachments are required." },
 );
 
 const ThreadUserMessage = Schema.Struct({
@@ -605,8 +605,7 @@ const OrchestrationThreadTurnItemsView = Schema.Literals(["notLoaded", "summary"
 export type OrchestrationThreadTurnItemsView = typeof OrchestrationThreadTurnItemsView.Type;
 
 const OrchestrationThreadTurnSortDirection = Schema.Literals(["asc", "desc"]);
-export type OrchestrationThreadTurnSortDirection =
-  typeof OrchestrationThreadTurnSortDirection.Type;
+export type OrchestrationThreadTurnSortDirection = typeof OrchestrationThreadTurnSortDirection.Type;
 
 export const OrchestrationListThreadTurnsInput = Schema.Struct({
   threadId: ThreadId,
@@ -799,15 +798,14 @@ export const ThreadTurnStartCommand = Schema.Struct({
   threadId: ThreadId,
   message: ThreadUserMessage,
   modelSelection: Schema.optional(ModelSelection),
+  personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   goalObjective: Schema.optional(
-    TrimmedNonEmptyString.check(
-      Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS),
-    ),
+    TrimmedNonEmptyString.check(Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS)),
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
@@ -820,13 +818,12 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   threadId: ThreadId,
   message: ClientThreadUserMessage,
   modelSelection: Schema.optional(ModelSelection),
+  personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   goalObjective: Schema.optional(
-    TrimmedNonEmptyString.check(
-      Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS),
-    ),
+    TrimmedNonEmptyString.check(Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS)),
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
@@ -1212,15 +1209,14 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
+  personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   goalObjective: Schema.optional(
-    TrimmedNonEmptyString.check(
-      Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS),
-    ),
+    TrimmedNonEmptyString.check(Schema.isMaxLength(ORCHESTRATION_GOAL_OBJECTIVE_MAX_CHARS)),
   ),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
   createdAt: IsoDateTime,

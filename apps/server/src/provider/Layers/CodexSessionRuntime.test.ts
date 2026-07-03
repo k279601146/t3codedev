@@ -71,6 +71,19 @@ describe("buildTurnStartParams", () => {
     },
   );
 
+  it("passes personality through to turn/start", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        prompt: "Use the configured tone",
+        personality: "friendly",
+      }),
+    );
+
+    assert.equal(params.personality, "friendly");
+  });
+
   it("includes plan collaboration mode when requested", () => {
     const params = Effect.runSync(
       buildTurnStartParams({
@@ -323,6 +336,7 @@ describe("openCodexThread", () => {
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
         serviceTier: undefined,
+        personality: undefined,
         resumeThreadId: undefined,
       }),
     );
@@ -388,6 +402,7 @@ describe("openCodexThread", () => {
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
         serviceTier: undefined,
+        personality: undefined,
         resumeThreadId: "stale-thread",
       }),
     );
@@ -431,6 +446,7 @@ describe("openCodexThread", () => {
           cwd: "/tmp/project",
           requestedModel: "gpt-5.3-codex",
           serviceTier: undefined,
+          personality: undefined,
           resumeThreadId: "stale-thread",
         }),
       ),

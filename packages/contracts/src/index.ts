@@ -5,6 +5,7 @@ export * from "./desktopBootstrap.ts";
 export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
 export * from "./terminal.ts";
+export * from "./personality.ts";
 export * from "./provider.ts";
 export * from "./providerInstance.ts";
 export * from "./providerRuntime.ts";

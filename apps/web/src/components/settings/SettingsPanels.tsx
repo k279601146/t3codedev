@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type DesktopCommercialAuthState,
   type DesktopUpdateChannel,
+  type ProviderPersonality,
   ProviderDriverKind,
   type ProviderInstanceId,
   type ServerProvider,
@@ -23,6 +24,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
 import {
   DEFAULT_CLIENT_LANGUAGE,
   DEFAULT_LAYOUT_MODE,
+  DEFAULT_PROVIDER_PERSONALITY,
   DEFAULT_UNIFIED_SETTINGS,
 } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -47,9 +49,7 @@ import {
   setDesktopUpdateStateQueryData,
   useDesktopUpdateState,
 } from "../../lib/desktopUpdateReactQuery";
-import {
-  runElevatedWindowsSandboxSetupFlow,
-} from "../../lib/windowsSandboxSetupFlow";
+import { runElevatedWindowsSandboxSetupFlow } from "../../lib/windowsSandboxSetupFlow";
 import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
@@ -101,6 +101,33 @@ const THEME_OPTIONS = [
 ] as const;
 
 const LANGUAGE_OPTIONS = ["system", "en", "zh-CN"] as const;
+const PERSONALITY_OPTIONS: ReadonlyArray<{
+  readonly value: ProviderPersonality;
+  readonly labelKey:
+    | "settings.personalityFriendly"
+    | "settings.personalityPragmatic"
+    | "settings.personalityNone";
+  readonly descriptionKey:
+    | "settings.personalityFriendlyDescription"
+    | "settings.personalityPragmaticDescription"
+    | "settings.personalityNoneDescription";
+}> = [
+  {
+    value: "friendly",
+    labelKey: "settings.personalityFriendly",
+    descriptionKey: "settings.personalityFriendlyDescription",
+  },
+  {
+    value: "pragmatic",
+    labelKey: "settings.personalityPragmatic",
+    descriptionKey: "settings.personalityPragmaticDescription",
+  },
+  {
+    value: "none",
+    labelKey: "settings.personalityNone",
+    descriptionKey: "settings.personalityNoneDescription",
+  },
+];
 
 function languageOptionLabel(
   value: (typeof LANGUAGE_OPTIONS)[number],
@@ -130,6 +157,13 @@ function timestampFormatLabel(
     default:
       return t("settings.timeFormatSystem");
   }
+}
+
+function personalityOptionLabel(value: ProviderPersonality, t: ReturnType<typeof useI18n>["t"]) {
+  return t(
+    PERSONALITY_OPTIONS.find((option) => option.value === value)?.labelKey ??
+      "settings.personalityFriendly",
+  );
 }
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -1044,6 +1078,7 @@ export function GeneralSettingsPanel() {
   const { updateSettings } = useUpdateSettings();
   const { t } = useI18n();
   const serverProviders = useServerProviders();
+  const refreshingProvidersRef = useRef(false);
 
   const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
   const textGenInstanceId = textGenerationModelSelection.instanceId;
@@ -1067,6 +1102,18 @@ export function GeneralSettingsPanel() {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
+  const refreshProviders = useCallback(() => {
+    if (refreshingProvidersRef.current) return;
+    refreshingProvidersRef.current = true;
+    void ensureLocalApi()
+      .server.refreshProviders()
+      .catch((error: unknown) => {
+        console.warn("Failed to refresh providers", error);
+      })
+      .finally(() => {
+        refreshingProvidersRef.current = false;
+      });
+  }, []);
 
   return (
     <SettingsPageContainer>
@@ -1225,9 +1272,59 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+
+        <SettingsRow
+          title={t("settings.personality")}
+          description={t("settings.personalityDescription")}
+          resetAction={
+            settings.defaultProviderPersonality !== DEFAULT_PROVIDER_PERSONALITY ? (
+              <SettingResetButton
+                label="personality"
+                onClick={() =>
+                  updateSettings({
+                    defaultProviderPersonality: DEFAULT_PROVIDER_PERSONALITY,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.defaultProviderPersonality}
+              onValueChange={(value) => {
+                if (value === "friendly" || value === "pragmatic" || value === "none") {
+                  updateSettings({ defaultProviderPersonality: value });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-60" aria-label={t("settings.personality")}>
+                <SelectValue>
+                  {personalityOptionLabel(settings.defaultProviderPersonality, t)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {PERSONALITY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <span className="grid min-w-0 gap-0.5 text-left">
+                      <span>{t(option.labelKey)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {t(option.descriptionKey)}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
       </SettingsSection>
 
       <CodexGlobalGuidanceSection />
+
+      <SandboxPermissionsSection
+        providers={serverProviders}
+        onRefreshProviders={refreshProviders}
+      />
 
       <SettingsSection title={t("settings.section.editor")}>
         <SettingsRow

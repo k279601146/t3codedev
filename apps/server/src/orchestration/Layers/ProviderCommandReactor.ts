@@ -7,6 +7,7 @@
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
+  type ProviderPersonality,
   type ProviderRuntimeEvent,
   ThreadId,
   type ProviderSession,
@@ -359,6 +360,7 @@ const make = Effect.gen(function* () {
     createdAt: string,
     options?: {
       readonly modelSelection?: ModelSelection;
+      readonly personality?: ProviderPersonality | null;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -473,6 +475,7 @@ const make = Effect.gen(function* () {
         providerInstanceId: desiredInstanceId,
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
         modelSelection: desiredModelSelection,
+        ...(options?.personality !== undefined ? { personality: options.personality } : {}),
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         runtimeMode: desiredRuntimeMode,
       });
@@ -580,6 +583,7 @@ const make = Effect.gen(function* () {
     readonly messageText: string;
     readonly attachments?: ReadonlyArray<ChatAttachment>;
     readonly modelSelection?: ModelSelection;
+    readonly personality?: ProviderPersonality | null;
     readonly interactionMode?: "default" | "plan";
     readonly createdAt: string;
   }) {
@@ -589,10 +593,19 @@ const make = Effect.gen(function* () {
         new Error(`Thread '${input.threadId}' was not found in read model.`),
       );
     }
+    const effectivePersonality =
+      input.personality !== undefined
+        ? input.personality
+        : (yield* serverSettingsService.getSettings).defaultProviderPersonality;
     yield* ensureSessionForThread(
       input.threadId,
       input.createdAt,
-      input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {},
+      input.modelSelection !== undefined || effectivePersonality !== undefined
+        ? {
+            ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+            ...(effectivePersonality !== undefined ? { personality: effectivePersonality } : {}),
+          }
+        : {},
     );
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
@@ -648,6 +661,7 @@ const make = Effect.gen(function* () {
       ...(normalizedInput ? { input: normalizedInput } : {}),
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
+      ...(effectivePersonality !== undefined ? { personality: effectivePersonality } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
     };
   });
@@ -853,6 +867,9 @@ const make = Effect.gen(function* () {
       ...(event.payload.modelSelection !== undefined
         ? { modelSelection: event.payload.modelSelection }
         : {}),
+      ...(event.payload.personality !== undefined
+        ? { personality: event.payload.personality }
+        : {}),
       interactionMode: event.payload.interactionMode,
       createdAt: event.payload.createdAt,
     }).pipe(
@@ -871,9 +888,7 @@ const make = Effect.gen(function* () {
           objective: event.payload.goalObjective,
           status: "active",
         })
-        .pipe(
-          Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(null))),
-        );
+        .pipe(Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(null))));
       if (result === null) {
         return;
       }
@@ -889,34 +904,34 @@ const make = Effect.gen(function* () {
       .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
   });
 
-  const processDeferredFirstTurnEnhancement = Effect.fn(
-    "processDeferredFirstTurnEnhancement",
-  )(function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
-    const pending = deferredFirstTurnEnhancements.get(event.threadId);
-    if (!pending) {
-      return;
-    }
-    deferredFirstTurnEnhancements.delete(event.threadId);
+  const processDeferredFirstTurnEnhancement = Effect.fn("processDeferredFirstTurnEnhancement")(
+    function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
+      const pending = deferredFirstTurnEnhancements.get(event.threadId);
+      if (!pending) {
+        return;
+      }
+      deferredFirstTurnEnhancements.delete(event.threadId);
 
-    yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
-      threadId: pending.threadId,
-      branch: pending.branch,
-      worktreePath: pending.worktreePath,
-      messageText: pending.messageText,
-      ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
-    }).pipe(Effect.forkScoped);
-
-    const thread = yield* resolveThread(pending.threadId);
-    if (thread && canReplaceThreadTitle(thread.title, pending.titleSeed)) {
-      yield* maybeGenerateThreadTitleForFirstTurn({
+      yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
         threadId: pending.threadId,
-        cwd: pending.cwd,
+        branch: pending.branch,
+        worktreePath: pending.worktreePath,
         messageText: pending.messageText,
         ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
-        ...(pending.titleSeed !== undefined ? { titleSeed: pending.titleSeed } : {}),
       }).pipe(Effect.forkScoped);
-    }
-  });
+
+      const thread = yield* resolveThread(pending.threadId);
+      if (thread && canReplaceThreadTitle(thread.title, pending.titleSeed)) {
+        yield* maybeGenerateThreadTitleForFirstTurn({
+          threadId: pending.threadId,
+          cwd: pending.cwd,
+          messageText: pending.messageText,
+          ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
+          ...(pending.titleSeed !== undefined ? { titleSeed: pending.titleSeed } : {}),
+        }).pipe(Effect.forkScoped);
+      }
+    },
+  );
 
   const processTurnSteerRequested = Effect.fn("processTurnSteerRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-steer-requested" }>,
@@ -1124,10 +1139,7 @@ const make = Effect.gen(function* () {
 
   const goalRetryDelay = (attempt: number): Duration.Duration =>
     Duration.millis(
-      Math.min(
-        GOAL_RETRY_MAX_DELAY_MS,
-        GOAL_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1),
-      ),
+      Math.min(GOAL_RETRY_MAX_DELAY_MS, GOAL_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1)),
     );
 
   function cancelGoalAdvance(threadId: ThreadId): Effect.Effect<void> {
@@ -1146,48 +1158,46 @@ const make = Effect.gen(function* () {
     readonly delay?: Duration.Duration;
   }): Effect.Effect<void> {
     return Effect.gen(function* () {
-    const existing = goalAdvanceFibers.get(input.threadId);
-    if (existing) {
-      return;
-    }
-
-    const delay = input.delay ?? GOAL_ADVANCE_INITIAL_DELAY;
-    const fiber = yield* Effect.gen(function* () {
-      yield* Effect.sleep(delay);
-      goalAdvanceFibers.delete(input.threadId);
-      const thread = yield* resolveThread(input.threadId);
-      if (!thread) {
-        yield* cancelGoalAdvance(input.threadId);
+      const existing = goalAdvanceFibers.get(input.threadId);
+      if (existing) {
         return;
       }
 
-      const goal = thread.goal;
-      if (!goal || goal.status !== "active" || isGoalTerminal(goal.status)) {
-        yield* cancelGoalAdvance(input.threadId);
-        return;
-      }
+      const delay = input.delay ?? GOAL_ADVANCE_INITIAL_DELAY;
+      const fiber = yield* Effect.gen(function* () {
+        yield* Effect.sleep(delay);
+        goalAdvanceFibers.delete(input.threadId);
+        const thread = yield* resolveThread(input.threadId);
+        if (!thread) {
+          yield* cancelGoalAdvance(input.threadId);
+          return;
+        }
 
-      if (
-        thread.session?.status === "stopped" ||
-        thread.session?.status === "starting" ||
-        thread.session?.status === "running" ||
-        thread.session?.activeTurnId != null ||
-        thread.latestTurn?.state === "running"
-      ) {
-        return;
-      }
+        const goal = thread.goal;
+        if (!goal || goal.status !== "active" || isGoalTerminal(goal.status)) {
+          yield* cancelGoalAdvance(input.threadId);
+          return;
+        }
 
-      const createdAt = yield* currentIso;
-      const sendTurnRequest = yield* buildSendTurnRequestForThread({
-        threadId: input.threadId,
-        messageText: goal.objective,
-        interactionMode: thread.interactionMode,
-        createdAt,
-      });
+        if (
+          thread.session?.status === "stopped" ||
+          thread.session?.status === "starting" ||
+          thread.session?.status === "running" ||
+          thread.session?.activeTurnId != null ||
+          thread.latestTurn?.state === "running"
+        ) {
+          return;
+        }
 
-      yield* providerService
-        .sendTurn(sendTurnRequest)
-        .pipe(
+        const createdAt = yield* currentIso;
+        const sendTurnRequest = yield* buildSendTurnRequestForThread({
+          threadId: input.threadId,
+          messageText: goal.objective,
+          interactionMode: thread.interactionMode,
+          createdAt,
+        });
+
+        yield* providerService.sendTurn(sendTurnRequest).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
               goalRetryAttempts.delete(input.threadId);
@@ -1212,31 +1222,34 @@ const make = Effect.gen(function* () {
           ),
           Effect.forkDetach,
         );
-    }).pipe(
-      Effect.catchCause((cause) => {
-        goalAdvanceFibers.delete(input.threadId);
-        if (Cause.hasInterruptsOnly(cause)) {
-          return Effect.void;
-        }
-        return Effect.gen(function* () {
-          const attempt = (goalRetryAttempts.get(input.threadId) ?? 0) + 1;
-          goalRetryAttempts.set(input.threadId, attempt);
-          yield* Effect.logWarning("provider command reactor failed before advancing active goal", {
-            threadId: input.threadId,
-            reason: input.reason,
-            attempt,
-            cause: Cause.pretty(cause),
+      }).pipe(
+        Effect.catchCause((cause) => {
+          goalAdvanceFibers.delete(input.threadId);
+          if (Cause.hasInterruptsOnly(cause)) {
+            return Effect.void;
+          }
+          return Effect.gen(function* () {
+            const attempt = (goalRetryAttempts.get(input.threadId) ?? 0) + 1;
+            goalRetryAttempts.set(input.threadId, attempt);
+            yield* Effect.logWarning(
+              "provider command reactor failed before advancing active goal",
+              {
+                threadId: input.threadId,
+                reason: input.reason,
+                attempt,
+                cause: Cause.pretty(cause),
+              },
+            );
+            yield* scheduleGoalAdvance({
+              threadId: input.threadId,
+              reason: "goal-advance-preflight-failed",
+              delay: goalRetryDelay(attempt),
+            });
           });
-          yield* scheduleGoalAdvance({
-            threadId: input.threadId,
-            reason: "goal-advance-preflight-failed",
-            delay: goalRetryDelay(attempt),
-          });
-        });
-      }),
-      Effect.forkDetach,
-    );
-    goalAdvanceFibers.set(input.threadId, fiber);
+        }),
+        Effect.forkDetach,
+      );
+      goalAdvanceFibers.set(input.threadId, fiber);
     });
   }
 
@@ -1261,7 +1274,9 @@ const make = Effect.gen(function* () {
   }) {
     const thread = yield* resolveThread(input.threadId);
     const mergedGoal =
-      input.goal === null ? null : mergeGoalTiming(thread?.goal ?? null, input.goal, input.createdAt);
+      input.goal === null
+        ? null
+        : mergeGoalTiming(thread?.goal ?? null, input.goal, input.createdAt);
     yield* orchestrationEngine.dispatch({
       type: "thread.goal.synced",
       commandId: CommandId.make(`provider-goal:${input.threadId}:${crypto.randomUUID()}`),

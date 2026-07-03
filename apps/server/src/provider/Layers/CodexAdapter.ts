@@ -124,7 +124,10 @@ function stringifyUnknown(value: unknown): string {
   }
 }
 
-function isCommercialUsageLimitSignal(message: string | null | undefined, detail?: unknown): boolean {
+function isCommercialUsageLimitSignal(
+  message: string | null | undefined,
+  detail?: unknown,
+): boolean {
   const source = `${message ?? ""} ${detail === undefined ? "" : stringifyUnknown(detail)}`;
   const normalized = source.toLowerCase();
   return (
@@ -2115,6 +2118,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
               ? { serviceTier: "fast" }
               : {}),
+            ...(input.personality !== undefined ? { personality: input.personality } : {}),
             jsonRpcLogPath,
           };
           const sessionScope = yield* Scope.make("sequential");
@@ -2336,6 +2340,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           : {}),
         ...(fastMode === true ? { serviceTier: "fast" } : {}),
         ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+        ...(input.personality !== undefined ? { personality: input.personality } : {}),
       })
       .pipe(Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "turn/start", cause)));
   });
