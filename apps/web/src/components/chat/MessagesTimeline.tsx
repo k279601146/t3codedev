@@ -303,7 +303,7 @@ function appendMaterializedTimelineRows(
   const isSearchGroup = isSearchWorkGroup(row.groupedEntries);
   const displayEntries = isSearchGroup
     ? row.groupedEntries
-    : buildWorkGroupDisplayEntries(row.groupedEntries, row.turnDiffSummary);
+    : buildWorkGroupDisplayEntries(row.groupedEntries);
   if (displayEntries.length === 0) {
     return;
   }
@@ -2183,7 +2183,7 @@ const WorkGroupSummaryTimelineRow = memo(function WorkGroupSummaryTimelineRow({
   row: TimelineWorkGroupSummaryRow;
 }) {
   const ctx = use(TimelineRowCtx);
-  const summary = summarizeWorkGroup(row.groupedEntries, row.turnDiffSummary);
+  const summary = summarizeWorkGroup(row.groupedEntries);
   const isSearchGroup = isSearchWorkGroup(row.groupedEntries);
   const SummaryIcon = isSearchGroup ? GlobeIcon : TerminalSquareIcon;
   const showLiveScan = row.groupedEntries.some((entry) => entry.status === "running");
@@ -2256,8 +2256,8 @@ const WorkGroupSection = memo(function WorkGroupSection({
   const { workspaceRoot } = ctx;
   const compactRequestErrorMessage = getCompactRequestErrorMessage(groupedEntries);
   const runtimeIssueSummary = summarizeRuntimeIssueGroup(groupedEntries);
-  const displayEntries = buildWorkGroupDisplayEntries(groupedEntries, turnDiffSummary);
-  const summary = summarizeWorkGroup(groupedEntries, turnDiffSummary);
+  const displayEntries = buildWorkGroupDisplayEntries(groupedEntries);
+  const summary = summarizeWorkGroup(groupedEntries);
   const [isExpanded, setIsExpanded] = useState(runtimeIssueSummary !== null);
   const showLiveScan = displayEntries.some((entry) => entry.status === "running");
 
@@ -2549,7 +2549,7 @@ function isSearchWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): boolean {
 
 function isFileChangeWorkEntry(
   entry: TimelineWorkEntry,
-  turnDiffSummary?: TurnDiffSummary | undefined,
+  _turnDiffSummary?: TurnDiffSummary | undefined,
 ): boolean {
   const hasRenderablePatch = entry.detail
     ? parseRenderableUnifiedDiff(entry.detail).some((patch) => {
@@ -2571,7 +2571,7 @@ function isFileChangeWorkEntry(
   if (hasRenderablePatch) {
     return true;
   }
-  return (turnDiffSummary?.files.some((file) => isRenderableChangedFilePath(file.path)) ?? false);
+  return false;
 }
 
 function searchWorkEntryDetail(entry: TimelineWorkEntry): string | null {
@@ -2655,10 +2655,7 @@ const CompactRequestErrorRow = memo(function CompactRequestErrorRow({
   );
 });
 
-function summarizeWorkGroup(
-  entries: ReadonlyArray<TimelineWorkEntry>,
-  turnDiffSummary?: TurnDiffSummary | undefined,
-): {
+function summarizeWorkGroup(entries: ReadonlyArray<TimelineWorkEntry>): {
   label: string;
   liveLabel: string;
 } {
@@ -2672,19 +2669,19 @@ function summarizeWorkGroup(
   }
 
   const commandCount = entries.filter(isRenderableCommandWorkEntry).length;
-  const explicitChangedFiles = entries.flatMap((entry) =>
-    [...(entry.changedFiles ?? [])].filter(isRenderableChangedFilePath),
-  );
-  const changedFileCount = new Set(
-    explicitChangedFiles.length > 0
-      ? explicitChangedFiles
-      : (turnDiffSummary?.files ?? [])
-          .map((file) => file.path)
-          .filter(isRenderableChangedFilePath),
-  ).size;
+  const explicitChangedFiles = entries.flatMap((entry) => {
+    const changedFiles = [...(entry.changedFiles ?? [])].filter(isRenderableChangedFilePath);
+    if (changedFiles.length > 0) {
+      return changedFiles;
+    }
+    return parseRenderableUnifiedDiff(entry.detail ?? "")
+      .map((patch) => getPatchDisplayPath(patch))
+      .filter((path): path is string => Boolean(path && isRenderableChangedFilePath(path)));
+  });
+  const changedFileCount = new Set(explicitChangedFiles).size;
   const fileChangeLabel =
     changedFileCount > 0
-      ? `${fileChangeVerbLabel(resolveAggregateFileChangeAction(resolveWorkGroupChangedFileKinds(entries, turnDiffSummary)), "completed")} ${changedFileCount} 个文件`
+      ? `${fileChangeVerbLabel(resolveAggregateFileChangeAction(resolveWorkGroupChangedFileKinds(entries)), "completed")} ${changedFileCount} 个文件`
       : null;
   const runningEntry = entries.find((entry) => entry.status === "running") ?? null;
   const runningAction = runningEntry ? runningWorkEntryLabel(runningEntry) : "正在处理";
@@ -2713,64 +2710,15 @@ function summarizeWorkGroup(
   };
 }
 
-function hasExplicitRenderableFileChange(entries: ReadonlyArray<TimelineWorkEntry>): boolean {
-  return entries.some((entry) => {
-    if ((entry.changedFiles ?? []).some(isRenderableChangedFilePath)) {
-      return true;
-    }
-    if (entry.detail) {
-      return parseRenderableUnifiedDiff(entry.detail).some((patch) => {
-        const patchPath = getPatchDisplayPath(patch);
-        return patchPath ? isRenderableChangedFilePath(patchPath) : false;
-      });
-    }
-    return entry.requestKind === "file-change" || entry.itemType === "file_change";
-  });
-}
-
-function buildSyntheticTurnDiffWorkEntry(
-  entries: ReadonlyArray<TimelineWorkEntry>,
-  turnDiffSummary: TurnDiffSummary | undefined,
-): TimelineWorkEntry | null {
-  const files = (turnDiffSummary?.files ?? []).filter((file) =>
-    isRenderableChangedFilePath(file.path),
-  );
-  if (files.length === 0 || hasExplicitRenderableFileChange(entries)) {
-    return null;
-  }
-  const createdAt =
-    turnDiffSummary?.completedAt ?? entries.at(-1)?.createdAt ?? "1970-01-01T00:00:00.000Z";
-  return {
-    id: `turn-diff:${turnDiffSummary?.turnId ?? createdAt}`,
-    createdAt,
-    label: "Changed files",
-    tone: "tool",
-    status: "completed",
-    requestKind: "file-change",
-    itemType: "file_change",
-    changedFiles: files.map((file) => file.path),
-  };
-}
-
 function buildWorkGroupDisplayEntries(
   entries: ReadonlyArray<TimelineWorkEntry>,
-  turnDiffSummary: TurnDiffSummary | undefined,
 ): ReadonlyArray<TimelineWorkEntry> {
-  const visibleEntries = entries.filter((entry) => !isCompletedEmptyCommandWorkEntry(entry));
-  const syntheticEntry = buildSyntheticTurnDiffWorkEntry(entries, turnDiffSummary);
-  return syntheticEntry ? [...visibleEntries, syntheticEntry] : visibleEntries;
+  return entries.filter((entry) => !isCompletedEmptyCommandWorkEntry(entry));
 }
 
 function resolveWorkGroupChangedFileKinds(
   entries: ReadonlyArray<TimelineWorkEntry>,
-  turnDiffSummary: TurnDiffSummary | undefined,
 ): ReadonlyArray<Pick<TurnDiffFileChange, "kind">> {
-  const summaryFiles = (turnDiffSummary?.files ?? []).filter((file) =>
-    isRenderableChangedFilePath(file.path),
-  );
-  if (summaryFiles.length > 0) {
-    return summaryFiles;
-  }
   return entries.flatMap((entry) =>
     parseRenderableUnifiedDiff(entry.detail ?? "").map((patch) => ({
       kind: resolvePatchFileChangeKind(patch),
@@ -3875,8 +3823,6 @@ function buildFileChangeSummaries(
   const summaryPaths = new Set<string>();
   const summaries: InlineDiffFileSummary[] = [];
   const explicitChangedFiles = (workEntry.changedFiles ?? []).filter(isRenderableChangedFilePath);
-  const shouldAppendUnmatchedTurnDiffFiles =
-    explicitChangedFiles.length === 0 && patches.length === 0;
 
   for (const filePath of explicitChangedFiles) {
     const comparableFilePath = normalizeComparablePath(filePath);
@@ -3928,30 +3874,6 @@ function buildFileChangeSummaries(
       hasStats: true,
       kind: resolvePatchFileChangeKind(patch),
       patch,
-    });
-  }
-
-  if (!shouldAppendUnmatchedTurnDiffFiles) {
-    return summaries;
-  }
-
-  for (const file of turnDiffSummary?.files ?? []) {
-    if (!isRenderableChangedFilePath(file.path)) {
-      continue;
-    }
-    const comparablePath = normalizeComparablePath(file.path);
-    if (summaryPaths.has(comparablePath)) {
-      continue;
-    }
-    summaries.push({
-      path: file.path,
-      displayPath: formatWorkspaceRelativePath(file.path, workspaceRoot),
-      listLabel: formatChangedFileListLabel(file.path),
-      additions: file.additions ?? 0,
-      deletions: file.deletions ?? 0,
-      hasStats: file.additions !== undefined || file.deletions !== undefined,
-      kind: file.kind,
-      patch: null,
     });
   }
 

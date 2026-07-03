@@ -621,7 +621,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("+1");
   });
 
-  it("summarizes turn diff file creations once for an ordinary command group", async () => {
+  it("renders turn diff file creations only on the assistant result card", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const assistantId = MessageId.make("assistant-1");
     const turnId = TurnId.make("turn-1");
@@ -639,6 +639,20 @@ describe("MessagesTimeline", () => {
               label: "Ran command",
               tone: "tool",
               command: "python build_dashboard.py",
+              itemType: "command_execution",
+              status: "completed",
+            },
+          },
+          {
+            id: "work-entry-2",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:32.000Z",
+            entry: {
+              id: "work-2",
+              createdAt: "2026-03-17T19:12:32.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "python verify_dashboard.py",
               itemType: "command_execution",
               status: "completed",
             },
@@ -678,7 +692,9 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已创建 4 个文件");
+    const creationSummaryCount = (markup.match(/已创建 4 个文件/g) ?? []).length;
+    expect(creationSummaryCount).toBe(1);
+    expect(markup).not.toContain("已运行 2 条命令，已创建 4 个文件");
     expect(markup).not.toContain("已编辑 4 个文件");
   });
 

@@ -799,6 +799,56 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("maps Codex file change patch updates to canonical file-change item updates", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-file-change-patch"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/fileChange/patchUpdated",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("patch_1"),
+        payload: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "patch_1",
+          changes: [
+            {
+              path: "src/app.ts",
+              kind: { type: "add" },
+              diff: "diff --git a/src/app.ts b/src/app.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/app.ts\n@@ -0,0 +1 @@\n+export {};",
+            },
+          ],
+        },
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      assert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      assert.equal(firstEvent.value.type, "item.updated");
+      if (firstEvent.value.type !== "item.updated") {
+        return;
+      }
+      assert.equal(firstEvent.value.payload.itemType, "file_change");
+      assert.equal(firstEvent.value.payload.status, "inProgress");
+      assert.deepEqual((firstEvent.value.payload.data as { changes?: unknown }).changes, [
+        {
+          path: "src/app.ts",
+          kind: "added",
+          diff: "diff --git a/src/app.ts b/src/app.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/app.ts\n@@ -0,0 +1 @@\n+export {};",
+        },
+      ]);
+    }),
+  );
+
   it.effect("maps Codex MCP tool calls to transparent presentation metadata", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

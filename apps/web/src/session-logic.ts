@@ -610,6 +610,7 @@ function toDerivedWorkLogEntry(
   const taskLabel = taskSummary || taskDetailAsLabel;
   const detail =
     commandFileChange?.diff ??
+    extractFileChangeDiff(payload) ??
     (isTaskActivity
       ? !taskDetailAsLabel &&
         payload &&
@@ -1241,6 +1242,53 @@ function extractCommandFileChange(
     diff: buildSyntheticCommandFileDiff({ path, content, isNewFile }),
     requestKind: "file-change",
   };
+}
+
+function collectFileChangeDiffs(value: unknown, target: string[], seen: Set<string>, depth: number) {
+  if (depth > 4 || target.length >= 24) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectFileChangeDiffs(entry, target, seen, depth + 1);
+      if (target.length >= 24) {
+        return;
+      }
+    }
+    return;
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return;
+  }
+
+  const diff = asTrimmedString(record.diff);
+  if (diff && !seen.has(diff)) {
+    seen.add(diff);
+    target.push(diff);
+  }
+
+  for (const nestedKey of ["item", "data", "changes", "files", "patch", "patches"]) {
+    if (!(nestedKey in record)) {
+      continue;
+    }
+    collectFileChangeDiffs(record[nestedKey], target, seen, depth + 1);
+    if (target.length >= 24) {
+      return;
+    }
+  }
+}
+
+function extractFileChangeDiff(payload: Record<string, unknown> | null): string | null {
+  const itemType = extractWorkLogItemType(payload);
+  const requestKind = extractWorkLogRequestKind(payload);
+  if (itemType !== "file_change" && requestKind !== "file-change") {
+    return null;
+  }
+  const diffs: string[] = [];
+  collectFileChangeDiffs(asRecord(payload?.data), diffs, new Set(), 0);
+  return diffs.length > 0 ? diffs.join("\n") : null;
 }
 
 function toRawToolCommand(value: unknown, normalizedCommand: string | null): string | null {

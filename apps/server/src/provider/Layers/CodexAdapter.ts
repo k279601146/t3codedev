@@ -675,6 +675,56 @@ function contentStreamKindFromMethod(
   }
 }
 
+function patchChangeKindLabel(
+  kind: { readonly type?: string; readonly move_path?: string | null } | undefined,
+): string {
+  switch (kind?.type) {
+    case "add":
+      return "added";
+    case "delete":
+      return "deleted";
+    case "update":
+      return kind.move_path ? "renamed" : "modified";
+    default:
+      return "modified";
+  }
+}
+
+function mapFileChangePatchUpdated(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+): ProviderRuntimeEvent | undefined {
+  const payload = readPayload(EffectCodexSchema.V2FileChangePatchUpdatedNotification, event.payload);
+  if (!payload) {
+    return undefined;
+  }
+
+  const changes = payload.changes
+    .map((change) => ({
+      path: trimText(change.path) ?? change.path,
+      kind: patchChangeKindLabel(change.kind),
+      diff: change.diff,
+    }))
+    .filter((change) => change.path.length > 0);
+  if (changes.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...runtimeEventBase(event, canonicalThreadId),
+    type: "item.updated",
+    payload: {
+      itemType: "file_change",
+      status: "inProgress",
+      title: "File change",
+      data: {
+        itemId: payload.itemId,
+        changes,
+      },
+    },
+  };
+}
+
 function asRuntimeItemId(itemId: ProviderEvent["itemId"] & string): RuntimeItemId {
   return RuntimeItemId.make(itemId);
 }
@@ -1295,6 +1345,11 @@ function mapToRuntimeEvents(
         },
       },
     ];
+  }
+
+  if (event.method === "item/fileChange/patchUpdated") {
+    const updated = mapFileChangePatchUpdated(event, canonicalThreadId);
+    return updated ? [updated] : [];
   }
 
   if (event.method === "item/reasoning/summaryTextDelta") {

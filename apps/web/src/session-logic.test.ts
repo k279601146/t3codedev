@@ -1096,6 +1096,31 @@ describe("deriveWorkLogEntries", () => {
     ]);
   });
 
+  it("extracts file-change diffs from structured Codex patch updates", () => {
+    const diff =
+      "diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/apps/web/src/App.tsx\n@@ -0,0 +1 @@\n+export function App() {}";
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "file-tool-patch",
+        kind: "tool.updated",
+        summary: "File change",
+        payload: {
+          itemType: "file_change",
+          status: "inProgress",
+          data: {
+            changes: [{ path: "apps/web/src/App.tsx", kind: "added", diff }],
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.requestKind).toBeUndefined();
+    expect(entry?.itemType).toBe("file_change");
+    expect(entry?.changedFiles).toEqual(["apps/web/src/App.tsx"]);
+    expect(entry?.detail).toBe(diff);
+  });
+
   it("treats PowerShell Out-File commands as file creation work", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
