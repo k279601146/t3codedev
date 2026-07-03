@@ -1130,6 +1130,17 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           SELECT turn_id FROM selected_page
           UNION
           SELECT turn_id FROM forced_running_turn
+        ),
+        latest_context_window_activity AS (
+          SELECT activity_id
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND kind = 'context-window.updated'
+          ORDER BY
+            sequence DESC,
+            created_at DESC,
+            activity_id DESC
+          LIMIT 1
         )
         SELECT
           activity_id AS "activityId",
@@ -1143,7 +1154,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           created_at AS "createdAt"
         FROM projection_thread_activities
         WHERE thread_id = ${threadId}
-          AND turn_id IN (SELECT turn_id FROM selected_turns)
+          AND (
+            turn_id IN (SELECT turn_id FROM selected_turns)
+            OR activity_id IN (SELECT activity_id FROM latest_context_window_activity)
+          )
         ORDER BY
           sequence ASC,
           created_at ASC,

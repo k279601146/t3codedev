@@ -1712,7 +1712,6 @@ export const ChatComposer = memo(
     const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
     const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
     const [personalityMenuOpen, setPersonalityMenuOpen] = useState(false);
-    const personalityMenuOpeningGuardRef = useRef(false);
     const composerBlurFrameRef = useRef<number | null>(null);
     const mobileComposerExpandFrameRef = useRef<number | null>(null);
     const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
@@ -2320,11 +2319,7 @@ export const ChatComposer = memo(
           ? null
           : detectComposerTrigger(nextPrompt, expandedCursor);
         if (nextTrigger !== null) {
-          if (personalityMenuOpeningGuardRef.current) {
-            personalityMenuOpeningGuardRef.current = false;
-          } else {
-            setPersonalityMenuOpen(false);
-          }
+          setPersonalityMenuOpen(false);
         }
         if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
           setComposerCursor(nextCursor);
@@ -2369,7 +2364,11 @@ export const ChatComposer = memo(
         rangeStart: number,
         rangeEnd: number,
         replacement: string,
-        options?: { expectedText?: string; focusEditorAfterReplace?: boolean },
+        options?: {
+          expectedText?: string;
+          focusEditorAfterReplace?: boolean;
+          nextTrigger?: ComposerTrigger | null;
+        },
       ): boolean => {
         const currentText = promptRef.current;
         const safeStart = Math.max(0, Math.min(currentText.length, rangeStart));
@@ -2397,7 +2396,11 @@ export const ChatComposer = memo(
           setPrompt(next.text);
         }
         setComposerCursor(nextCursor);
-        setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
+        setComposerTrigger(
+          options && "nextTrigger" in options
+            ? (options.nextTrigger ?? null)
+            : detectComposerTrigger(next.text, nextExpandedCursor),
+        );
         if (options?.focusEditorAfterReplace !== false) {
           window.requestAnimationFrame(() => {
             composerEditorRef.current?.focusAt(nextCursor);
@@ -2452,19 +2455,20 @@ export const ChatComposer = memo(
           composerSelectLockRef.current = false;
         });
         if (item.type === "slash-command" && item.command === "personality") {
+          const resolvedTrigger = resolveActiveComposerTrigger();
+          const trigger = resolvedTrigger.trigger ?? composerTrigger;
           setComposerHighlightedItemId(null);
-          setComposerTrigger(null);
-          personalityMenuOpeningGuardRef.current = true;
-          setPersonalityMenuOpen(true);
-          window.requestAnimationFrame(() => {
-            personalityMenuOpeningGuardRef.current = false;
-          });
-          const activeTrigger = composerTrigger;
-          if (activeTrigger) {
-            applyPromptReplacement(activeTrigger.rangeStart, activeTrigger.rangeEnd, "", {
+          if (trigger) {
+            const snapshot = resolvedTrigger.snapshot;
+            applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+              expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
               focusEditorAfterReplace: false,
+              nextTrigger: null,
             });
+          } else {
+            setComposerTrigger(null);
           }
+          setPersonalityMenuOpen(true);
           return;
         }
         const resolvedTrigger = resolveActiveComposerTrigger();
@@ -3327,7 +3331,7 @@ export const ChatComposer = memo(
               data-chat-composer-drag-over={isDragOverComposer ? "true" : "false"}
               className={cn(
                 "relative border bg-card/98 transition-[border-color,box-shadow,background-color] duration-200 has-focus-visible:border-ring/65",
-                composerMenuOpen && !isComposerApprovalState
+                (composerMenuOpen || showPersonalityMenu) && !isComposerApprovalState
                   ? "overflow-visible"
                   : "overflow-hidden",
                 newThreadMode
