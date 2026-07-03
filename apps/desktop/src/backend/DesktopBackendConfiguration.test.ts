@@ -278,8 +278,6 @@ describe("DesktopBackendConfiguration", () => {
   it("生成托管引擎配置时保留已有插件和 marketplace 状态", () => {
     const merged = DesktopBackendConfiguration.mergeManagedEngineConfigWithPersistedExtensionState({
       managedConfig: [
-        'model_provider = "myservice"',
-        "",
         "[features]",
         "plugins = true",
         "apps = true",
@@ -306,7 +304,6 @@ describe("DesktopBackendConfiguration", () => {
       cachedPluginIds: ["ppt-master@t3-bundled-plugins", "calendar@debug"],
     });
 
-    assert.match(merged, /model_provider = "myservice"/);
     assert.match(merged, /\[features\]\s+plugins = true\s+apps = true/);
     assert.match(merged, /\[plugins\."ppt-master@t3-bundled-plugins"\]\s+enabled = true/);
     assert.match(
@@ -504,11 +501,13 @@ describe("DesktopBackendConfiguration", () => {
 
           const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-          assert.match(engineConfig, /base_url = "https:\/\/api\.example\.com\/v1"/);
-          assert.match(engineConfig, /wire_api = "responses"/);
-          assert.match(engineConfig, new RegExp(`env_key = "${COMMERCIAL_ENGINE_IDE_JWT_ENV}"`));
           assert.match(engineConfig, /plugins = true/);
           assert.match(engineConfig, /apps = true/);
+          assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
+          assert.equal(engineConfig.includes("https://api.example.com/v1"), false);
+          assert.equal(engineConfig.includes("wire_api"), false);
+          assert.equal(engineConfig.includes("requires_openai_auth"), false);
+          assert.equal(engineConfig.includes(COMMERCIAL_ENGINE_IDE_JWT_ENV), false);
           assert.equal(engineConfig.includes("legacy-real-key"), false);
           assert.equal(engineConfig.includes("jwt-token"), false);
         }),
@@ -549,7 +548,8 @@ describe("DesktopBackendConfiguration", () => {
         yield* configuration.resolve;
 
         const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-        assert.match(engineConfig, /base_url = "https:\/\/sub\.bahew\.com\/v1"/);
+        assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
+        assert.equal(engineConfig.includes("https://sub.bahew.com/v1"), false);
         assert.match(
           engineConfig,
           /\[features\]\s+image_generation = true\s+imagegenext = true\s+plugins = true/,
@@ -586,7 +586,8 @@ describe("DesktopBackendConfiguration", () => {
 
           const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-          assert.match(engineConfig, /base_url = "https:\/\/stored\.example\.com\/v1"/);
+          assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
+          assert.equal(engineConfig.includes("https://stored.example.com/v1"), false);
           assert.equal(engineConfig.includes("stored-jwt"), false);
           assert.equal(engineConfig.includes("env-jwt"), false);
         }).pipe(
