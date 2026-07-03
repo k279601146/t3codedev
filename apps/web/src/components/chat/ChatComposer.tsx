@@ -1774,28 +1774,28 @@ export const ChatComposer = memo(
             type: "slash-command",
             command: "model",
             label: "/model",
-            description: "Switch response model for this thread",
+            description: t("composer.slash.modelDescription"),
           },
           {
             id: "slash:personality",
             type: "slash-command",
             command: "personality",
             label: "/personality",
-            description: "Choose the default response tone",
+            description: t("composer.slash.personalityDescription"),
           },
           {
             id: "slash:plan",
             type: "slash-command",
             command: "plan",
             label: "/plan",
-            description: "Switch this thread into plan mode",
+            description: t("composer.slash.planDescription"),
           },
           {
             id: "slash:default",
             type: "slash-command",
             command: "default",
             label: "/default",
-            description: "Switch this thread back to normal build mode",
+            description: t("composer.slash.defaultDescription"),
           },
         ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
         const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
@@ -1805,7 +1805,8 @@ export const ChatComposer = memo(
             provider: selectedProvider,
             command,
             label: `/${command.name}`,
-            description: command.description ?? command.input?.hint ?? "Run provider command",
+            description:
+              command.description ?? command.input?.hint ?? t("composer.slash.providerDescription"),
           }),
         );
         const query = composerTrigger.query.trim().toLowerCase();
@@ -1836,12 +1837,13 @@ export const ChatComposer = memo(
       composerTrigger,
       selectedProvider,
       selectedProviderStatus,
+      t,
       visiblePluginMentions,
       workspaceEntries,
     ]);
 
-    const composerMenuOpen = Boolean(composerTrigger);
-    const showPersonalityMenu = personalityMenuOpen && !composerMenuOpen;
+    const composerMenuOpen = Boolean(composerTrigger) && !personalityMenuOpen;
+    const showPersonalityMenu = personalityMenuOpen;
     const composerMenuSearchKey = composerTrigger
       ? `${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
       : null;
@@ -1929,12 +1931,12 @@ export const ChatComposer = memo(
         workspaceEntriesQuery.isFetching);
     const composerMenuEmptyState = useMemo(() => {
       if (composerTriggerKind === "skill") {
-        return "No skills found. Try / to browse provider commands.";
+        return t("composer.menu.noSkills");
       }
       return composerTriggerKind === "path"
-        ? "No matching files or folders."
-        : "No matching command.";
-    }, [composerTriggerKind]);
+        ? t("composer.menu.noFiles")
+        : t("composer.menu.noCommand");
+    }, [composerTriggerKind, t]);
 
     const pendingPrimaryAction = useMemo(
       () =>
@@ -2106,11 +2108,11 @@ export const ChatComposer = memo(
     ]);
 
     useEffect(() => {
-      if (!composerMenuOpen || !personalityMenuOpen) {
+      if (!personalityMenuOpen || composerTrigger === null) {
         return;
       }
       setPersonalityMenuOpen(false);
-    }, [composerMenuOpen, personalityMenuOpen]);
+    }, [composerTrigger, personalityMenuOpen]);
 
     const lastSyncedPendingInputRef = useRef<{
       requestId: string | null;
@@ -2308,7 +2310,6 @@ export const ChatComposer = memo(
         cursorAdjacentToMention: boolean,
         terminalContextIds: string[],
       ) => {
-        setPersonalityMenuOpen(false);
         if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
           setComposerCursor(nextCursor);
           setComposerTrigger(

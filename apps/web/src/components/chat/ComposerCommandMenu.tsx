@@ -12,6 +12,7 @@ import {
   formatComposerPluginMentionHealthStatus,
   type ComposerPluginMention,
 } from "../../composerPluginMentions";
+import { useI18n } from "../../i18n";
 import { formatProviderSkillInstallSource } from "~/providerSkillPresentation";
 import { cn } from "~/lib/utils";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
@@ -62,6 +63,14 @@ type ComposerCommandGroup = {
   items: ComposerCommandItem[];
 };
 
+type ComposerCommandGroupLabels = {
+  skills: string;
+  plugins: string;
+  files: string;
+  builtIn: string;
+  provider: string;
+};
+
 function SkillGlyph(props: { className?: string }) {
   return (
     <svg
@@ -85,19 +94,24 @@ function groupCommandItems(
   items: ComposerCommandItem[],
   triggerKind: ComposerTriggerKind | null,
   groupSlashCommandSections: boolean,
+  labels: ComposerCommandGroupLabels,
 ): ComposerCommandGroup[] {
   if (triggerKind === "skill") {
-    return items.length > 0 ? [{ id: "skills", label: "Skills", items }] : [];
+    return items.length > 0 ? [{ id: "skills", label: labels.skills, items }] : [];
   }
   if (triggerKind === "path") {
     const pluginItems = items.filter((item) => item.type === "plugin");
     const pathItems = items.filter((item) => item.type === "path");
     const groups: ComposerCommandGroup[] = [];
     if (pluginItems.length > 0) {
-      groups.push({ id: "plugins", label: "插件", items: pluginItems });
+      groups.push({ id: "plugins", label: labels.plugins, items: pluginItems });
     }
     if (pathItems.length > 0) {
-      groups.push({ id: "files", label: pluginItems.length > 0 ? "文件" : null, items: pathItems });
+      groups.push({
+        id: "files",
+        label: pluginItems.length > 0 ? labels.files : null,
+        items: pathItems,
+      });
     }
     return groups;
   }
@@ -110,10 +124,10 @@ function groupCommandItems(
 
   const groups: ComposerCommandGroup[] = [];
   if (builtInItems.length > 0) {
-    groups.push({ id: "built-in", label: "Built-in", items: builtInItems });
+    groups.push({ id: "built-in", label: labels.builtIn, items: builtInItems });
   }
   if (providerItems.length > 0) {
-    groups.push({ id: "provider", label: "Provider", items: providerItems });
+    groups.push({ id: "provider", label: labels.provider, items: providerItems });
   }
   return groups;
 }
@@ -129,11 +143,23 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
+  const { t } = useI18n();
   const listRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
     () =>
-      groupCommandItems(props.items, props.triggerKind, props.groupSlashCommandSections ?? true),
-    [props.groupSlashCommandSections, props.items, props.triggerKind],
+      groupCommandItems(
+        props.items,
+        props.triggerKind,
+        props.groupSlashCommandSections ?? true,
+        {
+          skills: t("composer.menu.group.skills"),
+          plugins: t("composer.menu.group.plugins"),
+          files: t("composer.menu.group.files"),
+          builtIn: t("composer.menu.group.builtIn"),
+          provider: t("composer.menu.group.provider"),
+        },
+      ),
+    [props.groupSlashCommandSections, props.items, props.triggerKind, t],
   );
   const hasPathItems = props.items.some((item) => item.type === "path");
   const hasPluginItems = props.items.some((item) => item.type === "plugin");
@@ -178,9 +204,11 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
           <div role="group">
             <div className="my-0.5 h-px bg-border" />
             <div className="px-1 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
-              文件
+              {t("composer.menu.group.files")}
             </div>
-            <p className="px-1 py-1 text-muted-foreground/70 text-xs">输入内容搜索文件</p>
+            <p className="px-1 py-1 text-muted-foreground/70 text-xs">
+              {t("composer.menu.searchFilesHint")}
+            </p>
           </div>
         ) : null}
         {props.items.length === 0 ? (
@@ -188,23 +216,23 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
             {props.triggerKind === "skill" ? (
               <>
                 <div className="px-0 pb-1 pt-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
-                  Skills
+                  {t("composer.menu.group.skills")}
                 </div>
                 <p className="text-muted-foreground/70 text-xs">
                   {props.isLoading
-                    ? "Searching workspace skills..."
+                    ? t("composer.menu.searchingSkills")
                     : (props.emptyStateText ??
-                      "No skills found. Try / to browse provider commands.")}
+                      t("composer.menu.noSkills"))}
                 </p>
               </>
             ) : (
               <p className="text-muted-foreground/70 text-xs">
                 {props.isLoading
-                  ? "Searching workspace files..."
+                  ? t("composer.menu.searchingFiles")
                   : (props.emptyStateText ??
                     (props.triggerKind === "path"
-                      ? "No matching files or folders."
-                      : "No matching command."))}
+                      ? t("composer.menu.noFiles")
+                      : t("composer.menu.noCommand")))}
               </p>
             )}
           </div>
