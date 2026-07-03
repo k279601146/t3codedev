@@ -1841,6 +1841,7 @@ export const ChatComposer = memo(
     ]);
 
     const composerMenuOpen = Boolean(composerTrigger);
+    const showPersonalityMenu = personalityMenuOpen && !composerMenuOpen;
     const composerMenuSearchKey = composerTrigger
       ? `${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
       : null;
@@ -2104,6 +2105,13 @@ export const ChatComposer = memo(
       composerMenuSearchKey,
     ]);
 
+    useEffect(() => {
+      if (!composerMenuOpen || !personalityMenuOpen) {
+        return;
+      }
+      setPersonalityMenuOpen(false);
+    }, [composerMenuOpen, personalityMenuOpen]);
+
     const lastSyncedPendingInputRef = useRef<{
       requestId: string | null;
       questionId: string | null;
@@ -2154,6 +2162,7 @@ export const ChatComposer = memo(
     // ------------------------------------------------------------------
     useEffect(() => {
       setComposerHighlightedItemId(null);
+      setPersonalityMenuOpen(false);
       setComposerCursor(
         collapseExpandedComposerCursor(promptRef.current, promptRef.current.length),
       );
@@ -2299,6 +2308,7 @@ export const ChatComposer = memo(
         cursorAdjacentToMention: boolean,
         terminalContextIds: string[],
       ) => {
+        setPersonalityMenuOpen(false);
         if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
           setComposerCursor(nextCursor);
           setComposerTrigger(
@@ -2424,6 +2434,7 @@ export const ChatComposer = memo(
       (item: ComposerCommandItem) => {
         if (composerSelectLockRef.current) return;
         composerSelectLockRef.current = true;
+        setPersonalityMenuOpen(false);
         window.requestAnimationFrame(() => {
           composerSelectLockRef.current = false;
         });
@@ -3549,7 +3560,7 @@ export const ChatComposer = memo(
                 </div>
               )}
 
-              {personalityMenuOpen && !isComposerApprovalState ? (
+              {showPersonalityMenu && !isComposerApprovalState ? (
                 <div
                   className={cn(
                     "absolute inset-x-0 z-20 px-1",

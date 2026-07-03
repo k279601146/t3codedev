@@ -13,7 +13,7 @@ describe("deriveComposerFooterVisibility", () => {
       }),
     ).toEqual({
       showPlanSidebarToggle: false,
-      showContextWindow: false,
+      showContextWindow: true,
     });
   });
 
@@ -48,7 +48,7 @@ describe("deriveComposerFooterVisibility", () => {
     ).toBe(false);
   });
 
-  it("context window 只在回复输入框显示", () => {
+  it("只要有真实上下文快照就显示 context window", () => {
     expect(
       deriveComposerFooterVisibility({
         composerSurface: "reply",
@@ -65,6 +65,6 @@ describe("deriveComposerFooterVisibility", () => {
         planSidebarOpen: false,
         hasContextWindow: true,
       }).showContextWindow,
-    ).toBe(false);
+    ).toBe(true);
   });
 });

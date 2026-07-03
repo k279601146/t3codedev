@@ -13,6 +13,6 @@ export function deriveComposerFooterVisibility(input: {
   return {
     showPlanSidebarToggle:
       isReplyComposer && (input.hasPlanSidebarContent || input.planSidebarOpen),
-    showContextWindow: isReplyComposer && input.hasContextWindow,
+    showContextWindow: input.hasContextWindow,
   };
 }
