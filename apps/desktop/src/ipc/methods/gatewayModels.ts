@@ -230,5 +230,9 @@ function requestGatewayJson(
 }
 
 function parseModelsResponse(body: unknown): Array<{ id: string; name: string; provider: string }> {
-  return [...(parseCommercialGatewayModelListResponse(body) ?? [])];
+  return (parseCommercialGatewayModelListResponse(body) ?? []).map((model) => ({
+    id: model.id,
+    name: model.name,
+    provider: model.provider,
+  }));
 }

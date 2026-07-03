@@ -168,6 +168,7 @@ export async function withAiEngineRpc(options, run) {
   const url = `ws://127.0.0.1:${port}`;
   const probeHome = path.join(options.repoRoot, ".tmp", `${options.homePrefix}-${randomUUID()}`);
   mkdirSync(probeHome, { recursive: true });
+  await options.prepareHome?.(probeHome);
 
   const stderrLines = [];
   const child = spawn(options.enginePath, ["--listen", url], {

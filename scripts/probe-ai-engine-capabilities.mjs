@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,6 +12,29 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const defaultEnginePath = getDefaultEnginePath(repoRoot);
 const fakeThreadId = "00000000-0000-0000-0000-000000000000";
+const commercialEngineFeaturePolicyPath = path.join(
+  repoRoot,
+  "packages",
+  "shared",
+  "src",
+  "commercialEngineFeaturePolicy.json",
+);
+const commercialEngineFeaturePolicy = JSON.parse(
+  readFileSync(commercialEngineFeaturePolicyPath, "utf8"),
+);
+const managedEnabledFeatureKeys = new Set(commercialEngineFeaturePolicy.enabledFeatureKeys ?? []);
+const managedExcludedFeatureKeys = new Set(commercialEngineFeaturePolicy.excludedFeatureKeys ?? []);
+const codexModelInfoRequiredFields = [
+  "slug",
+  "display_name",
+  "shell_type",
+  "visibility",
+  "supported_in_api",
+  "base_instructions",
+  "truncation_policy",
+  "supports_parallel_tool_calls",
+  "apply_patch_tool_type",
+];
 
 function parseArgs(argv) {
   const options = {
@@ -20,6 +43,7 @@ function parseArgs(argv) {
     port: undefined,
     json: false,
     verbose: false,
+    managed: true,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -34,6 +58,10 @@ function parseArgs(argv) {
     }
     if (arg === "--verbose") {
       options.verbose = true;
+      continue;
+    }
+    if (arg === "--raw-engine-defaults") {
+      options.managed = false;
       continue;
     }
     if (arg === "--engine") {
@@ -98,7 +126,8 @@ function printUsage() {
 说明:
   默认检查 apps/desktop/bin/${defaultEngineName}
   也可通过 MYIDE_ENGINE_PATH 或 --engine 指定其它 ai-engine 二进制
-  --json 输出完整机器可读报告`);
+  --json 输出完整机器可读报告
+  --raw-engine-defaults 不写入 T3 托管 config.toml，仅查看 ai-engine 裸默认开关`);
 }
 
 function failUsage(message) {
@@ -214,6 +243,191 @@ async function listExperimentalFeatures(client) {
     nextCursor,
     truncated: Boolean(nextCursor),
   };
+}
+
+function renderManagedTomlConfig() {
+  const featureLines = [...managedEnabledFeatureKeys].map((key) => `${key} = true`).join("\n");
+  const windowsConfig =
+    process.platform === "win32" ? '\n[windows]\nsandbox = "elevated"\n' : "";
+  return `
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+approvals_reviewer = "user"
+disable_telemetry = true
+
+[sandbox_workspace_write]
+network_access = false
+
+[features]
+${featureLines}
+
+[shell_environment_policy]
+include_only = ["PATH", "HOME", "LANG", "TERM", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "SystemRoot", "SystemDrive", "HOMEDRIVE", "HOMEPATH"]
+${windowsConfig}
+  `.trim();
+}
+
+function classifyFeatureFlags(featureFlags, managedMode) {
+  if (featureFlags.status !== "available") return featureFlags;
+  if (!managedMode) {
+    const data = Array.isArray(featureFlags.data) ? featureFlags.data : [];
+    const removed = data.filter((feature) => String(feature?.stage ?? "").toLowerCase() === "removed");
+    const nonRemoved = data.filter((feature) => String(feature?.stage ?? "").toLowerCase() !== "removed");
+    return {
+      ...featureFlags,
+      managedMode: false,
+      enabled: nonRemoved.filter((feature) => feature?.enabled === true),
+      unexpectedOff: nonRemoved.filter((feature) => feature?.enabled !== true),
+      removed,
+      enabledCount: nonRemoved.filter((feature) => feature?.enabled === true).length,
+      unexpectedOffCount: nonRemoved.filter((feature) => feature?.enabled !== true).length,
+      removedCount: removed.length,
+    };
+  }
+
+  const data = Array.isArray(featureFlags.data) ? featureFlags.data : [];
+  const seen = new Set(data.map((feature) => feature?.name).filter((name) => typeof name === "string"));
+  const enabled = [];
+  const unexpectedOff = [];
+  const excluded = [];
+  const removed = [];
+  const otherOff = [];
+
+  for (const feature of data) {
+    const name = feature?.name;
+    const stage = String(feature?.stage ?? "").toLowerCase();
+    if (stage === "removed") {
+      removed.push(feature);
+    } else if (feature?.enabled === true) {
+      enabled.push(feature);
+    } else if (typeof name === "string" && managedExcludedFeatureKeys.has(name)) {
+      excluded.push(feature);
+    } else if (typeof name === "string" && managedEnabledFeatureKeys.has(name)) {
+      unexpectedOff.push(feature);
+    } else {
+      otherOff.push(feature);
+    }
+  }
+
+  const missingManagedFeatureKeys = [...managedEnabledFeatureKeys].filter((key) => !seen.has(key));
+  return {
+    ...featureFlags,
+    managedMode: true,
+    enabled,
+    unexpectedOff,
+    excluded,
+    removed,
+    otherOff,
+    missingManagedFeatureKeys,
+    enabledCount: enabled.length,
+    unexpectedOffCount: unexpectedOff.length,
+    excludedCount: excluded.length,
+    removedCount: removed.length,
+    otherOffCount: otherOff.length,
+  };
+}
+
+async function probeEngineModelList(client) {
+  return safePagedRequest(client, "model/list", { includeHidden: true, limit: 100 }, (result) =>
+    summarizeDataList(result, ["id", "model", "displayName"]),
+  );
+}
+
+function gatewayModelsUrl() {
+  const baseUrl = (
+    process.env.MYIDE_GATEWAY_BASE_URL ||
+    process.env.MYIDE_API_URL ||
+    "https://sub.bahew.com/v1"
+  ).replace(/\/+$/, "");
+  return `${baseUrl}/models`;
+}
+
+function readRecordString(record, key) {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function modelEntriesFromGatewayBody(body) {
+  if (!body || typeof body !== "object") return null;
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.models)) return body.models;
+  return null;
+}
+
+function summarizeGatewayModelCatalogBody(body) {
+  const entries = modelEntriesFromGatewayBody(body);
+  if (!entries) {
+    return {
+      validModelList: false,
+      modelCount: 0,
+      nativeApplyPatchReadyCount: 0,
+      models: [],
+      error: "响应缺少 data/models 数组",
+    };
+  }
+
+  const models = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const id = readRecordString(entry, "id") ?? readRecordString(entry, "slug") ?? "(missing id)";
+    const applyPatchToolType = readRecordString(entry, "apply_patch_tool_type") ?? null;
+    const missingNativeApplyPatchFields = codexModelInfoRequiredFields.filter(
+      (field) => !Object.hasOwn(entry, field) || entry[field] === null || entry[field] === undefined,
+    );
+    models.push({
+      id,
+      applyPatchToolType,
+      nativeApplyPatchReady:
+        missingNativeApplyPatchFields.length === 0 && applyPatchToolType === "freeform",
+      missingNativeApplyPatchFields,
+    });
+  }
+
+  return {
+    validModelList: true,
+    modelCount: models.length,
+    nativeApplyPatchReadyCount: models.filter((model) => model.nativeApplyPatchReady).length,
+    models: models.slice(0, 20),
+  };
+}
+
+async function probeGatewayModelCatalog() {
+  const token = process.env.MYIDE_IDE_JWT?.trim();
+  if (!token) {
+    return {
+      status: "unavailable",
+      summary: "未设置 MYIDE_IDE_JWT，跳过商业网关 /models 原始响应检查",
+    };
+  }
+
+  const url = gatewayModelsUrl();
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      return {
+        status: "unavailable",
+        summary: `网关返回 HTTP ${response.status}`,
+        url,
+      };
+    }
+    const body = await response.json();
+    return {
+      status: "available",
+      url,
+      summary: summarizeGatewayModelCatalogBody(body),
+    };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      summary: error instanceof Error ? error.message : String(error),
+      url,
+    };
+  }
 }
 
 function classifyGoalResponse(response) {
@@ -351,7 +565,7 @@ function pickName(item, keys = ["name", "id", "title", "displayName"]) {
   return null;
 }
 
-async function buildReport(client, initializeResult, enginePath) {
+async function buildReport(client, initializeResult, enginePath, managedMode) {
   let featureFlags;
   try {
     featureFlags = await listExperimentalFeatures(client);
@@ -365,9 +579,13 @@ async function buildReport(client, initializeResult, enginePath) {
     };
   }
 
+  featureFlags = classifyFeatureFlags(featureFlags, managedMode);
+
   const [
     providerCapabilities,
     goal,
+    engineModels,
+    gatewayModels,
     permissionProfiles,
     collaborationModes,
     skills,
@@ -377,6 +595,8 @@ async function buildReport(client, initializeResult, enginePath) {
   ] = await Promise.all([
     safeRequest(client, "modelProvider/capabilities/read", {}, summarizeProviderCapabilities),
     probeGoal(client),
+    probeEngineModelList(client),
+    probeGatewayModelCatalog(),
     safePagedRequest(client, "permissionProfile/list", { cwd: repoRoot }, (result) =>
       summarizeDataList(result, ["id", "name", "displayName"]),
     ),
@@ -392,6 +612,7 @@ async function buildReport(client, initializeResult, enginePath) {
   return {
     probedAt: new Date().toISOString(),
     engine: enginePath,
+    probeMode: managedMode ? "t3-managed" : "raw-engine-defaults",
     note:
       "JSON-RPC 协议没有安全的运行时全量方法枚举；本报告覆盖 ai-engine 公开可查询的 feature flags、provider capabilities 和安全只读能力 RPC。",
     initialize: initializeResult,
@@ -399,6 +620,10 @@ async function buildReport(client, initializeResult, enginePath) {
     providerCapabilities,
     runtimeRpc: {
       goal,
+    },
+    modelCatalog: {
+      engineModels,
+      gatewayModels,
     },
     catalog: {
       permissionProfiles,
@@ -414,6 +639,7 @@ async function buildReport(client, initializeResult, enginePath) {
 function printHumanReport(report) {
   console.log("ai-engine 能力总览");
   console.log(`engine: ${report.engine}`);
+  console.log(`mode: ${report.probeMode}`);
   console.log(`time: ${report.probedAt}`);
   console.log("说明: JSON-RPC 没有安全的运行时全量方法枚举；这里展示公开可查询的 feature flags 和安全只读能力。");
   console.log("");
@@ -421,6 +647,7 @@ function printHumanReport(report) {
   printFeatureFlags(report.featureFlags);
   printProviderCapabilities(report.providerCapabilities);
   printRuntimeRpc(report.runtimeRpc);
+  printModelCatalog(report.modelCatalog);
   printCatalog(report.catalog);
 }
 
@@ -433,12 +660,33 @@ function printFeatureFlags(featureFlags) {
   }
 
   console.log(`  开启: ${featureFlags.enabledCount}`);
-  for (const feature of featureFlags.data.filter((item) => item?.enabled === true)) {
+  for (const feature of featureFlags.enabled ?? featureFlags.data.filter((item) => item?.enabled === true)) {
     console.log(`    [ON] ${formatFeature(feature)}`);
   }
-  console.log(`  未开启: ${featureFlags.disabledCount}`);
-  for (const feature of featureFlags.data.filter((item) => item?.enabled !== true)) {
+  console.log(`  异常未开启: ${featureFlags.unexpectedOffCount ?? featureFlags.disabledCount}`);
+  for (const feature of featureFlags.unexpectedOff ?? featureFlags.data.filter((item) => item?.enabled !== true)) {
     console.log(`    [OFF] ${formatFeature(feature)}`);
+  }
+  if (Array.isArray(featureFlags.excluded) && featureFlags.excluded.length > 0) {
+    console.log(`  已排除: ${featureFlags.excludedCount}`);
+    for (const feature of featureFlags.excluded) {
+      console.log(`    [SKIP] ${formatFeature(feature)}`);
+    }
+  }
+  if (Array.isArray(featureFlags.removed) && featureFlags.removed.length > 0) {
+    console.log(`  Removed 不适用: ${featureFlags.removedCount}`);
+    for (const feature of featureFlags.removed) {
+      console.log(`    [REMOVED] ${formatFeature(feature)}`);
+    }
+  }
+  if (Array.isArray(featureFlags.otherOff) && featureFlags.otherOff.length > 0) {
+    console.log(`  其它未托管 OFF: ${featureFlags.otherOffCount}`);
+    for (const feature of featureFlags.otherOff) {
+      console.log(`    [OFF] ${formatFeature(feature)}`);
+    }
+  }
+  if (Array.isArray(featureFlags.missingManagedFeatureKeys) && featureFlags.missingManagedFeatureKeys.length > 0) {
+    console.log(`  托管配置中存在但当前 engine 未上报: ${featureFlags.missingManagedFeatureKeys.join(", ")}`);
   }
   if (featureFlags.truncated) {
     console.log("  注意: 结果超过分页上限，输出已截断。");
@@ -471,6 +719,43 @@ function printRuntimeRpc(runtimeRpc) {
   console.log("Runtime RPC probes:");
   for (const probe of Object.values(runtimeRpc)) {
     console.log(`  ${probe.method}: ${statusLabel(probe.status)}${probe.summary ? ` - ${probe.summary}` : ""}`);
+  }
+  console.log("");
+}
+
+function printModelCatalog(modelCatalog) {
+  console.log("Model catalog probes:");
+  const engineModels = modelCatalog.engineModels;
+  console.log(
+    `  engine model/list: ${statusLabel(engineModels.status)}${
+      engineModels.summary ? ` - ${formatSummary(engineModels.summary)}` : ""
+    }`,
+  );
+  if (engineModels.status !== "available" && engineModels.error) {
+    console.log(`    error: ${engineModels.error}`);
+  }
+
+  const gatewayModels = modelCatalog.gatewayModels;
+  if (gatewayModels.status !== "available") {
+    console.log(`  gateway /models: ${statusLabel(gatewayModels.status)} - ${gatewayModels.summary ?? ""}`);
+    console.log("");
+    return;
+  }
+
+  const summary = gatewayModels.summary;
+  console.log(
+    `  gateway /models: 可用 - modelCount=${summary.modelCount}; nativeApplyPatchReady=${summary.nativeApplyPatchReadyCount}`,
+  );
+  for (const model of summary.models ?? []) {
+    const missing =
+      model.missingNativeApplyPatchFields.length > 0
+        ? `; missing=${model.missingNativeApplyPatchFields.join(",")}`
+        : "";
+    console.log(
+      `    ${model.nativeApplyPatchReady ? "[PATCH]" : "[NO-PATCH]"} ${model.id}; applyPatchToolType=${
+        model.applyPatchToolType ?? "null"
+      }${missing}`,
+    );
   }
   console.log("");
 }
@@ -548,8 +833,14 @@ async function main() {
           title: "T3 Capability Probe",
           version: "0.0.0",
         },
+        prepareHome: options.managed
+          ? (probeHome) => {
+              writeFileSync(path.join(probeHome, "config.toml"), `${renderManagedTomlConfig()}\n`, "utf8");
+            }
+          : undefined,
       },
-      async ({ client, initializeResult }) => buildReport(client, initializeResult, options.enginePath),
+      async ({ client, initializeResult }) =>
+        buildReport(client, initializeResult, options.enginePath, options.managed),
     );
 
     if (options.json) {

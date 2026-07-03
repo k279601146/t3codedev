@@ -1,3 +1,5 @@
+import commercialEngineFeaturePolicy from "./commercialEngineFeaturePolicy.json" with { type: "json" };
+
 export const COMMERCIAL_ENGINE_PROVIDER_ID = "myservice";
 export const COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME = "MyService";
 export const COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV = "MYIDE_WEB_AUTH_BASE_URL";
@@ -27,6 +29,14 @@ export const COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY = [
   "SystemDrive",
   "HOMEDRIVE",
   "HOMEPATH",
+] as const;
+
+export const COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS = [
+  ...commercialEngineFeaturePolicy.enabledFeatureKeys,
+] as const;
+
+export const COMMERCIAL_ENGINE_EXCLUDED_FEATURE_KEYS = [
+  ...commercialEngineFeaturePolicy.excludedFeatureKeys,
 ] as const;
 
 const COMMERCIAL_ENGINE_PROCESS_ENV_INCLUDE_ONLY = [
@@ -169,6 +179,10 @@ function tomlStringArray(values: ReadonlyArray<string>): string {
   return `[${values.map(tomlString).join(", ")}]`;
 }
 
+function tomlBooleanAssignments(keys: ReadonlyArray<string>, value: boolean): string {
+  return keys.map((key) => `${key} = ${value ? "true" : "false"}`).join("\n");
+}
+
 export function generateCommercialEngineTomlConfig(
   env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): string {
@@ -187,44 +201,7 @@ disable_telemetry = true
 network_access = false
 
 [features]
-image_generation = true
-imagegenext = true
-plugins = true
-apps = true
-browser_use = true
-in_app_browser = true
-computer_use = true
-unified_exec = true
-code_mode = true
-code_mode_only = true
-web_search_request = true
-web_search_cached = true
-standalone_web_search = true
-runtime_metrics = true
-memories = true
-local_thread_store_compression = true
-chronicle = true
-child_agents_md = true
-apply_patch_streaming_events = true
-exec_permission_approvals = true
-request_permissions_tool = true
-use_legacy_landlock = true
-network_proxy = true
-multi_agent_v2 = true
-enable_fanout = true
-enable_mcp_apps = true
-tool_search_always_defer_mcp_tools = true
-non_prefixed_mcp_tool_names = true
-remote_plugin = true
-resize_all_images = true
-mentions_v2 = true
-default_mode_request_user_input = true
-terminal_visualization_instructions = true
-token_budget = true
-auth_elicitation = true
-artifact = true
-realtime_conversation = true
-prevent_idle_sleep = true
+${tomlBooleanAssignments(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS, true)}
 
 [shell_environment_policy]
 include_only = ${tomlStringArray(COMMERCIAL_ENGINE_SHELL_ENVIRONMENT_INCLUDE_ONLY)}

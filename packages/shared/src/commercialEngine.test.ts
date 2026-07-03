@@ -4,6 +4,8 @@ import { describe, it } from "vitest";
 
 import {
   COMMERCIAL_ENGINE_IDE_JWT_ENV,
+  COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS,
+  COMMERCIAL_ENGINE_EXCLUDED_FEATURE_KEYS,
   COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL_ENV,
   COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV,
   DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
@@ -46,18 +48,14 @@ describe("commercialEngine", () => {
 
   it("resolves public defaults when process is unavailable", () => {
     const previousProcess = globalThis.process;
+    let gatewayBaseUrl: string | undefined;
+    let webAuthBaseUrl: string | undefined;
 
     try {
       Reflect.deleteProperty(globalThis, "process");
 
-      assert.equal(
-        resolveCommercialEngineGatewayBaseUrl(),
-        DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL,
-      );
-      assert.equal(
-        resolveCommercialEngineWebAuthBaseUrl(),
-        DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL,
-      );
+      gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl();
+      webAuthBaseUrl = resolveCommercialEngineWebAuthBaseUrl();
     } finally {
       Object.defineProperty(globalThis, "process", {
         configurable: true,
@@ -66,6 +64,9 @@ describe("commercialEngine", () => {
         writable: true,
       });
     }
+
+    assert.equal(gatewayBaseUrl, DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL);
+    assert.equal(webAuthBaseUrl?.replace(/\/$/, ""), DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL);
   });
 
   it("derives IDE API candidates from the gateway URL", () => {
@@ -122,6 +123,14 @@ describe("commercialEngine", () => {
     assert.match(toml, /browser_use = true/);
     assert.match(toml, /in_app_browser = true/);
     assert.match(toml, /computer_use = true/);
+    assert.match(toml, /apply_patch_streaming_events = true/);
+    assert.match(toml, /unified_exec = true/);
+    assert.match(toml, /terminal_resize_reflow = true/);
+    assert.match(toml, /prevent_idle_sleep = true/);
+    assert.doesNotMatch(toml, /shell_zsh_fork = true/);
+    assert.doesNotMatch(toml, /unified_exec_zsh_fork = true/);
+    assert.doesNotMatch(toml, /apply_patch_freeform = true/);
+    assert.doesNotMatch(toml, /remote_models = true/);
     assert.doesNotMatch(toml, /model_provider = "myservice"/);
     assert.doesNotMatch(toml, /\[model_providers\.myservice\]/);
     assert.doesNotMatch(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
@@ -132,6 +141,16 @@ describe("commercialEngine", () => {
     assert.doesNotMatch(toml, /"OPENAI_API_KEY"/);
     assert.doesNotMatch(toml, new RegExp(COMMERCIAL_ENGINE_IDE_JWT_ENV));
     assert.doesNotMatch(toml, new RegExp(`"${COMMERCIAL_ENGINE_IDE_JWT_ENV}"[^\\n]*\\]`));
+  });
+
+  it("keeps the managed feature policy explicit and excludes unsupported zsh fork features", () => {
+    assert.ok(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS.includes("apply_patch_streaming_events"));
+    assert.ok(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS.includes("unified_exec"));
+    assert.ok(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS.includes("network_proxy"));
+    assert.ok(COMMERCIAL_ENGINE_EXCLUDED_FEATURE_KEYS.includes("shell_zsh_fork"));
+    assert.ok(COMMERCIAL_ENGINE_EXCLUDED_FEATURE_KEYS.includes("unified_exec_zsh_fork"));
+    assert.equal(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS.includes("apply_patch_freeform"), false);
+    assert.equal(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS.includes("remote_models"), false);
   });
 
   it("builds a minimum process environment for the bundled engine", () => {
