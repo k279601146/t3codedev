@@ -197,12 +197,24 @@ const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
 
 const PERSONALITY_SLASH_OPTIONS: ReadonlyArray<{
   readonly value: ProviderPersonality;
-  readonly label: string;
-  readonly description: string;
+  readonly labelKey: TranslationKey;
+  readonly descriptionKey: TranslationKey;
 }> = [
-  { value: "friendly", label: "亲和", description: "温暖、协作、贴心" },
-  { value: "pragmatic", label: "务实", description: "简洁、专注、直接" },
-  { value: "none", label: "无", description: "使用引擎默认语气" },
+  {
+    value: "friendly",
+    labelKey: "settings.personalityFriendly",
+    descriptionKey: "settings.personalityFriendlyDescription",
+  },
+  {
+    value: "pragmatic",
+    labelKey: "settings.personalityPragmatic",
+    descriptionKey: "settings.personalityPragmaticDescription",
+  },
+  {
+    value: "none",
+    labelKey: "settings.personalityNone",
+    descriptionKey: "settings.personalityNoneDescription",
+  },
 ];
 
 function formatComposerAttachmentTypeLabel(name: string, mimeType: string): string {
@@ -1700,6 +1712,7 @@ export const ChatComposer = memo(
     const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
     const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
     const [personalityMenuOpen, setPersonalityMenuOpen] = useState(false);
+    const personalityMenuOpeningGuardRef = useRef(false);
     const composerBlurFrameRef = useRef<number | null>(null);
     const mobileComposerExpandFrameRef = useRef<number | null>(null);
     const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
@@ -2107,13 +2120,6 @@ export const ChatComposer = memo(
       composerMenuSearchKey,
     ]);
 
-    useEffect(() => {
-      if (!personalityMenuOpen || composerTrigger === null) {
-        return;
-      }
-      setPersonalityMenuOpen(false);
-    }, [composerTrigger, personalityMenuOpen]);
-
     const lastSyncedPendingInputRef = useRef<{
       requestId: string | null;
       questionId: string | null;
@@ -2310,11 +2316,19 @@ export const ChatComposer = memo(
         cursorAdjacentToMention: boolean,
         terminalContextIds: string[],
       ) => {
+        const nextTrigger = cursorAdjacentToMention
+          ? null
+          : detectComposerTrigger(nextPrompt, expandedCursor);
+        if (nextTrigger !== null) {
+          if (personalityMenuOpeningGuardRef.current) {
+            personalityMenuOpeningGuardRef.current = false;
+          } else {
+            setPersonalityMenuOpen(false);
+          }
+        }
         if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
           setComposerCursor(nextCursor);
-          setComposerTrigger(
-            cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
-          );
+          setComposerTrigger(nextTrigger);
           onChangeActivePendingUserInputCustomAnswer(
             activePendingProgress.activeQuestion.id,
             nextPrompt,
@@ -2333,9 +2347,7 @@ export const ChatComposer = memo(
           );
         }
         setComposerCursor(nextCursor);
-        setComposerTrigger(
-          cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
-        );
+        setComposerTrigger(nextTrigger);
       },
       [
         activePendingProgress?.activeQuestion,
@@ -2439,7 +2451,25 @@ export const ChatComposer = memo(
         window.requestAnimationFrame(() => {
           composerSelectLockRef.current = false;
         });
-        const { snapshot, trigger } = resolveActiveComposerTrigger();
+        if (item.type === "slash-command" && item.command === "personality") {
+          setComposerHighlightedItemId(null);
+          setComposerTrigger(null);
+          personalityMenuOpeningGuardRef.current = true;
+          setPersonalityMenuOpen(true);
+          window.requestAnimationFrame(() => {
+            personalityMenuOpeningGuardRef.current = false;
+          });
+          const activeTrigger = composerTrigger;
+          if (activeTrigger) {
+            applyPromptReplacement(activeTrigger.rangeStart, activeTrigger.rangeEnd, "", {
+              focusEditorAfterReplace: false,
+            });
+          }
+          return;
+        }
+        const resolvedTrigger = resolveActiveComposerTrigger();
+        const snapshot = resolvedTrigger.snapshot;
+        const trigger = resolvedTrigger.trigger ?? composerTrigger;
         if (!trigger) return;
         if (item.type === "path") {
           const replacement = `@${item.path} `;
@@ -2489,17 +2519,6 @@ export const ChatComposer = memo(
             }
             return;
           }
-          if (item.command === "personality") {
-            const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-              expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-              focusEditorAfterReplace: false,
-            });
-            if (applied) {
-              setComposerHighlightedItemId(null);
-              setPersonalityMenuOpen(true);
-            }
-            return;
-          }
           void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -2546,7 +2565,12 @@ export const ChatComposer = memo(
           return;
         }
       },
-      [applyPromptReplacement, handleInteractionModeChange, resolveActiveComposerTrigger],
+      [
+        applyPromptReplacement,
+        composerTrigger,
+        handleInteractionModeChange,
+        resolveActiveComposerTrigger,
+      ],
     );
 
     const onComposerMenuItemHighlighted = useCallback(
@@ -3591,9 +3615,9 @@ export const ChatComposer = memo(
                           }}
                         >
                           <span className="grid min-w-0 gap-0.5">
-                            <span className="font-medium">{option.label}</span>
+                            <span className="font-medium">{t(option.labelKey)}</span>
                             <span className="text-xs text-muted-foreground">
-                              {option.description}
+                              {t(option.descriptionKey)}
                             </span>
                           </span>
                           {isActive ? <CheckIcon className="size-4 shrink-0" /> : null}
