@@ -72,14 +72,12 @@ type ProviderIntentEvent = Extract<
   }
 >;
 
-interface DeferredFirstTurnEnhancement {
+interface DeferredFirstTurnBranchEnhancement {
   readonly threadId: ThreadId;
   readonly branch: string | null;
   readonly worktreePath: string | null;
-  readonly cwd: string;
   readonly messageText: string;
   readonly attachments?: ReadonlyArray<ChatAttachment>;
-  readonly titleSeed?: string;
 }
 
 function toNonEmptyProviderInput(value: string | undefined): string | undefined {
@@ -222,7 +220,7 @@ const make = Effect.gen(function* () {
     timeToLive: HANDLED_TURN_START_KEY_TTL,
     lookup: () => Effect.succeed(true),
   });
-  const deferredFirstTurnEnhancements = new Map<ThreadId, DeferredFirstTurnEnhancement>();
+  const deferredFirstTurnBranchEnhancements = new Map<ThreadId, DeferredFirstTurnBranchEnhancement>();
   const goalRetryAttempts = new Map<ThreadId, number>();
   const goalAdvanceFibers = new Map<ThreadId, Fiber.Fiber<void, never>>();
 
@@ -751,7 +749,8 @@ const make = Effect.gen(function* () {
         });
         if (!generated) return;
 
-        if (!thread || !canReplaceThreadTitle(thread.title, input.titleSeed)) {
+        const latestThread = yield* resolveThread(input.threadId);
+        if (!latestThread || !canReplaceThreadTitle(latestThread.title, input.titleSeed)) {
           return;
         }
 
@@ -799,6 +798,15 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    let firstTurnTitleGeneration:
+      | {
+          readonly threadId: ThreadId;
+          readonly cwd: string;
+          readonly messageText: string;
+          readonly attachments?: ReadonlyArray<ChatAttachment>;
+          readonly titleSeed?: string;
+        }
+      | undefined;
     const isFirstUserMessageTurn =
       thread.messages.filter((entry) => entry.role === "user").length === 1;
     if (isFirstUserMessageTurn) {
@@ -815,12 +823,19 @@ const make = Effect.gen(function* () {
         ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
       };
 
-      deferredFirstTurnEnhancements.set(event.payload.threadId, {
+      firstTurnTitleGeneration = {
+        threadId: event.payload.threadId,
+        cwd: generationCwd,
+        ...generationInput,
+      };
+      deferredFirstTurnBranchEnhancements.set(event.payload.threadId, {
         threadId: event.payload.threadId,
         branch: thread.branch,
         worktreePath: thread.worktreePath,
-        cwd: generationCwd,
-        ...generationInput,
+        messageText: generationInput.messageText,
+        ...(generationInput.attachments !== undefined
+          ? { attachments: generationInput.attachments }
+          : {}),
       });
     }
 
@@ -902,15 +917,24 @@ const make = Effect.gen(function* () {
     yield* providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+
+    if (
+      firstTurnTitleGeneration !== undefined &&
+      canReplaceThreadTitle(thread.title, firstTurnTitleGeneration.titleSeed)
+    ) {
+      yield* maybeGenerateThreadTitleForFirstTurn(firstTurnTitleGeneration).pipe(Effect.forkScoped);
+    }
   });
 
-  const processDeferredFirstTurnEnhancement = Effect.fn("processDeferredFirstTurnEnhancement")(
+  const processDeferredFirstTurnBranchEnhancement = Effect.fn(
+    "processDeferredFirstTurnBranchEnhancement",
+  )(
     function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
-      const pending = deferredFirstTurnEnhancements.get(event.threadId);
+      const pending = deferredFirstTurnBranchEnhancements.get(event.threadId);
       if (!pending) {
         return;
       }
-      deferredFirstTurnEnhancements.delete(event.threadId);
+      deferredFirstTurnBranchEnhancements.delete(event.threadId);
 
       yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
         threadId: pending.threadId,
@@ -919,17 +943,6 @@ const make = Effect.gen(function* () {
         messageText: pending.messageText,
         ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
       }).pipe(Effect.forkScoped);
-
-      const thread = yield* resolveThread(pending.threadId);
-      if (thread && canReplaceThreadTitle(thread.title, pending.titleSeed)) {
-        yield* maybeGenerateThreadTitleForFirstTurn({
-          threadId: pending.threadId,
-          cwd: pending.cwd,
-          messageText: pending.messageText,
-          ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
-          ...(pending.titleSeed !== undefined ? { titleSeed: pending.titleSeed } : {}),
-        }).pipe(Effect.forkScoped);
-      }
     },
   );
 
@@ -1422,7 +1435,7 @@ const make = Effect.gen(function* () {
       event: ProviderRuntimeEvent,
     ) {
       if (event.type === "turn.completed") {
-        yield* processDeferredFirstTurnEnhancement(event);
+        yield* processDeferredFirstTurnBranchEnhancement(event);
         yield* scheduleGoalAdvance({
           threadId: event.threadId,
           reason: "turn-completed",
