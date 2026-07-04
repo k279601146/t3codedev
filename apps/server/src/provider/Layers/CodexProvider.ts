@@ -748,7 +748,13 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     .request("permissionProfile/list", { cwd: input.cwd })
     .pipe(Effect.option);
   const permissionProfiles = parsePermissionProfiles(Option.getOrNull(permissionProfilesResponse));
-  if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
+  const shouldUseCommercialCatalog =
+    bundledConfig !== undefined && Boolean(resolveCommercialEngineIdeJwt(baseEnv));
+  if (
+    !shouldUseCommercialCatalog &&
+    !accountResponse.account &&
+    accountResponse.requiresOpenaiAuth
+  ) {
     return {
       account: accountResponse,
       rateLimits: null,
@@ -1059,10 +1065,16 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 
   const snapshot = probeResult.success.value;
   const bundledEngine = resolveBundledEngineConfig(environment) !== undefined;
+  const hasCommercialToken = Boolean(resolveCommercialEngineIdeJwt(environment));
+  const modelCatalogError =
+    snapshot.modelCatalogError ??
+    (bundledEngine && hasCommercialToken && snapshot.models.length === 0
+      ? "Model catalog returned no available models."
+      : undefined);
   const accountStatus = accountProbeStatus(snapshot.account, snapshot.rateLimits, {
     bundledEngine,
-    hasCommercialToken: Boolean(resolveCommercialEngineIdeJwt(environment)),
-    modelCatalogError: snapshot.modelCatalogError,
+    hasCommercialToken,
+    modelCatalogError,
   });
 
   return buildServerProvider({

@@ -405,6 +405,36 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
         }),
       );
 
+      it.effect("marks commercial bundled provider as warning when no models are available", () =>
+        Effect.gen(function* () {
+          const status = yield* checkCodexProviderStatus(
+            defaultCodexSettings,
+            () =>
+              Effect.succeed(
+                makeCodexProbeSnapshot({
+                  account: {
+                    account: null,
+                    requiresOpenaiAuth: true,
+                  },
+                  models: [],
+                }),
+              ),
+            {
+              MYIDE_ENGINE_PATH: "C:\\Bahew\\ai-engine.exe",
+              MYIDE_IDE_JWT: "jwt-token",
+            } as NodeJS.ProcessEnv,
+          );
+
+          assert.strictEqual(status.status, "warning");
+          assert.strictEqual(status.auth.status, "authenticated");
+          assert.strictEqual(status.models.length, 0);
+          assert.strictEqual(
+            status.message,
+            "Model gateway catalog unavailable: Model catalog returned no available models.",
+          );
+        }),
+      );
+
       it.effect("returns unauthenticated when app-server requires OpenAI auth", () =>
         Effect.gen(function* () {
           const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
