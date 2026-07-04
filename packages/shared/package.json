@@ -107,6 +107,10 @@
       "types": "./src/commercialUsage.ts",
       "import": "./src/commercialUsage.ts"
     },
+    "./providerErrors": {
+      "types": "./src/providerErrors.ts",
+      "import": "./src/providerErrors.ts"
+    },
     "./ttlMemoryCache": {
       "types": "./src/ttlMemoryCache.ts",
       "import": "./src/ttlMemoryCache.ts"

@@ -21,6 +21,7 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
   return {
     ...derivedPaths,
     logLevel: "Error",
+    localFileLogsEnabled: false,
     traceMinLevel: "Info",
     traceTimingEnabled: true,
     traceBatchWindowMs: 200,

@@ -51,6 +51,7 @@ export interface ServerDerivedPaths {
  */
 export interface ServerConfigShape extends ServerDerivedPaths {
   readonly logLevel: LogLevel.LogLevel;
+  readonly localFileLogsEnabled: boolean;
   readonly traceMinLevel: LogLevel.LogLevel;
   readonly traceTimingEnabled: boolean;
   readonly traceBatchWindowMs: number;
@@ -110,17 +111,25 @@ export const deriveServerPaths = Effect.fn(function* (
   };
 });
 
-export const ensureServerDirectories = Effect.fn(function* (derivedPaths: ServerDerivedPaths) {
+export const ensureServerDirectories = Effect.fn(function* (
+  derivedPaths: ServerDerivedPaths,
+  options?: { readonly includeLogs?: boolean },
+) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const includeLogs = options?.includeLogs ?? true;
 
   yield* Effect.all(
     [
       fs.makeDirectory(derivedPaths.stateDir, { recursive: true }),
       fs.makeDirectory(derivedPaths.conversationWorkspaceDir, { recursive: true }),
-      fs.makeDirectory(derivedPaths.logsDir, { recursive: true }),
-      fs.makeDirectory(derivedPaths.providerLogsDir, { recursive: true }),
-      fs.makeDirectory(derivedPaths.terminalLogsDir, { recursive: true }),
+      ...(includeLogs
+        ? [
+            fs.makeDirectory(derivedPaths.logsDir, { recursive: true }),
+            fs.makeDirectory(derivedPaths.providerLogsDir, { recursive: true }),
+            fs.makeDirectory(derivedPaths.terminalLogsDir, { recursive: true }),
+          ]
+        : []),
       fs.makeDirectory(derivedPaths.attachmentsDir, { recursive: true }),
       fs.makeDirectory(derivedPaths.worktreesDir, { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.keybindingsConfigPath), { recursive: true }),
@@ -151,10 +160,11 @@ export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShap
             ? baseDirOrPrefix
             : yield* fs.makeTempDirectoryScoped({ prefix: baseDirOrPrefix.prefix });
         const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
-        yield* ensureServerDirectories(derivedPaths);
+        yield* ensureServerDirectories(derivedPaths, { includeLogs: false });
 
         return {
           logLevel: "Error",
+          localFileLogsEnabled: false,
           traceMinLevel: "Info",
           traceTimingEnabled: true,
           traceBatchWindowMs: 200,

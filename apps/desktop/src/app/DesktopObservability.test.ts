@@ -49,7 +49,10 @@ const environmentInput = (baseDir: string) =>
     runningUnderArm64Translation: false,
   }) satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
 
-const makeEnvironmentLayer = (baseDir: string) =>
+const makeEnvironmentLayer = (
+  baseDir: string,
+  env: Record<string, string | undefined> = { T3CODE_LOCAL_FILE_LOGS: "true" },
+) =>
   DesktopEnvironment.layer(environmentInput(baseDir)).pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -57,6 +60,7 @@ const makeEnvironmentLayer = (baseDir: string) =>
         DesktopConfig.layerTest({
           BAHEW_HOME: baseDir,
           VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
+          ...env,
         }),
       ),
     ),
@@ -154,6 +158,40 @@ describe("DesktopObservability", () => {
       assert.equal(output.annotations.runId, "test-run");
       assert.equal(output.annotations.stream, "stdout");
       assert.equal(output.annotations.text, "hello server\n");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerUndici)),
+    ),
+  );
+
+  it.effect("does not persist local desktop log files by default", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-desktop-observability-disabled-test-",
+      });
+      const environmentLayer = makeEnvironmentLayer(baseDir, { VITE_DEV_SERVER_URL: undefined });
+      const paths = yield* Effect.gen(function* () {
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        return {
+          tracePath: environment.path.join(environment.logDir, "desktop.trace.ndjson"),
+          childLogPath: environment.path.join(environment.logDir, "server-child.log"),
+        };
+      }).pipe(Effect.provide(environmentLayer));
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* Effect.logInfo("desktop trace event");
+          const outputLog = yield* DesktopObservability.DesktopBackendOutputLog;
+          yield* outputLog.writeOutputChunk("stdout", new TextEncoder().encode("hello server\n"));
+        }).pipe(
+          Effect.withSpan("desktop-observability-disabled-test"),
+          Effect.provide(DesktopObservability.layer.pipe(Layer.provideMerge(environmentLayer))),
+        ),
+      );
+
+      assert.isFalse(yield* fileSystem.exists(paths.tracePath));
+      assert.isFalse(yield* fileSystem.exists(paths.childLogPath));
     }).pipe(
       Effect.scoped,
       Effect.provide(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerUndici)),

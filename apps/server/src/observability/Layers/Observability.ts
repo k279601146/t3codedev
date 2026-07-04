@@ -22,12 +22,6 @@ export const ObservabilityLive = Layer.unwrap(
 
     const tracerLayer = Layer.unwrap(
       Effect.gen(function* () {
-        const sink = yield* makeTraceSink({
-          filePath: config.serverTracePath,
-          maxBytes: config.traceMaxBytes,
-          maxFiles: config.traceMaxFiles,
-          batchWindowMs: config.traceBatchWindowMs,
-        });
         const delegate =
           config.otlpTracesUrl === undefined
             ? undefined
@@ -43,6 +37,27 @@ export const ObservabilityLive = Layer.unwrap(
                 },
               });
 
+        if (!config.localFileLogsEnabled) {
+          return Layer.mergeAll(
+            Layer.succeed(
+              Tracer.Tracer,
+              delegate ??
+                Tracer.make({
+                  span: (spanOptions) => new Tracer.NativeSpan(spanOptions),
+                }),
+            ),
+            Layer.succeed(BrowserTraceCollector, {
+              record: () => Effect.void,
+            }),
+          );
+        }
+
+        const sink = yield* makeTraceSink({
+          filePath: config.serverTracePath,
+          maxBytes: config.traceMaxBytes,
+          maxFiles: config.traceMaxFiles,
+          batchWindowMs: config.traceBatchWindowMs,
+        });
         const tracer = yield* makeLocalFileTracer({
           filePath: config.serverTracePath,
           maxBytes: config.traceMaxBytes,

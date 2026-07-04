@@ -2712,6 +2712,82 @@ describe("ProviderRuntimeIngestion", () => {
     expect(activityPayload?.message).toBe("runtime activity exploded");
   });
 
+  it("uses actionable provider warning context when final runtime error is gateway html", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-gateway-html-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-gateway-html"),
+      payload: {},
+    });
+    await harness.drain();
+
+    await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.activeTurnId === "turn-gateway-html",
+    );
+
+    harness.emit({
+      type: "runtime.warning",
+      eventId: asEventId("evt-gateway-html-warning"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-gateway-html"),
+      payload: {
+        message: "Reconnecting... 1/5",
+        detail: {
+          error: {
+            additionalDetails:
+              "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://sub.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+          },
+        },
+      },
+    });
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("evt-gateway-html-error"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-gateway-html"),
+      payload: {
+        message: `<html>
+<head><title>400 Bad Request</title></head>
+<body>
+<center><h1>400 Bad Request</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>`,
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.session?.status === "error" &&
+        entry.session?.lastError ===
+          "账户余额不足，请充值或等待额度刷新后继续使用。请求 ID：46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+    );
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-gateway-html-error",
+    );
+    const activityPayload =
+      activity?.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : undefined;
+
+    expect(thread.session?.lastError).not.toContain("<html>");
+    expect(thread.session?.lastError).not.toContain("nginx");
+    expect(activityPayload?.message).toBe(thread.session?.lastError);
+  });
+
   it("keeps the session running when a runtime.warning arrives during an active turn", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

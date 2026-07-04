@@ -56,7 +56,7 @@ describe("BundledEngineConfig", () => {
     assert.equal(config.spawnEnvPatch.CODEX_WINDOWS_SANDBOX, undefined);
   });
 
-  it("generates TOML with commercial provider routing but no secrets", () => {
+  it("generates TOML without commercial provider routing details", () => {
     const toml = generateBundledTomlConfig({
       MYIDE_GATEWAY_BASE_URL: "https://api.example.com/v1",
       [COMMERCIAL_ENGINE_IDE_JWT_ENV]: "jwt-token",
@@ -64,13 +64,12 @@ describe("BundledEngineConfig", () => {
 
     assert.match(toml, /plugins = true/);
     assert.match(toml, /apps = true/);
-    assert.match(toml, /model_provider = "myservice"/);
-    assert.match(toml, /\[model_providers\.myservice\]/);
-    assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
-    assert.match(toml, /env_key = "MYIDE_IDE_JWT"/);
-    assert.match(toml, /wire_api = "responses"/);
-    assert.match(toml, /requires_openai_auth = false/);
-    assert.match(toml, /supports_websockets = false/);
+    assert.doesNotMatch(toml, /model_provider = "myservice"/);
+    assert.doesNotMatch(toml, /\[model_providers\.myservice\]/);
+    assert.doesNotMatch(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
+    assert.doesNotMatch(toml, /wire_api = "responses"/);
+    assert.doesNotMatch(toml, /requires_openai_auth/);
+    assert.doesNotMatch(toml, new RegExp(COMMERCIAL_ENGINE_IDE_JWT_ENV));
     assert.doesNotMatch(toml, /jwt-token/);
   });
 

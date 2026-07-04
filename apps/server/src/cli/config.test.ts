@@ -36,6 +36,7 @@ const makeDesktopBootstrap = (
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {
   const defaultObservabilityConfig = {
+    localFileLogsEnabled: false,
     traceMinLevel: "Info",
     traceTimingEnabled: true,
     traceBatchWindowMs: 200,
@@ -367,17 +368,69 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       for (const directory of [
         customCwd,
         resolved.stateDir,
+        resolved.attachmentsDir,
+        resolved.worktreesDir,
+      ]) {
+        expect(yield* fs.exists(directory)).toBe(true);
+      }
+      for (const directory of [
         resolved.logsDir,
         resolved.providerLogsDir,
         resolved.terminalLogsDir,
-        resolved.attachmentsDir,
-        resolved.worktreesDir,
         path.dirname(resolved.serverLogPath),
+        path.dirname(resolved.serverTracePath),
+      ]) {
+        expect(yield* fs.exists(directory)).toBe(false);
+      }
+      expect(resolved.cwd).toBe(path.resolve(customCwd));
+    }),
+  );
+
+  it.effect("creates local log directories only when local file logs are enabled", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-cli-config-local-logs-",
+      });
+      const customCwd = path.join(baseDir, "project");
+
+      const resolved = yield* resolveServerConfig(
+        {
+          mode: Option.some("desktop"),
+          port: Option.some(4888),
+          host: Option.none(),
+          baseDir: Option.some(baseDir),
+          cwd: Option.some(customCwd),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.none(),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+          tailscaleServeEnabled: Option.none(),
+          tailscaleServePort: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({ env: { T3CODE_LOCAL_FILE_LOGS: "true" } }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.localFileLogsEnabled).toBe(true);
+      for (const directory of [
+        resolved.logsDir,
+        resolved.providerLogsDir,
+        resolved.terminalLogsDir,
         path.dirname(resolved.serverTracePath),
       ]) {
         expect(yield* fs.exists(directory)).toBe(true);
       }
-      expect(resolved.cwd).toBe(path.resolve(customCwd));
     }),
   );
 

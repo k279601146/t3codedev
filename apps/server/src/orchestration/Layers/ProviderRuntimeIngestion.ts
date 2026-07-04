@@ -30,6 +30,12 @@ import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
+import {
+  type NormalizedProviderError,
+  type ProviderErrorContextCandidate,
+  normalizeProviderErrorMessage,
+  selectPreferredProviderErrorMessage,
+} from "@t3tools/shared/providerErrors";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
@@ -78,6 +84,14 @@ const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFEC
 const GENERATED_IMAGES_WORKSPACE_DIR = "generated-images";
 const IMAGE_RESULT_DATA_URL_PATTERN = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i;
 const IMAGE_FILE_EXTENSION_PATTERN = /\.(png|jpe?g|webp|gif)$/i;
+const providerErrorContextKey = (
+  threadId: ThreadId,
+  eventTurnId: TurnId | undefined,
+  activeTurnId: TurnId | null,
+) => {
+  const turnId = eventTurnId ?? activeTurnId ?? undefined;
+  return turnId ? providerTurnKey(threadId, turnId) : providerThreadKey(threadId);
+};
 
 type TurnStartRequestedDomainEvent = Extract<
   OrchestrationEvent,
@@ -96,6 +110,31 @@ function asNonEmptyString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function collectProviderIssueCandidatesFromActivities(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  turnId: TurnId | undefined,
+): ProviderErrorContextCandidate[] {
+  const candidates: ProviderErrorContextCandidate[] = [];
+  for (const activity of activities) {
+    if (activity.kind !== "runtime.warning" && activity.kind !== "runtime.error") {
+      continue;
+    }
+    if (turnId !== undefined && activity.turnId !== turnId) {
+      continue;
+    }
+    const payload = asRecord(activity.payload);
+    const message = asNonEmptyString(payload?.message);
+    if (message === undefined) {
+      continue;
+    }
+    candidates.push({
+      message,
+      ...(payload && "detail" in payload ? { detail: payload.detail } : {}),
+    });
+  }
+  return candidates;
 }
 
 function imageFileExtensionFromPath(filePath: string | undefined): string | undefined {
@@ -766,6 +805,7 @@ const make = Effect.gen(function* () {
   const workspaceFileSystem = yield* WorkspaceFileSystem;
   const turnStartRequestedAtByThread = new Map<ThreadId, number>();
   const firstAssistantDeltaRecordedByThread = new Set<ThreadId>();
+  const providerIssueByTurnKey = new Map<string, NormalizedProviderError>();
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
@@ -1565,6 +1605,45 @@ const make = Effect.gen(function* () {
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId =
         thread.session?.status === "running" ? (thread.session.activeTurnId ?? null) : null;
+      const providerIssueKey = providerErrorContextKey(thread.id, eventTurnId, activeTurnId);
+      const rememberProviderIssue = (issue: NormalizedProviderError | null) => {
+        if (issue?.isActionable === true) {
+          providerIssueByTurnKey.set(providerIssueKey, issue);
+        }
+      };
+      const resolveProviderIssueMessage = (
+        message: string | null | undefined,
+        detail?: unknown,
+        candidates: ReadonlyArray<ProviderErrorContextCandidate> = [],
+      ): string | null => {
+        const previousIssue = providerIssueByTurnKey.get(providerIssueKey) ?? null;
+        return selectPreferredProviderErrorMessage(message, detail, [
+          ...(previousIssue ? [{ message: previousIssue.message }] : []),
+          ...candidates,
+        ]);
+      };
+
+      if (event.type === "runtime.warning") {
+        rememberProviderIssue(
+          normalizeProviderErrorMessage(event.payload.message, event.payload.detail),
+        );
+      }
+      const runtimeErrorCandidates =
+        event.type === "runtime.error"
+          ? collectProviderIssueCandidatesFromActivities(
+              (yield* getLoadedThreadDetail())?.activities ?? [],
+              eventTurnId,
+            )
+          : [];
+      const runtimeErrorMessage =
+        event.type === "runtime.error"
+          ? (resolveProviderIssueMessage(
+              event.payload.message,
+              event.payload.detail,
+              runtimeErrorCandidates,
+            ) ??
+            event.payload.message)
+          : null;
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -1641,10 +1720,14 @@ const make = Effect.gen(function* () {
         })();
         const lastError =
           event.type === "session.state.changed" && event.payload.state === "error"
-            ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
+            ? (resolveProviderIssueMessage(event.payload.reason, event.payload.detail) ??
+              thread.session?.lastError ??
+              "Provider session error")
             : event.type === "turn.completed" &&
                 normalizeRuntimeTurnState(event.payload.state) === "failed"
-              ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
+              ? (resolveProviderIssueMessage(event.payload.errorMessage, event.payload) ??
+                thread.session?.lastError ??
+                "Turn failed")
               : status === "ready"
                 ? null
                 : (thread.session?.lastError ?? null);
@@ -1969,7 +2052,8 @@ const make = Effect.gen(function* () {
       }
 
       if (event.type === "runtime.error") {
-        const runtimeErrorMessage = event.payload.message;
+        const runtimeErrorLastError = runtimeErrorMessage ?? event.payload.message;
+        rememberProviderIssue(normalizeProviderErrorMessage(runtimeErrorLastError));
 
         const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
           ? true
@@ -1989,12 +2073,16 @@ const make = Effect.gen(function* () {
                 : {}),
               runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
               activeTurnId: eventTurnId ?? null,
-              lastError: runtimeErrorMessage,
+              lastError: runtimeErrorLastError,
               updatedAt: now,
             },
             createdAt: now,
           });
         }
+      }
+
+      if (event.type === "turn.completed" && eventTurnId !== undefined) {
+        providerIssueByTurnKey.delete(providerTurnKey(thread.id, eventTurnId));
       }
 
       if (event.type === "thread.metadata.updated" && event.payload.name) {
@@ -2054,6 +2142,17 @@ const make = Effect.gen(function* () {
                 }).pipe(Effect.as(event)),
               ),
             )
+          : event.type === "runtime.error" && runtimeErrorMessage !== null
+            ? {
+                ...event,
+                ...(event.turnId === undefined && activeTurnId !== null
+                  ? { turnId: activeTurnId }
+                  : {}),
+                payload: {
+                  ...event.payload,
+                  message: runtimeErrorMessage,
+                },
+              }
           : event.type === "runtime.warning" || event.type === "runtime.error"
             ? event.turnId === undefined && activeTurnId !== null
               ? { ...event, turnId: activeTurnId }

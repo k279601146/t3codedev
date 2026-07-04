@@ -9,7 +9,7 @@ describe("friendlyErrors", () => {
     );
 
     expect(friendly.title).toBe("账户余额不足");
-    expect(friendly.description).toBe("账户余额不足，请充值后重试。");
+    expect(friendly.description).toBe("账户余额不足，请充值或等待额度刷新后继续使用。");
     expect(friendly.description).not.toContain("unexpected status");
     expect(friendly.primaryActionLabel).toBe("充值");
   });
@@ -45,7 +45,7 @@ describe("friendlyErrors", () => {
       {
         raw: "unexpected status 403 Forbidden: insufficient balance, url: https://sub.bahew.com/v1/responses, cf-ray: a139e8ad79d41060-ORD, request id: 0720b576-b83d-4fa7-8c5b-ba882537a4ba",
         expected:
-          "账户余额不足，请充值后重试。请求 ID：0720b576-b83d-4fa7-8c5b-ba882537a4ba",
+          "账户余额不足，请充值或等待额度刷新后继续使用。请求 ID：0720b576-b83d-4fa7-8c5b-ba882537a4ba",
       },
       {
         raw: 'unexpected status 401 Unauthorized: {"code":"USER_INACTIVE","message":"User account is not active"}, url: https://sub.bahew.com/v1/responses, cf-ray: a13a22d1eec6381e-ORD, request id: 329fc1b9-cd22-49a4-b474-f0d33aae577f',
@@ -68,5 +68,20 @@ describe("friendlyErrors", () => {
   it("trims empty provider errors before storing them", () => {
     expect(sanitizeProviderErrorMessage("  Failed  ")).toBe("Failed");
     expect(sanitizeProviderErrorMessage("   ")).toBeNull();
+  });
+
+  it("maps gateway html errors to readable thread copy", () => {
+    const friendly = resolveFriendlyErrorMessage(`<html>
+<head><title>400 Bad Request</title></head>
+<body>
+<center><h1>400 Bad Request</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>`);
+
+    expect(friendly.title).toBe("请求未能完成");
+    expect(friendly.description).toBe("服务网关返回了异常响应，请稍后重试。");
+    expect(friendly.description).not.toContain("<html>");
+    expect(friendly.description).not.toContain("nginx");
   });
 });

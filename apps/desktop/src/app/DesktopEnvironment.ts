@@ -51,6 +51,7 @@ export interface DesktopEnvironmentShape {
   readonly installationIdPath: string;
   readonly serverSettingsPath: string;
   readonly logDir: string;
+  readonly localFileLogsEnabled: boolean;
   readonly rootDir: string;
   readonly appRoot: string;
   readonly backendEntryPath: string;
@@ -200,6 +201,7 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     installationIdPath: path.join(stateDir, "installation-id"),
     serverSettingsPath: path.join(stateDir, "settings.json"),
     logDir: path.join(stateDir, "logs"),
+    localFileLogsEnabled: config.localFileLogsEnabled,
     rootDir,
     appRoot,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),

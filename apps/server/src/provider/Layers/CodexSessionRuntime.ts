@@ -26,7 +26,13 @@ import {
 } from "@t3tools/contracts";
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { normalizeModelSlug } from "@t3tools/shared/model";
-import { COMMERCIAL_ENGINE_PROVIDER_ID } from "@t3tools/shared/commercialEngine";
+import {
+  COMMERCIAL_ENGINE_IDE_JWT_ENV,
+  COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME,
+  COMMERCIAL_ENGINE_PROVIDER_ID,
+  COMMERCIAL_ENGINE_WIRE_API,
+  resolveCommercialEngineGatewayBaseUrl,
+} from "@t3tools/shared/commercialEngine";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -141,6 +147,7 @@ type T3DynamicTools = ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__Dynam
 type ThreadStartParamsWithDynamicTools = EffectCodexSchema.V2ThreadStartParams & {
   readonly dynamicTools: T3DynamicTools;
 };
+type CodexThreadConfigOverrides = NonNullable<EffectCodexSchema.V2ThreadStartParams["config"]>;
 type CodexThreadItem =
   | EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number]["items"][number]
   | EffectCodexSchema.V2ThreadRollbackResponse["thread"]["turns"][number]["items"][number];
@@ -401,6 +408,7 @@ function buildThreadStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
   readonly modelProvider: string | undefined;
+  readonly configOverrides: CodexThreadConfigOverrides | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
 }): ThreadStartParamsWithDynamicTools {
@@ -417,8 +425,25 @@ function buildThreadStartParams(input: {
     ],
     ...(input.model ? { model: input.model } : {}),
     ...(input.modelProvider ? { modelProvider: input.modelProvider } : {}),
+    ...(input.configOverrides ? { config: input.configOverrides } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.personality !== undefined ? { personality: input.personality } : {}),
+  };
+}
+
+function buildCommercialThreadConfigOverrides(
+  environment: NodeJS.ProcessEnv,
+): CodexThreadConfigOverrides {
+  return {
+    model_provider: COMMERCIAL_ENGINE_PROVIDER_ID,
+    [`model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}`]: {
+      name: COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME,
+      base_url: resolveCommercialEngineGatewayBaseUrl(environment),
+      env_key: COMMERCIAL_ENGINE_IDE_JWT_ENV,
+      wire_api: COMMERCIAL_ENGINE_WIRE_API,
+      requires_openai_auth: false,
+      supports_websockets: false,
+    },
   };
 }
 
@@ -665,6 +690,7 @@ export const openCodexThread = (input: {
   readonly cwd: string;
   readonly requestedModel: string | undefined;
   readonly requestedModelProvider?: string | undefined;
+  readonly requestedConfigOverrides?: CodexThreadConfigOverrides | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
   readonly resumeThreadId: string | undefined;
@@ -675,6 +701,7 @@ export const openCodexThread = (input: {
     runtimeMode: input.runtimeMode,
     model: input.requestedModel,
     modelProvider: input.requestedModelProvider,
+    configOverrides: input.requestedConfigOverrides,
     serviceTier: input.serviceTier,
     personality: input.personality,
   });
@@ -1150,6 +1177,9 @@ export const makeCodexSessionRuntime = (
     const baseEnv = options.environment ?? process.env;
     const bundledConfig = resolveBundledEngineConfig(baseEnv);
     const bundledModelProvider = bundledConfig ? COMMERCIAL_ENGINE_PROVIDER_ID : undefined;
+    const bundledConfigOverrides = bundledConfig
+      ? buildCommercialThreadConfigOverrides(baseEnv)
+      : undefined;
     const effectiveBinaryPath = bundledConfig?.binaryPath ?? options.binaryPath;
     const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
     const env = buildCodexProcessEnv({
@@ -1860,6 +1890,7 @@ export const makeCodexSessionRuntime = (
         cwd: options.cwd,
         requestedModel,
         requestedModelProvider: bundledModelProvider,
+        requestedConfigOverrides: bundledConfigOverrides,
         serviceTier: options.serviceTier,
         personality: options.personality,
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),

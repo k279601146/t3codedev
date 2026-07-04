@@ -83,6 +83,7 @@ export const tailscaleServePortFlag = Flag.integer("tailscale-serve-port").pipe(
 
 const EnvServerConfig = Config.all({
   logLevel: Config.logLevel("T3CODE_LOG_LEVEL").pipe(Config.withDefault("Info")),
+  localFileLogsEnabled: Config.boolean("T3CODE_LOCAL_FILE_LOGS").pipe(Config.withDefault(false)),
   traceMinLevel: Config.logLevel("T3CODE_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
   traceTimingEnabled: Config.boolean("T3CODE_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
   traceFile: Config.string("T3CODE_TRACE_FILE").pipe(
@@ -280,12 +281,15 @@ export const resolveServerConfig = (
     const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
     yield* fs.makeDirectory(cwd, { recursive: true });
     const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
-    yield* ensureServerDirectories(derivedPaths);
+    const localFileLogsEnabled = env.localFileLogsEnabled || env.traceFile !== undefined;
+    yield* ensureServerDirectories(derivedPaths, { includeLogs: localFileLogsEnabled });
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
       derivedPaths.settingsPath,
     );
     const serverTracePath = env.traceFile ?? derivedPaths.serverTracePath;
-    yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
+    if (localFileLogsEnabled) {
+      yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
+    }
     const startupPresentation = options?.startupPresentation ?? "browser";
     const isHeadlessStartup = startupPresentation === "headless";
     const noBrowser = Option.getOrElse(
@@ -343,6 +347,7 @@ export const resolveServerConfig = (
 
     const config: ServerConfigShape = {
       logLevel,
+      localFileLogsEnabled,
       traceMinLevel: env.traceMinLevel,
       traceTimingEnabled: env.traceTimingEnabled,
       traceBatchWindowMs: env.traceBatchWindowMs,

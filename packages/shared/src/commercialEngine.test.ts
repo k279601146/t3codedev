@@ -105,7 +105,7 @@ describe("commercialEngine", () => {
     );
   });
 
-  it("generates persistent engine configuration with commercial provider routing but no secrets", () => {
+  it("generates persistent engine configuration without commercial provider routing details", () => {
     const toml = generateCommercialEngineTomlConfig({
       MYIDE_GATEWAY_BASE_URL: "https://api.example.com/v1",
       MYIDE_API_KEY: "must-not-appear",
@@ -115,13 +115,6 @@ describe("commercialEngine", () => {
     assert.match(toml, /sandbox_mode = "workspace-write"/);
     assert.match(toml, /approval_policy = "on-request"/);
     assert.match(toml, /approvals_reviewer = "user"/);
-    assert.match(toml, /model_provider = "myservice"/);
-    assert.match(toml, /\[model_providers\.myservice\]/);
-    assert.match(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
-    assert.match(toml, /env_key = "MYIDE_IDE_JWT"/);
-    assert.match(toml, /wire_api = "responses"/);
-    assert.match(toml, /requires_openai_auth = false/);
-    assert.match(toml, /supports_websockets = false/);
     assert.match(toml, /\[sandbox_workspace_write\]\s+network_access = false/);
     assert.match(toml, /image_generation = true/);
     assert.match(toml, /imagegenext = true/);
@@ -138,9 +131,15 @@ describe("commercialEngine", () => {
     assert.doesNotMatch(toml, /unified_exec_zsh_fork = true/);
     assert.doesNotMatch(toml, /apply_patch_freeform = true/);
     assert.doesNotMatch(toml, /remote_models = true/);
+    assert.doesNotMatch(toml, /model_provider = "myservice"/);
+    assert.doesNotMatch(toml, /\[model_providers\.myservice\]/);
+    assert.doesNotMatch(toml, /base_url = "https:\/\/api\.example\.com\/v1"/);
+    assert.doesNotMatch(toml, /wire_api = "responses"/);
+    assert.doesNotMatch(toml, /requires_openai_auth/);
     assert.doesNotMatch(toml, /must-not-appear/);
     assert.doesNotMatch(toml, /jwt-token/);
     assert.doesNotMatch(toml, /"OPENAI_API_KEY"/);
+    assert.doesNotMatch(toml, new RegExp(COMMERCIAL_ENGINE_IDE_JWT_ENV));
   });
 
   it("keeps the managed feature policy explicit and excludes unsupported zsh fork features", () => {

@@ -26,6 +26,17 @@ import {
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
 type TestThreadOpenMethod = "thread/start" | "thread/resume" | "thread/settings/update";
+const commercialThreadConfigOverrides = {
+  model_provider: "myservice",
+  "model_providers.myservice": {
+    name: "MyService",
+    base_url: "https://sub.bahew.com/v1",
+    env_key: "MYIDE_IDE_JWT",
+    wire_api: "responses",
+    requires_openai_auth: false,
+    supports_websockets: false,
+  },
+};
 
 function makeThreadOpenResponse(
   threadId: string,
@@ -336,6 +347,7 @@ describe("openCodexThread", () => {
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
         requestedModelProvider: "myservice",
+        requestedConfigOverrides: commercialThreadConfigOverrides,
         serviceTier: undefined,
         personality: undefined,
         resumeThreadId: undefined,
@@ -345,6 +357,7 @@ describe("openCodexThread", () => {
     assert.ok(startPayload);
     assert.equal(startPayload.approvalsReviewer, "user");
     assert.equal(startPayload.modelProvider, "myservice");
+    assert.deepStrictEqual(startPayload.config, commercialThreadConfigOverrides);
     assert.deepStrictEqual(startPayload.dynamicTools, [
       ...buildT3BrowserDynamicTools(),
       ...buildT3BrowserExternalDynamicTools(),
@@ -404,6 +417,7 @@ describe("openCodexThread", () => {
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
         requestedModelProvider: "myservice",
+        requestedConfigOverrides: commercialThreadConfigOverrides,
         serviceTier: undefined,
         personality: undefined,
         resumeThreadId: "stale-thread",
@@ -419,9 +433,17 @@ describe("openCodexThread", () => {
       (calls[0]?.payload as CodexRpc.ClientRequestParamsByMethod["thread/resume"]).modelProvider,
       "myservice",
     );
+    assert.deepStrictEqual(
+      (calls[0]?.payload as CodexRpc.ClientRequestParamsByMethod["thread/resume"]).config,
+      commercialThreadConfigOverrides,
+    );
     assert.equal(
       (calls[1]?.payload as CodexRpc.ClientRequestParamsByMethod["thread/start"]).modelProvider,
       "myservice",
+    );
+    assert.deepStrictEqual(
+      (calls[1]?.payload as CodexRpc.ClientRequestParamsByMethod["thread/start"]).config,
+      commercialThreadConfigOverrides,
     );
   });
 
@@ -457,6 +479,7 @@ describe("openCodexThread", () => {
           cwd: "/tmp/project",
           requestedModel: "gpt-5.3-codex",
           requestedModelProvider: undefined,
+          requestedConfigOverrides: undefined,
           serviceTier: undefined,
           personality: undefined,
           resumeThreadId: "stale-thread",

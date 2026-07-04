@@ -66,6 +66,7 @@ const DESKTOP_BACKEND_ENV_NAMES = [
   "T3CODE_BROWSER_USE_EXTERNAL_TOKEN",
   "T3CODE_COMPUTER_USE_ENDPOINT",
   "T3CODE_COMPUTER_USE_TOKEN",
+  "T3CODE_LOCAL_FILE_LOGS",
 ] as const;
 
 const COMMERCIAL_ENGINE_DESKTOP_ENV_NAMES = [
@@ -387,6 +388,7 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         [COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV]: input.windowsSandboxMode,
         T3CODE_BUNDLED_EXTENSIONS_PATH: environment.bundledExtensionsPath,
         T3CODE_TELEMETRY_ENABLED: input.telemetryEnabled ? "true" : "false",
+        T3CODE_LOCAL_FILE_LOGS: environment.localFileLogsEnabled ? "true" : "false",
         T3CODE_BROWSER_USE_ENDPOINT: input.browserUseEndpoint,
         T3CODE_BROWSER_USE_TOKEN: input.browserUseToken,
         T3CODE_BROWSER_USE_EXTERNAL_ENDPOINT: input.browserUseExternalEndpoint,

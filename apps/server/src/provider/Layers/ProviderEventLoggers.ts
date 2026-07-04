@@ -70,7 +70,10 @@ export const NoOpProviderEventLoggers: ProviderEventLoggersShape = {
 export const ProviderEventLoggersLive = Layer.effect(
   ProviderEventLoggers,
   Effect.gen(function* () {
-    const { providerEventLogPath } = yield* ServerConfig;
+    const { localFileLogsEnabled, providerEventLogPath } = yield* ServerConfig;
+    if (!localFileLogsEnabled) {
+      return NoOpProviderEventLoggers;
+    }
     const native = yield* makeEventNdjsonLogger(providerEventLogPath, {
       stream: "native",
     });

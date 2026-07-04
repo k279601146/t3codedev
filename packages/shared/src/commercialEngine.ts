@@ -196,18 +196,9 @@ sandbox_mode = "workspace-write"
 approval_policy = "on-request"
 approvals_reviewer = "user"
 disable_telemetry = true
-model_provider = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_ID)}
 
 [sandbox_workspace_write]
 network_access = false
-
-[model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}]
-name = ${tomlString(COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME)}
-base_url = ${tomlString(resolveCommercialEngineGatewayBaseUrl(env))}
-env_key = ${tomlString(COMMERCIAL_ENGINE_IDE_JWT_ENV)}
-wire_api = ${tomlString(COMMERCIAL_ENGINE_WIRE_API)}
-requires_openai_auth = false
-supports_websockets = false
 
 [features]
 ${tomlBooleanAssignments(COMMERCIAL_ENGINE_ENABLED_FEATURE_KEYS, true)}

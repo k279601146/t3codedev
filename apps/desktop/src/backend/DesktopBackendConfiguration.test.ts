@@ -352,6 +352,7 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.env.T3CODE_COMPUTER_USE_ENDPOINT, "http://127.0.0.1:49877");
         assert.equal(first.env.T3CODE_COMPUTER_USE_TOKEN, "computer-token");
         assert.equal(first.env.T3CODE_BUNDLED_EXTENSIONS_PATH, environment.bundledExtensionsPath);
+        assert.equal(first.env.T3CODE_LOCAL_FILE_LOGS, "false");
         assert.equal(first.env.T3CODE_PORT, undefined);
         assert.equal(first.env.T3CODE_MODE, undefined);
         assert.equal(first.env.T3CODE_DESKTOP_LAN_HOST, undefined);
@@ -503,13 +504,11 @@ describe("DesktopBackendConfiguration", () => {
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
           assert.match(engineConfig, /plugins = true/);
           assert.match(engineConfig, /apps = true/);
-          assert.equal(engineConfig.includes("[model_providers.myservice]"), true);
-          assert.equal(engineConfig.includes('model_provider = "myservice"'), true);
-          assert.equal(engineConfig.includes("https://api.example.com/v1"), true);
-          assert.equal(engineConfig.includes('env_key = "MYIDE_IDE_JWT"'), true);
-          assert.equal(engineConfig.includes('wire_api = "responses"'), true);
-          assert.equal(engineConfig.includes("requires_openai_auth = false"), true);
-          assert.equal(engineConfig.includes("supports_websockets = false"), true);
+          assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
+          assert.equal(engineConfig.includes("https://api.example.com/v1"), false);
+          assert.equal(engineConfig.includes("wire_api"), false);
+          assert.equal(engineConfig.includes("requires_openai_auth"), false);
+          assert.equal(engineConfig.includes(COMMERCIAL_ENGINE_IDE_JWT_ENV), false);
           assert.equal(engineConfig.includes("legacy-real-key"), false);
           assert.equal(engineConfig.includes("jwt-token"), false);
         }),
@@ -550,8 +549,8 @@ describe("DesktopBackendConfiguration", () => {
         yield* configuration.resolve;
 
         const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-        assert.equal(engineConfig.includes("[model_providers.myservice]"), true);
-        assert.equal(engineConfig.includes("https://sub.bahew.com/v1"), true);
+        assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
+        assert.equal(engineConfig.includes("https://sub.bahew.com/v1"), false);
         assert.match(engineConfig, /\[features\]/);
         assert.match(engineConfig, /image_generation = true/);
         assert.match(engineConfig, /imagegenext = true/);
@@ -588,8 +587,8 @@ describe("DesktopBackendConfiguration", () => {
 
           const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-          assert.equal(engineConfig.includes("[model_providers.myservice]"), true);
-          assert.equal(engineConfig.includes("https://stored.example.com/v1"), true);
+          assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
+          assert.equal(engineConfig.includes("https://stored.example.com/v1"), false);
           assert.equal(engineConfig.includes("stored-jwt"), false);
           assert.equal(engineConfig.includes("env-jwt"), false);
         }).pipe(

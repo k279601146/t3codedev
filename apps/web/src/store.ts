@@ -24,6 +24,10 @@ import { isProviderDriverKind, ProviderDriverKind } from "@t3tools/contracts";
 import type { ThreadId, TurnId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
+import {
+  type ProviderErrorContextCandidate,
+  selectPreferredProviderErrorMessage,
+} from "@t3tools/shared/providerErrors";
 import { create } from "zustand";
 import {
   type ChatMessage,
@@ -325,6 +329,57 @@ function mapTurnDiffSummary(checkpoint: OrchestrationCheckpointSummary): TurnDif
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function collectRuntimeIssueCandidates(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  turnId: TurnId | null | undefined,
+): ProviderErrorContextCandidate[] {
+  const candidates: ProviderErrorContextCandidate[] = [];
+  for (const activity of activities) {
+    if (activity.kind !== "runtime.warning" && activity.kind !== "runtime.error") {
+      continue;
+    }
+    if (turnId !== null && turnId !== undefined && activity.turnId !== turnId) {
+      continue;
+    }
+    const payload = isRecord(activity.payload) ? activity.payload : null;
+    const message = readString(payload?.message);
+    if (message === null) {
+      continue;
+    }
+    candidates.push({
+      message,
+      ...(payload && "detail" in payload ? { detail: payload.detail } : {}),
+    });
+  }
+  return candidates;
+}
+
+function resolveThreadErrorMessage(
+  lastError: string | null | undefined,
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  turnId: TurnId | null | undefined,
+): string | null {
+  const sanitized = sanitizeThreadErrorMessage(lastError);
+  if (sanitized === null) {
+    return null;
+  }
+  return (
+    selectPreferredProviderErrorMessage(
+      sanitized,
+      undefined,
+      collectRuntimeIssueCandidates(activities, turnId),
+    ) ?? sanitized
+  );
+}
+
 function mapProject(
   project:
     | OrchestrationReadModel["projects"][number]
@@ -352,6 +407,7 @@ function mapThread(
   historyWindow?: OrchestrationThreadHistoryWindow,
 ): Thread {
   const historyState = mapThreadHistoryState(historyWindow);
+  const activities = thread.activities.map((activity) => ({ ...activity }));
   return {
     id: thread.id,
     environmentId,
@@ -364,7 +420,11 @@ function mapThread(
     session: thread.session ? mapSession(thread.session) : null,
     messages: thread.messages.map((message) => mapMessage(environmentId, message)),
     proposedPlans: thread.proposedPlans.map(mapProposedPlan),
-    error: sanitizeThreadErrorMessage(thread.session?.lastError),
+    error: resolveThreadErrorMessage(
+      thread.session?.lastError,
+      activities,
+      thread.session?.activeTurnId ?? thread.latestTurn?.turnId ?? null,
+    ),
     createdAt: thread.createdAt,
     archivedAt: thread.archivedAt,
     updatedAt: thread.updatedAt,
@@ -374,7 +434,7 @@ function mapThread(
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
-    activities: thread.activities.map((activity) => ({ ...activity })),
+    activities,
     ...(historyState
       ? {
           isPartialHistory: historyState.isPartialHistory,
@@ -1683,7 +1743,11 @@ function applyEnvironmentOrchestrationEvent(
       return updateThreadState(state, event.payload.threadId, (thread) => ({
         ...thread,
         session: mapSession(event.payload.session),
-        error: sanitizeThreadErrorMessage(event.payload.session.lastError),
+        error: resolveThreadErrorMessage(
+          event.payload.session.lastError,
+          thread.activities,
+          event.payload.session.activeTurnId ?? thread.latestTurn?.turnId ?? null,
+        ),
         latestTurn:
           event.payload.session.status === "running" && event.payload.session.activeTurnId !== null
             ? buildLatestTurn({
@@ -1874,6 +1938,11 @@ function applyEnvironmentOrchestrationEvent(
         return {
           ...thread,
           activities,
+          error: resolveThreadErrorMessage(
+            thread.session?.lastError,
+            activities,
+            thread.session?.activeTurnId ?? thread.latestTurn?.turnId ?? null,
+          ),
           updatedAt: event.occurredAt,
         };
       });

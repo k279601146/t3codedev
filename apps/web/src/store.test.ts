@@ -784,6 +784,75 @@ describe("incremental orchestration updates", () => {
     expect(threadsOf(next)[0]?.messages).toHaveLength(1);
   });
 
+  it("uses actionable runtime warning context when session error is gateway html", () => {
+    const turnId = TurnId.make("turn-gateway-html");
+    const thread = makeThread({
+      session: {
+        provider: ProviderDriverKind.make("codex"),
+        status: "running",
+        activeTurnId: turnId,
+        createdAt: "2026-02-27T00:00:00.000Z",
+        updatedAt: "2026-02-27T00:00:00.000Z",
+        orchestrationStatus: "running",
+      },
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: "2026-02-27T00:00:00.000Z",
+        startedAt: "2026-02-27T00:00:00.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const state = makeState(thread);
+
+    const withWarning = applyOrchestrationEvent(
+      state,
+      makeEvent("thread.activity-appended", {
+        threadId: thread.id,
+        activity: {
+          id: EventId.make("activity-balance-warning"),
+          tone: "info",
+          kind: "runtime.warning",
+          summary: "Runtime warning",
+          payload: {
+            message: "账户余额不足，请充值或等待额度刷新后继续使用。",
+            detail: {
+              error: {
+                additionalDetails:
+                  "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+              },
+            },
+          },
+          turnId,
+          createdAt: "2026-02-27T00:00:01.000Z",
+        },
+      }),
+      localEnvironmentId,
+    );
+
+    const next = applyOrchestrationEvent(
+      withWarning,
+      makeEvent("thread.session-set", {
+        threadId: thread.id,
+        session: {
+          threadId: thread.id,
+          status: "error",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: "<html><head><title>400 Bad Request</title></head><body>nginx</body></html>",
+          updatedAt: "2026-02-27T00:00:02.000Z",
+        },
+      }),
+      localEnvironmentId,
+    );
+
+    expect(threadsOf(next)[0]?.error).toBe(
+      "账户余额不足，请充值或等待额度刷新后继续使用。请求 ID：46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+    );
+  });
+
   it("does not regress latestTurn when an older turn diff completes late", () => {
     const state = makeState(
       makeThread({

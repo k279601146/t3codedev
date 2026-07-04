@@ -724,6 +724,7 @@ function normalizedRuntimeEnv(
 
 interface TerminalManagerOptions {
   logsDir: string;
+  historyPersistenceEnabled?: boolean;
   historyLineLimit?: number;
   ptyAdapter: PtyAdapterShape;
   shellResolver?: () => string;
@@ -736,10 +737,11 @@ interface TerminalManagerOptions {
 }
 
 const makeTerminalManager = Effect.fn("makeTerminalManager")(function* () {
-  const { terminalLogsDir } = yield* ServerConfig;
+  const { localFileLogsEnabled, terminalLogsDir } = yield* ServerConfig;
   const ptyAdapter = yield* PtyAdapter;
   return yield* makeTerminalManagerWithOptions({
     logsDir: terminalLogsDir,
+    historyPersistenceEnabled: localFileLogsEnabled,
     ptyAdapter,
   });
 });
@@ -752,6 +754,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
     const runFork = Effect.runForkWith(context);
 
     const logsDir = options.logsDir;
+    const historyPersistenceEnabled = options.historyPersistenceEnabled ?? true;
     const historyLineLimit = options.historyLineLimit ?? DEFAULT_HISTORY_LINE_LIMIT;
     const platform = options.platform ?? process.platform;
     const baseEnv = options.env ?? process.env;
@@ -769,7 +772,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
     const maxRetainedInactiveSessions =
       options.maxRetainedInactiveSessions ?? DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS;
 
-    yield* fileSystem.makeDirectory(logsDir, { recursive: true }).pipe(Effect.orDie);
+    if (historyPersistenceEnabled) {
+      yield* fileSystem.makeDirectory(logsDir, { recursive: true }).pipe(Effect.orDie);
+    }
 
     const managerStateRef = yield* SynchronizedRef.make<TerminalManagerState>({
       sessions: new Map(),
@@ -962,6 +967,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         if (!threadId || !terminalId) {
           return;
         }
+        if (!historyPersistenceEnabled) {
+          return;
+        }
 
         yield* fileSystem.writeFileString(historyPath(threadId, terminalId), request.history).pipe(
           Effect.catch((error) =>
@@ -1009,6 +1017,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
       threadId: string,
       terminalId: string,
     ) {
+      if (!historyPersistenceEnabled) {
+        return "";
+      }
       const nextPath = historyPath(threadId, terminalId);
       if (
         yield* fileSystem
@@ -1062,6 +1073,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
       threadId: string,
       terminalId: string,
     ) {
+      if (!historyPersistenceEnabled) {
+        return;
+      }
       yield* fileSystem.remove(historyPath(threadId, terminalId), { force: true }).pipe(
         Effect.catch((error) =>
           Effect.logWarning("failed to delete terminal history", {
@@ -1087,6 +1101,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
     const deleteAllHistoryForThread = Effect.fn("terminal.deleteAllHistoryForThread")(function* (
       threadId: string,
     ) {
+      if (!historyPersistenceEnabled) {
+        return;
+      }
       const threadPrefix = `${toSafeThreadId(threadId)}_`;
       const entries = yield* fileSystem
         .readDirectory(logsDir, { recursive: false })

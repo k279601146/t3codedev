@@ -61,6 +61,7 @@ import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
 } from "@t3tools/shared/model";
+import { normalizeProviderErrorMessage } from "@t3tools/shared/providerErrors";
 import {
   deriveDynamicToolActivityPresentation,
   deriveToolActivityPresentation,
@@ -113,34 +114,17 @@ const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
 const PROVIDER = ProviderDriverKind.make("codex");
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-const COMMERCIAL_USAGE_LIMIT_MESSAGE = "账户余额不足，请充值或等待额度刷新后继续使用。";
-
-function stringifyUnknown(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
 
 function isCommercialUsageLimitSignal(
   message: string | null | undefined,
   detail?: unknown,
 ): boolean {
-  const source = `${message ?? ""} ${detail === undefined ? "" : stringifyUnknown(detail)}`;
-  const normalized = source.toLowerCase();
-  return (
-    /\binsufficient_balance\b/i.test(source) ||
-    /insufficient (?:account )?balance/i.test(source) ||
-    /余额不足/.test(source) ||
-    /\busage_limit_exceeded\b/i.test(source) ||
-    (/\bbilling_error\b/i.test(source) && /balance|余额/.test(normalized))
-  );
+  const normalized = normalizeProviderErrorMessage(message, detail);
+  return normalized?.kind === "insufficient_balance" || normalized?.kind === "usage_limit";
 }
 
 function normalizeCommercialUsageLimitMessage(message: string, detail?: unknown): string {
-  return isCommercialUsageLimitSignal(message, detail) ? COMMERCIAL_USAGE_LIMIT_MESSAGE : message;
+  return normalizeProviderErrorMessage(message, detail)?.message ?? message;
 }
 
 export interface CodexAdapterLiveOptions {
@@ -1818,7 +1802,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const managedNativeEventLogger =
     options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
   const jsonRpcLogPath =
-    options?.jsonRpcLogPath ?? path.join(serverConfig.providerLogsDir, "jsonrpc.log");
+    options?.jsonRpcLogPath ??
+    (serverConfig.localFileLogsEnabled
+      ? path.join(serverConfig.providerLogsDir, "jsonrpc.log")
+      : undefined);
   const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(2048);
   const warmProcessRef = yield* Ref.make<Option.Option<CodexWarmProcess>>(Option.none());
   const windowsSandboxSetupErrorRef = yield* Ref.make<string | null>(null);
@@ -2182,7 +2169,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               ? { serviceTier: "fast" }
               : {}),
             ...(input.personality !== undefined ? { personality: input.personality } : {}),
-            jsonRpcLogPath,
+            ...(jsonRpcLogPath !== undefined ? { jsonRpcLogPath } : {}),
           };
           const sessionScope = yield* Scope.make("sequential");
           let sessionScopeTransferred = false;
