@@ -240,6 +240,14 @@ export const CommercialAccountUsageSchema = Schema.Struct({
 });
 export type CommercialAccountUsageSchema = typeof CommercialAccountUsageSchema.Type;
 
+export const CommercialPublicRuntimeConfigSchema = Schema.Struct({
+  featureFlags: Schema.Struct({
+    upgradeEntryEnabled: Schema.Boolean,
+  }),
+});
+export type CommercialPublicRuntimeConfigSchema =
+  typeof CommercialPublicRuntimeConfigSchema.Type;
+
 export const SetLastUsedModelInputSchema = Schema.Struct({
   modelId: TrimmedNonEmptyString,
 });

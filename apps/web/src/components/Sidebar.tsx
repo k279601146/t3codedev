@@ -57,6 +57,7 @@ import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import {
   type CommercialAccountUsageSchema,
+  type CommercialPublicRuntimeConfigSchema,
   type ContextMenuItem,
   CONVERSATION_PROJECT_ID,
   type DesktopUpdateState,
@@ -2567,14 +2568,16 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       ? codexProvider.auth.email
       : (codexProvider?.auth.label ?? accountLabel);
   const accountPlanLabel =
-    providerUsage?.planLabel ??
-    (providerUsage?.plan ? formatPlanLabel(providerUsage.plan) : undefined) ??
+    (providerUsage?.plan
+      ? resolveCommercialPlanLabel(providerUsage.plan, providerUsage.planLabel)
+      : providerUsage?.planLabel) ??
     codexProvider?.auth.label ??
     "AI Plus";
   const accountAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
     accountLabel,
   )}`;
   const accountWebBaseUrl = resolveCommercialAccountWebBaseUrl();
+  const upgradeEntryEnabled = useCommercialUpgradeEntryEnabled(accountWebBaseUrl);
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2725,6 +2728,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                     <AccountUsageCard
                       credits={codexProvider?.auth.rateLimits?.credits ?? null}
                       providerUsage={providerUsage}
+                      upgradeEntryEnabled={upgradeEntryEnabled}
                       onInvite={handleOpenReferrals}
                       onUpgrade={handleOpenPlans}
                     />
@@ -2812,6 +2816,56 @@ type CommercialAccountUsage = Awaited<
 
 type CommercialUsageLike = NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]>;
 
+function useCommercialUpgradeEntryEnabled(accountWebBaseUrl: string): boolean {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+    const loadConfig = bridge?.getCommercialPublicRuntimeConfig
+      ? bridge.getCommercialPublicRuntimeConfig({ accountWebBaseUrl })
+      : fetchCommercialPublicRuntimeConfig(accountWebBaseUrl);
+
+    void loadConfig
+      .then((config) => {
+        if (!disposed) {
+          setEnabled(readCommercialUpgradeEntryEnabled(config));
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setEnabled(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [accountWebBaseUrl]);
+
+  return enabled;
+}
+
+async function fetchCommercialPublicRuntimeConfig(
+  accountWebBaseUrl: string,
+): Promise<CommercialPublicRuntimeConfigSchema | null> {
+  const configUrl = new URL("/api/public-runtime-config", accountWebBaseUrl).toString();
+  const response = await fetch(configUrl, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    return null;
+  }
+  return (await response.json()) as CommercialPublicRuntimeConfigSchema;
+}
+
+function readCommercialUpgradeEntryEnabled(
+  config: CommercialPublicRuntimeConfigSchema | null | undefined,
+): boolean {
+  return config?.featureFlags?.upgradeEntryEnabled === true;
+}
+
 function normalizeCommercialUsage(
   usage: CommercialAccountUsage | CommercialUsageLike | null | undefined,
 ): CommercialAccountUsage | null {
@@ -2819,12 +2873,14 @@ function normalizeCommercialUsage(
     return null;
   }
 
+  const plan =
+    usage.plan === "free" || usage.plan === "plus" || usage.plan === "pro" ? usage.plan : "plus";
+
   return {
     balance: "balance" in usage ? (usage.balance ?? null) : null,
-    plan:
-      usage.plan === "free" || usage.plan === "plus" || usage.plan === "pro" ? usage.plan : "plus",
-    planLabel: usage.planLabel ?? "AI Plus",
-    planMultiplier: usage.planMultiplier ?? (usage.plan === "pro" ? 4 : 2),
+    plan,
+    planLabel: resolveCommercialPlanLabel(plan, usage.planLabel),
+    planMultiplier: usage.planMultiplier ?? commercialPlanMultiplier(plan),
     currentWindow: usage.currentWindow,
     weeklyWindow: usage.weeklyWindow,
     totalTokens: usage.totalTokens,
@@ -2834,9 +2890,31 @@ function normalizeCommercialUsage(
   } satisfies CommercialAccountUsageSchema;
 }
 
+function resolveCommercialPlanLabel(
+  plan: string | null | undefined,
+  planLabel: string | null | undefined,
+): string {
+  if (plan) {
+    return formatPlanLabel(plan);
+  }
+  return planLabel?.trim() || "AI Plus";
+}
+
+function commercialPlanMultiplier(plan: string | null | undefined): number {
+  switch (plan) {
+    case "pro":
+      return 4;
+    case "free":
+      return 1;
+    default:
+      return 2;
+  }
+}
+
 function AccountUsageCard(props: {
   credits: NonNullable<ServerProvider["auth"]["rateLimits"]>["credits"] | null;
   providerUsage: CommercialUsageLike | null;
+  upgradeEntryEnabled: boolean;
   onInvite: () => void;
   onUpgrade: () => void;
 }) {
@@ -2885,10 +2963,8 @@ function AccountUsageCard(props: {
   const resolvedUsage = usage ?? props.providerUsage;
   const currentWindow = resolvedUsage?.currentWindow ?? null;
   const weeklyWindow = resolvedUsage?.weeklyWindow ?? null;
-  const planLabel =
-    resolvedUsage?.planLabel ??
-    (resolvedUsage?.plan ? formatPlanLabel(resolvedUsage.plan) : "AI Plus");
-  const multiplier = resolvedUsage?.planMultiplier ?? (resolvedUsage?.plan === "pro" ? 4 : 2);
+  const planLabel = resolveCommercialPlanLabel(resolvedUsage?.plan, resolvedUsage?.planLabel);
+  const multiplier = resolvedUsage?.planMultiplier ?? commercialPlanMultiplier(resolvedUsage?.plan);
   const resolvedBalance =
     resolvedUsage && "balance" in resolvedUsage && typeof resolvedUsage.balance === "number"
       ? resolvedUsage.balance
@@ -2901,7 +2977,7 @@ function AccountUsageCard(props: {
     (currentWindow ? clampUsagePercent(currentWindow.usedPercent) >= 100 : false) ||
     (weeklyWindow ? clampUsagePercent(weeklyWindow.usedPercent) >= 100 : false);
   const nextPlan = resolvedUsage?.plan === "free" ? "AI Plus" : "AI Pro";
-  const canUpgrade = resolvedUsage?.plan !== "pro";
+  const canUpgrade = props.upgradeEntryEnabled && resolvedUsage?.plan !== "pro";
 
   return (
     <div className="px-3 py-3">
@@ -2940,7 +3016,9 @@ function AccountUsageCard(props: {
 
         {limitReached || nearLimit ? (
           <div className="mt-4 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-[18px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-            当前额度紧张时，除了升级订阅，也可以邀请好友获得奖励积分继续使用。
+            {props.upgradeEntryEnabled
+              ? "当前额度紧张时，除了升级订阅，也可以邀请好友获得奖励积分继续使用。"
+              : "当前额度紧张时，可以邀请好友获得奖励积分继续使用。"}
           </div>
         ) : null}
 

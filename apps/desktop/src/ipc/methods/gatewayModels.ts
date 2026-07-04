@@ -1,5 +1,6 @@
 ﻿import {
   CommercialAccountUsageSchema,
+  CommercialPublicRuntimeConfigSchema,
   GatewayModelListResultSchema,
   SetLastUsedModelInputSchema,
 } from "@t3tools/contracts";
@@ -7,6 +8,7 @@ import { resilientFetch } from "@t3tools/shared/Net";
 import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
+  resolveCommercialEngineWebAuthBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import { parseCommercialGatewayModelListResponse } from "@t3tools/shared/commercialEngineModels";
 import { buildCommercialAccountUsageSnapshot } from "@t3tools/shared/commercialUsage";
@@ -18,6 +20,10 @@ import * as DesktopCommercialAuth from "../../settings/DesktopCommercialAuth.ts"
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";
+
+const decodeCommercialPublicRuntimeConfig = Schema.decodeUnknownEffect(
+  CommercialPublicRuntimeConfigSchema,
+);
 
 export const listGatewayModels = makeIpcMethod({
   channel: IpcChannels.LIST_GATEWAY_MODELS_CHANNEL,
@@ -83,6 +89,28 @@ export const getCommercialAccountUsage = makeIpcMethod({
     }
 
     return buildCommercialAccountUsageSnapshot(accountUsage);
+  }),
+});
+
+export const getCommercialPublicRuntimeConfig = makeIpcMethod({
+  channel: IpcChannels.GET_COMMERCIAL_PUBLIC_RUNTIME_CONFIG_CHANNEL,
+  payload: Schema.Struct({
+    accountWebBaseUrl: Schema.optional(Schema.String),
+  }),
+  result: Schema.NullOr(CommercialPublicRuntimeConfigSchema),
+  handler: Effect.fn("desktop.ipc.gatewayModels.getCommercialPublicRuntimeConfig")(function* (
+    input,
+  ) {
+    const baseUrl = input.accountWebBaseUrl?.trim() || resolveCommercialEngineWebAuthBaseUrl();
+    const configUrl = new URL("/api/public-runtime-config", baseUrl).toString();
+    const body = yield* requestPublicJson(configUrl);
+    if (body === null) {
+      return null;
+    }
+
+    return yield* decodeCommercialPublicRuntimeConfig(body).pipe(
+      Effect.catchAll(() => Effect.succeed(null)),
+    );
   }),
 });
 
@@ -181,6 +209,37 @@ function requestGatewayJson(
       try: () => response.json() as Promise<unknown>,
       catch: (cause) => GatewayModelsNetworkError({ cause }),
     });
+  });
+}
+
+function requestPublicJson(url: string): Effect.Effect<unknown | null, never> {
+  return Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        resilientFetch(url, {
+          headers: {
+            Accept: "application/json",
+            "Cache-Control": "no-cache",
+          },
+          maxRetries: 2,
+          timeoutMs: 10_000,
+        }),
+      catch: (cause) => GatewayModelsNetworkError({ cause }),
+    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+    if (response === null) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!response.ok || !contentType.toLowerCase().includes("application/json")) {
+      return null;
+    }
+
+    return yield* Effect.tryPromise({
+      try: () => response.json() as Promise<unknown>,
+      catch: (cause) => GatewayModelsNetworkError({ cause }),
+    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
   });
 }
 

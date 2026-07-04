@@ -27,7 +27,10 @@ import type {
   VcsCreateRefResult,
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
-import type { CommercialAccountUsageSchema } from "./model.ts";
+import type {
+  CommercialAccountUsageSchema,
+  CommercialPublicRuntimeConfigSchema,
+} from "./model.ts";
 import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -720,6 +723,9 @@ export interface DesktopBridge {
   ) => Promise<void>;
   signOutCommercialAuth?: () => Promise<DesktopCommercialAuthState>;
   getCommercialAccountUsage?: () => Promise<CommercialAccountUsageSchema | null>;
+  getCommercialPublicRuntimeConfig?: (input?: {
+    accountWebBaseUrl?: string;
+  }) => Promise<CommercialPublicRuntimeConfigSchema | null>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
   getSavedEnvironmentRegistry: () => Promise<readonly PersistedSavedEnvironmentRecord[]>;

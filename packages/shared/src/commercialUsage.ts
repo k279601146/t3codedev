@@ -18,7 +18,7 @@ const COMMERCIAL_PLAN_DETAILS: Record<
   CommercialPlan,
   { readonly label: string; readonly multiplier: number }
 > = {
-  free: { label: "未订阅方案", multiplier: 1 },
+  free: { label: "Free", multiplier: 1 },
   plus: { label: "AI Plus", multiplier: 2 },
   pro: { label: "AI Pro", multiplier: 4 },
 };

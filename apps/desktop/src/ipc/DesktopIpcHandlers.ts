@@ -18,6 +18,7 @@ import {
 } from "./methods/savedEnvironments.ts";
 import {
   getCommercialAccountUsage,
+  getCommercialPublicRuntimeConfig,
   getLastUsedModel,
   listGatewayModels,
   setLastUsedModel,
@@ -81,6 +82,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(removeSavedEnvironmentSecret);
   yield* ipc.handle(listGatewayModels);
   yield* ipc.handle(getCommercialAccountUsage);
+  yield* ipc.handle(getCommercialPublicRuntimeConfig);
   yield* ipc.handle(getLastUsedModel);
   yield* ipc.handle(setLastUsedModel);
 

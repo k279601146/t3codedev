@@ -84,6 +84,7 @@ describe("commercial usage snapshot", () => {
     expect(snapshot.currentWindow.usedUnits).toBe(0);
     expect(snapshot.currentWindow.limitUnits).toBe(100);
     expect(snapshot.weeklyWindow.usedUnits).toBe(0);
+    expect(snapshot.planLabel).toBe("Free");
   });
 
   it("reads dev2-compatible current_window and weekly fields", () => {

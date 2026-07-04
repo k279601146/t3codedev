@@ -335,6 +335,7 @@ describe("openCodexThread", () => {
         runtimeMode: "full-access",
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
+        requestedModelProvider: "myservice",
         serviceTier: undefined,
         personality: undefined,
         resumeThreadId: undefined,
@@ -343,6 +344,7 @@ describe("openCodexThread", () => {
 
     assert.ok(startPayload);
     assert.equal(startPayload.approvalsReviewer, "user");
+    assert.equal(startPayload.modelProvider, "myservice");
     assert.deepStrictEqual(startPayload.dynamicTools, [
       ...buildT3BrowserDynamicTools(),
       ...buildT3BrowserExternalDynamicTools(),
@@ -401,6 +403,7 @@ describe("openCodexThread", () => {
         runtimeMode: "full-access",
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
+        requestedModelProvider: "myservice",
         serviceTier: undefined,
         personality: undefined,
         resumeThreadId: "stale-thread",
@@ -411,6 +414,14 @@ describe("openCodexThread", () => {
     assert.deepStrictEqual(
       calls.map((call) => call.method),
       ["thread/resume", "thread/start", "thread/settings/update"],
+    );
+    assert.equal(
+      (calls[0]?.payload as CodexRpc.ClientRequestParamsByMethod["thread/resume"]).modelProvider,
+      "myservice",
+    );
+    assert.equal(
+      (calls[1]?.payload as CodexRpc.ClientRequestParamsByMethod["thread/start"]).modelProvider,
+      "myservice",
     );
   });
 
@@ -445,6 +456,7 @@ describe("openCodexThread", () => {
           runtimeMode: "full-access",
           cwd: "/tmp/project",
           requestedModel: "gpt-5.3-codex",
+          requestedModelProvider: undefined,
           serviceTier: undefined,
           personality: undefined,
           resumeThreadId: "stale-thread",

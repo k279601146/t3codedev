@@ -503,11 +503,13 @@ describe("DesktopBackendConfiguration", () => {
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
           assert.match(engineConfig, /plugins = true/);
           assert.match(engineConfig, /apps = true/);
-          assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
-          assert.equal(engineConfig.includes("https://api.example.com/v1"), false);
-          assert.equal(engineConfig.includes("wire_api"), false);
-          assert.equal(engineConfig.includes("requires_openai_auth"), false);
-          assert.equal(engineConfig.includes(COMMERCIAL_ENGINE_IDE_JWT_ENV), false);
+          assert.equal(engineConfig.includes("[model_providers.myservice]"), true);
+          assert.equal(engineConfig.includes('model_provider = "myservice"'), true);
+          assert.equal(engineConfig.includes("https://api.example.com/v1"), true);
+          assert.equal(engineConfig.includes('env_key = "MYIDE_IDE_JWT"'), true);
+          assert.equal(engineConfig.includes('wire_api = "responses"'), true);
+          assert.equal(engineConfig.includes("requires_openai_auth = false"), true);
+          assert.equal(engineConfig.includes("supports_websockets = false"), true);
           assert.equal(engineConfig.includes("legacy-real-key"), false);
           assert.equal(engineConfig.includes("jwt-token"), false);
         }),
@@ -548,12 +550,12 @@ describe("DesktopBackendConfiguration", () => {
         yield* configuration.resolve;
 
         const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-        assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
-        assert.equal(engineConfig.includes("https://sub.bahew.com/v1"), false);
-        assert.match(
-          engineConfig,
-          /\[features\]\s+image_generation = true\s+imagegenext = true\s+plugins = true/,
-        );
+        assert.equal(engineConfig.includes("[model_providers.myservice]"), true);
+        assert.equal(engineConfig.includes("https://sub.bahew.com/v1"), true);
+        assert.match(engineConfig, /\[features\]/);
+        assert.match(engineConfig, /image_generation = true/);
+        assert.match(engineConfig, /imagegenext = true/);
+        assert.match(engineConfig, /plugins = true/);
         assert.match(engineConfig, /\[plugins\."ppt-master@t3-bundled-plugins"\]\s+enabled = true/);
         assert.match(engineConfig, /\[plugins\."calendar@debug"\]\s+enabled = true/);
         assert.doesNotMatch(engineConfig, /model_provider = "old"/);
@@ -586,8 +588,8 @@ describe("DesktopBackendConfiguration", () => {
 
           const engineConfigPath = environment.path.join(environment.engineHomePath, "config.toml");
           const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
-          assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
-          assert.equal(engineConfig.includes("https://stored.example.com/v1"), false);
+          assert.equal(engineConfig.includes("[model_providers.myservice]"), true);
+          assert.equal(engineConfig.includes("https://stored.example.com/v1"), true);
           assert.equal(engineConfig.includes("stored-jwt"), false);
           assert.equal(engineConfig.includes("env-jwt"), false);
         }).pipe(

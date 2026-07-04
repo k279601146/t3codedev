@@ -26,7 +26,7 @@ import {
 } from "@t3tools/contracts";
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { normalizeModelSlug } from "@t3tools/shared/model";
-import { buildCommercialEngineProcessEnv } from "@t3tools/shared/commercialEngine";
+import { COMMERCIAL_ENGINE_PROVIDER_ID } from "@t3tools/shared/commercialEngine";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -400,6 +400,7 @@ function buildThreadStartParams(input: {
   readonly cwd: string;
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
+  readonly modelProvider: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
 }): ThreadStartParamsWithDynamicTools {
@@ -415,6 +416,7 @@ function buildThreadStartParams(input: {
       ...buildT3ComputerDynamicTools(),
     ],
     ...(input.model ? { model: input.model } : {}),
+    ...(input.modelProvider ? { modelProvider: input.modelProvider } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.personality !== undefined ? { personality: input.personality } : {}),
   };
@@ -662,6 +664,7 @@ export const openCodexThread = (input: {
   readonly runtimeMode: RuntimeMode;
   readonly cwd: string;
   readonly requestedModel: string | undefined;
+  readonly requestedModelProvider?: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
   readonly resumeThreadId: string | undefined;
@@ -671,6 +674,7 @@ export const openCodexThread = (input: {
     cwd: input.cwd,
     runtimeMode: input.runtimeMode,
     model: input.requestedModel,
+    modelProvider: input.requestedModelProvider,
     serviceTier: input.serviceTier,
     personality: input.personality,
   });
@@ -1145,6 +1149,7 @@ export const makeCodexSessionRuntime = (
     const resolvedHomePath = options.homePath ? expandHomePath(options.homePath) : undefined;
     const baseEnv = options.environment ?? process.env;
     const bundledConfig = resolveBundledEngineConfig(baseEnv);
+    const bundledModelProvider = bundledConfig ? COMMERCIAL_ENGINE_PROVIDER_ID : undefined;
     const effectiveBinaryPath = bundledConfig?.binaryPath ?? options.binaryPath;
     const spawnArgs = bundledConfig ? buildBundledSpawnArgs(bundledConfig) : buildSystemSpawnArgs();
     const env = buildCodexProcessEnv({
@@ -1854,6 +1859,7 @@ export const makeCodexSessionRuntime = (
         runtimeMode: options.runtimeMode,
         cwd: options.cwd,
         requestedModel,
+        requestedModelProvider: bundledModelProvider,
         serviceTier: options.serviceTier,
         personality: options.personality,
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),

@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   signOutCommercialAuth: () => ipcRenderer.invoke(IpcChannels.SIGN_OUT_COMMERCIAL_AUTH_CHANNEL),
   getCommercialAccountUsage: () =>
     ipcRenderer.invoke(IpcChannels.GET_COMMERCIAL_ACCOUNT_USAGE_CHANNEL),
+  getCommercialPublicRuntimeConfig: (input) =>
+    ipcRenderer.invoke(IpcChannels.GET_COMMERCIAL_PUBLIC_RUNTIME_CONFIG_CHANNEL, input ?? {}),
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),
