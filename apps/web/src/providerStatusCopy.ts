@@ -60,6 +60,9 @@ export function getFriendlyProviderInfrastructureMessage(
     if (normalized.includes("timed out")) {
       return "模型网关目录请求超时，客户端会继续重试刷新模型服务。";
     }
+    if (normalized.includes("no available models")) {
+      return "模型网关暂未返回可用模型，请检查后端服务的模型目录和当前账号权限。客户端会继续重试刷新模型服务。";
+    }
     return "模型网关目录暂时不可用，客户端会继续重试刷新模型服务。";
   }
   if (isProviderStatusTimeoutMessage(normalized)) {

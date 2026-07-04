@@ -55,6 +55,10 @@ export const hydrateCachedProvider = (input: {
     return input.fallbackProvider;
   }
 
+  if (input.cachedProvider.status === "ready" && input.fallbackProvider.models.length === 0) {
+    return input.fallbackProvider;
+  }
+
   const { message: _fallbackMessage, ...fallbackWithoutMessage } = input.fallbackProvider;
   const hydratedProvider: ServerProvider = {
     ...fallbackWithoutMessage,

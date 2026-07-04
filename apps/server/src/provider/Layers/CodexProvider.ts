@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
@@ -35,7 +34,6 @@ import {
 } from "@t3tools/shared/commercialEngine";
 import { parseCommercialGatewayModelListResponse } from "@t3tools/shared/commercialEngineModels";
 import { buildCommercialUsageLimitSnapshot } from "@t3tools/shared/commercialUsage";
-import { createTtlMemoryCache } from "@t3tools/shared/ttlMemoryCache";
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
@@ -56,9 +54,6 @@ const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnErro
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
 const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 5_000;
 const COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS = 5_000;
-const COMMERCIAL_MODEL_CATALOG_CACHE_TTL_MS = 5 * 60_000;
-const COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS = 15_000;
-const COMMERCIAL_GATEWAY_CACHE_MAX_ENTRIES = 64;
 const COMMERCIAL_CODEX_MODEL_CAPABILITIES = createModelCapabilities({
   optionDescriptors: [
     {
@@ -231,49 +226,9 @@ function mergeCommercialBalanceIntoRateLimits(
   };
 }
 
-type CommercialGatewayCacheKind = "models" | "balance" | "usage";
-
-const commercialGatewayResponseCache = createTtlMemoryCache({
-  maxEntries: COMMERCIAL_GATEWAY_CACHE_MAX_ENTRIES,
-});
-
 function commercialGatewayTokenFingerprint(token: string | undefined): string {
   if (!token) return "anonymous";
   return Crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
-}
-
-function commercialGatewayCacheKey(input: {
-  readonly kind: CommercialGatewayCacheKind;
-  readonly url: string;
-  readonly token: string | undefined;
-}): string {
-  return [
-    input.kind,
-    input.url,
-    commercialGatewayTokenFingerprint(input.token),
-  ].join("\u0000");
-}
-
-function cacheCommercialGatewayRequest<A>(input: {
-  readonly kind: CommercialGatewayCacheKind;
-  readonly url: string;
-  readonly token: string | undefined;
-  readonly ttlMs: number;
-  readonly request: Effect.Effect<A, CommercialModelCatalogError>;
-}): Effect.Effect<A, CommercialModelCatalogError> {
-  return Effect.gen(function* () {
-    const nowMs = yield* Clock.currentTimeMillis;
-    const key = commercialGatewayCacheKey(input);
-    const cached = commercialGatewayResponseCache.read<A>(key, nowMs);
-
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const value = yield* input.request;
-    commercialGatewayResponseCache.write(key, value, input.ttlMs, nowMs);
-    return value;
-  });
 }
 
 function requestCommercialGatewayModels(
@@ -489,18 +444,18 @@ const requestCommercialEngineModelCatalog = (environment: NodeJS.ProcessEnv) =>
     }
 
     const result = yield* Effect.result(
-      cacheCommercialGatewayRequest({
-        kind: "models",
-        url,
-        token,
-        ttlMs: COMMERCIAL_MODEL_CATALOG_CACHE_TTL_MS,
-        request: requestCommercialGatewayModels(environment),
-      }).pipe(Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS))),
+      requestCommercialGatewayModels(environment).pipe(
+        Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS)),
+      ),
     );
 
     if (Result.isFailure(result)) {
       const detail = result.failure.detail;
-      yield* Effect.logWarning("commercial model catalog request failed", { url, detail });
+      yield* Effect.logWarning("commercial model catalog request failed", {
+        url,
+        tokenFingerprint: commercialGatewayTokenFingerprint(token),
+        detail,
+      });
       return {
         models: [] as ReadonlyArray<ServerProviderModel>,
         error: detail,
@@ -508,15 +463,37 @@ const requestCommercialEngineModelCatalog = (environment: NodeJS.ProcessEnv) =>
     }
 
     if (Option.isNone(result.success)) {
-      yield* Effect.logWarning("commercial model catalog request timed out", { url });
+      yield* Effect.logWarning("commercial model catalog request timed out", {
+        url,
+        tokenFingerprint: commercialGatewayTokenFingerprint(token),
+      });
       return {
         models: [] as ReadonlyArray<ServerProviderModel>,
         error: "Model catalog request timed out.",
       };
     }
 
+    const models = result.success.value;
+    if (models.length === 0) {
+      const detail = "Model catalog returned no available models.";
+      yield* Effect.logWarning("commercial model catalog returned empty list", {
+        url,
+        tokenFingerprint: commercialGatewayTokenFingerprint(token),
+      });
+      return {
+        models,
+        error: detail,
+      };
+    }
+
+    yield* Effect.logInfo("commercial model catalog request succeeded", {
+      url,
+      tokenFingerprint: commercialGatewayTokenFingerprint(token),
+      modelCount: models.length,
+    });
+
     return {
-      models: result.success.value,
+      models,
       error: undefined,
     };
   });
@@ -524,19 +501,14 @@ const requestCommercialEngineModelCatalog = (environment: NodeJS.ProcessEnv) =>
 const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) => {
   const token = resolveCommercialEngineIdeJwt(environment);
   return token
-    ? cacheCommercialGatewayRequest({
-        kind: "balance",
-        url: commercialGatewayAccountUrl(environment),
-        token,
-        ttlMs: COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS,
-        request: requestCommercialGatewayBalance(environment),
-      }).pipe(
+    ? requestCommercialGatewayBalance(environment).pipe(
         Effect.timeoutOption(Duration.millis(COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS)),
         Effect.flatMap((balance) =>
           Option.match(balance, {
             onNone: () =>
               Effect.logWarning("commercial account balance request timed out", {
                 url: commercialGatewayAccountUrl(environment),
+                tokenFingerprint: commercialGatewayTokenFingerprint(token),
               }).pipe(Effect.as(null)),
             onSome: (value) => Effect.succeed(value),
           }),
@@ -544,6 +516,7 @@ const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) => {
         Effect.catch((cause) =>
           Effect.logWarning("commercial account balance request failed", {
             url: commercialGatewayAccountUrl(environment),
+            tokenFingerprint: commercialGatewayTokenFingerprint(token),
             detail: cause.detail,
           }).pipe(Effect.as(null)),
         ),
@@ -554,19 +527,14 @@ const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) => {
 const requestCommercialEngineUsage = (environment: NodeJS.ProcessEnv) => {
   const token = resolveCommercialEngineIdeJwt(environment);
   return token
-    ? cacheCommercialGatewayRequest({
-        kind: "usage",
-        url: commercialGatewayUsageUrl(environment),
-        token,
-        ttlMs: COMMERCIAL_ACCOUNT_USAGE_CACHE_TTL_MS,
-        request: requestCommercialGatewayUsage(environment),
-      }).pipe(
+    ? requestCommercialGatewayUsage(environment).pipe(
         Effect.timeoutOption(Duration.millis(COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS)),
         Effect.flatMap((usage) =>
           Option.match(usage, {
             onNone: () =>
               Effect.logWarning("commercial account usage request timed out", {
                 url: commercialGatewayUsageUrl(environment),
+                tokenFingerprint: commercialGatewayTokenFingerprint(token),
               }).pipe(Effect.as(null)),
             onSome: (value) => Effect.succeed(value),
           }),
@@ -574,6 +542,7 @@ const requestCommercialEngineUsage = (environment: NodeJS.ProcessEnv) => {
         Effect.catch((cause) =>
           Effect.logWarning("commercial account usage request failed", {
             url: commercialGatewayUsageUrl(environment),
+            tokenFingerprint: commercialGatewayTokenFingerprint(token),
             detail: cause.detail,
           }).pipe(Effect.as(null)),
         ),

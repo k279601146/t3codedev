@@ -38,6 +38,7 @@ const makeProvider = (
   models: [],
   slashCommands: [],
   skills: [],
+  permissionProfiles: [],
   ...overrides,
 });
 
@@ -127,15 +128,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       }),
       {
         ...fallbackCodex,
-        models: [
-          ...fallbackCodex.models,
-          {
-            slug: "gpt-5-mini",
-            name: "GPT-5 Mini",
-            isCustom: false,
-            capabilities: emptyCapabilities,
-          },
-        ],
+        models: fallbackCodex.models,
         installed: cachedCodex.installed,
         version: cachedCodex.version,
         status: cachedCodex.status,
@@ -145,6 +138,36 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
         skills: cachedCodex.skills,
         message: cachedCodex.message,
       },
+    );
+  });
+
+  it("does not hydrate ready status when the current snapshot has no models yet", () => {
+    const cachedCodex = makeProvider(CODEX_DRIVER, {
+      checkedAt: "2026-04-10T12:00:00.000Z",
+      status: "ready",
+      models: [
+        {
+          slug: "cached-model",
+          name: "Cached Model",
+          isCustom: false,
+          capabilities: emptyCapabilities,
+        },
+      ],
+      message: "Cached ready status",
+    });
+    const fallbackCodex = makeProvider(CODEX_DRIVER, {
+      status: "warning",
+      auth: { status: "unknown" },
+      models: [],
+      message: "Codex provider status has not been checked in this session yet.",
+    });
+
+    assert.deepStrictEqual(
+      hydrateCachedProvider({
+        cachedProvider: cachedCodex,
+        fallbackProvider: fallbackCodex,
+      }),
+      fallbackCodex,
     );
   });
 

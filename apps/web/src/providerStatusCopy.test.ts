@@ -68,6 +68,19 @@ describe("providerStatusCopy", () => {
     );
   });
 
+  it("explains empty model gateway catalogs", () => {
+    const provider = makeProvider({
+      status: "warning",
+      auth: { status: "authenticated", label: "Bahew account" },
+      message: "Model gateway catalog unavailable: Model catalog returned no available models.",
+    });
+
+    expect(shouldShowProviderStatusBanner(provider)).toBe(true);
+    expect(getFriendlyProviderStatusMessage(provider)).toBe(
+      "模型网关暂未返回可用模型，请检查后端服务的模型目录和当前账号权限。客户端会继续重试刷新模型服务。",
+    );
+  });
+
   it("does not show ready or disabled providers in the top banner", () => {
     expect(shouldShowProviderStatusBanner(makeProvider({ status: "ready" }))).toBe(false);
     expect(shouldShowProviderStatusBanner(makeProvider({ status: "disabled" }))).toBe(false);

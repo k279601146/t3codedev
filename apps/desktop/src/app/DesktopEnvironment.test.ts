@@ -57,15 +57,18 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.isDevelopment, true);
       assert.equal(slash(environment.appDataDirectory), "/Users/alice/Library/Application Support");
       assert.equal(slash(environment.baseDir), "/tmp/t3");
-      assert.equal(slash(environment.stateDir), "/tmp/t3/dev");
-      assert.equal(slash(environment.desktopSettingsPath), "/tmp/t3/dev/desktop-settings.json");
-      assert.equal(slash(environment.clientSettingsPath), "/tmp/t3/dev/client-settings.json");
+      assert.equal(slash(environment.stateDir), "/tmp/t3/userdata");
+      assert.equal(
+        slash(environment.desktopSettingsPath),
+        "/tmp/t3/userdata/desktop-settings.json",
+      );
+      assert.equal(slash(environment.clientSettingsPath), "/tmp/t3/userdata/client-settings.json");
       assert.equal(
         slash(environment.savedEnvironmentRegistryPath),
-        "/tmp/t3/dev/saved-environments.json",
+        "/tmp/t3/userdata/saved-environments.json",
       );
-      assert.equal(slash(environment.serverSettingsPath), "/tmp/t3/dev/settings.json");
-      assert.equal(slash(environment.logDir), "/tmp/t3/dev/logs");
+      assert.equal(slash(environment.serverSettingsPath), "/tmp/t3/userdata/settings.json");
+      assert.equal(slash(environment.logDir), "/tmp/t3/userdata/logs");
       assert.equal(slash(environment.rootDir), "/repo");
       assert.equal(slash(environment.appRoot), "/repo");
       assert.equal(slash(environment.backendEntryPath), "/repo/apps/server/dist/bin.mjs");
