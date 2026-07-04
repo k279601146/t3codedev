@@ -180,6 +180,7 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { getPrimaryEnvironmentConnection } from "../../environments/runtime";
+import { getWsConnectionUiState, useWsConnectionStatus } from "../../rpc/wsConnectionState";
 import {
   attachComposerPluginMentionHealth,
   formatComposerPluginMentionHealthStatus,
@@ -1646,20 +1647,93 @@ export const ChatComposer = memo(
         ? selectedModelForPicker
         : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
     }, [selectedInstanceModelOptions, selectedModelForPicker, selectedProvider]);
+    const wsStatus = useWsConnectionStatus();
+    const backendConnectionState = getWsConnectionUiState(wsStatus);
+    const [isRefreshingComposerModels, setIsRefreshingComposerModels] = useState(false);
+    const modelServiceRefreshSequenceRef = useRef(0);
+    const lastAutoModelServiceRefreshKeyRef = useRef<string | null>(null);
+    const lastComposerBackendReconnectAtRef = useRef(0);
+    const refreshSelectedModelService = useCallback(async () => {
+      const refreshSequence = modelServiceRefreshSequenceRef.current + 1;
+      modelServiceRefreshSequenceRef.current = refreshSequence;
+      setIsRefreshingComposerModels(true);
+      try {
+        await getPrimaryEnvironmentConnection().client.server.refreshProviders({
+          instanceId: selectedInstanceId,
+        });
+      } finally {
+        if (modelServiceRefreshSequenceRef.current === refreshSequence) {
+          setIsRefreshingComposerModels(false);
+        }
+      }
+    }, [selectedInstanceId]);
     const composerProviderAvailability = useMemo(
       () =>
         deriveComposerProviderAvailability({
           provider: selectedProviderStatus,
           modelOptions: selectedInstanceModelOptions,
           selectedModel: selectedModelForPickerWithCustomFallback,
+          backendConnectionState,
+          isRefreshingModels: isRefreshingComposerModels,
         }),
       [
+        backendConnectionState,
+        isRefreshingComposerModels,
         selectedInstanceModelOptions,
         selectedModelForPickerWithCustomFallback,
         selectedProviderStatus,
       ],
     );
     const isProviderUnavailable = !composerProviderAvailability.canSend;
+
+    useEffect(() => {
+      if (
+        backendConnectionState === "connected" ||
+        backendConnectionState === "connecting" ||
+        !wsStatus.online
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastComposerBackendReconnectAtRef.current < 10_000) {
+        return;
+      }
+
+      lastComposerBackendReconnectAtRef.current = now;
+      void getPrimaryEnvironmentConnection()
+        .reconnect()
+        .catch(() => undefined);
+    }, [backendConnectionState, wsStatus.online, wsStatus.reconnectPhase]);
+
+    useEffect(() => {
+      if (selectedInstanceModelOptions.length > 0) {
+        lastAutoModelServiceRefreshKeyRef.current = null;
+        return;
+      }
+      if (
+        backendConnectionState !== "connected" ||
+        !selectedProviderStatus ||
+        !selectedProviderStatus.enabled ||
+        selectedProviderStatus.status !== "ready"
+      ) {
+        return;
+      }
+
+      const refreshKey = String(selectedInstanceId);
+      if (lastAutoModelServiceRefreshKeyRef.current === refreshKey) {
+        return;
+      }
+
+      lastAutoModelServiceRefreshKeyRef.current = refreshKey;
+      void refreshSelectedModelService().catch(() => undefined);
+    }, [
+      backendConnectionState,
+      refreshSelectedModelService,
+      selectedInstanceId,
+      selectedInstanceModelOptions.length,
+      selectedProviderStatus,
+    ]);
 
     // ------------------------------------------------------------------
     // Context window
@@ -2667,9 +2741,13 @@ export const ChatComposer = memo(
             activeThreadId,
             composerProviderAvailability.sendBlockMessage ?? "当前模型服务不可用，请稍后重试。",
           );
-          void getPrimaryEnvironmentConnection()
-            .client.server.refreshProviders()
-            .catch(() => undefined);
+          if (backendConnectionState === "connected") {
+            void refreshSelectedModelService().catch(() => undefined);
+          } else {
+            void getPrimaryEnvironmentConnection()
+              .reconnect()
+              .catch(() => undefined);
+          }
           return;
         }
         if (isStandardSend && hasSubmissionContent) {
@@ -2697,6 +2775,7 @@ export const ChatComposer = memo(
         activePendingProgress,
         activeThreadId,
         blurMobileComposerAfterSend,
+        backendConnectionState,
         composerProviderAvailability,
         composerSendState.hasSendableContent,
         isComposerApprovalState,
@@ -2704,6 +2783,7 @@ export const ChatComposer = memo(
         onSend,
         pendingPrimaryAction,
         prompt,
+        refreshSelectedModelService,
         setThreadError,
         shouldBlurMobileComposerOnSubmit,
         showPlanFollowUpPrompt,
@@ -3246,9 +3326,13 @@ export const ChatComposer = memo(
         onOpenChange={(open) => {
           setIsComposerModelPickerOpen(open);
           if (open) {
-            void getPrimaryEnvironmentConnection()
-              .client.server.refreshProviders()
-              .catch(() => undefined);
+            if (backendConnectionState === "connected") {
+              void refreshSelectedModelService().catch(() => undefined);
+            } else {
+              void getPrimaryEnvironmentConnection()
+                .reconnect()
+                .catch(() => undefined);
+            }
           }
         }}
         onInstanceModelChange={onProviderModelSelect}

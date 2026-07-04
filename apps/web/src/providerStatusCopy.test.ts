@@ -54,6 +54,20 @@ describe("providerStatusCopy", () => {
     expect(getFriendlyProviderStatusMessage(provider)).toBe("尚未登录 Bahew 账号，请登录后重试。");
   });
 
+  it("explains model gateway catalog auth failures", () => {
+    const provider = makeProvider({
+      status: "warning",
+      auth: { status: "authenticated", label: "Bahew account" },
+      message:
+        'Model gateway catalog unavailable: Model catalog returned HTTP 401: {"code":"API_KEY_REQUIRED"}',
+    });
+
+    expect(shouldShowProviderStatusBanner(provider)).toBe(true);
+    expect(getFriendlyProviderStatusMessage(provider)).toBe(
+      "模型网关未收到 IDE 登录令牌，请确认当前后端服务使用的是已登录的数据目录，或重新登录后重启后端服务。",
+    );
+  });
+
   it("does not show ready or disabled providers in the top banner", () => {
     expect(shouldShowProviderStatusBanner(makeProvider({ status: "ready" }))).toBe(false);
     expect(shouldShowProviderStatusBanner(makeProvider({ status: "disabled" }))).toBe(false);

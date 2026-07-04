@@ -365,7 +365,7 @@ const TRANSLATIONS = {
     "composer.permission.fullAccessStatus": "",
     "composer.permission.control": "Permission control",
     "composer.model.label": "Model",
-    "composer.model.empty": "No models found",
+    "composer.model.empty": "No matching models",
     "composer.placeholder.reply": "Describe the next change, ask a question, or attach context",
     "composer.placeholder.disconnectedReply":
       "Continue the thread, request changes, or attach context",
@@ -742,7 +742,7 @@ const TRANSLATIONS = {
     "composer.permission.fullAccessStatus": "",
     "composer.permission.control": "权限控制",
     "composer.model.label": "模型",
-    "composer.model.empty": "没有可用模型",
+    "composer.model.empty": "没有匹配的模型",
     "composer.placeholder.reply": "描述下一步修改、继续提问，或附加上下文",
     "composer.placeholder.disconnectedReply": "继续提问、补充修改需求，或附加上下文",
     "composer.slash.modelDescription": "切换当前对话的回复模型",

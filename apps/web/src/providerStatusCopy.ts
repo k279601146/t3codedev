@@ -49,6 +49,19 @@ export function getFriendlyProviderInfrastructureMessage(
   }
 
   const normalized = rawMessage.toLowerCase();
+  if (normalized.includes("model gateway catalog unavailable")) {
+    if (
+      normalized.includes("api_key_required") ||
+      normalized.includes("authorization header") ||
+      normalized.includes("credentials are missing")
+    ) {
+      return "模型网关未收到 IDE 登录令牌，请确认当前后端服务使用的是已登录的数据目录，或重新登录后重启后端服务。";
+    }
+    if (normalized.includes("timed out")) {
+      return "模型网关目录请求超时，客户端会继续重试刷新模型服务。";
+    }
+    return "模型网关目录暂时不可用，客户端会继续重试刷新模型服务。";
+  }
   if (isProviderStatusTimeoutMessage(normalized)) {
     return `${label} 启动时间比平时久一些，客户端会继续在后台检查状态。你也可以手动重试。`;
   }

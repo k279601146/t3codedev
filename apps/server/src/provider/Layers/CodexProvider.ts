@@ -98,6 +98,7 @@ export interface CodexAppServerProviderSnapshot {
   readonly rateLimits: CodexSchema.V2GetAccountRateLimitsResponse["rateLimits"] | null;
   readonly version: string | undefined;
   readonly models: ReadonlyArray<ServerProviderModel>;
+  readonly modelCatalogError?: string | undefined;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
   readonly permissionProfiles?: NonNullable<ServerProvider["permissionProfiles"]>;
   readonly windowsSandboxReadiness?: CodexSchema.V2WindowsSandboxReadinessResponse["status"];
@@ -476,34 +477,49 @@ function requestCommercialGatewayUsage(
   });
 }
 
-const requestCommercialEngineModels = (environment: NodeJS.ProcessEnv) => {
-  const token = resolveCommercialEngineIdeJwt(environment);
-  const url = commercialGatewayModelsUrl(environment);
-  return cacheCommercialGatewayRequest({
-    kind: "models",
-    url,
-    token,
-    ttlMs: COMMERCIAL_MODEL_CATALOG_CACHE_TTL_MS,
-    request: requestCommercialGatewayModels(environment),
-  }).pipe(
-    Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS)),
-    Effect.flatMap((models) =>
-      Option.match(models, {
-        onNone: () =>
-          Effect.logWarning("commercial model catalog request timed out", {
-            url: commercialGatewayModelsUrl(environment),
-          }).pipe(Effect.as([] as ReadonlyArray<ServerProviderModel>)),
-        onSome: (value) => Effect.succeed(value),
-      }),
-    ),
-    Effect.catch((cause) =>
-      Effect.logWarning("commercial model catalog request failed", {
-        url: commercialGatewayModelsUrl(environment),
-        detail: cause.detail,
-      }).pipe(Effect.as([] as ReadonlyArray<ServerProviderModel>)),
-    ),
-  );
-};
+const requestCommercialEngineModelCatalog = (environment: NodeJS.ProcessEnv) =>
+  Effect.gen(function* () {
+    const token = resolveCommercialEngineIdeJwt(environment);
+    const url = commercialGatewayModelsUrl(environment);
+    if (!token) {
+      return {
+        models: [] as ReadonlyArray<ServerProviderModel>,
+        error: "Model gateway credentials are missing.",
+      };
+    }
+
+    const result = yield* Effect.result(
+      cacheCommercialGatewayRequest({
+        kind: "models",
+        url,
+        token,
+        ttlMs: COMMERCIAL_MODEL_CATALOG_CACHE_TTL_MS,
+        request: requestCommercialGatewayModels(environment),
+      }).pipe(Effect.timeoutOption(Duration.millis(COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS))),
+    );
+
+    if (Result.isFailure(result)) {
+      const detail = result.failure.detail;
+      yield* Effect.logWarning("commercial model catalog request failed", { url, detail });
+      return {
+        models: [] as ReadonlyArray<ServerProviderModel>,
+        error: detail,
+      };
+    }
+
+    if (Option.isNone(result.success)) {
+      yield* Effect.logWarning("commercial model catalog request timed out", { url });
+      return {
+        models: [] as ReadonlyArray<ServerProviderModel>,
+        error: "Model catalog request timed out.",
+      };
+    }
+
+    return {
+      models: result.success.value,
+      error: undefined,
+    };
+  });
 
 const requestCommercialEngineBalance = (environment: NodeJS.ProcessEnv) => {
   const token = resolveCommercialEngineIdeJwt(environment);
@@ -784,8 +800,11 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
         client.request("skills/list", {
           cwds: [input.cwd],
         }),
-        requestCommercialEngineModels(baseEnv).pipe(
-          Effect.map((models) => appendCustomCodexModels(models, input.customModels ?? [])),
+        requestCommercialEngineModelCatalog(baseEnv).pipe(
+          Effect.map((catalog) => ({
+            models: appendCustomCodexModels(catalog.models, input.customModels ?? []),
+            error: catalog.error,
+          })),
         ),
         client.request("account/rateLimits/read", undefined).pipe(Effect.option),
         requestCommercialEngineBalance(baseEnv),
@@ -805,7 +824,8 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     account: accountResponse,
     rateLimits: resolvedRateLimits,
     version,
-    models,
+    models: models.models,
+    ...(models.error ? { modelCatalogError: models.error } : {}),
     skills,
     permissionProfiles,
     ...(windowsSandboxReadiness.status !== undefined
@@ -895,6 +915,7 @@ function accountProbeStatus(
   options?: {
     readonly bundledEngine: boolean;
     readonly hasCommercialToken: boolean;
+    readonly modelCatalogError?: string | undefined;
   },
 ): {
   readonly status: Exclude<ServerProviderState, "disabled">;
@@ -903,6 +924,17 @@ function accountProbeStatus(
 } {
   if (options?.bundledEngine) {
     if (options.hasCommercialToken) {
+      if (options.modelCatalogError) {
+        return {
+          status: "warning",
+          auth: {
+            status: "authenticated",
+            label: "Bahew account",
+            ...(rateLimits ? { rateLimits } : {}),
+          },
+          message: `Model gateway catalog unavailable: ${options.modelCatalogError}`,
+        };
+      }
       return {
         status: "ready",
         auth: {
@@ -1061,6 +1093,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   const accountStatus = accountProbeStatus(snapshot.account, snapshot.rateLimits, {
     bundledEngine,
     hasCommercialToken: Boolean(resolveCommercialEngineIdeJwt(environment)),
+    modelCatalogError: snapshot.modelCatalogError,
   });
 
   return buildServerProvider({

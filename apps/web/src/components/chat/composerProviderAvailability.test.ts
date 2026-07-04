@@ -63,7 +63,41 @@ describe("deriveComposerProviderAvailability", () => {
 
     expect(availability.kind).toBe("noModels");
     expect(availability.canSend).toBe(false);
-    expect(availability.triggerLabel).toBe("没有可用模型");
+    expect(availability.triggerLabel).toBe("模型服务无模型");
+    expect(availability.menuEmptyMessage).toBe(
+      "MyService 已连接，但后端暂未返回可用模型；客户端会自动重试刷新模型服务。",
+    );
+    expect(availability.sendBlockMessage).toBe(
+      "MyService 暂未返回可用模型，客户端正在尝试刷新模型服务。",
+    );
+  });
+
+  it("shows backend reconnecting state before stale provider data", () => {
+    const availability = deriveComposerProviderAvailability({
+      provider: makeProvider(),
+      modelOptions: [],
+      selectedModel: "gpt-5.4",
+      backendConnectionState: "reconnecting",
+    });
+
+    expect(availability.kind).toBe("reconnecting");
+    expect(availability.canSend).toBe(false);
+    expect(availability.triggerLabel).toBe("后端重连中");
+    expect(availability.menuEmptyMessage).toBe("后端服务连接已断开，客户端正在自动重连。");
+  });
+
+  it("shows model service refresh state while no models are available", () => {
+    const availability = deriveComposerProviderAvailability({
+      provider: makeProvider(),
+      modelOptions: [],
+      selectedModel: "gpt-5.4",
+      isRefreshingModels: true,
+    });
+
+    expect(availability.kind).toBe("preparing");
+    expect(availability.canSend).toBe(false);
+    expect(availability.triggerLabel).toBe("检查模型服务");
+    expect(availability.menuEmptyMessage).toBe("MyService 正在刷新模型服务状态。");
   });
 
   it("allows send when the provider is ready and the selected model exists", () => {
@@ -77,7 +111,7 @@ describe("deriveComposerProviderAvailability", () => {
       kind: "ready",
       canSend: true,
       triggerLabel: null,
-      menuEmptyMessage: "没有可用模型",
+      menuEmptyMessage: "没有匹配的模型",
       sendBlockMessage: null,
     });
   });
