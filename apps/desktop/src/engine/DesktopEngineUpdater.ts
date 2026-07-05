@@ -14,6 +14,7 @@ import * as Scope from "effect/Scope";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
+import * as DesktopInstallationIdentity from "../telemetry/DesktopInstallationIdentity.ts";
 import { SUPPORTED_ENGINE_PROTOCOL_VERSION } from "./DesktopEngineIntegrity.ts";
 
 const ENGINE_UPDATE_STARTUP_DELAY = Duration.minutes(5);
@@ -215,8 +216,12 @@ function assertTrustedDownloadUrl(rawUrl: string, isDevelopment: boolean): void 
   }
 }
 
-async function fetchJson(url: string, timeoutMs: number): Promise<unknown> {
-  const response = await resilientFetch(url, { timeoutMs });
+async function fetchJson(
+  url: string,
+  timeoutMs: number,
+  headers?: Readonly<Record<string, string>>,
+): Promise<unknown> {
+  const response = await resilientFetch(url, { timeoutMs, headers });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -279,6 +284,7 @@ export const layer = Layer.effect(
     const config = yield* DesktopConfig.DesktopConfig;
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const fileSystem = yield* FileSystem.FileSystem;
+    const installationIdentity = yield* DesktopInstallationIdentity.DesktopInstallationIdentity;
     const binaryName = getEngineBinaryName(environment.platform);
     const currentVersionPath = environment.path.join(
       environment.engineVersionsPath,
@@ -409,8 +415,19 @@ export const layer = Layer.effect(
         return;
       }
 
+      const currentVersion = yield* getCurrentVersion;
+      const installationId = yield* installationIdentity.installationId;
+      const deviceId = yield* installationIdentity.deviceId;
       const rawManifest = yield* Effect.tryPromise({
-        try: () => fetchJson(manifestUrl, ENGINE_MANIFEST_TIMEOUT_MS),
+        try: () =>
+          fetchJson(manifestUrl, ENGINE_MANIFEST_TIMEOUT_MS, {
+            "x-t3code-version": environment.appVersion,
+            "x-t3code-engine-version": currentVersion,
+            "x-t3code-platform": environment.platform,
+            "x-t3code-arch": environment.processArch,
+            "x-t3code-installation-id": installationId,
+            "x-t3code-device-id": deviceId,
+          }),
         catch: (cause) => new DesktopEngineUpdateError({ reason: "manifest fetch failed", cause }),
       });
       const manifest = yield* decodeEngineManifest(normalizeManifestPayload(rawManifest)).pipe(
@@ -441,7 +458,6 @@ export const layer = Layer.effect(
         return;
       }
 
-      const currentVersion = yield* getCurrentVersion;
       if (
         currentVersion !== BUNDLED_ENGINE_VERSION &&
         compareVersions(currentVersion, manifest.version) >= 0

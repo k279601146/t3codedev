@@ -600,4 +600,52 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
         }),
     ),
   );
+
+  it.effect("sanitizes commercial gateway html errors before surfacing text generation failures", () =>
+    Effect.gen(function* () {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (() =>
+        Promise.resolve(
+          new Response(
+            `<!DOCTYPE html>
+<html>
+<head><title>bahew.com | 504: Gateway time-out</title></head>
+<body><h1>Gateway time-out</h1><span>Cloudflare Ray ID: a1650e259c32166d</span></body>
+</html>`,
+            { status: 504 },
+          ),
+        )) as typeof fetch;
+
+      try {
+        const textGeneration = yield* makeCodexTextGeneration(
+          decodeCodexSettings({}),
+          {
+            MYIDE_ENGINE_PATH: "C:\\Bahew\\ai-engine.exe",
+            MYIDE_IDE_JWT: "jwt-token",
+            MYIDE_GATEWAY_BASE_URL: "https://sub.bahew.com/v1",
+          },
+        );
+
+        const result = yield* textGeneration
+          .generateThreadTitle({
+            cwd: process.cwd(),
+            message: "Please investigate the gateway failure.",
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          })
+          .pipe(Effect.result);
+
+        expect(Result.isFailure(result)).toBe(true);
+        if (Result.isFailure(result)) {
+          expect(result.failure).toBeInstanceOf(TextGenerationError);
+          expect(result.failure.message).toContain(
+            "Gateway returned HTTP 504: 服务网关返回了异常响应，请稍后重试。",
+          );
+          expect(result.failure.message).not.toContain("<html>");
+          expect(result.failure.message).not.toContain("Cloudflare Ray ID");
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }).pipe(Effect.scoped),
+  );
 });

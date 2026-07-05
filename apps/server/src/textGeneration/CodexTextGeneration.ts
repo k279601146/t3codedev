@@ -23,6 +23,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
 } from "@t3tools/shared/commercialEngine";
+import { sanitizeProviderErrorMessage } from "@t3tools/shared/providerErrors";
 import {
   type BranchNameGenerationInput,
   type ThreadTitleGenerationResult,
@@ -54,6 +55,18 @@ const COMMERCIAL_GATEWAY_STRUCTURED_OUTPUT_UNSUPPORTED_PATTERNS = [
   /guided_grammar/iu,
   /unsupported tokenizer type/iu,
 ] as const;
+
+function formatCommercialGatewayHttpError(status: number, body: string): string {
+  const statusPrefix = `Gateway returned HTTP ${status}`;
+  const normalized = sanitizeProviderErrorMessage(`unexpected status ${status}: ${body}`);
+  if (normalized) {
+    return `${statusPrefix}: ${normalized}`;
+  }
+
+  const detail = body.trim().replace(/\s+/g, " ").slice(0, 500);
+  return detail.length > 0 ? `${statusPrefix}: ${detail}` : `${statusPrefix}.`;
+}
+
 /**
  * Build a Codex text-generation closure bound to a specific `CodexSettings`
  * payload. See `makeCodexAdapter` for the overall per-instance rationale.
@@ -418,7 +431,10 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               return Effect.fail(
                 new TextGenerationError({
                   operation,
-                  detail: `Gateway returned HTTP ${fallbackResult.status}: ${fallbackResult.body}`,
+                  detail: formatCommercialGatewayHttpError(
+                    fallbackResult.status,
+                    fallbackResult.body,
+                  ),
                 }),
               );
             }),
@@ -426,7 +442,10 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         } else {
           return yield* new TextGenerationError({
             operation,
-            detail: `Gateway returned HTTP ${structuredResult.status}: ${structuredResult.body}`,
+            detail: formatCommercialGatewayHttpError(
+              structuredResult.status,
+              structuredResult.body,
+            ),
           });
         }
 

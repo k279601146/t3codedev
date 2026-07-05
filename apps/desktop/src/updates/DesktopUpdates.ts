@@ -28,6 +28,7 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopApm from "../telemetry/DesktopApm.ts";
+import * as DesktopInstallationIdentity from "../telemetry/DesktopInstallationIdentity.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
   createInitialDesktopUpdateState,
@@ -186,6 +187,14 @@ function isArm64HostRunningIntelBuild(runtimeInfo: DesktopRuntimeInfo): boolean 
   return runtimeInfo.hostArch === "arm64" && runtimeInfo.appArch === "x64";
 }
 
+function resolveGenericFeedUrl(baseUrl: string, channel: DesktopUpdateChannel): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/latest") || trimmed.endsWith("/nightly")) {
+    return trimmed.replace(/\/(latest|nightly)$/, `/${channel}`);
+  }
+  return `${trimmed}/${channel}`;
+}
+
 const make = Effect.gen(function* () {
   const config = yield* DesktopConfig.DesktopConfig;
   const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
@@ -196,6 +205,7 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const apm = yield* DesktopApm.DesktopApm;
+  const installationIdentity = yield* DesktopInstallationIdentity.DesktopInstallationIdentity;
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const updateCheckInFlightRef = yield* Ref.make(false);
@@ -239,7 +249,12 @@ const make = Effect.gen(function* () {
   );
 
   const hasUpdateFeedConfig = Ref.get(appUpdateYmlConfigRef).pipe(
-    Effect.map((appUpdateYmlConfig) => Option.isSome(appUpdateYmlConfig) || config.mockUpdates),
+    Effect.map(
+      (appUpdateYmlConfig) =>
+        Option.isSome(appUpdateYmlConfig) ||
+        Option.isSome(config.desktopUpdateFeedUrl) ||
+        config.mockUpdates,
+    ),
   );
 
   const resolveDisabledReason = Effect.gen(function* () {
@@ -278,10 +293,27 @@ const make = Effect.gen(function* () {
     yield* electronUpdater.setChannel(channel);
     yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
     yield* electronUpdater.setAllowDowngrade(allowsPrerelease);
+    const configuredFeedUrl = Option.getOrUndefined(config.desktopUpdateFeedUrl);
+    if (configuredFeedUrl !== undefined && !config.mockUpdates) {
+      const installationId = yield* installationIdentity.installationId;
+      const deviceId = yield* installationIdentity.deviceId;
+      yield* electronUpdater.setFeedURL({
+        provider: "generic",
+        url: resolveGenericFeedUrl(configuredFeedUrl, channel),
+        requestHeaders: {
+          "x-t3code-version": environment.appVersion,
+          "x-t3code-platform": environment.platform,
+          "x-t3code-arch": environment.processArch,
+          "x-t3code-installation-id": installationId,
+          "x-t3code-device-id": deviceId,
+        },
+      } as ElectronUpdater.ElectronUpdaterFeedUrl);
+    }
     yield* logUpdaterInfo("using update channel", {
       channel,
       allowPrerelease: allowsPrerelease,
       allowDowngrade: allowsPrerelease,
+      feedUrl: configuredFeedUrl ? resolveGenericFeedUrl(configuredFeedUrl, channel) : null,
     });
   });
 

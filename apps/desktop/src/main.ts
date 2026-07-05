@@ -130,7 +130,10 @@ const desktopFoundationBaseLayer = Layer.mergeAll(
   DesktopEngineIntegrity.layer,
   DesktopEngineUpdater.layer,
   DesktopObservability.layer,
-).pipe(Layer.provideMerge(desktopEnvironmentLayer));
+).pipe(
+  Layer.provideMerge(DesktopInstallationIdentity.layer),
+  Layer.provideMerge(desktopEnvironmentLayer),
+);
 
 const desktopFoundationLayer = DesktopWindowsSandbox.layer.pipe(
   Layer.provideMerge(desktopFoundationBaseLayer),

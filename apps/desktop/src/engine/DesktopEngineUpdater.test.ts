@@ -6,6 +6,7 @@ import * as Layer from "effect/Layer";
 
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopInstallationIdentity from "../telemetry/DesktopInstallationIdentity.ts";
 import * as DesktopEngineUpdater from "./DesktopEngineUpdater.ts";
 
 const textEncoder = new TextEncoder();
@@ -33,6 +34,12 @@ function makeLayer(baseDir: string, env: Record<string, string | undefined> = {}
   return DesktopEngineUpdater.layer.pipe(
     Layer.provideMerge(environmentLayer),
     Layer.provideMerge(configLayer),
+    Layer.provideMerge(
+      DesktopInstallationIdentity.layerTest({
+        installationId: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        deviceId: "engine-device",
+      }),
+    ),
     Layer.provideMerge(NodeServices.layer),
   );
 }
@@ -195,6 +202,70 @@ describe("DesktopEngineUpdater", () => {
             yield* updater.getActiveEnginePath,
             environment.path.join(environment.engineVersionsPath, "2.2.0", binaryName),
           );
+        }),
+      ),
+      { MYIDE_ENGINE_MANIFEST_URL: manifestUrl },
+    );
+  });
+
+  it.effect("accepts the dev2 manifest envelope and sends rollout identity headers", () => {
+    const manifestUrl = "https://www.bahew.com/api/v1/client-updates/engine";
+    const binaryUrl = "https://updates.example.test/ai-engine";
+    const binaryBytes = textEncoder.encode("new-engine-binary");
+    const binaryName = engineBinaryName();
+    const key = `${process.platform}-${process.arch}`;
+    const seenHeaders: Headers[] = [];
+
+    return withUpdater(
+      withFetch(
+        (async (url, init) => {
+          const rawUrl = String(url);
+          if (rawUrl === manifestUrl) {
+            seenHeaders.push(new Headers(init?.headers));
+            return new Response(
+              JSON.stringify({
+                data: {
+                  version: "2.3.0",
+                  minAppVersion: "1.0.0",
+                  protocolVersion: "app-server-v1",
+                  binaries: {
+                    [key]: {
+                      url: binaryUrl,
+                      sha256: NEW_ENGINE_BINARY_SHA256,
+                      size: binaryBytes.byteLength,
+                    },
+                  },
+                },
+              }),
+              { status: 200 },
+            );
+          }
+
+          if (rawUrl === binaryUrl) {
+            return new Response(binaryBytes, { status: 200 });
+          }
+
+          return new Response("not found", { status: 404 });
+        }) as typeof fetch,
+        Effect.gen(function* () {
+          const environment = yield* DesktopEnvironment.DesktopEnvironment;
+          const updater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
+
+          yield* updater.checkAndUpdate;
+
+          assert.equal(
+            yield* updater.getActiveEnginePath,
+            environment.path.join(environment.engineVersionsPath, "2.3.0", binaryName),
+          );
+          assert.equal(seenHeaders[0]?.get("x-t3code-version"), "1.2.3");
+          assert.equal(seenHeaders[0]?.get("x-t3code-engine-version"), "bundled");
+          assert.equal(seenHeaders[0]?.get("x-t3code-platform"), process.platform);
+          assert.equal(seenHeaders[0]?.get("x-t3code-arch"), process.arch);
+          assert.equal(
+            seenHeaders[0]?.get("x-t3code-installation-id"),
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          );
+          assert.equal(seenHeaders[0]?.get("x-t3code-device-id"), "engine-device");
         }),
       ),
       { MYIDE_ENGINE_MANIFEST_URL: manifestUrl },

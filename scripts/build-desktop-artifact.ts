@@ -529,6 +529,20 @@ function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
   };
 }
 
+function resolveGenericPublishConfig(updateChannel: "latest" | "nightly"): {
+  readonly provider: "generic";
+  readonly url: string;
+} {
+  const rawUrl =
+    process.env.T3CODE_DESKTOP_UPDATE_FEED_URL?.trim() ||
+    "https://www.bahew.com/api/v1/client-updates/app";
+  const baseUrl = rawUrl.replace(/\/+$/, "").replace(/\/(latest|nightly)$/, "");
+  return {
+    provider: "generic",
+    url: `${baseUrl}/${updateChannel}`,
+  };
+}
+
 export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
   return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
 }
@@ -591,16 +605,20 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     ],
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
-  const publishConfig = resolveGitHubPublishConfig(updateChannel);
-  if (publishConfig) {
-    buildConfig.publish = [publishConfig];
-  } else if (mockUpdates) {
+  if (mockUpdates) {
     buildConfig.publish = [
       {
         provider: "generic",
         url: resolveMockUpdateServerUrl(mockUpdateServerPort),
       },
     ];
+  } else if (process.env.T3CODE_DESKTOP_UPDATE_PROVIDER?.trim().toLowerCase() === "github") {
+    const publishConfig = resolveGitHubPublishConfig(updateChannel);
+    if (publishConfig) {
+      buildConfig.publish = [publishConfig];
+    }
+  } else {
+    buildConfig.publish = [resolveGenericPublishConfig(updateChannel)];
   }
 
   if (platform === "mac") {

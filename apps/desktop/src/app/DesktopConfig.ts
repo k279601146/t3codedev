@@ -10,6 +10,9 @@ const trimNonEmptyOption = (value: string): Option.Option<string> => {
 const trimmedString = (name: string) =>
   Config.string(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
 
+const trimmedStringWithDefault = (name: string, fallback: string) =>
+  Config.string(name).pipe(Config.withDefault(fallback), Config.map(trimNonEmptyOption));
+
 const optionalBoolean = (name: string) =>
   Config.boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
 
@@ -53,7 +56,14 @@ export const DesktopConfig = Config.all({
   mockUpdateServerPort: Config.port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
     Config.withDefault(3000),
   ),
-  engineManifestUrl: trimmedString("MYIDE_ENGINE_MANIFEST_URL"),
+  desktopUpdateFeedUrl: trimmedStringWithDefault(
+    "T3CODE_DESKTOP_UPDATE_FEED_URL",
+    "https://www.bahew.com/api/v1/client-updates/app",
+  ),
+  engineManifestUrl: trimmedStringWithDefault(
+    "MYIDE_ENGINE_MANIFEST_URL",
+    "https://www.bahew.com/api/v1/client-updates/engine",
+  ),
   engineSignaturePublicKey: trimmedString("MYIDE_ENGINE_SIGNATURE_PUBLIC_KEY"),
   windowsSandboxMode: trimmedString("MYIDE_WINDOWS_SANDBOX_MODE"),
 });

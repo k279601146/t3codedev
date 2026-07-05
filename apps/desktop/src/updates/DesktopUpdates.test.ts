@@ -17,6 +17,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopApm from "../telemetry/DesktopApm.ts";
+import * as DesktopInstallationIdentity from "../telemetry/DesktopInstallationIdentity.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdates from "./DesktopUpdates.ts";
 
@@ -153,6 +154,12 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     Layer.provideMerge(DesktopAppSettings.layer),
     Layer.provideMerge(DesktopApm.layerNoop),
     Layer.provideMerge(
+      DesktopInstallationIdentity.layerTest({
+        installationId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        deviceId: "device-123",
+      }),
+    ),
+    Layer.provideMerge(
       DesktopConfig.layerTest({
         BAHEW_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,
         T3CODE_DESKTOP_MOCK_UPDATES: "true",
@@ -208,6 +215,50 @@ describe("DesktopUpdates", () => {
 
       assert.equal(harness.listenerCount(), 0);
     }).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("configures the dev2 generic feed with stable installation headers", () => {
+    const harness = makeHarness({
+      env: {
+        T3CODE_DESKTOP_MOCK_UPDATES: "false",
+        T3CODE_DESKTOP_UPDATE_FEED_URL: "https://www.bahew.com/api/v1/client-updates/app",
+      },
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        assert.deepEqual(harness.feedUrls(), [
+          {
+            provider: "generic",
+            url: "https://www.bahew.com/api/v1/client-updates/app/latest",
+            requestHeaders: {
+              "x-t3code-version": "1.2.3",
+              "x-t3code-platform": "darwin",
+              "x-t3code-arch": "x64",
+              "x-t3code-installation-id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "x-t3code-device-id": "device-123",
+            },
+          },
+        ]);
+
+        yield* updates.setChannel("nightly");
+
+        assert.deepEqual(harness.feedUrls().at(-1), {
+          provider: "generic",
+          url: "https://www.bahew.com/api/v1/client-updates/app/nightly",
+          requestHeaders: {
+            "x-t3code-version": "1.2.3",
+            "x-t3code-platform": "darwin",
+            "x-t3code-arch": "x64",
+            "x-t3code-installation-id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "x-t3code-device-id": "device-123",
+          },
+        });
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 
   it.effect("updates and broadcasts state from updater events", () => {
