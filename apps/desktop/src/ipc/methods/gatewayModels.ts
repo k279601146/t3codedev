@@ -109,7 +109,7 @@ export const getCommercialPublicRuntimeConfig = makeIpcMethod({
     }
 
     return yield* decodeCommercialPublicRuntimeConfig(body).pipe(
-      Effect.catchAll(() => Effect.succeed(null)),
+      Effect.catch(() => Effect.succeed(null)),
     );
   }),
 });
@@ -223,9 +223,9 @@ function requestPublicJson(url: string): Effect.Effect<unknown | null, never> {
           },
           maxRetries: 2,
           timeoutMs: 10_000,
-        }),
+      }),
       catch: (cause) => GatewayModelsNetworkError({ cause }),
-    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
 
     if (response === null) {
       return null;
@@ -239,7 +239,7 @@ function requestPublicJson(url: string): Effect.Effect<unknown | null, never> {
     return yield* Effect.tryPromise({
       try: () => response.json() as Promise<unknown>,
       catch: (cause) => GatewayModelsNetworkError({ cause }),
-    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
   });
 }
 

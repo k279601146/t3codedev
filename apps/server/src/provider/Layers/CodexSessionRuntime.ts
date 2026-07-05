@@ -658,10 +658,8 @@ type CodexThreadOpenResponse =
   | CodexRpc.ClientRequestResponsesByMethod["thread/start"]
   | CodexRpc.ClientRequestResponsesByMethod["thread/resume"];
 
-type CodexThreadOpenMethod = "thread/start" | "thread/resume" | "thread/settings/update";
-
 interface CodexThreadOpenClient {
-  readonly request: <M extends CodexThreadOpenMethod>(
+  readonly request: <M extends "thread/start" | "thread/resume" | "thread/settings/update">(
     method: M,
     payload: CodexRpc.ClientRequestParamsByMethod[M],
   ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;

@@ -26,6 +26,7 @@ const UPSTREAM_REPO = process.env.CODEX_APP_SERVER_UPSTREAM_REPO?.trim() || DEFA
 const UPSTREAM_REF = process.env.CODEX_APP_SERVER_UPSTREAM_REF?.trim() || DEFAULT_UPSTREAM_REF;
 const USER_AGENT = "effect-codex-app-server-generator";
 const CODELOAD_TARBALL_URL = `https://codeload.github.com/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/tar.gz/${UPSTREAM_REF}`;
+const CODEX_CLI_COMMAND = process.platform === "win32" ? "codex.cmd" : "codex";
 
 const JsonSchemaDocument = Schema.StructWithRest(
   Schema.Struct({
@@ -442,6 +443,64 @@ const fetchProtocolSource = Effect.fn("fetchProtocolSource")(function* () {
   const protocolRoot = path.join(extractDir, "codex-rs", "app-server-protocol");
   const jsonRoot = path.join(protocolRoot, "schema", "json");
   const typescriptRoot = path.join(protocolRoot, "schema", "typescript");
+  return yield* readProtocolSourceFromRoots(jsonRoot, typescriptRoot);
+});
+
+const generateProtocolSourceFromCodexCli = Effect.fn("generateProtocolSourceFromCodexCli")(
+  function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "codex-app-server-schema-" });
+    const typescriptRoot = path.join(tempDir, "ts");
+    const jsonRoot = path.join(tempDir, "json");
+    yield* fs.makeDirectory(typescriptRoot);
+    yield* fs.makeDirectory(jsonRoot);
+
+    const tsExit = yield* spawner
+      .spawn(
+        ChildProcess.make(CODEX_CLI_COMMAND, [
+          "app-server",
+          "generate-ts",
+          "--out",
+          typescriptRoot,
+          "--experimental",
+        ]),
+      )
+      .pipe(Effect.flatMap((child) => child.exitCode));
+    if (tsExit !== 0) {
+      return yield* new GeneratorError({
+        detail: `${CODEX_CLI_COMMAND} app-server generate-ts --experimental exited with code ${tsExit}`,
+      });
+    }
+
+    const jsonExit = yield* spawner
+      .spawn(
+        ChildProcess.make(CODEX_CLI_COMMAND, [
+          "app-server",
+          "generate-json-schema",
+          "--out",
+          jsonRoot,
+          "--experimental",
+        ]),
+      )
+      .pipe(Effect.flatMap((child) => child.exitCode));
+    if (jsonExit !== 0) {
+      return yield* new GeneratorError({
+        detail: `${CODEX_CLI_COMMAND} app-server generate-json-schema --experimental exited with code ${jsonExit}`,
+      });
+    }
+
+    return yield* readProtocolSourceFromRoots(jsonRoot, typescriptRoot);
+  },
+);
+
+const readProtocolSourceFromRoots = Effect.fn("readProtocolSourceFromRoots")(function* (
+  jsonRoot: string,
+  typescriptRoot: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const allJsonFiles = (yield* fs.readDirectory(jsonRoot, { recursive: true })).map((entry) =>
     path.join(jsonRoot, entry),
   );
@@ -654,6 +713,11 @@ function resolveSchemaTypeName(
   rawTypeName: string,
   generatedSchemaNames: ReadonlySet<string>,
 ): string {
+  const normalizedTypeName = normalizeSchemaTypeName(rawTypeName);
+  if (normalizedTypeName !== rawTypeName) {
+    return resolveSchemaTypeName(normalizedTypeName, generatedSchemaNames);
+  }
+
   if (rawTypeName === "undefined") {
     return "undefined";
   }
@@ -673,11 +737,23 @@ function resolveSchemaTypeName(
   throw new Error(`Unable to resolve schema type name: ${rawTypeName}`);
 }
 
+function normalizeSchemaTypeName(rawTypeName: string): string {
+  const unionParts = rawTypeName.split("|").map((part) => part.trim());
+  if (unionParts.length <= 1) {
+    return rawTypeName;
+  }
+
+  const nonNullParts = unionParts.filter((part) => part !== "null");
+  return nonNullParts.length === 1 ? nonNullParts[0]! : rawTypeName;
+}
+
 function resolveResponseTypeName(
   method: string,
   paramsType: string | undefined,
   generatedSchemaNames: ReadonlySet<string>,
 ): string {
+  const normalizedParamsType =
+    paramsType === undefined ? undefined : normalizeSchemaTypeName(paramsType);
   const overrides: Record<string, string> = {
     "account/logout": "LogoutAccountResponse",
     "account/rateLimits/read": "GetAccountRateLimitsResponse",
@@ -695,8 +771,8 @@ function resolveResponseTypeName(
     return resolveSchemaTypeName(override, generatedSchemaNames);
   }
 
-  if (paramsType && paramsType !== "undefined") {
-    const fromParams = paramsType.replace(/Params$/, "Response");
+  if (normalizedParamsType && normalizedParamsType !== "undefined") {
+    const fromParams = normalizedParamsType.replace(/Params$/, "Response");
     try {
       return resolveSchemaTypeName(fromParams, generatedSchemaNames);
     } catch {
@@ -835,7 +911,7 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
     jsonSchemaFiles,
     serverNotificationRaw,
     serverRequestRaw,
-  } = yield* fetchProtocolSource();
+  } = yield* generateProtocolSourceFromCodexCli();
 
   const exportNameByQualifiedName = new Map(
     jsonSchemaFiles.map((file) => [file.qualifiedName, file.exportName]),
