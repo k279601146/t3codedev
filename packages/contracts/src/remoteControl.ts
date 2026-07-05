@@ -144,6 +144,7 @@ export const QqBotCommandKind = Schema.Literals([
   "approve",
   "deny",
   "diff",
+  "summary",
   "unknown",
 ]);
 export type QqBotCommandKind = typeof QqBotCommandKind.Type;

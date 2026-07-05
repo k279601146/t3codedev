@@ -16,4 +16,11 @@ describe("parseQqCommand", () => {
       argument: "thread-1 继续",
     });
   });
+
+  it("parses summary commands", () => {
+    expect(parseQqCommand("/summary thread-1")).toEqual({
+      kind: "summary",
+      argument: "thread-1",
+    });
+  });
 });

@@ -95,6 +95,7 @@ export function verifyQqWebhookSignature(input: {
   const signature = Buffer.from(input.signatureHex, "hex");
   if (
     signature.byteLength !== 64 ||
+    (signature[63] & 0xe0) !== 0 ||
     signature.toString("hex") !== input.signatureHex.toLowerCase()
   ) {
     return false;

@@ -101,6 +101,8 @@ export function parseQqCommand(content: string): import("@t3tools/contracts").Qq
       return { kind: "deny", argument };
     case "diff":
       return { kind: "diff", argument };
+    case "summary":
+      return { kind: "summary", argument };
     default:
       return { kind: "unknown", argument: trimmed };
   }
@@ -124,6 +126,29 @@ function truncateForQq(text: string): string {
 
 function makeRemoteQqThreadId(): ThreadId {
   return ThreadId.make(`remote-qq-${Crypto.randomUUID()}`);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readSummaryText(item: unknown): string | null {
+  if (typeof item === "string") {
+    return item.trim() || null;
+  }
+  const record = asRecord(item);
+  if (!record) {
+    return null;
+  }
+  for (const key of ["summary", "text", "message", "title", "content"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 export const RemoteControlLayerLive = Layer.effect(
@@ -382,6 +407,30 @@ export const RemoteControlLayerLive = Layer.effect(
         return truncateForQq(`会话 ${threadIdText} 的 diff：\n${diff.diff}`);
       });
 
+    const loadThreadSummaryReply = (threadIdText: string) =>
+      Effect.gen(function* () {
+        if (!providerService.listThreadTurns) {
+          return "当前 provider 不支持读取会话 turn 摘要。";
+        }
+        const turns = yield* providerService.listThreadTurns({
+          threadId: ThreadId.make(threadIdText),
+          limit: 5,
+          itemsView: "summary",
+          sortDirection: "desc",
+        });
+        const lines = turns.data.flatMap((turn) => {
+          const itemSummaries = turn.items
+            .map(readSummaryText)
+            .filter((value): value is string => Boolean(value));
+          return itemSummaries.length > 0
+            ? [`turn ${turn.id} · ${turn.status}`, ...itemSummaries.map((item) => `- ${item}`)]
+            : [`turn ${turn.id} · ${turn.status}`];
+        });
+        return lines.length === 0
+          ? `会话 ${threadIdText} 暂无摘要。`
+          : truncateForQq(`会话 ${threadIdText} 最近摘要：\n${lines.join("\n")}`);
+      });
+
     const handleQqMessage: RemoteControlServiceShape["handleQqMessage"] = (rawInput) =>
       decodeQqMessage(rawInput).pipe(
         Effect.mapError(mapRemoteError("QQ 消息参数无效。")),
@@ -485,9 +534,17 @@ export const RemoteControlLayerLive = Layer.effect(
               } else {
                 reply = yield* loadFullThreadDiffReply(threadId);
               }
+            } else if (command.kind === "summary") {
+              yield* requireBinding(input);
+              const [threadId] = splitFirst(command.argument);
+              if (!threadId) {
+                reply = "用法：/summary <threadId>";
+              } else {
+                reply = yield* loadThreadSummaryReply(threadId);
+              }
             } else {
               reply =
-                "未知指令。可用：/bind、/new、/status、/threads、/ask、/steer、/interrupt、/approve、/deny、/diff。";
+                "未知指令。可用：/bind、/new、/status、/threads、/ask、/steer、/interrupt、/approve、/deny、/diff、/summary。";
             }
             return { command, reply };
           }),

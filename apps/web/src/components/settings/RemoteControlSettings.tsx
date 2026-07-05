@@ -267,9 +267,13 @@ export function RemoteControlSettingsPanel() {
               disabled={disabled}
               onClick={() =>
                 runAction("pairing", async () => {
+                  const status = await ensureLocalApi().remoteControl.enable({
+                    ephemeral: false,
+                  });
                   const session = await ensureLocalApi().remoteControl.startPairing({
                     manualCode: true,
                   });
+                  updateSnapshot({ status });
                   setPairing(session);
                 })
               }
