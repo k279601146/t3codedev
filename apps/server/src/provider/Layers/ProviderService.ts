@@ -17,6 +17,7 @@ import {
   OrchestrationListThreadTurnItemsInput,
   OrchestrationListThreadTurnsInput,
   ThreadId,
+  ProviderCompactThreadInput,
   ProviderGoalClearInput,
   ProviderGoalGetInput,
   ProviderGoalSetInput,
@@ -834,6 +835,48 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
+  const compactThread: ProviderServiceShape["compactThread"] = Effect.fn("compactThread")(
+    function* (rawInput) {
+      const input = yield* decodeInputOrValidationError({
+        operation: "ProviderService.compactThread",
+        schema: ProviderCompactThreadInput,
+        payload: rawInput,
+      });
+      let metricProvider = "unknown";
+      return yield* Effect.gen(function* () {
+        const routed = yield* resolveRoutableSession({
+          threadId: input.threadId,
+          operation: "ProviderService.compactThread",
+          allowRecovery: true,
+        });
+        metricProvider = routed.adapter.provider;
+        if (!routed.adapter.compactThread) {
+          return yield* new ProviderValidationError({
+            operation: "ProviderService.compactThread",
+            issue: `Provider '${routed.adapter.provider}' does not support manual context compaction.`,
+          });
+        }
+        yield* Effect.annotateCurrentSpan({
+          "provider.operation": "compact-thread",
+          "provider.kind": routed.adapter.provider,
+          "provider.thread_id": input.threadId,
+        });
+        yield* routed.adapter.compactThread(routed.threadId);
+        yield* analytics.record("provider.thread.compacted", {
+          provider: routed.adapter.provider,
+        });
+      }).pipe(
+        withMetrics({
+          counter: providerTurnsTotal,
+          outcomeAttributes: () =>
+            providerMetricAttributes(metricProvider, {
+              operation: "compact",
+            }),
+        }),
+      );
+    },
+  );
+
   const respondToRequest: ProviderServiceShape["respondToRequest"] = Effect.fn("respondToRequest")(
     function* (rawInput) {
       const input = yield* decodeInputOrValidationError({
@@ -1506,6 +1549,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     sendTurn,
     steerTurn,
     interruptTurn,
+    compactThread,
     respondToRequest,
     respondToUserInput,
     setGoal,

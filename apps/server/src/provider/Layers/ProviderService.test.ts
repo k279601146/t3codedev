@@ -217,6 +217,9 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     ): Effect.Effect<{ threadId: ThreadId; turns: readonly [] }, ProviderAdapterError> =>
       Effect.succeed({ threadId, turns: [] }),
   );
+  const compactThread = vi.fn(
+    (_threadId: ThreadId): Effect.Effect<void, ProviderAdapterError> => Effect.void,
+  );
 
   const stopAll = vi.fn(
     (): Effect.Effect<void, ProviderAdapterError> =>
@@ -241,6 +244,7 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     hasSession,
     readThread,
     rollbackThread,
+    compactThread,
     stopAll,
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
@@ -276,6 +280,7 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     hasSession,
     readThread,
     rollbackThread,
+    compactThread,
     stopAll,
   };
 }
@@ -831,6 +836,9 @@ routing.layer("ProviderServiceLive routing", (it) => {
 
       yield* provider.interruptTurn({ threadId: session.threadId });
       assert.deepEqual(routing.codex.interruptTurn.mock.calls, [[session.threadId, undefined]]);
+
+      yield* provider.compactThread({ threadId: session.threadId });
+      assert.deepEqual(routing.codex.compactThread.mock.calls, [[session.threadId]]);
 
       yield* provider.respondToRequest({
         threadId: session.threadId,

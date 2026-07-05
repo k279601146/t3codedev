@@ -101,6 +101,11 @@ export interface ProviderAdapterShape<TError> {
   readonly interruptTurn: (threadId: ThreadId, turnId?: TurnId) => Effect.Effect<void, TError>;
 
   /**
+   * Trigger provider-native conversation context compaction.
+   */
+  readonly compactThread?: (threadId: ThreadId) => Effect.Effect<void, TError>;
+
+  /**
    * Respond to an interactive approval request.
    */
   readonly respondToRequest: (

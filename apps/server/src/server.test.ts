@@ -694,6 +694,7 @@ const buildAppUnderTest = (options?: {
           sendTurn: () => Effect.die(new Error("测试未提供 ProviderService.sendTurn")),
           steerTurn: () => Effect.die(new Error("测试未提供 ProviderService.steerTurn")),
           interruptTurn: () => Effect.void,
+          compactThread: () => Effect.void,
           respondToRequest: () => Effect.void,
           respondToUserInput: () => Effect.void,
           setGoal: () => Effect.die(new Error("测试未提供 ProviderService.setGoal")),

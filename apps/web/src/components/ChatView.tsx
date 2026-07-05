@@ -3714,6 +3714,22 @@ export default function ChatView(props: ChatViewProps) {
     ],
   );
 
+  const onCompactContext = useCallback(async () => {
+    const api = readEnvironmentApi(environmentId);
+    if (!api || !activeThreadId) return;
+    try {
+      setThreadError(activeThreadId, null);
+      await api.orchestration.dispatchCommand({
+        type: "thread.context.compact",
+        commandId: newCommandId(),
+        threadId: activeThreadId,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      setThreadError(activeThreadId, error instanceof Error ? error.message : "压缩上下文失败。");
+    }
+  }, [activeThreadId, environmentId, setThreadError]);
+
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readEnvironmentApi(environmentId);
@@ -3787,6 +3803,13 @@ export default function ChatView(props: ChatViewProps) {
         ? parseStandaloneComposerSlashCommand(trimmed)
         : null;
     if (standaloneSlashCommand) {
+      if (standaloneSlashCommand === "compact") {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+        await onCompactContext();
+        return;
+      }
       handleInteractionModeChange(standaloneSlashCommand);
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
@@ -5272,6 +5295,7 @@ export default function ChatView(props: ChatViewProps) {
       scheduleStickToBottom={scrollToEnd}
       onSend={onSend}
       onInterrupt={onInterrupt}
+      onCompactContext={onCompactContext}
       onConfirmPendingSteerDraft={onConfirmPendingSteerMessage}
       onEditPendingSteerDraft={onEditPendingSteerMessage}
       onDiscardPendingSteerDraft={onDiscardPendingSteerMessage}

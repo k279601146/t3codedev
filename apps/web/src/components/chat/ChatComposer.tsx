@@ -1259,6 +1259,7 @@ export interface ChatComposerProps {
   // Callbacks
   onSend: (e?: { preventDefault: () => void }) => void;
   onInterrupt: () => void;
+  onCompactContext: () => void;
   onConfirmPendingSteerDraft: () => void;
   onEditPendingSteerDraft: () => void;
   onDiscardPendingSteerDraft: () => void;
@@ -1361,6 +1362,7 @@ export const ChatComposer = memo(
       scheduleStickToBottom,
       onSend,
       onInterrupt,
+      onCompactContext,
       onConfirmPendingSteerDraft,
       onEditPendingSteerDraft,
       onDiscardPendingSteerDraft,
@@ -1884,6 +1886,13 @@ export const ChatComposer = memo(
             command: "default",
             label: "/default",
             description: t("composer.slash.defaultDescription"),
+          },
+          {
+            id: "slash:compact",
+            type: "slash-command",
+            command: "compact",
+            label: "/compact",
+            description: t("composer.slash.compactDescription"),
           },
         ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
         const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
@@ -2615,6 +2624,16 @@ export const ChatComposer = memo(
             }
             return;
           }
+          if (item.command === "compact") {
+            const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+              expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+            });
+            if (applied) {
+              setComposerHighlightedItemId(null);
+            }
+            onCompactContext();
+            return;
+          }
           void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -2665,6 +2684,7 @@ export const ChatComposer = memo(
         applyPromptReplacement,
         composerTrigger,
         handleInteractionModeChange,
+        onCompactContext,
         resolveActiveComposerTrigger,
       ],
     );

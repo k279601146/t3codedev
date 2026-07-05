@@ -172,6 +172,7 @@ describe("ProviderSessionReaper", () => {
       sendTurn: () => unsupported(),
       steerTurn: () => unsupported(),
       interruptTurn: () => unsupported(),
+      compactThread: () => unsupported(),
       respondToRequest: () => unsupported(),
       respondToUserInput: () => unsupported(),
       setGoal: () => unsupported(),

@@ -229,6 +229,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
     const interruptTurn = vi.fn((_: unknown) => Effect.void);
+    const compactThread = vi.fn<ProviderServiceShape["compactThread"]>(() => Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
     const respondToUserInput = vi.fn<ProviderServiceShape["respondToUserInput"]>(() => Effect.void);
     const setGoal = vi.fn<ProviderServiceShape["setGoal"]>((input) =>
@@ -338,6 +339,7 @@ describe("ProviderCommandReactor", () => {
       sendTurn: sendTurn as ProviderServiceShape["sendTurn"],
       steerTurn: steerTurn as ProviderServiceShape["steerTurn"],
       interruptTurn: interruptTurn as ProviderServiceShape["interruptTurn"],
+      compactThread,
       respondToRequest: respondToRequest as ProviderServiceShape["respondToRequest"],
       respondToUserInput: respondToUserInput as ProviderServiceShape["respondToUserInput"],
       setGoal,
@@ -474,6 +476,7 @@ describe("ProviderCommandReactor", () => {
       sendTurn,
       steerTurn,
       interruptTurn,
+      compactThread,
       respondToRequest,
       respondToUserInput,
       setGoal,
@@ -1797,6 +1800,43 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.interruptTurn.mock.calls.length === 1);
     expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
+      threadId: "thread-1",
+    });
+  });
+
+  it("reacts to thread.context-compact-requested by calling provider compact", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-before-compact"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.context.compact",
+        commandId: CommandId.make("cmd-context-compact"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.compactThread.mock.calls.length === 1);
+    expect(harness.compactThread.mock.calls[0]?.[0]).toEqual({
       threadId: "thread-1",
     });
   });
