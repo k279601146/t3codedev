@@ -740,6 +740,25 @@ function runtimeEventToActivities(
     }
 
     case "item.completed": {
+      if (event.payload.itemType === "context_compaction") {
+        return [
+          {
+            id: event.eventId,
+            createdAt: event.createdAt,
+            tone: "info",
+            kind: "context-compaction",
+            summary: "Context compacted",
+            payload: {
+              state: "compacted",
+              ...(event.itemId ? { itemId: event.itemId } : {}),
+              ...(event.payload.data !== undefined ? { detail: event.payload.data } : {}),
+            },
+            turnId: toTurnId(event.turnId) ?? null,
+            ...maybeSequence,
+          },
+        ];
+      }
+
       if (!isToolLifecycleItemType(event.payload.itemType)) {
         return [];
       }

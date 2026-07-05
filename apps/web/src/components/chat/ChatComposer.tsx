@@ -624,9 +624,10 @@ const runtimeModeToneClassName: Record<
     menuIcon: "text-muted-foreground",
   },
   blue: {
-    trigger: "text-foreground/78 hover:bg-accent hover:text-foreground",
-    icon: "text-foreground/72",
-    menuIcon: "text-foreground/72",
+    trigger:
+      "text-blue-500 hover:bg-blue-50 hover:text-blue-600 dark:text-blue-400 dark:hover:bg-blue-500/10 dark:hover:text-blue-300",
+    icon: "text-blue-500 dark:text-blue-400",
+    menuIcon: "text-blue-500 dark:text-blue-400",
   },
   orange: {
     trigger:

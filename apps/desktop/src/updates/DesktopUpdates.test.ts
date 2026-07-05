@@ -34,8 +34,10 @@ const flushCallbacks = Effect.yieldNow;
 
 function makeHarness(options: UpdatesHarnessOptions = {}) {
   const previousFetch = globalThis.fetch;
+  let fetchMocked = false;
   if (options.fetchImpl) {
     globalThis.fetch = options.fetchImpl;
+    fetchMocked = true;
   }
   let checkCount = 0;
   let allowDowngrade = false;
@@ -192,7 +194,10 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       }
     },
     restoreFetch: () => {
-      globalThis.fetch = previousFetch;
+      if (fetchMocked) {
+        globalThis.fetch = previousFetch;
+        fetchMocked = false;
+      }
     },
   };
 }
@@ -265,6 +270,74 @@ describe("DesktopUpdates", () => {
             "x-t3code-device-id": "device-123",
           },
         });
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("treats dev2 no-update resolution as up to date when the feed returns 404", () => {
+    const harness = makeHarness({
+      env: {
+        T3CODE_DESKTOP_MOCK_UPDATES: "false",
+        T3CODE_DESKTOP_UPDATE_FEED_URL: "https://www.bahew.com/api/v1/client-updates/app",
+      },
+      checkForUpdates: Effect.fail(
+        new ElectronUpdater.ElectronUpdaterCheckForUpdatesError({
+          cause: new Error("HTTP 404"),
+        }),
+      ),
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({ update_available: false, forced: false, version: null }),
+          { status: 200 },
+        )) as typeof fetch,
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        try {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+          const result = yield* updates.check("manual");
+
+          assert.equal(result.checked, true);
+          assert.equal(result.state.status, "up-to-date");
+          assert.equal(result.state.mandatory, false);
+        } finally {
+          harness.restoreFetch();
+        }
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("marks update state as mandatory from dev2 resolution", () => {
+    const harness = makeHarness({
+      env: {
+        T3CODE_DESKTOP_MOCK_UPDATES: "false",
+        T3CODE_DESKTOP_UPDATE_FEED_URL: "https://www.bahew.com/api/v1/client-updates/app",
+      },
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({ update_available: true, forced: true, version: "1.2.4" }),
+          { status: 200 },
+        )) as typeof fetch,
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        try {
+          const updates = yield* DesktopUpdates.DesktopUpdates;
+          yield* updates.configure;
+
+          harness.emit("update-available", { version: "1.2.4" });
+          yield* flushCallbacks;
+
+          const state = yield* updates.getState;
+          assert.equal(state.status, "available");
+          assert.equal(state.mandatory, true);
+          assert.include(state.message ?? "", "required");
+        } finally {
+          harness.restoreFetch();
+        }
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });

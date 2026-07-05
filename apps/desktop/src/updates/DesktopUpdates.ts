@@ -374,7 +374,7 @@ const make = Effect.gen(function* () {
 
   const applyDev2ResolutionToState = Effect.fn("desktop.updates.applyDev2ResolutionToState")(
     function* () {
-      const resolution = yield* fetchDev2Resolution;
+      const resolution = yield* fetchDev2Resolution();
       if (Option.isNone(resolution)) {
         return;
       }
@@ -414,7 +414,7 @@ const make = Effect.gen(function* () {
       Effect.as(true),
       Effect.catch(
         Effect.fn("desktop.updates.handleCheckForUpdatesFailure")(function* (error) {
-          const resolution = yield* fetchDev2Resolution;
+          const resolution = yield* fetchDev2Resolution();
           if (Option.isSome(resolution) && !resolution.value.update_available) {
             const checkedAt = yield* currentIsoTimestamp;
             const current = yield* Ref.get(updateStateRef);
