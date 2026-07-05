@@ -191,6 +191,11 @@ import {
   searchComposerPluginMentionList,
 } from "../../composerPluginMentions";
 import { useToolBridgeHealth } from "../../hooks/useToolBridgeHealth";
+import {
+  readCommercialPublicRuntimeFlag,
+  refreshCommercialPublicRuntimeConfig,
+  useT3ClientModelSelectorEnabled,
+} from "../../hooks/useCommercialPublicRuntimeConfig";
 
 const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
@@ -276,6 +281,7 @@ const COMPOSER_FLOATING_LAYER_SELECTOR = [
   '[data-slot="combobox-popup"]',
   '[data-slot="autocomplete-popup"]',
 ].join(",");
+const FIXED_CLIENT_MODEL = "auto";
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -1439,6 +1445,7 @@ export const ChatComposer = memo(
     const setStickyComposerModelSelection = useComposerDraftStore(
       (store) => store.setStickyModelSelection,
     );
+    const t3ClientModelSelectorEnabled = useT3ClientModelSelectorEnabled();
 
     // ------------------------------------------------------------------
     // Model state
@@ -1547,7 +1554,10 @@ export const ChatComposer = memo(
       selectedProvider,
     ]);
 
-    const { modelOptions: composerModelOptions, selectedModel } = useEffectiveComposerModelState({
+    const {
+      modelOptions: composerModelOptions,
+      selectedModel: userSelectedModel,
+    } = useEffectiveComposerModelState({
       threadRef: composerDraftTarget,
       providers: providerStatuses,
       selectedProvider,
@@ -1556,6 +1566,7 @@ export const ChatComposer = memo(
       projectModelSelection: activeProjectDefaultModelSelection,
       settings,
     });
+    const selectedModel = t3ClientModelSelectorEnabled ? userSelectedModel : FIXED_CLIENT_MODEL;
 
     // Resolve the active instance's snapshot by `instanceId` so a custom
     // instance gets its own slash commands, skills, and model list — not
@@ -1572,9 +1583,10 @@ export const ChatComposer = memo(
       () => selectedProviderEntry?.models ?? [],
       [selectedProviderEntry],
     );
-    const selectedModelOptionSelections =
-      composerModelOptions?.[selectedInstanceId] ??
-      composerModelOptions?.[ProviderInstanceId.make(selectedProvider)];
+    const selectedModelOptionSelections = t3ClientModelSelectorEnabled
+      ? (composerModelOptions?.[selectedInstanceId] ??
+        composerModelOptions?.[ProviderInstanceId.make(selectedProvider)])
+      : undefined;
     const selectedModelCapabilities = useMemo(
       () => getProviderModelCapabilities(selectedProviderModels, selectedModel, selectedProvider),
       [selectedModel, selectedProvider, selectedProviderModels],
@@ -1638,12 +1650,26 @@ export const ChatComposer = memo(
     const modelOptionsByInstance = useMemo<
       ReadonlyMap<ProviderInstanceId, ReadonlyArray<AppModelOption>>
     >(() => {
+      if (!t3ClientModelSelectorEnabled) {
+        return new Map([
+          [
+            selectedInstanceId,
+            [
+              {
+                slug: FIXED_CLIENT_MODEL,
+                name: "Auto",
+                isCustom: false,
+              },
+            ],
+          ],
+        ]);
+      }
       const out = new Map<ProviderInstanceId, ReadonlyArray<AppModelOption>>();
       for (const entry of providerInstanceEntries) {
         out.set(entry.instanceId, getAppModelOptionsForInstance(settings, entry));
       }
       return out;
-    }, [providerInstanceEntries, settings]);
+    }, [providerInstanceEntries, selectedInstanceId, settings, t3ClientModelSelectorEnabled]);
     const selectedInstanceModelOptions = modelOptionsByInstance.get(selectedInstanceId) ?? [];
     const selectedModelForPickerWithCustomFallback = useMemo(() => {
       return selectedInstanceModelOptions.some((option) => option.slug === selectedModelForPicker)
@@ -1772,6 +1798,25 @@ export const ChatComposer = memo(
     const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
 
     useEffect(() => {
+      if (!t3ClientModelSelectorEnabled) {
+        setIsComposerModelPickerOpen(false);
+      }
+    }, [t3ClientModelSelectorEnabled]);
+
+    const refreshT3ClientModelSelectorEnabled = useCallback(async () => {
+      const config = await refreshCommercialPublicRuntimeConfig({ force: true });
+      const enabled = readCommercialPublicRuntimeFlag(
+        config,
+        "t3ClientModelSelectorEnabled",
+        true,
+      );
+      if (!enabled) {
+        setIsComposerModelPickerOpen(false);
+      }
+      return enabled;
+    }, []);
+
+    useEffect(() => {
       if (goalEditOpen) return;
       setGoalEditDraft(goal?.objective ?? "");
     }, [goal?.objective, goalEditOpen]);
@@ -1859,13 +1904,17 @@ export const ChatComposer = memo(
       }
       if (composerTrigger.kind === "slash-command") {
         const builtInSlashCommandItems = [
-          {
-            id: "slash:model",
-            type: "slash-command",
-            command: "model",
-            label: "/model",
-            description: t("composer.slash.modelDescription"),
-          },
+          ...(t3ClientModelSelectorEnabled
+            ? [
+                {
+                  id: "slash:model",
+                  type: "slash-command",
+                  command: "model",
+                  label: "/model",
+                  description: t("composer.slash.modelDescription"),
+                },
+              ]
+            : []),
           {
             id: "slash:personality",
             type: "slash-command",
@@ -1935,6 +1984,7 @@ export const ChatComposer = memo(
       selectedProvider,
       selectedProviderStatus,
       t,
+      t3ClientModelSelectorEnabled,
       visiblePluginMentions,
       workspaceEntries,
     ]);
@@ -2620,7 +2670,17 @@ export const ChatComposer = memo(
             });
             if (applied) {
               setComposerHighlightedItemId(null);
-              setIsComposerModelPickerOpen(true);
+              void refreshT3ClientModelSelectorEnabled()
+                .then((enabled) => {
+                  if (enabled) {
+                    setIsComposerModelPickerOpen(true);
+                  }
+                })
+                .catch(() => {
+                  if (t3ClientModelSelectorEnabled) {
+                    setIsComposerModelPickerOpen(true);
+                  }
+                });
             }
             return;
           }
@@ -2685,7 +2745,9 @@ export const ChatComposer = memo(
         composerTrigger,
         handleInteractionModeChange,
         onCompactContext,
+        refreshT3ClientModelSelectorEnabled,
         resolveActiveComposerTrigger,
+        t3ClientModelSelectorEnabled,
       ],
     );
 
@@ -3223,10 +3285,26 @@ export const ChatComposer = memo(
           composerEditorRef.current?.focusAt(cursor);
         },
         openModelPicker: () => {
-          setIsComposerModelPickerOpen(true);
+          void refreshT3ClientModelSelectorEnabled()
+            .then((enabled) => {
+              if (enabled) {
+                setIsComposerModelPickerOpen(true);
+              }
+            })
+            .catch(() => {
+              if (t3ClientModelSelectorEnabled) {
+                setIsComposerModelPickerOpen(true);
+              }
+            });
         },
         toggleModelPicker: () => {
-          setIsComposerModelPickerOpen((open) => !open);
+          void refreshT3ClientModelSelectorEnabled()
+            .then((enabled) => {
+              setIsComposerModelPickerOpen((open) => enabled && !open);
+            })
+            .catch(() => {
+              setIsComposerModelPickerOpen((open) => t3ClientModelSelectorEnabled && !open);
+            });
         },
         isModelPickerOpen: () => isComposerModelPickerOpen,
         readSnapshot: () => {
@@ -3308,12 +3386,14 @@ export const ChatComposer = memo(
         composerTerminalContextsRef,
         isComposerModelPickerOpen,
         readComposerSnapshot,
+        refreshT3ClientModelSelectorEnabled,
         selectedModel,
         selectedModelOptionsForDispatch,
         selectedModelSelection,
         selectedPromptEffort,
         selectedProvider,
         selectedProviderModels,
+        t3ClientModelSelectorEnabled,
       ],
     );
 
@@ -3334,6 +3414,7 @@ export const ChatComposer = memo(
         modelOptionSelections={selectedModelOptionSelections ?? null}
         availabilityTriggerLabel={composerProviderAvailability.triggerLabel}
         emptyMessage={composerProviderAvailability.menuEmptyMessage}
+        readOnly={!t3ClientModelSelectorEnabled}
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
         {...(composerProviderState.modelPickerIconClassName
@@ -3344,17 +3425,46 @@ export const ChatComposer = memo(
         triggerClassName={cn(
           "h-7 rounded-md px-1.5 text-[12px] font-normal text-foreground/80 hover:text-foreground",
         )}
+        onTriggerClick={() => {
+          void refreshT3ClientModelSelectorEnabled().catch(() => undefined);
+        }}
         onOpenChange={(open) => {
-          setIsComposerModelPickerOpen(open);
-          if (open) {
-            if (backendConnectionState === "connected") {
-              void refreshSelectedModelService().catch(() => undefined);
-            } else {
-              void getPrimaryEnvironmentConnection()
-                .reconnect()
-                .catch(() => undefined);
-            }
+          if (!open) {
+            setIsComposerModelPickerOpen(false);
+            return;
           }
+          if (!t3ClientModelSelectorEnabled) {
+            setIsComposerModelPickerOpen(false);
+            return;
+          }
+          void refreshT3ClientModelSelectorEnabled()
+            .then((enabled) => {
+              if (!enabled) {
+                return;
+              }
+              setIsComposerModelPickerOpen(true);
+              if (backendConnectionState === "connected") {
+                void refreshSelectedModelService().catch(() => undefined);
+              } else {
+                void getPrimaryEnvironmentConnection()
+                  .reconnect()
+                  .catch(() => undefined);
+              }
+            })
+            .catch(() => {
+              if (!t3ClientModelSelectorEnabled) {
+                setIsComposerModelPickerOpen(false);
+                return;
+              }
+              setIsComposerModelPickerOpen(true);
+              if (backendConnectionState === "connected") {
+                void refreshSelectedModelService().catch(() => undefined);
+              } else {
+                void getPrimaryEnvironmentConnection()
+                  .reconnect()
+                  .catch(() => undefined);
+              }
+            });
         }}
         onInstanceModelChange={onProviderModelSelect}
         onModelOptionsChange={handleModelOptionsChange}

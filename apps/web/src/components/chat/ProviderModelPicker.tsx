@@ -47,10 +47,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   compact?: boolean;
   simplified?: boolean;
   disabled?: boolean;
+  readOnly?: boolean;
   terminalOpen?: boolean;
   open?: boolean;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
+  onTriggerClick?: () => void;
   onOpenChange?: (open: boolean) => void;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
   onModelOptionsChange?: (nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined) => void;
@@ -128,7 +130,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   }, [isMenuOpen]);
 
   const handleInstanceModelChange = (instanceId: ProviderInstanceId, model: string) => {
-    if (props.disabled) return;
+    if (props.disabled || props.readOnly) return;
     props.onInstanceModelChange(instanceId, model);
     setIsMenuOpen(false);
   };
@@ -137,7 +139,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     <Popover
       open={isMenuOpen}
       onOpenChange={(open) => {
-        if (props.disabled) {
+        if (props.disabled || props.readOnly) {
           setIsMenuOpen(false);
           return;
         }
@@ -156,6 +158,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               props.triggerClassName,
             )}
             disabled={props.disabled}
+            onClick={props.onTriggerClick}
           />
         }
       >
@@ -203,32 +206,36 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
           </Tooltip>
-          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+          {props.readOnly ? null : (
+            <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+          )}
         </span>
       </PopoverTrigger>
-      <PopoverPopup
-        align={props.simplified ? "end" : "start"}
-        className="overflow-visible border-0 bg-transparent p-0 shadow-none before:hidden [--viewport-inline-padding:0] *:data-[slot=popover-viewport]:overflow-visible *:data-[slot=popover-viewport]:p-0"
-      >
-        <ModelPickerContent
-          activeInstanceId={activeInstanceId}
-          model={props.model}
-          lockedProvider={props.lockedProvider}
-          lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
-          instanceEntries={props.instanceEntries}
-          {...(props.keybindings ? { keybindings: props.keybindings } : {})}
-          modelOptionsByInstance={props.modelOptionsByInstance}
-          modelOptionDescriptors={modelOptionDescriptors}
-          simplified={props.simplified ?? false}
-          terminalOpen={props.terminalOpen ?? false}
-          {...(props.emptyMessage ? { emptyMessage: props.emptyMessage } : {})}
-          onRequestClose={() => setIsMenuOpen(false)}
-          onInstanceModelChange={handleInstanceModelChange}
-          {...(props.onModelOptionsChange
-            ? { onModelOptionsChange: props.onModelOptionsChange }
-            : {})}
-        />
-      </PopoverPopup>
+      {props.readOnly ? null : (
+        <PopoverPopup
+          align={props.simplified ? "end" : "start"}
+          className="overflow-visible border-0 bg-transparent p-0 shadow-none before:hidden [--viewport-inline-padding:0] *:data-[slot=popover-viewport]:overflow-visible *:data-[slot=popover-viewport]:p-0"
+        >
+          <ModelPickerContent
+            activeInstanceId={activeInstanceId}
+            model={props.model}
+            lockedProvider={props.lockedProvider}
+            lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
+            instanceEntries={props.instanceEntries}
+            {...(props.keybindings ? { keybindings: props.keybindings } : {})}
+            modelOptionsByInstance={props.modelOptionsByInstance}
+            modelOptionDescriptors={modelOptionDescriptors}
+            simplified={props.simplified ?? false}
+            terminalOpen={props.terminalOpen ?? false}
+            {...(props.emptyMessage ? { emptyMessage: props.emptyMessage } : {})}
+            onRequestClose={() => setIsMenuOpen(false)}
+            onInstanceModelChange={handleInstanceModelChange}
+            {...(props.onModelOptionsChange
+              ? { onModelOptionsChange: props.onModelOptionsChange }
+              : {})}
+          />
+        </PopoverPopup>
+      )}
     </Popover>
   );
 });

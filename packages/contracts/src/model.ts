@@ -242,7 +242,14 @@ export type CommercialAccountUsageSchema = typeof CommercialAccountUsageSchema.T
 
 export const CommercialPublicRuntimeConfigSchema = Schema.Struct({
   featureFlags: Schema.Struct({
-    upgradeEntryEnabled: Schema.Boolean,
+    upgradeEntryEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+    emailAuthEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+    desktopDownloadPromptEnabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+    ),
+    t3ClientModelSelectorEnabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+    ),
   }),
 });
 export type CommercialPublicRuntimeConfigSchema =

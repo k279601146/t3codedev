@@ -58,7 +58,6 @@ import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import {
   type CommercialAccountUsageSchema,
-  type CommercialPublicRuntimeConfigSchema,
   type ContextMenuItem,
   CONVERSATION_PROJECT_ID,
   type DesktopUpdateState,
@@ -131,6 +130,7 @@ import {
   resolveCommercialAccountActionUrl,
   resolveCommercialAccountWebBaseUrl,
 } from "../lib/commercialAccountLinks";
+import { useCommercialUpgradeEntryEnabled } from "../hooks/useCommercialPublicRuntimeConfig";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import {
   getArm64IntelBuildWarningDescription,
@@ -2576,7 +2576,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     accountLabel,
   )}`;
   const accountWebBaseUrl = resolveCommercialAccountWebBaseUrl();
-  const upgradeEntryEnabled = useCommercialUpgradeEntryEnabled(accountWebBaseUrl);
+  const upgradeEntryEnabled = useCommercialUpgradeEntryEnabled();
   const canSignOut =
     typeof window !== "undefined" && Boolean(window.desktopBridge?.signOutCommercialAuth);
 
@@ -2838,56 +2838,6 @@ type CommercialAccountUsage = Awaited<
 >;
 
 type CommercialUsageLike = NonNullable<NonNullable<ServerProvider["auth"]["rateLimits"]>["usage"]>;
-
-function useCommercialUpgradeEntryEnabled(accountWebBaseUrl: string): boolean {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    let disposed = false;
-    const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
-    const loadConfig = bridge?.getCommercialPublicRuntimeConfig
-      ? bridge.getCommercialPublicRuntimeConfig({ accountWebBaseUrl })
-      : fetchCommercialPublicRuntimeConfig(accountWebBaseUrl);
-
-    void loadConfig
-      .then((config) => {
-        if (!disposed) {
-          setEnabled(readCommercialUpgradeEntryEnabled(config));
-        }
-      })
-      .catch(() => {
-        if (!disposed) {
-          setEnabled(false);
-        }
-      });
-
-    return () => {
-      disposed = true;
-    };
-  }, [accountWebBaseUrl]);
-
-  return enabled;
-}
-
-async function fetchCommercialPublicRuntimeConfig(
-  accountWebBaseUrl: string,
-): Promise<CommercialPublicRuntimeConfigSchema | null> {
-  const configUrl = new URL("/api/public-runtime-config", accountWebBaseUrl).toString();
-  const response = await fetch(configUrl, {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    return null;
-  }
-  return (await response.json()) as CommercialPublicRuntimeConfigSchema;
-}
-
-function readCommercialUpgradeEntryEnabled(
-  config: CommercialPublicRuntimeConfigSchema | null | undefined,
-): boolean {
-  return config?.featureFlags?.upgradeEntryEnabled === true;
-}
 
 function normalizeCommercialUsage(
   usage: CommercialAccountUsage | CommercialUsageLike | null | undefined,
