@@ -5371,7 +5371,6 @@ export default function ChatView(props: ChatViewProps) {
               mode={newThreadLauncherMode}
               isComposerEmpty={isComposerEmpty}
               projectName={!isConversationThread ? activeProject?.name : undefined}
-              providerSkills={inlineDisplaySkills}
               composer={
                 <>
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />

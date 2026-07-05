@@ -81,9 +81,12 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
 }
 
 export function getDesktopUpdateInstallConfirmationMessage(
-  state: Pick<DesktopUpdateState, "availableVersion" | "downloadedVersion">,
+  state: Pick<DesktopUpdateState, "availableVersion" | "downloadedVersion" | "mandatory">,
 ): string {
   const version = state.downloadedVersion ?? state.availableVersion;
+  if (state.mandatory) {
+    return `必须安装更新${version ? ` ${version}` : ""} 并重启 Bahew 后才能继续使用。\n\n正在运行的任务会被中断，请确认已经准备好。`;
+  }
   return `Install update${version ? ` ${version}` : ""} and restart Bahew?\n\nAny running tasks will be interrupted. Make sure you're ready before continuing.`;
 }
 

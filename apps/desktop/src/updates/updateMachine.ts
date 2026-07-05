@@ -32,6 +32,7 @@ export function createInitialDesktopUpdateState(
     downloadPercent: null,
     checkedAt: null,
     message: null,
+    mandatory: false,
     errorContext: null,
     canRetry: false,
   };
@@ -46,6 +47,7 @@ export function reduceDesktopUpdateStateOnCheckStart(
     status: "checking",
     checkedAt,
     message: null,
+    mandatory: false,
     downloadPercent: null,
     errorContext: null,
     canRetry: false,
@@ -63,6 +65,7 @@ export function reduceDesktopUpdateStateOnCheckFailure(
     message,
     checkedAt,
     downloadPercent: null,
+    mandatory: false,
     errorContext: "check",
     canRetry: true,
   };
@@ -81,6 +84,7 @@ export function reduceDesktopUpdateStateOnUpdateAvailable(
     downloadPercent: null,
     checkedAt,
     message: null,
+    mandatory: state.mandatory,
     errorContext: null,
     canRetry: false,
   };
@@ -98,6 +102,7 @@ export function reduceDesktopUpdateStateOnNoUpdate(
     downloadPercent: null,
     checkedAt,
     message: null,
+    mandatory: false,
     errorContext: null,
     canRetry: false,
   };
@@ -111,6 +116,7 @@ export function reduceDesktopUpdateStateOnDownloadStart(
     status: "downloading",
     downloadPercent: 0,
     message: null,
+    mandatory: state.mandatory,
     errorContext: null,
     canRetry: false,
   };
@@ -125,6 +131,7 @@ export function reduceDesktopUpdateStateOnDownloadFailure(
     status: nextStatusAfterDownloadFailure(state),
     message,
     downloadPercent: null,
+    mandatory: state.mandatory,
     errorContext: "download",
     canRetry: getCanRetryAfterDownloadFailure(state),
   };
@@ -139,6 +146,7 @@ export function reduceDesktopUpdateStateOnDownloadProgress(
     status: "downloading",
     downloadPercent: percent,
     message: null,
+    mandatory: state.mandatory,
     errorContext: null,
     canRetry: false,
   };
@@ -155,6 +163,7 @@ export function reduceDesktopUpdateStateOnDownloadComplete(
     downloadedVersion: version,
     downloadPercent: 100,
     message: null,
+    mandatory: state.mandatory,
     errorContext: null,
     canRetry: true,
   };
@@ -168,6 +177,7 @@ export function reduceDesktopUpdateStateOnInstallFailure(
     ...state,
     status: "downloaded",
     message,
+    mandatory: state.mandatory,
     errorContext: "install",
     canRetry: true,
   };

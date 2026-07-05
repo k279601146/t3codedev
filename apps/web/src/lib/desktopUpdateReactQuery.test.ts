@@ -20,6 +20,7 @@ const baseState: DesktopUpdateState = {
   downloadPercent: null,
   checkedAt: null,
   message: null,
+  mandatory: false,
   errorContext: null,
   canRetry: false,
 };

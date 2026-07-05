@@ -56,9 +56,15 @@ const UpdateInfo = Schema.Struct({
 const DownloadProgressInfo = Schema.Struct({
   percent: Schema.Number,
 });
+const Dev2UpdateResolution = Schema.Struct({
+  update_available: Schema.Boolean,
+  forced: Schema.Boolean,
+  version: Schema.NullOr(Schema.String),
+});
 const decodeAppUpdateYmlConfig = Schema.decodeUnknownEffect(AppUpdateYmlConfig);
 const decodeUpdateInfo = Schema.decodeUnknownEffect(UpdateInfo);
 const decodeDownloadProgressInfo = Schema.decodeUnknownEffect(DownloadProgressInfo);
+const decodeDev2UpdateResolution = Schema.decodeUnknownEffect(Dev2UpdateResolution);
 
 const currentIsoTimestamp = DateTime.now.pipe(Effect.map(DateTime.formatIso));
 
@@ -195,6 +201,17 @@ function resolveGenericFeedUrl(baseUrl: string, channel: DesktopUpdateChannel): 
   return `${trimmed}/${channel}`;
 }
 
+function resolveDev2AppUpdateMetadataUrl(
+  baseUrl: string,
+  channel: DesktopUpdateChannel,
+): string | null {
+  const feedUrl = resolveGenericFeedUrl(baseUrl, channel);
+  if (!feedUrl.includes("/api/v1/client-updates/app/")) {
+    return null;
+  }
+  return `${feedUrl}/resolve`;
+}
+
 const make = Effect.gen(function* () {
   const config = yield* DesktopConfig.DesktopConfig;
   const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
@@ -317,6 +334,60 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const fetchDev2Resolution = Effect.fn("desktop.updates.fetchDev2Resolution")(function* () {
+    const configuredFeedUrl = Option.getOrUndefined(config.desktopUpdateFeedUrl);
+    if (configuredFeedUrl === undefined) {
+      return Option.none<typeof Dev2UpdateResolution.Type>();
+    }
+    const settings = yield* desktopSettings.get;
+    const metadataUrl = resolveDev2AppUpdateMetadataUrl(configuredFeedUrl, settings.updateChannel);
+    if (metadataUrl === null) {
+      return Option.none<typeof Dev2UpdateResolution.Type>();
+    }
+    const installationId = yield* installationIdentity.installationId;
+    const deviceId = yield* installationIdentity.deviceId;
+    const url = new URL(metadataUrl);
+    url.searchParams.set("version", environment.appVersion);
+    url.searchParams.set("platform", environment.platform);
+    url.searchParams.set("arch", environment.processArch);
+    url.searchParams.set("installation_id", installationId);
+    url.searchParams.set("device_id", deviceId);
+    const response = yield* Effect.tryPromise({
+      try: () => fetch(url),
+      catch: () => null,
+    });
+    if (response === null || !response.ok) {
+      return Option.none<typeof Dev2UpdateResolution.Type>();
+    }
+    const raw = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: () => null,
+    });
+    if (raw === null) {
+      return Option.none<typeof Dev2UpdateResolution.Type>();
+    }
+    return yield* decodeDev2UpdateResolution(raw).pipe(
+      Effect.map(Option.some),
+      Effect.catch(() => Effect.succeed(Option.none<typeof Dev2UpdateResolution.Type>())),
+    );
+  });
+
+  const applyDev2ResolutionToState = Effect.fn("desktop.updates.applyDev2ResolutionToState")(
+    function* () {
+      const resolution = yield* fetchDev2Resolution;
+      if (Option.isNone(resolution)) {
+        return;
+      }
+      yield* updateState((current) => ({
+        ...current,
+        mandatory: resolution.value.forced,
+        message: resolution.value.forced
+          ? "This update is required before continuing to use Bahew."
+          : current.message,
+      }));
+    },
+  );
+
   const shouldEnableAutoUpdates = resolveDisabledReason.pipe(Effect.map(Option.isNone));
 
   const checkForUpdates = Effect.fn("desktop.updates.checkForUpdates")(function* (reason: string) {
@@ -343,6 +414,14 @@ const make = Effect.gen(function* () {
       Effect.as(true),
       Effect.catch(
         Effect.fn("desktop.updates.handleCheckForUpdatesFailure")(function* (error) {
+          const resolution = yield* fetchDev2Resolution;
+          if (Option.isSome(resolution) && !resolution.value.update_available) {
+            const checkedAt = yield* currentIsoTimestamp;
+            const current = yield* Ref.get(updateStateRef);
+            yield* setState(reduceDesktopUpdateStateOnNoUpdate(current, checkedAt));
+            yield* logUpdaterInfo("no updates available from dev2 resolution");
+            return true;
+          }
           const failedAt = yield* currentIsoTimestamp;
           yield* updateState((current) =>
             reduceDesktopUpdateStateOnCheckFailure(current, error.message, failedAt),
@@ -467,6 +546,7 @@ const make = Effect.gen(function* () {
           yield* setState(
             reduceDesktopUpdateStateOnUpdateAvailable(state, info.version, checkedAt),
           );
+          yield* applyDev2ResolutionToState();
           yield* Ref.set(lastLoggedDownloadMilestoneRef, -1);
           yield* logUpdaterInfo("update available", { version: info.version });
         }),

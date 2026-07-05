@@ -245,6 +245,7 @@ export interface DesktopUpdateState {
   downloadPercent: number | null;
   checkedAt: string | null;
   message: string | null;
+  mandatory: boolean;
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
 }
@@ -262,6 +263,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   downloadPercent: Schema.NullOr(Schema.Number),
   checkedAt: Schema.NullOr(Schema.String),
   message: Schema.NullOr(Schema.String),
+  mandatory: Schema.Boolean,
   errorContext: Schema.NullOr(Schema.Literals(["check", "download", "install"])),
   canRetry: Schema.Boolean,
 });

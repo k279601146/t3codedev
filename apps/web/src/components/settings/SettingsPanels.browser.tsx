@@ -341,6 +341,7 @@ const createDesktopBridgeStub = (overrides?: {
     downloadPercent: null,
     checkedAt: null,
     message: null,
+    mandatory: false,
     errorContext: null,
     canRetry: false,
   };
@@ -754,6 +755,7 @@ describe("GeneralSettingsPanel observability", () => {
       downloadPercent: null,
       checkedAt: null,
       message: "Automatic updates are not available because no update feed is configured.",
+      mandatory: false,
       errorContext: null,
       canRetry: false,
     };

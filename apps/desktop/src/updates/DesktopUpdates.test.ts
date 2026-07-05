@@ -27,11 +27,16 @@ interface UpdatesHarnessOptions {
     ElectronUpdater.ElectronUpdaterCheckForUpdatesError
   >;
   readonly env?: Record<string, string | undefined>;
+  readonly fetchImpl?: typeof fetch;
 }
 
 const flushCallbacks = Effect.yieldNow;
 
 function makeHarness(options: UpdatesHarnessOptions = {}) {
+  const previousFetch = globalThis.fetch;
+  if (options.fetchImpl) {
+    globalThis.fetch = options.fetchImpl;
+  }
   let checkCount = 0;
   let allowDowngrade = false;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
@@ -185,6 +190,9 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       for (const listener of listeners.get(eventName) ?? []) {
         listener(payload);
       }
+    },
+    restoreFetch: () => {
+      globalThis.fetch = previousFetch;
     },
   };
 }

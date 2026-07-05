@@ -1,4 +1,4 @@
-import type { PluginSummary, ServerProviderSkill } from "@t3tools/contracts";
+import type { PluginSummary } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -18,7 +18,6 @@ import {
   ImportIcon,
   LaptopIcon,
   LayoutTemplateIcon,
-  LightbulbIcon,
   Loader2Icon,
   LineChartIcon,
   MonitorIcon,
@@ -29,7 +28,6 @@ import {
   SparklesIcon,
   VideoIcon,
   Wand2Icon,
-  XIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,8 +43,6 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-
-import { buildIdleSuggestions, IDLE_SUGGESTION_DELAY_MS } from "./NewThreadLauncherSuggestions";
 
 export type LauncherModeId =
   | "general"
@@ -635,7 +631,6 @@ export function NewThreadLauncherView({
   projectName,
   composer,
   footer,
-  providerSkills,
   onModeChange,
   onSubmitPreset,
 }: {
@@ -644,25 +639,12 @@ export function NewThreadLauncherView({
   projectName?: string | undefined;
   composer: ReactNode;
   footer: ReactNode;
-  providerSkills?: ReadonlyArray<
-    Pick<ServerProviderSkill, "name" | "displayName" | "shortDescription" | "description">
-  >;
   onModeChange: (mode: LauncherModeId) => void;
   onSubmitPreset: (prompt: string, mode?: LauncherModeId) => void;
 }) {
   const title = useLauncherTitle(mode, isComposerEmpty, projectName);
-  const showIdleSuggestions = useIdleSuggestionsVisibility(mode, isComposerEmpty);
-  const [isIdleSuggestionsDismissed, setIsIdleSuggestionsDismissed] = useState(false);
-
-  useEffect(() => {
-    if (mode !== "general" || !isComposerEmpty) {
-      setIsIdleSuggestionsDismissed(false);
-    }
-  }, [isComposerEmpty, mode]);
-
-  const shouldShowIdleSuggestions = showIdleSuggestions && !isIdleSuggestionsDismissed;
-  const shouldLiftEmptyGeneralLauncher = mode === "general" && !shouldShowIdleSuggestions;
-  const shouldShowModeRecommendations = !shouldShowIdleSuggestions && mode !== "general";
+  const shouldLiftEmptyGeneralLauncher = mode === "general";
+  const shouldShowModeRecommendations = mode !== "general";
 
   return (
     <main
@@ -690,15 +672,7 @@ export function NewThreadLauncherView({
             {footer}
           </div>
 
-          {shouldShowIdleSuggestions ? (
-            <IdleSuggestionsPanel
-              onClose={() => setIsIdleSuggestionsDismissed(true)}
-              onSubmitPreset={onSubmitPreset}
-              providerSkills={providerSkills ?? []}
-            />
-          ) : (
-            <LauncherModeBar activeMode={mode} onModeChange={onModeChange} />
-          )}
+          <LauncherModeBar activeMode={mode} onModeChange={onModeChange} />
 
           {shouldShowModeRecommendations ? (
             <div
@@ -745,79 +719,6 @@ function useLauncherTitle(
   if (!isComposerEmpty) return { key: fallbackTitle, node: fallbackTitle };
   const title = DEFAULT_TITLES[defaultTitleIndex] ?? fallbackTitle;
   return { key: title, node: title };
-}
-
-function useIdleSuggestionsVisibility(mode: LauncherModeId, isComposerEmpty: boolean) {
-  const [isVisible, setIsVisible] = useState(false);
-  const isEligible = mode === "general" && isComposerEmpty;
-
-  useEffect(() => {
-    if (!isEligible) {
-      setIsVisible(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setIsVisible(true), IDLE_SUGGESTION_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [isEligible]);
-
-  return isVisible;
-}
-
-function IdleSuggestionsPanel({
-  onClose,
-  onSubmitPreset,
-  providerSkills,
-}: {
-  onClose: () => void;
-  onSubmitPreset: (prompt: string, mode?: LauncherModeId) => void;
-  providerSkills: ReadonlyArray<
-    Pick<ServerProviderSkill, "name" | "displayName" | "shortDescription" | "description">
-  >;
-}) {
-  const pptMaster = usePptMasterPlugin();
-  const agentReach = useAgentReachPlugin();
-  const suggestions = useMemo(
-    () =>
-      buildIdleSuggestions({
-        skills: providerSkills,
-        plugins: {
-          pptMasterInstalled: pptMaster.plugin?.installed === true,
-          agentReachInstalled: agentReach.plugin?.installed === true,
-        },
-        count: 5,
-      }),
-    [agentReach.plugin?.installed, providerSkills, pptMaster.plugin?.installed],
-  );
-
-  return (
-    <section className="mt-4 w-full animate-in fade-in slide-in-from-top-1 px-3 duration-300 sm:px-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-[14px] font-medium text-foreground">可以从这些任务开始</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="关闭建议"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="mt-2 divide-y divide-border">
-        {suggestions.map((suggestion, index) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => onSubmitPreset(suggestion, "general")}
-            className="flex min-h-10 w-full animate-in items-center gap-2 py-2 text-left text-[13px] text-muted-foreground fade-in slide-in-from-bottom-1 transition-colors duration-300 hover:text-foreground"
-            style={{ animationDelay: `${index * 45}ms`, animationFillMode: "both" }}
-          >
-            <LightbulbIcon className="h-4 w-4 shrink-0 text-muted-foreground/70" />
-            <span>{suggestion}</span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
 }
 
 function LauncherModeBar({

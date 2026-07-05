@@ -249,7 +249,7 @@ function AboutVersionSection() {
     if (action === "install") {
       const confirmed = window.confirm(
         getDesktopUpdateInstallConfirmationMessage(
-          updateState ?? { availableVersion: null, downloadedVersion: null },
+          updateState ?? { availableVersion: null, downloadedVersion: null, mandatory: false },
         ),
       );
       if (!confirmed) return;

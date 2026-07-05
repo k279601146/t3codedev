@@ -28,6 +28,7 @@ const baseState: DesktopUpdateState = {
   downloadPercent: null,
   checkedAt: null,
   message: null,
+  mandatory: false,
   errorContext: null,
   canRetry: false,
 };
@@ -262,8 +263,19 @@ describe("desktop update UI helpers", () => {
       getDesktopUpdateInstallConfirmationMessage({
         availableVersion: "1.1.0",
         downloadedVersion: "1.1.1",
+        mandatory: false,
       }),
     ).toContain("Install update 1.1.1 and restart Bahew?");
+  });
+
+  it("uses mandatory wording for forced update confirmation", () => {
+    expect(
+      getDesktopUpdateInstallConfirmationMessage({
+        availableVersion: "1.1.0",
+        downloadedVersion: null,
+        mandatory: true,
+      }),
+    ).toContain("必须安装更新 1.1.0");
   });
 
   it("falls back to generic install confirmation copy when no version is available", () => {
@@ -271,6 +283,7 @@ describe("desktop update UI helpers", () => {
       getDesktopUpdateInstallConfirmationMessage({
         availableVersion: null,
         downloadedVersion: null,
+        mandatory: false,
       }),
     ).toContain("Install update and restart Bahew?");
   });

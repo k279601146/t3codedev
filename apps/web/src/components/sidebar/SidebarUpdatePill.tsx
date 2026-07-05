@@ -72,6 +72,12 @@ export function SidebarAppUpdateButton() {
   const visible = isElectron && (action !== "none" || state?.status === "downloading");
   const percent = getUpdatePercent(state);
   const targetVersion = getInstallVersion(state);
+  const mandatory = state?.mandatory === true;
+  const updateDescription = mandatory
+    ? `当前版本 ${state?.currentVersion ?? "未知"} 已低于最低支持版本，需要安装更新后继续使用。`
+    : targetVersion
+      ? `Bahew ${targetVersion} 已发布，当前版本为 ${state?.currentVersion ?? "未知"}。`
+      : "Bahew 有新版本可用。";
 
   const installUpdate = useCallback(
     (version: string | null) => {
@@ -168,7 +174,10 @@ export function SidebarAppUpdateButton() {
   if (!visible) return null;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (mandatory && !nextOpen) return;
+      setOpen(nextOpen);
+    }}>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -188,14 +197,10 @@ export function SidebarAppUpdateButton() {
         />
         <TooltipPopup side="bottom">发现新版本</TooltipPopup>
       </Tooltip>
-      <DialogPopup className="max-w-xl" showCloseButton={!installing}>
+      <DialogPopup className="max-w-xl" showCloseButton={!installing && !mandatory}>
         <DialogHeader>
-          <DialogTitle>发现新版本</DialogTitle>
-          <DialogDescription>
-            {targetVersion
-              ? `Bahew ${targetVersion} 已发布，当前版本为 ${state?.currentVersion ?? "未知"}。`
-              : "Bahew 有新版本可用。"}
-          </DialogDescription>
+          <DialogTitle>{mandatory ? "必须更新 Bahew" : "发现新版本"}</DialogTitle>
+          <DialogDescription>{updateDescription}</DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <div className="rounded-lg border bg-muted/20 p-4">
@@ -218,7 +223,9 @@ export function SidebarAppUpdateButton() {
                 ? "下载完成，正在启动安装程序。"
                 : state?.status === "error"
                   ? (state.message ?? "更新失败，请稍后重试。")
-                  : "正在下载更新，完成后会自动安装。"}
+                  : mandatory
+                    ? "这是强制更新，下载完成后会自动安装。"
+                    : "正在下载更新，完成后会自动安装。"}
             </p>
           </div>
         </DialogPanel>
@@ -252,7 +259,8 @@ export function SidebarUpdatePill() {
   const state = useDesktopUpdateState().data ?? null;
   const [dismissed, setDismissed] = useState(false);
 
-  const visible = isElectron && shouldShowDesktopUpdateButton(state) && !dismissed;
+  const mandatory = state?.mandatory === true;
+  const visible = isElectron && shouldShowDesktopUpdateButton(state) && (!dismissed || mandatory);
   const tooltip = state ? getDesktopUpdateButtonTooltip(state) : "Update available";
   const disabled = isDesktopUpdateButtonDisabled(state);
   const action = state ? resolveDesktopUpdateButtonAction(state) : "none";
@@ -363,7 +371,7 @@ export function SidebarUpdatePill() {
                   {action === "install" ? (
                     <>
                       <RotateCwIcon className="size-3.5" />
-                      <span>Restart to update</span>
+                      <span>{mandatory ? "必须重启更新" : "Restart to update"}</span>
                     </>
                   ) : state?.status === "downloading" ? (
                     <>
@@ -378,7 +386,7 @@ export function SidebarUpdatePill() {
                   ) : (
                     <>
                       <DownloadIcon className="size-3.5" />
-                      <span>Update available</span>
+                      <span>{mandatory ? "必须更新" : "Update available"}</span>
                     </>
                   )}
                 </button>
@@ -386,7 +394,7 @@ export function SidebarUpdatePill() {
             />
             <TooltipPopup side="top">{tooltip}</TooltipPopup>
           </Tooltip>
-          {action === "download" && (
+          {action === "download" && !mandatory && (
             <Tooltip>
               <TooltipTrigger
                 render={
