@@ -158,10 +158,17 @@ it.layer(NodeServices.layer)("effect-codex-app-server client", (it) => {
 it("preserves dynamicTools when encoding thread/start params", () => {
   const dynamicTools = [
     {
-      namespace: "t3_browser",
-      name: "browser_title",
-      description: "Read title",
-      inputSchema: { type: "object", properties: {} },
+      type: "namespace",
+      name: "t3_browser",
+      description: "Browser tools",
+      tools: [
+        {
+          type: "function",
+          name: "browser_title",
+          description: "Read title",
+          inputSchema: { type: "object", properties: {} },
+        },
+      ],
     },
   ];
   const encoded = Schema.encodeUnknownSync(CodexSchema.V2ThreadStartParams)({

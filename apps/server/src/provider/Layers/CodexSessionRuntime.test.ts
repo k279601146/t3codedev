@@ -363,16 +363,27 @@ describe("openCodexThread", () => {
       ...buildT3BrowserExternalDynamicTools(),
       ...buildT3ComputerDynamicTools(),
     ]);
-    assert.equal(startPayload.dynamicTools?.[0]?.namespace, T3_BROWSER_TOOL_NAMESPACE);
+    const browserTools = buildT3BrowserDynamicTools();
+    const externalTools = buildT3BrowserExternalDynamicTools();
+    const computerTools = buildT3ComputerDynamicTools();
+    assert.equal(startPayload.dynamicTools?.[0]?.type, "namespace");
+    assert.equal(startPayload.dynamicTools?.[0]?.name, T3_BROWSER_TOOL_NAMESPACE);
+    assert.equal(startPayload.dynamicTools?.[0]?.tools?.[0]?.type, "function");
     assert.equal(
-      startPayload.dynamicTools?.[buildT3BrowserDynamicTools().length]?.namespace,
+      startPayload.dynamicTools?.[browserTools.length]?.name,
       T3_BROWSER_EXTERNAL_TOOL_NAMESPACE,
     );
-    const externalToolNames = buildT3BrowserExternalDynamicTools().map((tool) => tool.name);
+    const externalToolNames =
+      externalTools[0]?.type === "namespace" ? externalTools[0].tools.map((tool) => tool.name) : [];
     assert.equal(externalToolNames.includes("browser_set_viewport"), false);
     assert.equal(externalToolNames.includes("browser_reset_viewport"), false);
     assert.equal(externalToolNames.includes("browser_set_visibility"), false);
-    assert.equal(startPayload.dynamicTools?.at(-1)?.namespace, T3_COMPUTER_TOOL_NAMESPACE);
+    assert.equal(startPayload.dynamicTools?.at(-1)?.name, T3_COMPUTER_TOOL_NAMESPACE);
+    assert.deepStrictEqual([browserTools.length, externalTools.length, computerTools.length], [
+      1,
+      1,
+      1,
+    ]);
     assert.deepStrictEqual(settingsPayload, {
       threadId: "fresh-thread",
       cwd: "/tmp/project",

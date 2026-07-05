@@ -241,14 +241,23 @@ const browserToolSpecs: ReadonlyArray<{
 export function buildT3BrowserDynamicToolsForNamespace(
   namespace: string,
   toolNames: ReadonlyArray<T3BrowserToolName> = T3_BROWSER_TOOL_NAMES,
+  transformDescription: (description: string) => string = (description) => description,
 ): ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> {
   const selectedNames = new Set<T3BrowserToolName>(toolNames);
-  return browserToolSpecs
-    .filter((tool) => selectedNames.has(tool.name))
-    .map((tool) => ({
-      ...tool,
-      namespace,
-    }));
+  return [
+    {
+      type: "namespace",
+      name: namespace,
+      description: transformDescription("T3 in-app browser automation tools."),
+      tools: browserToolSpecs
+        .filter((tool) => selectedNames.has(tool.name))
+        .map((tool) => ({
+          ...tool,
+          description: transformDescription(tool.description),
+          type: "function",
+        })),
+    },
+  ];
 }
 
 export function buildT3BrowserDynamicTools(): ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> {
@@ -259,12 +268,11 @@ export function buildT3BrowserExternalDynamicTools(): ReadonlyArray<EffectCodexS
   return buildT3BrowserDynamicToolsForNamespace(
     T3_BROWSER_EXTERNAL_TOOL_NAMESPACE,
     T3_BROWSER_EXTERNAL_TOOL_NAMES,
-  ).map((tool) => ({
-    ...tool,
-    description: tool.description
+    (description) =>
+      description
       .replaceAll("T3 in-app browser", "T3 external Chrome browser")
       .replaceAll("current page", "current Chrome page"),
-  }));
+  );
 }
 
 export function isT3BrowserToolName(value: string): value is T3BrowserToolName {

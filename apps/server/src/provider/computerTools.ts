@@ -321,10 +321,17 @@ const computerToolSpecs: ReadonlyArray<{
 ];
 
 export function buildT3ComputerDynamicTools(): ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> {
-  return computerToolSpecs.map((tool) => ({
-    ...tool,
-    namespace: T3_COMPUTER_TOOL_NAMESPACE,
-  }));
+  return [
+    {
+      type: "namespace",
+      name: T3_COMPUTER_TOOL_NAMESPACE,
+      description: "T3 Windows desktop automation tools.",
+      tools: computerToolSpecs.map((tool) => ({
+        ...tool,
+        type: "function",
+      })),
+    },
+  ];
 }
 
 export function isT3ComputerToolName(value: string): value is T3ComputerToolName {
