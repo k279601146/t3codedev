@@ -95,6 +95,13 @@ export const CLIENT_REQUEST_METHODS = {
   gitDiffToRemote: "gitDiffToRemote",
   getAuthStatus: "getAuthStatus",
   fuzzyFileSearch: "fuzzyFileSearch",
+  "remoteControl/enable": "remoteControl/enable",
+  "remoteControl/disable": "remoteControl/disable",
+  "remoteControl/status/read": "remoteControl/status/read",
+  "remoteControl/pairing/start": "remoteControl/pairing/start",
+  "remoteControl/pairing/status": "remoteControl/pairing/status",
+  "remoteControl/client/list": "remoteControl/client/list",
+  "remoteControl/client/revoke": "remoteControl/client/revoke",
 } as const;
 
 export const CLIENT_NOTIFICATION_METHODS = {
@@ -282,6 +289,13 @@ export interface ClientRequestParamsByMethod {
   readonly gitDiffToRemote: typeof CodexSchema.GitDiffToRemoteParams.Type;
   readonly getAuthStatus: typeof CodexSchema.GetAuthStatusParams.Type;
   readonly fuzzyFileSearch: typeof CodexSchema.FuzzyFileSearchParams.Type;
+  readonly "remoteControl/enable": typeof CodexSchema.RemoteControlEnableParams.Type;
+  readonly "remoteControl/disable": typeof CodexSchema.RemoteControlDisableParams.Type;
+  readonly "remoteControl/status/read": undefined;
+  readonly "remoteControl/pairing/start": typeof CodexSchema.RemoteControlPairingStartParams.Type;
+  readonly "remoteControl/pairing/status": typeof CodexSchema.RemoteControlPairingStatusParams.Type;
+  readonly "remoteControl/client/list": typeof CodexSchema.RemoteControlClientsListParams.Type;
+  readonly "remoteControl/client/revoke": typeof CodexSchema.RemoteControlClientsRevokeParams.Type;
 }
 
 export interface ClientRequestResponsesByMethod {
@@ -375,6 +389,13 @@ export interface ClientRequestResponsesByMethod {
   readonly gitDiffToRemote: typeof CodexSchema.GitDiffToRemoteResponse.Type;
   readonly getAuthStatus: typeof CodexSchema.GetAuthStatusResponse.Type;
   readonly fuzzyFileSearch: typeof CodexSchema.FuzzyFileSearchResponse.Type;
+  readonly "remoteControl/enable": typeof CodexSchema.RemoteControlEnableResponse.Type;
+  readonly "remoteControl/disable": typeof CodexSchema.RemoteControlDisableResponse.Type;
+  readonly "remoteControl/status/read": typeof CodexSchema.RemoteControlStatusReadResponse.Type;
+  readonly "remoteControl/pairing/start": typeof CodexSchema.RemoteControlPairingStartResponse.Type;
+  readonly "remoteControl/pairing/status": typeof CodexSchema.RemoteControlPairingStatusResponse.Type;
+  readonly "remoteControl/client/list": typeof CodexSchema.RemoteControlClientsListResponse.Type;
+  readonly "remoteControl/client/revoke": typeof CodexSchema.RemoteControlClientsRevokeResponse.Type;
 }
 
 export interface ClientNotificationParamsByMethod {
@@ -570,6 +591,13 @@ export const CLIENT_REQUEST_PARAMS = {
   gitDiffToRemote: CodexSchema.GitDiffToRemoteParams,
   getAuthStatus: CodexSchema.GetAuthStatusParams,
   fuzzyFileSearch: CodexSchema.FuzzyFileSearchParams,
+  "remoteControl/enable": CodexSchema.RemoteControlEnableParams,
+  "remoteControl/disable": CodexSchema.RemoteControlDisableParams,
+  "remoteControl/status/read": undefined,
+  "remoteControl/pairing/start": CodexSchema.RemoteControlPairingStartParams,
+  "remoteControl/pairing/status": CodexSchema.RemoteControlPairingStatusParams,
+  "remoteControl/client/list": CodexSchema.RemoteControlClientsListParams,
+  "remoteControl/client/revoke": CodexSchema.RemoteControlClientsRevokeParams,
 } as const;
 
 export const CLIENT_REQUEST_RESPONSES = {
@@ -664,6 +692,13 @@ export const CLIENT_REQUEST_RESPONSES = {
   gitDiffToRemote: CodexSchema.GitDiffToRemoteResponse,
   getAuthStatus: CodexSchema.GetAuthStatusResponse,
   fuzzyFileSearch: CodexSchema.FuzzyFileSearchResponse,
+  "remoteControl/enable": CodexSchema.RemoteControlEnableResponse,
+  "remoteControl/disable": CodexSchema.RemoteControlDisableResponse,
+  "remoteControl/status/read": CodexSchema.RemoteControlStatusReadResponse,
+  "remoteControl/pairing/start": CodexSchema.RemoteControlPairingStartResponse,
+  "remoteControl/pairing/status": CodexSchema.RemoteControlPairingStatusResponse,
+  "remoteControl/client/list": CodexSchema.RemoteControlClientsListResponse,
+  "remoteControl/client/revoke": CodexSchema.RemoteControlClientsRevokeResponse,
 } as const;
 
 export const CLIENT_NOTIFICATION_PARAMS = {

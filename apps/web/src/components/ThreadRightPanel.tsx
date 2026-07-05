@@ -458,6 +458,40 @@ function formatBrowserAddress(url: string | undefined): string {
   }
 }
 
+type BrowserAutomationRoundedBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  visible: boolean;
+};
+
+function roundBrowserAutomationBounds(rect: DOMRect): BrowserAutomationRoundedBounds {
+  const width = Math.round(rect.width);
+  const height = Math.round(rect.height);
+  return {
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width,
+    height,
+    visible: width > 0 && height > 0,
+  };
+}
+
+function browserAutomationBoundsEqual(
+  left: BrowserAutomationRoundedBounds | null,
+  right: BrowserAutomationRoundedBounds,
+): boolean {
+  return (
+    left !== null &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.visible === right.visible
+  );
+}
+
 function BrowserPanel(props: {
   selectedUrl?: string | null | undefined;
   onTitleChange?: (title: string) => void;
@@ -468,6 +502,7 @@ function BrowserPanel(props: {
   const [navigationPending, setNavigationPending] = useState(false);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const embedRef = useRef<HTMLDivElement | null>(null);
+  const lastSentBoundsRef = useRef<BrowserAutomationRoundedBounds | null>(null);
   const lastSelectedUrlRef = useRef<string | null>(null);
   const { onTitleChange, selectedUrl } = props;
 
@@ -489,14 +524,12 @@ function BrowserPanel(props: {
     const sendBounds = () => {
       const element = embedRef.current;
       if (!element || !bridge?.setBrowserAutomationBounds) return;
-      const rect = element.getBoundingClientRect();
-      void bridge.setBrowserAutomationBounds({
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-        visible: rect.width > 0 && rect.height > 0,
-      });
+      const bounds = roundBrowserAutomationBounds(element.getBoundingClientRect());
+      if (browserAutomationBoundsEqual(lastSentBoundsRef.current, bounds)) {
+        return;
+      }
+      lastSentBoundsRef.current = bounds;
+      void bridge.setBrowserAutomationBounds(bounds);
     };
 
     sendBounds();
@@ -510,6 +543,7 @@ function BrowserPanel(props: {
       observer.disconnect();
       window.removeEventListener("resize", sendBounds);
       window.clearInterval(frame);
+      lastSentBoundsRef.current = null;
       void bridge?.setBrowserAutomationBounds?.({
         x: 0,
         y: 0,

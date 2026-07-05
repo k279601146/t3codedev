@@ -76,6 +76,7 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
+  computeStableMaterializedTimelineRows,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
   fileChangeVerbLabel,
@@ -87,6 +88,7 @@ import {
   resolveStableAssistantMessageTextFromCache,
   resolveRunningWorkEntryStatusLabel,
   type StableMessagesTimelineRowsState,
+  type StableMaterializedTimelineRowsState,
   type StableAssistantMessageTextCache,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
@@ -107,6 +109,7 @@ import { readLocalApi } from "../../localApi";
 import { openContainingFolder, revealFileInFolder } from "../../lib/openContainingFolder";
 import { toastManager } from "../ui/toast";
 import { useUiStateStore } from "~/uiStateStore";
+import { setPerformanceModeActive } from "~/performanceMode";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatTimestamp } from "../../timestampFormat";
 
@@ -191,6 +194,7 @@ const TIMELINE_DEFAULT_ITEM_HEIGHT_PX = 160;
 const TIMELINE_OVERSCAN_PX = 200;
 const TIMELINE_INCREASE_VIEWPORT_TOP_PX = 500;
 const TIMELINE_INCREASE_VIEWPORT_BOTTOM_PX = 700;
+const TIMELINE_STREAMING_HEAVY_ROW_THRESHOLD = 80;
 const TIMELINE_SCROLL_SEEK_ENTER_VELOCITY = 720;
 const TIMELINE_SCROLL_SEEK_EXIT_VELOCITY = 120;
 const TIMELINE_USER_RESIZE_AUTO_FOLLOW_SUPPRESSION_MS = 1_500;
@@ -342,6 +346,79 @@ function appendMaterializedTimelineRows(
       ...(row.turnDiffSummary ? { turnDiffSummary: row.turnDiffSummary } : {}),
     });
   });
+}
+
+function readonlyArrayItemsEqual<T>(
+  left: ReadonlyArray<T>,
+  right: ReadonlyArray<T>,
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function isTimelineRenderableRowUnchanged(
+  previous: TimelineRenderableRow,
+  next: TimelineRenderableRow,
+): boolean {
+  if (previous.kind !== next.kind || previous.id !== next.id) return false;
+
+  switch (previous.kind) {
+    case "work-group-summary": {
+      const typedNext = next as typeof previous;
+      return (
+        previous.createdAt === typedNext.createdAt &&
+        previous.turnDiffSummary === typedNext.turnDiffSummary &&
+        previous.isExpanded === typedNext.isExpanded &&
+        readonlyArrayItemsEqual(previous.groupedEntries, typedNext.groupedEntries)
+      );
+    }
+    case "work-entry": {
+      const typedNext = next as typeof previous;
+      return (
+        previous.createdAt === typedNext.createdAt &&
+        previous.groupId === typedNext.groupId &&
+        previous.workEntry === typedNext.workEntry &&
+        previous.turnDiffSummary === typedNext.turnDiffSummary
+      );
+    }
+    case "work-group-search-details": {
+      const typedNext = next as typeof previous;
+      return (
+        previous.createdAt === typedNext.createdAt &&
+        previous.groupId === typedNext.groupId &&
+        readonlyArrayItemsEqual(previous.groupedEntries, typedNext.groupedEntries)
+      );
+    }
+    default:
+      return previous === next;
+  }
+}
+
+function isMaterializedTimelineRowUnchanged(previous: TimelineRow, next: TimelineRow): boolean {
+  if (previous.kind !== next.kind || previous.id !== next.id) return false;
+  if (previous.kind !== "turn-process-span") {
+    return isTimelineRenderableRowUnchanged(previous, next as TimelineRenderableRow);
+  }
+
+  const typedNext = next as typeof previous;
+  if (previous.createdAt !== typedNext.createdAt || previous.ownerId !== typedNext.ownerId) {
+    return false;
+  }
+  if (previous.memberRows.length !== typedNext.memberRows.length) {
+    return false;
+  }
+  for (let index = 0; index < previous.memberRows.length; index += 1) {
+    const previousMember = previous.memberRows[index];
+    const nextMember = typedNext.memberRows[index];
+    if (!previousMember || !nextMember) return false;
+    if (!isTimelineRenderableRowUnchanged(previousMember, nextMember)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -503,7 +580,7 @@ export const MessagesTimeline = memo(
     summaryAssistantMessageIds,
   ]);
 
-  const rows = useMemo<TimelineRow[]>(() => {
+  const materializedRows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
     const processMemberRowsByOwnerId = new Map<string, TimelineRenderableRow[]>();
     for (const row of effectiveStableRows) {
@@ -539,6 +616,16 @@ export const MessagesTimeline = memo(
     ownerAssistantMessageIdByRowId,
     summaryButtonHostByRowId,
   ]);
+  const rows = useStableMaterializedRows(materializedRows);
+  const useStreamingHeavyMode =
+    rows.length >= TIMELINE_STREAMING_HEAVY_ROW_THRESHOLD && (isWorking || activeTurnInProgress);
+
+  useEffect(() => {
+    setPerformanceModeActive("streaming-heavy", useStreamingHeavyMode);
+    return () => {
+      setPerformanceModeActive("streaming-heavy", false);
+    };
+  }, [useStreamingHeavyMode]);
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -985,7 +1072,6 @@ export const MessagesTimeline = memo(
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
-      expandedAssistantMessageIds,
       manuallyToggledAssistantMessageIds,
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
@@ -3499,6 +3585,23 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
 
   return useMemo(() => {
     const nextState = computeStableMessagesTimelineRows(rows, prevState.current);
+    prevState.current = nextState;
+    return nextState.result;
+  }, [rows]);
+}
+
+function useStableMaterializedRows(rows: TimelineRow[]): TimelineRow[] {
+  const prevState = useRef<StableMaterializedTimelineRowsState<TimelineRow>>({
+    byId: new Map<string, TimelineRow>(),
+    result: [],
+  });
+
+  return useMemo(() => {
+    const nextState = computeStableMaterializedTimelineRows(
+      rows,
+      prevState.current,
+      isMaterializedTimelineRowUnchanged,
+    );
     prevState.current = nextState;
     return nextState.result;
   }, [rows]);

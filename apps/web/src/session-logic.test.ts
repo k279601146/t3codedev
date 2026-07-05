@@ -14,6 +14,7 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
   deriveTimelineEntries,
+  deriveThreadActivityDerivedState,
   deriveWorkLogEntries,
   findLatestProposedPlan,
   findSidebarProposedPlan,
@@ -2526,6 +2527,63 @@ describe("hasToolActivityForTurn", () => {
 
     expect(hasToolActivityForTurn(activities, TurnId.make("turn-1"))).toBe(true);
     expect(hasToolActivityForTurn(activities, TurnId.make("turn-2"))).toBe(false);
+  });
+});
+
+describe("deriveThreadActivityDerivedState", () => {
+  it("matches the existing per-field derivations", () => {
+    const latestTurnId = TurnId.make("turn-1");
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "approval-open",
+        sequence: 1,
+        kind: "approval.requested",
+        tone: "approval",
+        payload: { requestId: "approval-1", requestKind: "command", detail: "bun test" },
+      }),
+      makeActivity({
+        id: "input-open",
+        sequence: 2,
+        kind: "user-input.requested",
+        tone: "approval",
+        payload: {
+          requestId: "input-1",
+          questions: [
+            {
+              id: "question-1",
+              header: "Choice",
+              question: "Pick one",
+              options: [{ label: "A", description: "Option A" }],
+            },
+          ],
+        },
+      }),
+      makeActivity({
+        id: "plan",
+        sequence: 3,
+        kind: "turn.plan.updated",
+        tone: "info",
+        turnId: "turn-1",
+        payload: { plan: [{ step: "Measure", status: "completed" }] },
+      }),
+      makeActivity({
+        id: "tool",
+        sequence: 4,
+        kind: "tool.completed",
+        tone: "tool",
+        turnId: "turn-1",
+      }),
+    ];
+
+    const derived = deriveThreadActivityDerivedState(activities, latestTurnId);
+
+    expect(derived.workLogEntries).toEqual(deriveWorkLogEntries(activities, latestTurnId));
+    expect(derived.latestTurnHasToolActivity).toBe(
+      hasToolActivityForTurn(activities, latestTurnId),
+    );
+    expect(derived.pendingApprovals).toEqual(derivePendingApprovals(activities));
+    expect(derived.pendingUserInputs).toEqual(derivePendingUserInputs(activities));
+    expect(derived.activePlan).toEqual(deriveActivePlanState(activities, latestTurnId));
   });
 });
 

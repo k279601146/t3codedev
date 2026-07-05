@@ -34,6 +34,16 @@ import type {
   TurnId,
   ServerProviderWindowsSandbox,
   WindowsSandboxMode,
+  RemoteControlClientRevokeInput,
+  RemoteControlClientsListInput,
+  RemoteControlClientsListResult,
+  RemoteControlDisableInput,
+  RemoteControlEnableInput,
+  RemoteControlPairingSession,
+  RemoteControlPairingStartInput,
+  RemoteControlPairingStatus,
+  RemoteControlPairingStatusInput,
+  RemoteControlStatus,
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
@@ -189,6 +199,32 @@ export interface ProviderAdapterShape<TError> {
     { readonly started: boolean; readonly windowsSandbox: ServerProviderWindowsSandbox },
     TError
   >;
+
+  readonly remoteControlEnable?: (
+    input: RemoteControlEnableInput,
+  ) => Effect.Effect<RemoteControlStatus, TError>;
+
+  readonly remoteControlDisable?: (
+    input: RemoteControlDisableInput,
+  ) => Effect.Effect<RemoteControlStatus, TError>;
+
+  readonly remoteControlStatusRead?: () => Effect.Effect<RemoteControlStatus, TError>;
+
+  readonly remoteControlPairingStart?: (
+    input: RemoteControlPairingStartInput,
+  ) => Effect.Effect<RemoteControlPairingSession, TError>;
+
+  readonly remoteControlPairingStatus?: (
+    input: RemoteControlPairingStatusInput,
+  ) => Effect.Effect<RemoteControlPairingStatus, TError>;
+
+  readonly remoteControlClientsList?: (
+    input: RemoteControlClientsListInput,
+  ) => Effect.Effect<RemoteControlClientsListResult, TError>;
+
+  readonly remoteControlClientRevoke?: (
+    input: RemoteControlClientRevokeInput,
+  ) => Effect.Effect<void, TError>;
 
   /**
    * Stop all sessions owned by this adapter.

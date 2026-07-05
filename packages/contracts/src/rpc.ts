@@ -180,6 +180,27 @@ import {
   SourceControlRepositoryInfo,
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
+import {
+  QqBotConfig,
+  QqBotConfigPatchInput,
+  QqBotHandleMessageInput,
+  QqBotHandleMessageResult,
+  QqRemoteBindingRevokeInput,
+  QqRemoteBindingsListResult,
+  RemoteControlClientRevokeInput,
+  RemoteControlClientsListInput,
+  RemoteControlClientsListResult,
+  RemoteControlCommandResult,
+  RemoteControlDisableInput,
+  RemoteControlEnableInput,
+  RemoteControlError,
+  RemoteControlPairingSession,
+  RemoteControlPairingStartInput,
+  RemoteControlPairingStatus,
+  RemoteControlPairingStatusInput,
+  RemoteControlSnapshot,
+  RemoteControlStatus,
+} from "./remoteControl.ts";
 import { VcsError } from "./vcs.ts";
 
 export const WS_METHODS = {
@@ -248,6 +269,20 @@ export const WS_METHODS = {
   providerWindowsSandboxReadiness: "provider.windowsSandbox.readiness",
   providerWindowsSandboxSetupStart: "provider.windowsSandbox.setupStart",
   providerThreadSettingsUpdate: "provider.threadSettings.update",
+
+  // Remote control methods
+  remoteControlGetSnapshot: "remoteControl.getSnapshot",
+  remoteControlEnable: "remoteControl.enable",
+  remoteControlDisable: "remoteControl.disable",
+  remoteControlGetStatus: "remoteControl.getStatus",
+  remoteControlStartPairing: "remoteControl.startPairing",
+  remoteControlGetPairingStatus: "remoteControl.getPairingStatus",
+  remoteControlListClients: "remoteControl.listClients",
+  remoteControlRevokeClient: "remoteControl.revokeClient",
+  remoteControlUpdateQqBotConfig: "remoteControl.updateQqBotConfig",
+  remoteControlListQqBindings: "remoteControl.listQqBindings",
+  remoteControlRevokeQqBinding: "remoteControl.revokeQqBinding",
+  remoteControlHandleQqMessage: "remoteControl.handleQqMessage",
 
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
@@ -411,6 +446,84 @@ export const WsProviderThreadSettingsUpdateRpc = Rpc.make(WS_METHODS.providerThr
   payload: ProviderThreadSettingsUpdateInput,
   success: ProviderThreadSettingsUpdateResult,
   error: ProviderThreadSettingsUpdateError,
+});
+
+export const WsRemoteControlGetSnapshotRpc = Rpc.make(WS_METHODS.remoteControlGetSnapshot, {
+  payload: Schema.Struct({}),
+  success: RemoteControlSnapshot,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlEnableRpc = Rpc.make(WS_METHODS.remoteControlEnable, {
+  payload: RemoteControlEnableInput,
+  success: RemoteControlStatus,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlDisableRpc = Rpc.make(WS_METHODS.remoteControlDisable, {
+  payload: RemoteControlDisableInput,
+  success: RemoteControlStatus,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlGetStatusRpc = Rpc.make(WS_METHODS.remoteControlGetStatus, {
+  payload: Schema.Struct({}),
+  success: RemoteControlStatus,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlStartPairingRpc = Rpc.make(WS_METHODS.remoteControlStartPairing, {
+  payload: RemoteControlPairingStartInput,
+  success: RemoteControlPairingSession,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlGetPairingStatusRpc = Rpc.make(
+  WS_METHODS.remoteControlGetPairingStatus,
+  {
+    payload: RemoteControlPairingStatusInput,
+    success: RemoteControlPairingStatus,
+    error: RemoteControlError,
+  },
+);
+
+export const WsRemoteControlListClientsRpc = Rpc.make(WS_METHODS.remoteControlListClients, {
+  payload: RemoteControlClientsListInput,
+  success: RemoteControlClientsListResult,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlRevokeClientRpc = Rpc.make(WS_METHODS.remoteControlRevokeClient, {
+  payload: RemoteControlClientRevokeInput,
+  success: Schema.Struct({}),
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlUpdateQqBotConfigRpc = Rpc.make(
+  WS_METHODS.remoteControlUpdateQqBotConfig,
+  {
+    payload: QqBotConfigPatchInput,
+    success: QqBotConfig,
+    error: RemoteControlError,
+  },
+);
+
+export const WsRemoteControlListQqBindingsRpc = Rpc.make(WS_METHODS.remoteControlListQqBindings, {
+  payload: Schema.Struct({}),
+  success: QqRemoteBindingsListResult,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlRevokeQqBindingRpc = Rpc.make(WS_METHODS.remoteControlRevokeQqBinding, {
+  payload: QqRemoteBindingRevokeInput,
+  success: QqRemoteBindingsListResult,
+  error: RemoteControlError,
+});
+
+export const WsRemoteControlHandleQqMessageRpc = Rpc.make(WS_METHODS.remoteControlHandleQqMessage, {
+  payload: QqBotHandleMessageInput,
+  success: QqBotHandleMessageResult,
+  error: RemoteControlError,
 });
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
@@ -889,6 +1002,18 @@ export const WsRpcGroup = RpcGroup.make(
   WsProviderWindowsSandboxReadinessRpc,
   WsProviderWindowsSandboxSetupStartRpc,
   WsProviderThreadSettingsUpdateRpc,
+  WsRemoteControlGetSnapshotRpc,
+  WsRemoteControlEnableRpc,
+  WsRemoteControlDisableRpc,
+  WsRemoteControlGetStatusRpc,
+  WsRemoteControlStartPairingRpc,
+  WsRemoteControlGetPairingStatusRpc,
+  WsRemoteControlListClientsRpc,
+  WsRemoteControlRevokeClientRpc,
+  WsRemoteControlUpdateQqBotConfigRpc,
+  WsRemoteControlListQqBindingsRpc,
+  WsRemoteControlRevokeQqBindingRpc,
+  WsRemoteControlHandleQqMessageRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

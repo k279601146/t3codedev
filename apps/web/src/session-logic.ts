@@ -112,6 +112,14 @@ export interface ActivePlanState {
   }>;
 }
 
+export interface ThreadActivityDerivedState {
+  workLogEntries: WorkLogEntry[];
+  latestTurnHasToolActivity: boolean;
+  pendingApprovals: PendingApproval[];
+  pendingUserInputs: PendingUserInput[];
+  activePlan: ActivePlanState | null;
+}
+
 export interface LatestProposedPlanState {
   id: OrchestrationProposedPlanId;
   createdAt: string;
@@ -230,8 +238,13 @@ function isStalePendingRequestFailureDetail(detail: string | undefined): boolean
 export function derivePendingApprovals(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): PendingApproval[] {
+  return derivePendingApprovalsFromOrdered(sortActivitiesByOrder(activities));
+}
+
+function derivePendingApprovalsFromOrdered(
+  ordered: ReadonlyArray<OrchestrationThreadActivity>,
+): PendingApproval[] {
   const openByRequestId = new Map<ApprovalRequestId, PendingApproval>();
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
 
   for (const activity of ordered) {
     const payload =
@@ -336,8 +349,13 @@ function parseUserInputQuestions(
 export function derivePendingUserInputs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): PendingUserInput[] {
+  return derivePendingUserInputsFromOrdered(sortActivitiesByOrder(activities));
+}
+
+function derivePendingUserInputsFromOrdered(
+  ordered: ReadonlyArray<OrchestrationThreadActivity>,
+): PendingUserInput[] {
   const openByRequestId = new Map<ApprovalRequestId, PendingUserInput>();
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
 
   for (const activity of ordered) {
     const payload =
@@ -386,7 +404,13 @@ export function deriveActivePlanState(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
 ): ActivePlanState | null {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  return deriveActivePlanStateFromOrdered(sortActivitiesByOrder(activities), latestTurnId);
+}
+
+function deriveActivePlanStateFromOrdered(
+  ordered: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): ActivePlanState | null {
   const allPlanActivities = ordered.filter((activity) => activity.kind === "turn.plan.updated");
   // Prefer plan from the current turn; fall back to the most recent plan from any turn
   // so that TodoWrite tasks persist across follow-up messages.
@@ -506,7 +530,13 @@ export function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
 ): WorkLogEntry[] {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  return deriveWorkLogEntriesFromOrdered(sortActivitiesByOrder(activities), latestTurnId);
+}
+
+function deriveWorkLogEntriesFromOrdered(
+  ordered: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): WorkLogEntry[] {
   const resolvedUserInputRequestIds = new Set<string>();
   for (const activity of ordered) {
     if (activity.kind !== "user-input.resolved") {
@@ -1850,6 +1880,12 @@ function compareActivitiesByOrder(
   return left.id.localeCompare(right.id);
 }
 
+function sortActivitiesByOrder(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): OrchestrationThreadActivity[] {
+  return [...activities].toSorted(compareActivitiesByOrder);
+}
+
 function compareActivityLifecycleRank(kind: string): number {
   if (kind.endsWith(".started") || kind === "tool.started") {
     return 0;
@@ -1869,6 +1905,22 @@ export function hasToolActivityForTurn(
 ): boolean {
   if (!turnId) return false;
   return activities.some((activity) => activity.turnId === turnId && activity.tone === "tool");
+}
+
+export function deriveThreadActivityDerivedState(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): ThreadActivityDerivedState {
+  const ordered = sortActivitiesByOrder(activities);
+  return {
+    workLogEntries: deriveWorkLogEntriesFromOrdered(ordered, latestTurnId),
+    latestTurnHasToolActivity:
+      latestTurnId !== undefined &&
+      ordered.some((activity) => activity.turnId === latestTurnId && activity.tone === "tool"),
+    pendingApprovals: derivePendingApprovalsFromOrdered(ordered),
+    pendingUserInputs: derivePendingUserInputsFromOrdered(ordered),
+    activePlan: deriveActivePlanStateFromOrdered(ordered, latestTurnId),
+  };
 }
 
 export function deriveTimelineEntries(

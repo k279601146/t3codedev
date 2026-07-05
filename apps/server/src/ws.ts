@@ -61,6 +61,7 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderService } from "./provider/Services/ProviderService.ts";
+import { RemoteControlService } from "./remoteControl/RemoteControlService.ts";
 import * as CodexGlobalGuidance from "./provider/CodexGlobalGuidance.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
@@ -250,6 +251,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const automationPermissionAudit = yield* AutomationPermissionAuditService;
+      const remoteControl = yield* RemoteControlService;
       const providerWindowsSandboxReadiness = (
         input: Parameters<NonNullable<typeof providerService.windowsSandboxReadiness>>[0],
       ) => {
@@ -989,14 +991,14 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 }
                 const [threadDetail, snapshotSequence] = yield* Effect.all([
                   getThreadDetailWindow(input.threadId, RECENT_THREAD_HISTORY_LIMIT_TURNS).pipe(
-                      Effect.mapError(
-                        (cause) =>
-                          new OrchestrationGetSnapshotError({
-                            message: `Failed to load recent thread ${input.threadId}`,
-                            cause,
-                          }),
-                      ),
+                    Effect.mapError(
+                      (cause) =>
+                        new OrchestrationGetSnapshotError({
+                          message: `Failed to load recent thread ${input.threadId}`,
+                          cause,
+                        }),
                     ),
+                  ),
                   projectionSnapshotQuery.getSnapshotSequence().pipe(
                     Effect.map(({ snapshotSequence }) => snapshotSequence),
                     Effect.mapError(
@@ -1308,6 +1310,70 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             WS_METHODS.providerThreadSettingsUpdate,
             providerThreadSettingsUpdate(input),
             { "rpc.aggregate": "provider" },
+          ),
+        [WS_METHODS.remoteControlGetSnapshot]: (_input) =>
+          observeRpcEffect(WS_METHODS.remoteControlGetSnapshot, remoteControl.getSnapshot(), {
+            "rpc.aggregate": "remote-control",
+          }),
+        [WS_METHODS.remoteControlEnable]: (input) =>
+          observeRpcEffect(WS_METHODS.remoteControlEnable, remoteControl.enable(input), {
+            "rpc.aggregate": "remote-control",
+          }),
+        [WS_METHODS.remoteControlDisable]: (input) =>
+          observeRpcEffect(WS_METHODS.remoteControlDisable, remoteControl.disable(input), {
+            "rpc.aggregate": "remote-control",
+          }),
+        [WS_METHODS.remoteControlGetStatus]: (_input) =>
+          observeRpcEffect(WS_METHODS.remoteControlGetStatus, remoteControl.getStatus(), {
+            "rpc.aggregate": "remote-control",
+          }),
+        [WS_METHODS.remoteControlStartPairing]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.remoteControlStartPairing,
+            remoteControl.startPairing(input),
+            {
+              "rpc.aggregate": "remote-control",
+            },
+          ),
+        [WS_METHODS.remoteControlGetPairingStatus]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.remoteControlGetPairingStatus,
+            remoteControl.getPairingStatus(input),
+            { "rpc.aggregate": "remote-control" },
+          ),
+        [WS_METHODS.remoteControlListClients]: (input) =>
+          observeRpcEffect(WS_METHODS.remoteControlListClients, remoteControl.listClients(input), {
+            "rpc.aggregate": "remote-control",
+          }),
+        [WS_METHODS.remoteControlRevokeClient]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.remoteControlRevokeClient,
+            remoteControl.revokeClient(input),
+            {
+              "rpc.aggregate": "remote-control",
+            },
+          ),
+        [WS_METHODS.remoteControlUpdateQqBotConfig]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.remoteControlUpdateQqBotConfig,
+            remoteControl.updateQqBotConfig(input),
+            { "rpc.aggregate": "remote-control" },
+          ),
+        [WS_METHODS.remoteControlListQqBindings]: (_input) =>
+          observeRpcEffect(WS_METHODS.remoteControlListQqBindings, remoteControl.listQqBindings(), {
+            "rpc.aggregate": "remote-control",
+          }),
+        [WS_METHODS.remoteControlRevokeQqBinding]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.remoteControlRevokeQqBinding,
+            remoteControl.revokeQqBinding(input),
+            { "rpc.aggregate": "remote-control" },
+          ),
+        [WS_METHODS.remoteControlHandleQqMessage]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.remoteControlHandleQqMessage,
+            remoteControl.handleQqMessage(input),
+            { "rpc.aggregate": "remote-control" },
           ),
         [WS_METHODS.sourceControlLookupRepository]: (input) =>
           observeRpcEffect(

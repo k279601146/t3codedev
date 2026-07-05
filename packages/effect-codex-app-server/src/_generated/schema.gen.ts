@@ -10847,6 +10847,43 @@ export const V2WindowsSandboxSetupStartParams__WindowsSandboxSetupMode = Schema.
   "unelevated",
 ]);
 
+export type RemoteControlConnectionStatus = "disabled" | "connecting" | "connected" | "errored";
+export const RemoteControlConnectionStatus = Schema.Literals([
+  "disabled",
+  "connecting",
+  "connected",
+  "errored",
+]).annotate({ title: "RemoteControlConnectionStatus" });
+
+export type RemoteControlClientsListOrder = "asc" | "desc";
+export const RemoteControlClientsListOrder = Schema.Literals(["asc", "desc"]).annotate({
+  title: "RemoteControlClientsListOrder",
+});
+
+export type RemoteControlClient = {
+  readonly clientId: string;
+  readonly displayName: string | null;
+  readonly deviceType: string | null;
+  readonly platform: string | null;
+  readonly osVersion: string | null;
+  readonly deviceModel: string | null;
+  readonly appVersion: string | null;
+  readonly lastSeenAt: number | null;
+};
+export const RemoteControlClient = Schema.Struct({
+  clientId: Schema.String,
+  displayName: Schema.Union([Schema.String, Schema.Null]),
+  deviceType: Schema.Union([Schema.String, Schema.Null]),
+  platform: Schema.Union([Schema.String, Schema.Null]),
+  osVersion: Schema.Union([Schema.String, Schema.Null]),
+  deviceModel: Schema.Union([Schema.String, Schema.Null]),
+  appVersion: Schema.Union([Schema.String, Schema.Null]),
+  lastSeenAt: Schema.Union([
+    Schema.Number.annotate({ format: "int64" }).check(Schema.isInt()),
+    Schema.Null,
+  ]),
+}).annotate({ title: "RemoteControlClient" });
+
 export type ApplyPatchApprovalResponse__NetworkPolicyAmendment = {
   readonly action: ApplyPatchApprovalResponse__NetworkPolicyRuleAction;
   readonly host: string;
@@ -33338,6 +33375,130 @@ export const PermissionsRequestApprovalResponse__PermissionGrantScope = Schema.L
   "turn",
   "session",
 ]);
+
+export type RemoteControlClientsListParams = {
+  readonly environmentId: string;
+  readonly cursor?: string | null;
+  readonly limit?: number | null;
+  readonly order?: RemoteControlClientsListOrder | null;
+};
+export const RemoteControlClientsListParams = Schema.Struct({
+  environmentId: Schema.String,
+  cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  limit: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({ format: "uint32" })
+        .check(Schema.isInt())
+        .check(Schema.isGreaterThanOrEqualTo(0)),
+      Schema.Null,
+    ]),
+  ),
+  order: Schema.optionalKey(Schema.Union([RemoteControlClientsListOrder, Schema.Null])),
+}).annotate({ title: "RemoteControlClientsListParams" });
+
+export type RemoteControlClientsListResponse = {
+  readonly data: ReadonlyArray<RemoteControlClient>;
+  readonly nextCursor: string | null;
+};
+export const RemoteControlClientsListResponse = Schema.Struct({
+  data: Schema.Array(RemoteControlClient),
+  nextCursor: Schema.Union([Schema.String, Schema.Null]),
+}).annotate({ title: "RemoteControlClientsListResponse" });
+
+export type RemoteControlClientsRevokeParams = {
+  readonly environmentId: string;
+  readonly clientId: string;
+};
+export const RemoteControlClientsRevokeParams = Schema.Struct({
+  environmentId: Schema.String,
+  clientId: Schema.String,
+}).annotate({ title: "RemoteControlClientsRevokeParams" });
+
+export type RemoteControlClientsRevokeResponse = {};
+export const RemoteControlClientsRevokeResponse = Schema.Struct({}).annotate({
+  title: "RemoteControlClientsRevokeResponse",
+});
+
+export type RemoteControlDisableParams = { readonly ephemeral?: boolean };
+export const RemoteControlDisableParams = Schema.Struct({
+  ephemeral: Schema.optionalKey(Schema.Boolean),
+}).annotate({ title: "RemoteControlDisableParams" });
+
+export type RemoteControlDisableResponse = {
+  readonly status: RemoteControlConnectionStatus;
+  readonly serverName: string;
+  readonly installationId: string;
+  readonly environmentId: string | null;
+};
+export const RemoteControlDisableResponse = Schema.Struct({
+  status: RemoteControlConnectionStatus,
+  serverName: Schema.String,
+  installationId: Schema.String,
+  environmentId: Schema.Union([Schema.String, Schema.Null]),
+}).annotate({ title: "RemoteControlDisableResponse" });
+
+export type RemoteControlEnableParams = { readonly ephemeral?: boolean };
+export const RemoteControlEnableParams = Schema.Struct({
+  ephemeral: Schema.optionalKey(Schema.Boolean),
+}).annotate({ title: "RemoteControlEnableParams" });
+
+export type RemoteControlEnableResponse = {
+  readonly status: RemoteControlConnectionStatus;
+  readonly serverName: string;
+  readonly installationId: string;
+  readonly environmentId: string | null;
+};
+export const RemoteControlEnableResponse = Schema.Struct({
+  status: RemoteControlConnectionStatus,
+  serverName: Schema.String,
+  installationId: Schema.String,
+  environmentId: Schema.Union([Schema.String, Schema.Null]),
+}).annotate({ title: "RemoteControlEnableResponse" });
+
+export type RemoteControlPairingStartParams = { readonly manualCode?: boolean };
+export const RemoteControlPairingStartParams = Schema.Struct({
+  manualCode: Schema.optionalKey(Schema.Boolean),
+}).annotate({ title: "RemoteControlPairingStartParams" });
+
+export type RemoteControlPairingStartResponse = {
+  readonly pairingCode: string;
+  readonly manualPairingCode: string | null;
+  readonly environmentId: string;
+  readonly expiresAt: number;
+};
+export const RemoteControlPairingStartResponse = Schema.Struct({
+  pairingCode: Schema.String,
+  manualPairingCode: Schema.Union([Schema.String, Schema.Null]),
+  environmentId: Schema.String,
+  expiresAt: Schema.Number.annotate({ format: "int64" }).check(Schema.isInt()),
+}).annotate({ title: "RemoteControlPairingStartResponse" });
+
+export type RemoteControlPairingStatusParams = {
+  readonly pairingCode?: string | null;
+  readonly manualPairingCode?: string | null;
+};
+export const RemoteControlPairingStatusParams = Schema.Struct({
+  pairingCode: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  manualPairingCode: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+}).annotate({ title: "RemoteControlPairingStatusParams" });
+
+export type RemoteControlPairingStatusResponse = { readonly claimed: boolean };
+export const RemoteControlPairingStatusResponse = Schema.Struct({
+  claimed: Schema.Boolean,
+}).annotate({ title: "RemoteControlPairingStatusResponse" });
+
+export type RemoteControlStatusReadResponse = {
+  readonly status: RemoteControlConnectionStatus;
+  readonly serverName: string;
+  readonly installationId: string;
+  readonly environmentId: string | null;
+};
+export const RemoteControlStatusReadResponse = Schema.Struct({
+  status: RemoteControlConnectionStatus,
+  serverName: Schema.String,
+  installationId: Schema.String,
+  environmentId: Schema.Union([Schema.String, Schema.Null]),
+}).annotate({ title: "RemoteControlStatusReadResponse" });
 
 export type RequestId = string | number;
 export const RequestId = Schema.Union([

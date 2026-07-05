@@ -106,6 +106,7 @@ const TRANSLATIONS = {
     "settings.nav.providers": "Providers",
     "settings.nav.sourceControl": "Source Control",
     "settings.nav.connections": "Connections",
+    "settings.nav.remoteControl": "Remote Control",
     "settings.nav.about": "About",
     "settings.nav.archive": "Archive",
     "settings.nav.back": "Back",
@@ -214,16 +215,12 @@ const TRANSLATIONS = {
     "settings.updateDownloading": "Downloading...",
     "settings.updateUpToDate": "Up to Date",
     "settings.updateCheck": "Check for Updates",
-    "settings.diagnostics": "Diagnostics",
-    "settings.viewDiagnostics": "View diagnostics",
     "settings.about.coreEngine": "Core engine",
     "settings.about.coreEngineDescription":
       "Bahew is developed on top of the open-source Codex core engine project, integrating its local agent runtime, protocol, tool execution, and workspace orchestration capabilities.",
     "settings.about.productPositioning": "Product positioning",
     "settings.about.productPositioningDescription":
       "Bahew packages those engine capabilities into an independent commercial IDE client, with desktop, web, provider routing, model gateway, source control, terminal, checkpoint, and account experiences designed around this product.",
-    "settings.about.diagnosticsDescription":
-      "Inspect local runtime processes, resource history, trace records, and engine diagnostics.",
     "settings.providers": "Providers",
     "settings.addProviderInstance": "Add provider instance",
     "settings.refreshProviderStatus": "Refresh provider status",
@@ -506,6 +503,7 @@ const TRANSLATIONS = {
     "settings.nav.providers": "模型服务",
     "settings.nav.sourceControl": "源代码管理",
     "settings.nav.connections": "连接",
+    "settings.nav.remoteControl": "远程控制",
     "settings.nav.about": "关于",
     "settings.nav.archive": "归档",
     "settings.nav.back": "返回",
@@ -603,16 +601,12 @@ const TRANSLATIONS = {
     "settings.updateDownloading": "正在下载...",
     "settings.updateUpToDate": "已是最新",
     "settings.updateCheck": "检查更新",
-    "settings.diagnostics": "诊断",
-    "settings.viewDiagnostics": "查看诊断",
     "settings.about.coreEngine": "核心引擎",
     "settings.about.coreEngineDescription":
       "Bahew 基于 Codex 核心引擎开源项目开发，整合其本地 Agent 运行时、协议、工具执行和工作区编排能力。",
     "settings.about.productPositioning": "产品定位",
     "settings.about.productPositioningDescription":
       "Bahew 将这些引擎能力封装为独立商业化 IDE 客户端，并围绕本产品设计桌面端、Web、模型服务路由、模型网关、源代码管理、终端、checkpoint 和账号体验。",
-    "settings.about.diagnosticsDescription":
-      "查看本地运行时进程、资源历史、trace 记录和引擎诊断信息。",
     "settings.providers": "模型服务",
     "settings.addProviderInstance": "添加模型服务实例",
     "settings.refreshProviderStatus": "刷新模型服务状态",

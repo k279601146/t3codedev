@@ -66,17 +66,13 @@ import {
 } from "../composer-logic";
 import {
   deriveCompletionDividerBeforeEntryId,
-  derivePendingApprovals,
-  derivePendingUserInputs,
   derivePhase,
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
-  deriveActivePlanState,
   findSidebarProposedPlan,
   findLatestProposedPlan,
-  deriveWorkLogEntries,
+  deriveThreadActivityDerivedState,
   hasActionableProposedPlan,
-  hasToolActivityForTurn,
   isLatestTurnSettled,
   formatElapsed,
 } from "../session-logic";
@@ -1912,22 +1908,14 @@ export default function ChatView(props: ChatViewProps) {
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
-  const workLogEntries = useMemo(
-    () => deriveWorkLogEntries(threadActivities, activeLatestTurn?.turnId ?? undefined),
+  const activityDerivedState = useMemo(
+    () => deriveThreadActivityDerivedState(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
-  const latestTurnHasToolActivity = useMemo(
-    () => hasToolActivityForTurn(threadActivities, activeLatestTurn?.turnId),
-    [activeLatestTurn?.turnId, threadActivities],
-  );
-  const pendingApprovals = useMemo(
-    () => derivePendingApprovals(threadActivities),
-    [threadActivities],
-  );
-  const pendingUserInputs = useMemo(
-    () => derivePendingUserInputs(threadActivities),
-    [threadActivities],
-  );
+  const workLogEntries = activityDerivedState.workLogEntries;
+  const latestTurnHasToolActivity = activityDerivedState.latestTurnHasToolActivity;
+  const pendingApprovals = activityDerivedState.pendingApprovals;
+  const pendingUserInputs = activityDerivedState.pendingUserInputs;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingDraftAnswers = useMemo(
     () =>
@@ -1980,10 +1968,7 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [activeLatestTurn, activeThread?.id, latestTurnSettled, threadPlanCatalog],
   );
-  const activePlan = useMemo(
-    () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
-    [activeLatestTurn?.turnId, threadActivities],
-  );
+  const activePlan = activityDerivedState.activePlan;
   const planSidebarLabel = sidebarProposedPlan || interactionMode === "plan" ? "Plan" : "Tasks";
   const hasSummaryPanelContent = Boolean(activePlan || sidebarProposedPlan);
   const showPlanFollowUpPrompt =

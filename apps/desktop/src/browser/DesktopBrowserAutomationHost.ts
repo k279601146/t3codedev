@@ -110,6 +110,8 @@ interface MutableHostState {
   updatedAt: string;
 }
 
+export type DesktopBrowserAutomationStateFingerprint = string;
+
 const NAMESPACE = "t3_browser";
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
@@ -295,6 +297,56 @@ function buildState(input: {
     toolCallSequence: input.mutable.toolCallSequence,
     updatedAt: input.mutable.updatedAt,
   };
+}
+
+export function createDesktopBrowserAutomationStateFingerprint(
+  state: DesktopBrowserAutomationState,
+): DesktopBrowserAutomationStateFingerprint {
+  return JSON.stringify({
+    endpoint: state.endpoint,
+    selectedTabId: state.selectedTabId,
+    tabs: state.tabs.map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      url: tab.url,
+      visible: tab.visible,
+      width: tab.width,
+      height: tab.height,
+      canGoBack: tab.canGoBack,
+      canGoForward: tab.canGoForward,
+    })),
+    lastError: state.lastError,
+    lastScreenshotDataUrlLength: state.lastScreenshotDataUrl?.length ?? 0,
+    lastScreenshotPath: state.lastScreenshotPath,
+    lastToolCallAt: state.lastToolCallAt,
+    toolCallSequence: state.toolCallSequence,
+  });
+}
+
+export function normalizeDesktopBrowserAutomationBounds(
+  bounds: DesktopBrowserAutomationBounds,
+): DesktopBrowserAutomationBounds {
+  return {
+    x: Math.round(bounds.x),
+    y: Math.round(bounds.y),
+    width: Math.max(0, Math.round(bounds.width)),
+    height: Math.max(0, Math.round(bounds.height)),
+    visible: bounds.visible,
+  };
+}
+
+export function desktopBrowserAutomationBoundsEqual(
+  left: DesktopBrowserAutomationBounds | null,
+  right: DesktopBrowserAutomationBounds,
+): boolean {
+  return (
+    left !== null &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.visible === right.visible
+  );
 }
 
 function shouldBlockReadonlyExpression(expression: string): boolean {
@@ -570,12 +622,19 @@ const make = Effect.gen(function* () {
   yield* fileSystem.makeDirectory(screenshotDir, { recursive: true }).pipe(Effect.ignore);
 
   let endpoint = "";
+  let lastPublishedFingerprint: DesktopBrowserAutomationStateFingerprint | null = null;
 
   const currentState = () => buildState({ endpoint, mutable, tabs });
   const publishState = () => {
     mutable.updatedAt = nowIso();
+    const state = currentState();
+    const fingerprint = createDesktopBrowserAutomationStateFingerprint(state);
+    if (fingerprint === lastPublishedFingerprint) {
+      return;
+    }
+    lastPublishedFingerprint = fingerprint;
     void Effect.runPromise(
-      electronWindow.sendAll(IpcChannels.BROWSER_AUTOMATION_STATE_CHANNEL, currentState()),
+      electronWindow.sendAll(IpcChannels.BROWSER_AUTOMATION_STATE_CHANNEL, state),
     );
   };
   const publishToolActivity = () => {
@@ -1157,13 +1216,11 @@ const make = Effect.gen(function* () {
     ),
     setPanelBounds: (bounds) =>
       Effect.promise(async () => {
-        mutable.panelBounds = {
-          x: bounds.x,
-          y: bounds.y,
-          width: bounds.width,
-          height: bounds.height,
-          visible: bounds.visible,
-        };
+        const nextBounds = normalizeDesktopBrowserAutomationBounds(bounds);
+        if (desktopBrowserAutomationBoundsEqual(mutable.panelBounds, nextBounds)) {
+          return;
+        }
+        mutable.panelBounds = nextBounds;
         await attachSelectedTabToPanel();
       }).pipe(Effect.asVoid),
     reveal: Effect.promise(async () => {

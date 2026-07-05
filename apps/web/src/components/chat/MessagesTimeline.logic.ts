@@ -70,6 +70,11 @@ export interface StableMessagesTimelineRowsState {
   result: MessagesTimelineRow[];
 }
 
+export interface StableMaterializedTimelineRowsState<TRow extends { id: string }> {
+  byId: Map<string, TRow>;
+  result: TRow[];
+}
+
 export interface TurnProcessCollapseState {
   ownerAssistantMessageIdByRowId: Map<string, string>;
   summaryAssistantMessageIds: Set<string>;
@@ -859,6 +864,27 @@ export function computeStableMessagesTimelineRows(
   const result = rows.map((row, index) => {
     const prevRow = previous.byId.get(row.id);
     const nextRow = prevRow && isRowUnchanged(prevRow, row) ? prevRow : row;
+    next.set(row.id, nextRow);
+    if (!anyChanged && previous.result[index] !== nextRow) {
+      anyChanged = true;
+    }
+    return nextRow;
+  });
+
+  return anyChanged ? { byId: next, result } : previous;
+}
+
+export function computeStableMaterializedTimelineRows<TRow extends { id: string }>(
+  rows: TRow[],
+  previous: StableMaterializedTimelineRowsState<TRow>,
+  isUnchanged: (previous: TRow, next: TRow) => boolean,
+): StableMaterializedTimelineRowsState<TRow> {
+  const next = new Map<string, TRow>();
+  let anyChanged = rows.length !== previous.byId.size;
+
+  const result = rows.map((row, index) => {
+    const prevRow = previous.byId.get(row.id);
+    const nextRow = prevRow && isUnchanged(prevRow, row) ? prevRow : row;
     next.set(row.id, nextRow);
     if (!anyChanged && previous.result[index] !== nextRow) {
       anyChanged = true;

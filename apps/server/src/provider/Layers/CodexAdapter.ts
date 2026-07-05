@@ -31,6 +31,10 @@ import {
   isToolLifecycleItemType,
   type ServerProviderWindowsSandbox,
   type WindowsSandboxMode,
+  type RemoteControlClient,
+  type RemoteControlClientsListResult,
+  type RemoteControlPairingSession,
+  type RemoteControlStatus,
 } from "@t3tools/contracts";
 import path from "node:path";
 import fsPromises from "node:fs/promises";
@@ -1955,6 +1959,47 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     return undefined;
   });
 
+  const toRemoteControlStatus = (
+    response:
+      | EffectCodexSchema.RemoteControlEnableResponse
+      | EffectCodexSchema.RemoteControlDisableResponse
+      | EffectCodexSchema.RemoteControlStatusReadResponse,
+  ): RemoteControlStatus => ({
+    status: response.status,
+    serverName: response.serverName,
+    installationId: response.installationId,
+    environmentId: response.environmentId,
+  });
+
+  const toRemoteControlPairingSession = (
+    response: EffectCodexSchema.RemoteControlPairingStartResponse,
+  ): RemoteControlPairingSession => ({
+    pairingCode: response.pairingCode,
+    manualPairingCode: response.manualPairingCode,
+    environmentId: response.environmentId,
+    expiresAt: response.expiresAt,
+  });
+
+  const toRemoteControlClient = (
+    client: EffectCodexSchema.RemoteControlClient,
+  ): RemoteControlClient => ({
+    clientId: client.clientId,
+    displayName: client.displayName,
+    deviceType: client.deviceType,
+    platform: client.platform,
+    osVersion: client.osVersion,
+    deviceModel: client.deviceModel,
+    appVersion: client.appVersion,
+    lastSeenAt: client.lastSeenAt,
+  });
+
+  const toRemoteControlClientsListResult = (
+    response: EffectCodexSchema.RemoteControlClientsListResponse,
+  ): RemoteControlClientsListResult => ({
+    data: response.data.map(toRemoteControlClient),
+    nextCursor: response.nextCursor,
+  });
+
   const withTemporaryClient = <A>(
     operation: (
       client: CodexClient.CodexAppServerClientShape,
@@ -1994,6 +2039,160 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         return yield* operation(client);
       }),
     ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner));
+
+  const remoteControlEnable: CodexAdapterShape["remoteControlEnable"] = (input) =>
+    firstActiveRuntime.pipe(
+      Effect.flatMap((runtime) =>
+        runtime
+          ? runtime.remoteControlEnable({
+              ...(input.ephemeral !== undefined ? { ephemeral: input.ephemeral } : {}),
+            })
+          : withTemporaryClient((client) =>
+              client.request("remoteControl/enable", {
+                ephemeral: input.ephemeral ?? true,
+              }),
+            ),
+      ),
+      Effect.map(toRemoteControlStatus),
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/enable",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
+
+  const remoteControlDisable: CodexAdapterShape["remoteControlDisable"] = (input) =>
+    firstActiveRuntime.pipe(
+      Effect.flatMap((runtime) =>
+        runtime
+          ? runtime.remoteControlDisable({
+              ...(input.ephemeral !== undefined ? { ephemeral: input.ephemeral } : {}),
+            })
+          : withTemporaryClient((client) =>
+              client.request("remoteControl/disable", {
+                ephemeral: input.ephemeral ?? true,
+              }),
+            ),
+      ),
+      Effect.map(toRemoteControlStatus),
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/disable",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
+
+  const remoteControlStatusRead: CodexAdapterShape["remoteControlStatusRead"] = () =>
+    firstActiveRuntime.pipe(
+      Effect.flatMap((runtime) =>
+        runtime
+          ? runtime.remoteControlStatusRead
+          : withTemporaryClient((client) => client.request("remoteControl/status/read", undefined)),
+      ),
+      Effect.map(toRemoteControlStatus),
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/status/read",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
+
+  const remoteControlPairingStart: CodexAdapterShape["remoteControlPairingStart"] = (input) =>
+    firstActiveRuntime.pipe(
+      Effect.flatMap((runtime) =>
+        runtime
+          ? runtime.remoteControlPairingStart({
+              manualCode: input.manualCode ?? true,
+            })
+          : withTemporaryClient((client) =>
+              client.request("remoteControl/pairing/start", {
+                manualCode: input.manualCode ?? true,
+              }),
+            ),
+      ),
+      Effect.map(toRemoteControlPairingSession),
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/pairing/start",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
+
+  const remoteControlPairingStatus: CodexAdapterShape["remoteControlPairingStatus"] = (input) =>
+    firstActiveRuntime.pipe(
+      Effect.flatMap((runtime) => {
+        const params = {
+          ...(input.pairingCode !== undefined ? { pairingCode: input.pairingCode } : {}),
+          ...(input.manualPairingCode !== undefined
+            ? { manualPairingCode: input.manualPairingCode }
+            : {}),
+        };
+        return runtime
+          ? runtime.remoteControlPairingStatus(params)
+          : withTemporaryClient((client) =>
+              client.request("remoteControl/pairing/status", params),
+            );
+      }),
+      Effect.map((response) => ({ claimed: response.claimed })),
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/pairing/status",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
+
+  const remoteControlClientsList: CodexAdapterShape["remoteControlClientsList"] = (input) =>
+    withTemporaryClient((client) =>
+      client.request("remoteControl/client/list", {
+        environmentId: input.environmentId,
+        ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+        ...(input.limit !== undefined ? { limit: input.limit } : {}),
+        ...(input.order !== undefined ? { order: input.order } : {}),
+      }),
+    ).pipe(
+      Effect.map(toRemoteControlClientsListResult),
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/client/list",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
+
+  const remoteControlClientRevoke: CodexAdapterShape["remoteControlClientRevoke"] = (input) =>
+    withTemporaryClient((client) =>
+      client.request("remoteControl/client/revoke", {
+        environmentId: input.environmentId,
+        clientId: input.clientId,
+      }),
+    ).pipe(
+      Effect.asVoid,
+      Effect.mapError((cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "remoteControl/client/revoke",
+          detail: cause.message,
+          cause,
+        }),
+      ),
+    );
 
   const requestWindowsSandboxReadiness = (input: {
     readonly mode: WindowsSandboxMode;
@@ -2697,6 +2896,13 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     rollbackThread,
     windowsSandboxReadiness: requestWindowsSandboxReadiness,
     windowsSandboxSetupStart: requestWindowsSandboxSetupStart,
+    remoteControlEnable,
+    remoteControlDisable,
+    remoteControlStatusRead,
+    remoteControlPairingStart,
+    remoteControlPairingStatus,
+    remoteControlClientsList,
+    remoteControlClientRevoke,
     setGoal,
     setGoalStatus,
     getGoal,

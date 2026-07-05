@@ -29,6 +29,7 @@ import {
   ChevronRightIcon,
   TriangleAlertIcon,
   Share2Icon,
+  SmartphoneIcon,
 } from "lucide-react";
 import {
   ChangeRequestStatusIcon,
@@ -2192,9 +2193,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         >
           <SidebarProjectIcon project={project} />
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="t3-sidebar-project-title truncate">
-              {project.displayName}
-            </span>
+            <span className="t3-sidebar-project-title truncate">{project.displayName}</span>
             {project.groupedProjectCount > 1 ? (
               <span className="shrink-0 text-[10px] text-muted-foreground/60">
                 {project.groupedProjectCount} projects
@@ -2622,6 +2621,13 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     void navigate({ to: "/settings" });
   }, [isMobile, navigate, setOpenMobile]);
 
+  const handleOpenRemoteControl = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void navigate({ to: "/settings/remote-control" });
+  }, [isMobile, navigate, setOpenMobile]);
+
   const handleSignOut = useCallback(() => {
     const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
     if (!bridge?.signOutCommercialAuth || isSigningOut) {
@@ -2793,6 +2799,23 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             </MenuGroup>
           </MenuPopup>
         </Menu>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="远程控制"
+                className="size-7 rounded-[7px] text-muted-foreground/78 hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-foreground/86"
+                onClick={handleOpenRemoteControl}
+              >
+                <SmartphoneIcon className="size-3.5" />
+              </Button>
+            }
+          />
+          <TooltipPopup side="top">远程控制</TooltipPopup>
+        </Tooltip>
         <Button
           type="button"
           variant="ghost"

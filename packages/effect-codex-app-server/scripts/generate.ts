@@ -22,13 +22,10 @@ const DEFAULT_UPSTREAM_REPO = "codex";
 const DEFAULT_UPSTREAM_REF = "98d28aab54ed86714901b6619400598598876dd0";
 const UPSTREAM_OWNER =
   process.env.CODEX_APP_SERVER_UPSTREAM_OWNER?.trim() || DEFAULT_UPSTREAM_OWNER;
-const UPSTREAM_REPO =
-  process.env.CODEX_APP_SERVER_UPSTREAM_REPO?.trim() || DEFAULT_UPSTREAM_REPO;
-const UPSTREAM_REF =
-  process.env.CODEX_APP_SERVER_UPSTREAM_REF?.trim() || DEFAULT_UPSTREAM_REF;
+const UPSTREAM_REPO = process.env.CODEX_APP_SERVER_UPSTREAM_REPO?.trim() || DEFAULT_UPSTREAM_REPO;
+const UPSTREAM_REF = process.env.CODEX_APP_SERVER_UPSTREAM_REF?.trim() || DEFAULT_UPSTREAM_REF;
 const USER_AGENT = "effect-codex-app-server-generator";
-const CODELOAD_TARBALL_URL =
-  `https://codeload.github.com/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/tar.gz/${UPSTREAM_REF}`;
+const CODELOAD_TARBALL_URL = `https://codeload.github.com/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/tar.gz/${UPSTREAM_REF}`;
 
 const JsonSchemaDocument = Schema.StructWithRest(
   Schema.Struct({
@@ -49,6 +46,16 @@ interface MethodEntry {
   readonly method: string;
   readonly paramsType?: string;
 }
+
+const REMOTE_CONTROL_CLIENT_REQUEST_ENTRIES: ReadonlyArray<MethodEntry> = [
+  { method: "remoteControl/enable", paramsType: "RemoteControlEnableParams" },
+  { method: "remoteControl/disable", paramsType: "RemoteControlDisableParams" },
+  { method: "remoteControl/status/read", paramsType: "undefined" },
+  { method: "remoteControl/pairing/start", paramsType: "RemoteControlPairingStartParams" },
+  { method: "remoteControl/pairing/status", paramsType: "RemoteControlPairingStatusParams" },
+  { method: "remoteControl/client/list", paramsType: "RemoteControlClientsListParams" },
+  { method: "remoteControl/client/revoke", paramsType: "RemoteControlClientsRevokeParams" },
+];
 
 interface JsonSchemaFile {
   readonly namespace?: string;
@@ -76,6 +83,195 @@ class GeneratorError extends Schema.TaggedErrorClass<GeneratorError>()("Generato
 }
 
 const ManualSchemas: Record<string, typeof Schema.Json.Type> = {
+  RemoteControlConnectionStatus: {
+    title: "RemoteControlConnectionStatus",
+    enum: ["disabled", "connecting", "connected", "errored"],
+    type: "string",
+  },
+  RemoteControlEnableParams: {
+    type: "object",
+    title: "RemoteControlEnableParams",
+    properties: {
+      ephemeral: { type: "boolean" },
+    },
+  },
+  RemoteControlDisableParams: {
+    type: "object",
+    title: "RemoteControlDisableParams",
+    properties: {
+      ephemeral: { type: "boolean" },
+    },
+  },
+  RemoteControlStatusReadResponse: {
+    type: "object",
+    title: "RemoteControlStatusReadResponse",
+    properties: {
+      status: { $ref: "#/definitions/RemoteControlConnectionStatus" },
+      serverName: { type: "string" },
+      installationId: { type: "string" },
+      environmentId: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+    },
+    required: ["status", "serverName", "installationId", "environmentId"],
+  },
+  RemoteControlEnableResponse: {
+    type: "object",
+    title: "RemoteControlEnableResponse",
+    properties: {
+      status: { $ref: "#/definitions/RemoteControlConnectionStatus" },
+      serverName: { type: "string" },
+      installationId: { type: "string" },
+      environmentId: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+    },
+    required: ["status", "serverName", "installationId", "environmentId"],
+  },
+  RemoteControlDisableResponse: {
+    type: "object",
+    title: "RemoteControlDisableResponse",
+    properties: {
+      status: { $ref: "#/definitions/RemoteControlConnectionStatus" },
+      serverName: { type: "string" },
+      installationId: { type: "string" },
+      environmentId: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+    },
+    required: ["status", "serverName", "installationId", "environmentId"],
+  },
+  RemoteControlPairingStartParams: {
+    type: "object",
+    title: "RemoteControlPairingStartParams",
+    properties: {
+      manualCode: { type: "boolean" },
+    },
+  },
+  RemoteControlPairingStartResponse: {
+    type: "object",
+    title: "RemoteControlPairingStartResponse",
+    properties: {
+      pairingCode: { type: "string" },
+      manualPairingCode: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      environmentId: { type: "string" },
+      expiresAt: {
+        format: "int64",
+        type: "integer",
+      },
+    },
+    required: ["pairingCode", "manualPairingCode", "environmentId", "expiresAt"],
+  },
+  RemoteControlPairingStatusParams: {
+    type: "object",
+    title: "RemoteControlPairingStatusParams",
+    properties: {
+      pairingCode: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      manualPairingCode: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+    },
+  },
+  RemoteControlPairingStatusResponse: {
+    type: "object",
+    title: "RemoteControlPairingStatusResponse",
+    properties: {
+      claimed: { type: "boolean" },
+    },
+    required: ["claimed"],
+  },
+  RemoteControlClientsListOrder: {
+    title: "RemoteControlClientsListOrder",
+    enum: ["asc", "desc"],
+    type: "string",
+  },
+  RemoteControlClientsListParams: {
+    type: "object",
+    title: "RemoteControlClientsListParams",
+    properties: {
+      environmentId: { type: "string" },
+      cursor: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      limit: {
+        anyOf: [{ type: "integer", format: "uint32", minimum: 0 }, { type: "null" }],
+      },
+      order: {
+        anyOf: [{ $ref: "#/definitions/RemoteControlClientsListOrder" }, { type: "null" }],
+      },
+    },
+    required: ["environmentId"],
+  },
+  RemoteControlClient: {
+    type: "object",
+    title: "RemoteControlClient",
+    properties: {
+      clientId: { type: "string" },
+      displayName: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      deviceType: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      platform: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      osVersion: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      deviceModel: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      appVersion: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      lastSeenAt: {
+        anyOf: [{ type: "integer", format: "int64" }, { type: "null" }],
+      },
+    },
+    required: [
+      "clientId",
+      "displayName",
+      "deviceType",
+      "platform",
+      "osVersion",
+      "deviceModel",
+      "appVersion",
+      "lastSeenAt",
+    ],
+  },
+  RemoteControlClientsListResponse: {
+    type: "object",
+    title: "RemoteControlClientsListResponse",
+    properties: {
+      data: {
+        type: "array",
+        items: { $ref: "#/definitions/RemoteControlClient" },
+      },
+      nextCursor: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+    },
+    required: ["data", "nextCursor"],
+  },
+  RemoteControlClientsRevokeParams: {
+    type: "object",
+    title: "RemoteControlClientsRevokeParams",
+    properties: {
+      environmentId: { type: "string" },
+      clientId: { type: "string" },
+    },
+    required: ["environmentId", "clientId"],
+  },
+  RemoteControlClientsRevokeResponse: {
+    type: "object",
+    title: "RemoteControlClientsRevokeResponse",
+    properties: {},
+  },
   GetAuthStatusParams: {
     type: "object",
     title: "GetAuthStatusParams",
@@ -232,13 +428,7 @@ const fetchProtocolSource = Effect.fn("fetchProtocolSource")(function* () {
   const extractExitCode = yield* Effect.service(ChildProcessSpawner.ChildProcessSpawner).pipe(
     Effect.flatMap((spawner) =>
       spawner.spawn(
-        ChildProcess.make("tar", [
-          "-xzf",
-          archivePath,
-          "-C",
-          extractDir,
-          "--strip-components=1",
-        ]),
+        ChildProcess.make("tar", ["-xzf", archivePath, "-C", extractDir, "--strip-components=1"]),
       ),
     ),
     Effect.flatMap((child) => child.exitCode),
@@ -432,6 +622,32 @@ function parseNotificationEntries(fileContents: string): ReadonlyArray<MethodEnt
     });
   }
   return entries;
+}
+
+function mergeRequiredMethodEntries(
+  entries: ReadonlyArray<MethodEntry>,
+  requiredEntries: ReadonlyArray<MethodEntry>,
+): ReadonlyArray<MethodEntry> {
+  const existingMethods = new Set(entries.map((entry) => entry.method));
+  const merged = [...entries];
+  for (const entry of requiredEntries) {
+    if (!existingMethods.has(entry.method)) {
+      merged.push(entry);
+    }
+  }
+  return merged;
+}
+
+function assertMethodEntriesResolvable(input: {
+  readonly entries: ReadonlyArray<MethodEntry>;
+  readonly generatedSchemaNames: ReadonlySet<string>;
+}): void {
+  for (const entry of input.entries) {
+    if (entry.paramsType !== undefined) {
+      resolveSchemaTypeName(entry.paramsType, input.generatedSchemaNames);
+    }
+    resolveResponseTypeName(entry.method, entry.paramsType, input.generatedSchemaNames);
+  }
 }
 
 function resolveSchemaTypeName(
@@ -692,10 +908,18 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
   }
 
   const generatedSchemaNames = new Set(generatedEntries.keys());
-  const clientRequestEntries = parseRequestEntries(clientRequestRaw);
+  const clientRequestEntries = mergeRequiredMethodEntries(
+    parseRequestEntries(clientRequestRaw),
+    REMOTE_CONTROL_CLIENT_REQUEST_ENTRIES,
+  );
   const clientNotificationEntries = parseNotificationEntries(clientNotificationRaw);
   const serverRequestEntries = parseRequestEntries(serverRequestRaw);
   const serverNotificationEntries = parseNotificationEntries(serverNotificationRaw);
+
+  assertMethodEntriesResolvable({
+    entries: clientRequestEntries,
+    generatedSchemaNames,
+  });
 
   const prelude = [
     "// This file is generated by the effect-codex-app-server package. Do not edit manually.",
@@ -820,9 +1044,7 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
   );
 
   yield* Effect.service(ChildProcessSpawner.ChildProcessSpawner).pipe(
-    Effect.flatMap((spawner) =>
-      spawner.spawn(ChildProcess.make(formatterCommand, [generatedDir])),
-    ),
+    Effect.flatMap((spawner) => spawner.spawn(ChildProcess.make(formatterCommand, [generatedDir]))),
     Effect.flatMap((child) => child.exitCode),
     Effect.tap((code) =>
       code === 0

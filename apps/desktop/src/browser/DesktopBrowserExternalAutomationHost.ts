@@ -106,6 +106,8 @@ interface MutableHostState {
   updatedAt: string;
 }
 
+export type DesktopBrowserExternalAutomationStateFingerprint = string;
+
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const TOOL_CALL_TIMEOUT_MS = 30_000;
 const POLL_TIMEOUT_MS = 25_000;
@@ -275,6 +277,25 @@ function buildState(input: {
   };
 }
 
+export function createDesktopBrowserExternalAutomationStateFingerprint(
+  state: DesktopBrowserExternalAutomationState,
+): DesktopBrowserExternalAutomationStateFingerprint {
+  return JSON.stringify({
+    endpoint: state.endpoint,
+    token: state.token,
+    connected: state.connected,
+    extensionId: state.extensionId,
+    browserName: state.browserName,
+    profileName: state.profileName,
+    selectedTabId: state.selectedTabId,
+    tabs: state.tabs,
+    permissions: state.permissions,
+    lastError: state.lastError,
+    lastToolCallAt: state.lastToolCallAt,
+    toolCallSequence: state.toolCallSequence,
+  });
+}
+
 const make = Effect.gen(function* () {
   yield* Effect.service(ElectronApp.ElectronApp).pipe(Effect.flatMap((app) => app.whenReady));
   const electronWindow = yield* ElectronWindow.ElectronWindow;
@@ -297,13 +318,20 @@ const make = Effect.gen(function* () {
   const commandQueue: ExtensionCommand[] = [];
   const pollWaiters = new Set<(commands: ExtensionCommand[]) => void>();
   let endpoint = "";
+  let lastPublishedFingerprint: DesktopBrowserExternalAutomationStateFingerprint | null = null;
   let lastExtensionSeenAt = 0;
 
   const currentState = () => buildState({ endpoint, token, mutable });
   const publishState = () => {
     mutable.updatedAt = nowIso();
+    const state = currentState();
+    const fingerprint = createDesktopBrowserExternalAutomationStateFingerprint(state);
+    if (fingerprint === lastPublishedFingerprint) {
+      return;
+    }
+    lastPublishedFingerprint = fingerprint;
     void Effect.runPromise(
-      electronWindow.sendAll(IpcChannels.BROWSER_EXTERNAL_AUTOMATION_STATE_CHANNEL, currentState()),
+      electronWindow.sendAll(IpcChannels.BROWSER_EXTERNAL_AUTOMATION_STATE_CHANNEL, state),
     );
   };
   const enqueueCommand = (command: ExtensionCommand) => {

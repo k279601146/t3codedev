@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeStableMessagesTimelineRows,
+  computeStableMaterializedTimelineRows,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
@@ -2085,5 +2086,79 @@ describe("computeStableMessagesTimelineRows", () => {
 
     expect(reordered).not.toBe(initial);
     expect(reordered.result).toEqual([initial.result[1], initial.result[0]]);
+  });
+});
+
+describe("computeStableMaterializedTimelineRows", () => {
+  type TestRow =
+    | { id: string; kind: "leaf"; value: string }
+    | { id: string; kind: "group"; value: string; memberRows: { id: string; value: string }[] };
+
+  const isTestRowUnchanged = (previous: TestRow, next: TestRow) => {
+    if (previous.kind !== next.kind || previous.id !== next.id || previous.value !== next.value) {
+      return false;
+    }
+    if (previous.kind === "leaf") {
+      return true;
+    }
+    const typedNext = next as typeof previous;
+    if (previous.memberRows.length !== typedNext.memberRows.length) {
+      return false;
+    }
+    return previous.memberRows.every((member, index) => {
+      const nextMember = typedNext.memberRows[index];
+      return nextMember?.id === member.id && nextMember.value === member.value;
+    });
+  };
+
+  it("reuses equivalent materialized rows", () => {
+    const initial = computeStableMaterializedTimelineRows<TestRow>(
+      [{ id: "row-1", kind: "leaf", value: "same" }],
+      { byId: new Map(), result: [] },
+      isTestRowUnchanged,
+    );
+
+    const repeated = computeStableMaterializedTimelineRows<TestRow>(
+      [{ id: "row-1", kind: "leaf", value: "same" }],
+      initial,
+      isTestRowUnchanged,
+    );
+
+    expect(repeated).toBe(initial);
+    expect(repeated.result[0]).toBe(initial.result[0]);
+  });
+
+  it("keeps grouped member row arrays stable when their contents are equivalent", () => {
+    const initial = computeStableMaterializedTimelineRows<TestRow>(
+      [
+        {
+          id: "group-1",
+          kind: "group",
+          value: "same",
+          memberRows: [{ id: "member-1", value: "same" }],
+        },
+      ],
+      { byId: new Map(), result: [] },
+      isTestRowUnchanged,
+    );
+
+    const repeated = computeStableMaterializedTimelineRows<TestRow>(
+      [
+        {
+          id: "group-1",
+          kind: "group",
+          value: "same",
+          memberRows: [{ id: "member-1", value: "same" }],
+        },
+      ],
+      initial,
+      isTestRowUnchanged,
+    );
+
+    expect(repeated).toBe(initial);
+    expect(repeated.result[0]).toBe(initial.result[0]);
+    expect((repeated.result[0] as Extract<TestRow, { kind: "group" }>).memberRows).toBe(
+      (initial.result[0] as Extract<TestRow, { kind: "group" }>).memberRows,
+    );
   });
 });

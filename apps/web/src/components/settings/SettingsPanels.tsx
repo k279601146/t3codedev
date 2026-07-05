@@ -9,7 +9,6 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type DesktopCommercialAuthState,
@@ -1796,15 +1795,6 @@ export function AboutSettingsPanel() {
         ) : (
           <SettingsRow title={<AboutVersionTitle />} description={t("settings.currentVersion")} />
         )}
-        <SettingsRow
-          title={t("settings.diagnostics")}
-          description={t("settings.about.diagnosticsDescription")}
-          control={
-            <Button render={<Link to="/settings/diagnostics" />} size="xs" variant="outline">
-              {t("settings.viewDiagnostics")}
-            </Button>
-          }
-        />
       </SettingsSection>
     </SettingsPageContainer>
   );

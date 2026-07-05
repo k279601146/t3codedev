@@ -90,6 +90,8 @@ import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import { RemoteControlLayerLive } from "./remoteControl/RemoteControlLayer.ts";
+import { qqRemoteControlWebhookRouteLayer } from "./remoteControl/http.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { AutomationRepositoryLive } from "./automations/Layers/AutomationRepository.ts";
 import { AutomationServiceLive } from "./automations/Layers/AutomationService.ts";
@@ -346,6 +348,7 @@ const RuntimeCoreDependenciesLive = RuntimeCoreBaseDependenciesLive.pipe(
   Layer.provideMerge(PluginsLayerLive),
   Layer.provideMerge(AutomationLayerLive),
   Layer.provideMerge(AutomationPermissionAuditLayerLive),
+  Layer.provideMerge(RemoteControlLayerLive),
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
@@ -381,6 +384,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   otlpTracesProxyRouteLayer,
   prometheusMetricsRouteLayer,
   projectFaviconRouteLayer,
+  qqRemoteControlWebhookRouteLayer,
   serverEnvironmentRouteLayer,
   healthRouteLayer,
   skillsAssetRouteLayer,

@@ -86,10 +86,10 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
           lastSlashIndex === 2 && /^[A-Za-z]:[\\/]/u.test(path)
             ? path.slice(0, 3)
             : lastSlashIndex > 0
-            ? path.slice(0, lastSlashIndex)
-            : lastSlashIndex === 0 && path.startsWith("/")
-              ? "/"
-              : null;
+              ? path.slice(0, lastSlashIndex)
+              : lastSlashIndex === 0 && path.startsWith("/")
+                ? "/"
+                : null;
         if (!directoryPath) {
           throw new Error("Unable to resolve containing folder.");
         }
@@ -162,6 +162,52 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
           },
         }
       : {}),
+    remoteControl: {
+      getSnapshot: () =>
+        rpcClient
+          ? rpcClient.remoteControl.getSnapshot()
+          : Promise.reject(unavailableLocalBackendError()),
+      enable: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.enable(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      disable: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.disable(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      getStatus: () =>
+        rpcClient
+          ? rpcClient.remoteControl.getStatus()
+          : Promise.reject(unavailableLocalBackendError()),
+      startPairing: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.startPairing(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      getPairingStatus: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.getPairingStatus(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      listClients: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.listClients(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      revokeClient: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.revokeClient(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      updateQqBotConfig: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.updateQqBotConfig(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      listQqBindings: () =>
+        rpcClient
+          ? rpcClient.remoteControl.listQqBindings()
+          : Promise.reject(unavailableLocalBackendError()),
+      revokeQqBinding: (input) =>
+        rpcClient
+          ? rpcClient.remoteControl.revokeQqBinding(input)
+          : Promise.reject(unavailableLocalBackendError()),
+    },
     server: {
       getConfig: () =>
         rpcClient ? rpcClient.server.getConfig() : Promise.reject(unavailableLocalBackendError()),

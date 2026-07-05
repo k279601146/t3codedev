@@ -11,6 +11,7 @@
  */
 import {
   DEFAULT_RUNTIME_MODE,
+  defaultInstanceIdForDriver,
   ModelSelection,
   NonNegativeInt,
   OrchestrationListThreadTurnItemsInput,
@@ -30,8 +31,14 @@ import {
   ProviderThreadSettingsUpdateInput,
   ProviderWindowsSandboxReadinessInput,
   ProviderWindowsSandboxSetupStartInput,
+  RemoteControlClientRevokeInput,
+  RemoteControlClientsListInput,
+  RemoteControlDisableInput,
+  RemoteControlEnableInput,
+  RemoteControlPairingStartInput,
+  RemoteControlPairingStatusInput,
+  ProviderDriverKind,
   type ProviderInstanceId,
-  type ProviderDriverKind,
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@t3tools/contracts";
@@ -1235,7 +1242,166 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     return {
       providerInstanceId: input.providerInstanceId,
       ...result,
-    };
+      };
+    });
+
+  const resolveRemoteControlAdapter = Effect.fn("resolveRemoteControlAdapter")(function* (
+    operation: string,
+    providerInstanceId: ProviderInstanceId | undefined,
+  ) {
+    const instanceId =
+      providerInstanceId ??
+      defaultInstanceIdForDriver(ProviderDriverKind.make("codex"));
+    const adapter = yield* registry.getByInstance(instanceId);
+    if (adapter.provider !== "codex") {
+      return yield* toValidationError(
+        operation,
+        `Provider '${adapter.provider}' does not support Codex remote control.`,
+      );
+    }
+    return adapter;
+  });
+
+  const remoteControlEnable: ProviderServiceShape["remoteControlEnable"] = Effect.fn(
+    "remoteControlEnable",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.remoteControlEnable",
+      schema: RemoteControlEnableInput,
+      payload: rawInput,
+    });
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlEnable",
+      input.providerInstanceId,
+    );
+    if (!adapter.remoteControlEnable) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlEnable",
+        `Provider '${adapter.provider}' does not support remote control enable.`,
+      );
+    }
+    return yield* adapter.remoteControlEnable(input);
+  });
+
+  const remoteControlDisable: ProviderServiceShape["remoteControlDisable"] = Effect.fn(
+    "remoteControlDisable",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.remoteControlDisable",
+      schema: RemoteControlDisableInput,
+      payload: rawInput,
+    });
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlDisable",
+      input.providerInstanceId,
+    );
+    if (!adapter.remoteControlDisable) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlDisable",
+        `Provider '${adapter.provider}' does not support remote control disable.`,
+      );
+    }
+    return yield* adapter.remoteControlDisable(input);
+  });
+
+  const remoteControlStatusRead: ProviderServiceShape["remoteControlStatusRead"] = Effect.fn(
+    "remoteControlStatusRead",
+  )(function* () {
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlStatusRead",
+      undefined,
+    );
+    if (!adapter.remoteControlStatusRead) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlStatusRead",
+        `Provider '${adapter.provider}' does not support remote control status.`,
+      );
+    }
+    return yield* adapter.remoteControlStatusRead();
+  });
+
+  const remoteControlPairingStart: ProviderServiceShape["remoteControlPairingStart"] = Effect.fn(
+    "remoteControlPairingStart",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.remoteControlPairingStart",
+      schema: RemoteControlPairingStartInput,
+      payload: rawInput,
+    });
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlPairingStart",
+      input.providerInstanceId,
+    );
+    if (!adapter.remoteControlPairingStart) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlPairingStart",
+        `Provider '${adapter.provider}' does not support remote control pairing.`,
+      );
+    }
+    return yield* adapter.remoteControlPairingStart(input);
+  });
+
+  const remoteControlPairingStatus: ProviderServiceShape["remoteControlPairingStatus"] = Effect.fn(
+    "remoteControlPairingStatus",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.remoteControlPairingStatus",
+      schema: RemoteControlPairingStatusInput,
+      payload: rawInput,
+    });
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlPairingStatus",
+      input.providerInstanceId,
+    );
+    if (!adapter.remoteControlPairingStatus) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlPairingStatus",
+        `Provider '${adapter.provider}' does not support remote control pairing status.`,
+      );
+    }
+    return yield* adapter.remoteControlPairingStatus(input);
+  });
+
+  const remoteControlClientsList: ProviderServiceShape["remoteControlClientsList"] = Effect.fn(
+    "remoteControlClientsList",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.remoteControlClientsList",
+      schema: RemoteControlClientsListInput,
+      payload: rawInput,
+    });
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlClientsList",
+      input.providerInstanceId,
+    );
+    if (!adapter.remoteControlClientsList) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlClientsList",
+        `Provider '${adapter.provider}' does not support remote control clients.`,
+      );
+    }
+    return yield* adapter.remoteControlClientsList(input);
+  });
+
+  const remoteControlClientRevoke: ProviderServiceShape["remoteControlClientRevoke"] = Effect.fn(
+    "remoteControlClientRevoke",
+  )(function* (rawInput) {
+    const input = yield* decodeInputOrValidationError({
+      operation: "ProviderService.remoteControlClientRevoke",
+      schema: RemoteControlClientRevokeInput,
+      payload: rawInput,
+    });
+    const adapter = yield* resolveRemoteControlAdapter(
+      "ProviderService.remoteControlClientRevoke",
+      input.providerInstanceId,
+    );
+    if (!adapter.remoteControlClientRevoke) {
+      return yield* toValidationError(
+        "ProviderService.remoteControlClientRevoke",
+        `Provider '${adapter.provider}' does not support remote control client revoke.`,
+      );
+    }
+    return yield* adapter.remoteControlClientRevoke(input);
   });
 
   const rollbackConversation: ProviderServiceShape["rollbackConversation"] = Effect.fn(
@@ -1355,6 +1521,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     listThreadTurnItems,
     windowsSandboxReadiness,
     windowsSandboxSetupStart,
+    remoteControlEnable,
+    remoteControlDisable,
+    remoteControlStatusRead,
+    remoteControlPairingStart,
+    remoteControlPairingStatus,
+    remoteControlClientsList,
+    remoteControlClientRevoke,
     rollbackConversation,
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each

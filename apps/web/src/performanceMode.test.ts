@@ -63,6 +63,18 @@ describe("performance mode", () => {
     expect(document.body.dataset.performanceMode).toBe("normal");
   });
 
+  it("supports streaming-heavy as a lightweight performance reason", () => {
+    setPerformanceModeActive("streaming-heavy", true);
+
+    expect(document.body.dataset.performanceLite).toBe("true");
+    expect(document.body.dataset.performanceMode).toBe("streaming-heavy");
+
+    setPerformanceModeActive("streaming-heavy", false);
+
+    expect(document.body.dataset.performanceLite).toBe("false");
+    expect(document.body.dataset.performanceMode).toBe("normal");
+  });
+
   it("notifies subscribers when the active mode changes", () => {
     const listener = vi.fn();
     const unsubscribe = subscribePerformanceMode(listener);

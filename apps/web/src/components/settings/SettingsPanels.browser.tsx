@@ -13,7 +13,6 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerConfig,
-  type ServerProcessResourceHistoryResult,
   type ServerProvider,
   type SourceControlDiscoveryResult,
 } from "@t3tools/contracts";
@@ -36,7 +35,6 @@ import { AppAtomRegistryProvider, resetAppAtomRegistryForTests } from "../../rpc
 import { resetServerStateForTests, setServerConfigSnapshot } from "../../rpc/serverState";
 import { useUiStateStore } from "../../uiStateStore";
 import { ConnectionsSettings } from "./ConnectionsSettings";
-import { DiagnosticsSettingsPanel } from "./DiagnosticsSettings";
 import { GeneralSettingsPanel, ProviderSettingsPanel } from "./SettingsPanels";
 import { SourceControlSettingsPanel } from "./SourceControlSettings";
 
@@ -268,20 +266,6 @@ function createOutdatedProvider(
 
 function makeUtc(value: string) {
   return DateTime.makeUnsafe(value);
-}
-
-function createEmptyProcessResourceHistoryResult(): ServerProcessResourceHistoryResult {
-  return {
-    readAt: makeUtc("2036-04-07T00:00:00.000Z"),
-    windowMs: 15 * 60_000,
-    bucketMs: 60_000,
-    sampleIntervalMs: 5_000,
-    retainedSampleCount: 0,
-    totalCpuSecondsApprox: 0,
-    buckets: [],
-    topProcesses: [],
-    error: Option.none(),
-  };
 }
 
 function makePairingLink(input: {
@@ -756,29 +740,6 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(page.getByText("http://127.0.0.1:3773/").first()).toBeInTheDocument();
   });
 
-  it("shows diagnostics inside About with a diagnostics link", async () => {
-    setServerConfigSnapshot(createBaseServerConfig());
-
-    mounted = await renderWithTestRouter(
-      <AppAtomRegistryProvider>
-        <GeneralSettingsPanel />
-      </AppAtomRegistryProvider>,
-    );
-
-    await expect.element(page.getByText("About")).toBeInTheDocument();
-    await expect
-      .element(page.getByRole("heading", { name: "Diagnostics", exact: true }))
-      .toBeInTheDocument();
-    await expect.element(page.getByRole("link", { name: "View diagnostics" })).toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText(
-          "Local trace file. Exporting OTEL traces to http://localhost:4318/v1/traces.",
-        ),
-      )
-      .toBeInTheDocument();
-  });
-
   it("allows manual update checks when automatic updates are disabled", async () => {
     const disabledUpdateState: DesktopUpdateState = {
       enabled: false,
@@ -1115,147 +1076,6 @@ describe("GeneralSettingsPanel observability", () => {
         { label: "" },
       );
     });
-  });
-
-  it("opens the logs folder in the preferred editor", async () => {
-    const openInEditor = vi.fn<LocalApi["shell"]["openInEditor"]>().mockResolvedValue(undefined);
-    window.nativeApi = {
-      persistence: {
-        getClientSettings: vi.fn().mockResolvedValue(null),
-        setClientSettings: vi.fn().mockResolvedValue(undefined),
-      },
-      shell: {
-        openInEditor,
-      },
-      server: {
-        getProcessDiagnostics: vi.fn().mockResolvedValue({
-          serverPid: 1234,
-          readAt: makeUtc("2036-04-07T00:00:00.000Z"),
-          processCount: 0,
-          totalRssBytes: 0,
-          totalCpuPercent: 0,
-          processes: [],
-          error: Option.none(),
-        }),
-        getProcessResourceHistory: vi
-          .fn()
-          .mockResolvedValue(createEmptyProcessResourceHistoryResult()),
-        getTraceDiagnostics: vi.fn().mockResolvedValue({
-          traceFilePath: "/repo/project/.t3/traces.jsonl",
-          scannedFilePaths: ["/repo/project/.t3/traces.jsonl"],
-          readAt: makeUtc("2036-04-07T00:00:00.000Z"),
-          recordCount: 0,
-          parseErrorCount: 0,
-          firstSpanAt: Option.none(),
-          lastSpanAt: Option.none(),
-          failureCount: 0,
-          interruptionCount: 0,
-          slowSpanThresholdMs: 5_000,
-          slowSpanCount: 0,
-          logLevelCounts: {},
-          topSpansByCount: [],
-          slowestSpans: [],
-          commonFailures: [],
-          latestFailures: [],
-          latestWarningAndErrorLogs: [],
-          providerPerformance: [],
-          partialFailure: Option.none(),
-          error: Option.none(),
-        }),
-      },
-    } as unknown as LocalApi;
-
-    setServerConfigSnapshot(createBaseServerConfig());
-
-    mounted = await render(
-      <AppAtomRegistryProvider>
-        <DiagnosticsSettingsPanel />
-      </AppAtomRegistryProvider>,
-    );
-
-    const openLogsButton = page.getByLabelText("Open logs folder");
-    await openLogsButton.click();
-
-    expect(openInEditor).toHaveBeenCalledWith("/repo/project/.t3/logs", "cursor");
-  });
-
-  it("shows desktop backend health in diagnostics", async () => {
-    window.nativeApi = {
-      persistence: {
-        getClientSettings: vi.fn().mockResolvedValue(null),
-        setClientSettings: vi.fn().mockResolvedValue(undefined),
-      },
-      diagnostics: {
-        getDesktopBackendHealth: vi.fn().mockResolvedValue({
-          status: "restarting",
-          desiredRunning: true,
-          ready: false,
-          activePid: null,
-          restartAttempt: 2,
-          restartScheduled: true,
-          nextRestartDelayMs: 1_000,
-          httpBaseUrl: "http://127.0.0.1:13773/",
-          backendEntryPath: "/repo/apps/server/dist/bin.mjs",
-          backendCwd: "/repo",
-          logDirPath: "/tmp/bahew/logs",
-          captureOutput: true,
-          lastStartedAt: "2036-04-07T00:00:00.000Z",
-          lastReadyAt: "2036-04-07T00:00:01.000Z",
-          lastExitAt: "2036-04-07T00:00:02.000Z",
-          lastExitCode: 1,
-          lastExitReason: "code=1",
-        }),
-      },
-      server: {
-        getProcessDiagnostics: vi.fn().mockResolvedValue({
-          serverPid: 1234,
-          readAt: makeUtc("2036-04-07T00:00:00.000Z"),
-          processCount: 0,
-          totalRssBytes: 0,
-          totalCpuPercent: 0,
-          processes: [],
-          error: Option.none(),
-        }),
-        getProcessResourceHistory: vi
-          .fn()
-          .mockResolvedValue(createEmptyProcessResourceHistoryResult()),
-        getTraceDiagnostics: vi.fn().mockResolvedValue({
-          traceFilePath: "/repo/project/.t3/traces.jsonl",
-          scannedFilePaths: ["/repo/project/.t3/traces.jsonl"],
-          readAt: makeUtc("2036-04-07T00:00:00.000Z"),
-          recordCount: 0,
-          parseErrorCount: 0,
-          firstSpanAt: Option.none(),
-          lastSpanAt: Option.none(),
-          failureCount: 0,
-          interruptionCount: 0,
-          slowSpanThresholdMs: 5_000,
-          slowSpanCount: 0,
-          logLevelCounts: {},
-          topSpansByCount: [],
-          slowestSpans: [],
-          commonFailures: [],
-          latestFailures: [],
-          latestWarningAndErrorLogs: [],
-          providerPerformance: [],
-          partialFailure: Option.none(),
-          error: Option.none(),
-        }),
-      },
-    } as unknown as LocalApi;
-
-    setServerConfigSnapshot(createBaseServerConfig());
-
-    mounted = await render(
-      <AppAtomRegistryProvider>
-        <DiagnosticsSettingsPanel />
-      </AppAtomRegistryProvider>,
-    );
-
-    await expect.element(page.getByText("Desktop Backend")).toBeInTheDocument();
-    await expect.element(page.getByText("Restarting")).toBeInTheDocument();
-    await expect.element(page.getByText("http://127.0.0.1:13773/")).toBeInTheDocument();
-    await expect.element(page.getByText("code=1")).toBeInTheDocument();
   });
 
   it("shows an OpenCode server URL field in provider settings", async () => {

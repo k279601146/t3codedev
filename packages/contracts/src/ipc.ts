@@ -27,10 +27,7 @@ import type {
   VcsCreateRefResult,
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
-import type {
-  CommercialAccountUsageSchema,
-  CommercialPublicRuntimeConfigSchema,
-} from "./model.ts";
+import type { CommercialAccountUsageSchema, CommercialPublicRuntimeConfigSchema } from "./model.ts";
 import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -50,6 +47,23 @@ import type {
   ProviderThreadSettingsUpdateInput,
   ProviderThreadSettingsUpdateResult,
 } from "./provider.ts";
+import type {
+  QqBotConfig,
+  QqBotConfigPatchInput,
+  QqRemoteBindingRevokeInput,
+  QqRemoteBindingsListResult,
+  RemoteControlClientRevokeInput,
+  RemoteControlClientsListInput,
+  RemoteControlClientsListResult,
+  RemoteControlDisableInput,
+  RemoteControlEnableInput,
+  RemoteControlPairingSession,
+  RemoteControlPairingStartInput,
+  RemoteControlPairingStatus,
+  RemoteControlPairingStatusInput,
+  RemoteControlSnapshot,
+  RemoteControlStatus,
+} from "./remoteControl.ts";
 import type {
   ServerConfig,
   ServerCodexGlobalGuidance,
@@ -288,12 +302,7 @@ export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
   bootstrapToken: Schema.optionalKey(Schema.String),
 });
 
-export type DesktopBackendHealthStatus =
-  | "ready"
-  | "starting"
-  | "restarting"
-  | "stopped"
-  | "failed";
+export type DesktopBackendHealthStatus = "ready" | "starting" | "restarting" | "stopped" | "failed";
 
 export const DesktopBackendHealthStatusSchema = Schema.Literals([
   "ready",
@@ -854,6 +863,21 @@ export interface LocalApi {
   };
   diagnostics?: {
     getDesktopBackendHealth: () => Promise<DesktopBackendHealthSnapshot | null>;
+  };
+  remoteControl: {
+    getSnapshot: () => Promise<RemoteControlSnapshot>;
+    enable: (input: RemoteControlEnableInput) => Promise<RemoteControlStatus>;
+    disable: (input: RemoteControlDisableInput) => Promise<RemoteControlStatus>;
+    getStatus: () => Promise<RemoteControlStatus>;
+    startPairing: (input: RemoteControlPairingStartInput) => Promise<RemoteControlPairingSession>;
+    getPairingStatus: (
+      input: RemoteControlPairingStatusInput,
+    ) => Promise<RemoteControlPairingStatus>;
+    listClients: (input: RemoteControlClientsListInput) => Promise<RemoteControlClientsListResult>;
+    revokeClient: (input: RemoteControlClientRevokeInput) => Promise<void>;
+    updateQqBotConfig: (input: QqBotConfigPatchInput) => Promise<QqBotConfig>;
+    listQqBindings: () => Promise<QqRemoteBindingsListResult>;
+    revokeQqBinding: (input: QqRemoteBindingRevokeInput) => Promise<QqRemoteBindingsListResult>;
   };
   server: {
     getConfig: () => Promise<ServerConfig>;

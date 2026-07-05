@@ -18,10 +18,10 @@ import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
+import { Route as SettingsRemoteControlRouteImport } from './routes/settings.remote-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
-import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAboutRouteImport } from './routes/settings.about'
@@ -72,6 +72,11 @@ const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
   path: '/source-control',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsRemoteControlRoute = SettingsRemoteControlRouteImport.update({
+  id: '/remote-control',
+  path: '/remote-control',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
@@ -85,11 +90,6 @@ const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
 const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   id: '/general',
   path: '/general',
-  getParentRoute: () => SettingsRoute,
-} as any)
-const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
-  id: '/diagnostics',
-  path: '/diagnostics',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
@@ -130,10 +130,10 @@ export interface FileRoutesByFullPath {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
-  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/remote-control': typeof SettingsRemoteControlRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -148,10 +148,10 @@ export interface FileRoutesByTo {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
-  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/remote-control': typeof SettingsRemoteControlRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -169,10 +169,10 @@ export interface FileRoutesById {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
-  '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/remote-control': typeof SettingsRemoteControlRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -191,10 +191,10 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/archived'
     | '/settings/connections'
-    | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
     | '/settings/providers'
+    | '/settings/remote-control'
     | '/settings/source-control'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -209,10 +209,10 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/archived'
     | '/settings/connections'
-    | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
     | '/settings/providers'
+    | '/settings/remote-control'
     | '/settings/source-control'
     | '/'
     | '/$environmentId/$threadId'
@@ -229,10 +229,10 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/archived'
     | '/settings/connections'
-    | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
     | '/settings/providers'
+    | '/settings/remote-control'
     | '/settings/source-control'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
@@ -314,6 +314,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSourceControlRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/remote-control': {
+      id: '/settings/remote-control'
+      path: '/remote-control'
+      fullPath: '/settings/remote-control'
+      preLoaderRoute: typeof SettingsRemoteControlRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/providers': {
       id: '/settings/providers'
       path: '/providers'
@@ -333,13 +340,6 @@ declare module '@tanstack/react-router' {
       path: '/general'
       fullPath: '/settings/general'
       preLoaderRoute: typeof SettingsGeneralRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/diagnostics': {
-      id: '/settings/diagnostics'
-      path: '/diagnostics'
-      fullPath: '/settings/diagnostics'
-      preLoaderRoute: typeof SettingsDiagnosticsRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/connections': {
@@ -398,10 +398,10 @@ interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
-  SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
+  SettingsRemoteControlRoute: typeof SettingsRemoteControlRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
 }
 
@@ -409,10 +409,10 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
-  SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
+  SettingsRemoteControlRoute: SettingsRemoteControlRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
 }
 

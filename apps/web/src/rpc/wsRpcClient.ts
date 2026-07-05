@@ -88,6 +88,19 @@ export interface WsRpcClient {
       readonly editor: Parameters<LocalApi["shell"]["openInEditor"]>[1];
     }) => ReturnType<LocalApi["shell"]["openInEditor"]>;
   };
+  readonly remoteControl: {
+    readonly getSnapshot: RpcUnaryNoArgMethod<typeof WS_METHODS.remoteControlGetSnapshot>;
+    readonly enable: RpcUnaryMethod<typeof WS_METHODS.remoteControlEnable>;
+    readonly disable: RpcUnaryMethod<typeof WS_METHODS.remoteControlDisable>;
+    readonly getStatus: RpcUnaryNoArgMethod<typeof WS_METHODS.remoteControlGetStatus>;
+    readonly startPairing: RpcUnaryMethod<typeof WS_METHODS.remoteControlStartPairing>;
+    readonly getPairingStatus: RpcUnaryMethod<typeof WS_METHODS.remoteControlGetPairingStatus>;
+    readonly listClients: RpcUnaryMethod<typeof WS_METHODS.remoteControlListClients>;
+    readonly revokeClient: RpcUnaryMethod<typeof WS_METHODS.remoteControlRevokeClient>;
+    readonly updateQqBotConfig: RpcUnaryMethod<typeof WS_METHODS.remoteControlUpdateQqBotConfig>;
+    readonly listQqBindings: RpcUnaryNoArgMethod<typeof WS_METHODS.remoteControlListQqBindings>;
+    readonly revokeQqBinding: RpcUnaryMethod<typeof WS_METHODS.remoteControlRevokeQqBinding>;
+  };
   readonly vcs: {
     readonly pull: RpcUnaryMethod<typeof WS_METHODS.vcsPull>;
     readonly refreshStatus: RpcUnaryMethod<typeof WS_METHODS.vcsRefreshStatus>;
@@ -270,6 +283,29 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       openInEditor: (input) =>
         transport.request((client) => client[WS_METHODS.shellOpenInEditor](input)),
     },
+    remoteControl: {
+      getSnapshot: () =>
+        transport.request((client) => client[WS_METHODS.remoteControlGetSnapshot]({})),
+      enable: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlEnable](input)),
+      disable: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlDisable](input)),
+      getStatus: () => transport.request((client) => client[WS_METHODS.remoteControlGetStatus]({})),
+      startPairing: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlStartPairing](input)),
+      getPairingStatus: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlGetPairingStatus](input)),
+      listClients: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlListClients](input)),
+      revokeClient: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlRevokeClient](input)),
+      updateQqBotConfig: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlUpdateQqBotConfig](input)),
+      listQqBindings: () =>
+        transport.request((client) => client[WS_METHODS.remoteControlListQqBindings]({})),
+      revokeQqBinding: (input) =>
+        transport.request((client) => client[WS_METHODS.remoteControlRevokeQqBinding](input)),
+    },
     vcs: {
       pull: (input) => transport.request((client) => client[WS_METHODS.vcsPull](input)),
       refreshStatus: (input) =>
@@ -398,9 +434,7 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       getFullThreadDiff: (input) =>
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.getFullThreadDiff](input)),
       getThreadHistoryPage: (input) =>
-        transport.request((client) =>
-          client[ORCHESTRATION_WS_METHODS.getThreadHistoryPage](input),
-        ),
+        transport.request((client) => client[ORCHESTRATION_WS_METHODS.getThreadHistoryPage](input)),
       listThreadTurns: (input) =>
         transport.request((client) => client[ORCHESTRATION_WS_METHODS.listThreadTurns](input)),
       listThreadTurnItems: (input) =>
@@ -462,9 +496,7 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     },
     automationPermissionAudit: {
       ingest: (input) =>
-        transport.request((client) =>
-          client[WS_METHODS.automationPermissionAuditIngest](input),
-        ),
+        transport.request((client) => client[WS_METHODS.automationPermissionAuditIngest](input)),
       list: (input) =>
         transport.request((client) => client[WS_METHODS.automationPermissionAuditList](input)),
     },

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState, type ComponentType } from "react";
 import {
-  ActivityIcon,
   ArchiveIcon,
   ArrowLeftIcon,
   GitBranchIcon,
@@ -9,6 +8,7 @@ import {
   Link2Icon,
   SearchIcon,
   Settings2Icon,
+  SmartphoneIcon,
 } from "lucide-react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 
@@ -29,9 +29,9 @@ export type SettingsSectionPath =
   | "/settings/general"
   | "/settings/keybindings"
   | "/settings/connections"
+  | "/settings/remote-control"
   | "/settings/source-control"
   | "/settings/about"
-  | "/settings/diagnostics"
   | "/settings/archived";
 
 type SettingsNavItem = {
@@ -57,6 +57,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
     labelKey: "settings.nav.group.development",
     items: [
       { labelKey: "settings.nav.connections", to: "/settings/connections", icon: Link2Icon },
+      {
+        labelKey: "settings.nav.remoteControl",
+        to: "/settings/remote-control",
+        icon: SmartphoneIcon,
+      },
       { labelKey: "settings.nav.git", to: "/settings/source-control", icon: GitBranchIcon },
     ],
   },
@@ -64,7 +69,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
     labelKey: "settings.nav.group.maintenance",
     items: [
       { labelKey: "settings.nav.about", to: "/settings/about", icon: InfoIcon },
-      { labelKey: "settings.diagnostics", to: "/settings/diagnostics", icon: ActivityIcon },
       { labelKey: "settings.nav.archivedThreads", to: "/settings/archived", icon: ArchiveIcon },
     ],
   },

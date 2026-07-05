@@ -42,6 +42,16 @@ import type {
   ProviderWindowsSandboxReadinessResult,
   ProviderWindowsSandboxSetupStartInput,
   ProviderWindowsSandboxSetupStartResult,
+  RemoteControlClientRevokeInput,
+  RemoteControlClientsListInput,
+  RemoteControlClientsListResult,
+  RemoteControlDisableInput,
+  RemoteControlEnableInput,
+  RemoteControlPairingSession,
+  RemoteControlPairingStartInput,
+  RemoteControlPairingStatus,
+  RemoteControlPairingStatusInput,
+  RemoteControlStatus,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
@@ -158,6 +168,32 @@ export interface ProviderServiceShape {
   readonly windowsSandboxSetupStart?: (
     input: ProviderWindowsSandboxSetupStartInput,
   ) => Effect.Effect<ProviderWindowsSandboxSetupStartResult, ProviderServiceError>;
+
+  readonly remoteControlEnable: (
+    input: RemoteControlEnableInput,
+  ) => Effect.Effect<RemoteControlStatus, ProviderServiceError>;
+
+  readonly remoteControlDisable: (
+    input: RemoteControlDisableInput,
+  ) => Effect.Effect<RemoteControlStatus, ProviderServiceError>;
+
+  readonly remoteControlStatusRead: () => Effect.Effect<RemoteControlStatus, ProviderServiceError>;
+
+  readonly remoteControlPairingStart: (
+    input: RemoteControlPairingStartInput,
+  ) => Effect.Effect<RemoteControlPairingSession, ProviderServiceError>;
+
+  readonly remoteControlPairingStatus: (
+    input: RemoteControlPairingStatusInput,
+  ) => Effect.Effect<RemoteControlPairingStatus, ProviderServiceError>;
+
+  readonly remoteControlClientsList: (
+    input: RemoteControlClientsListInput,
+  ) => Effect.Effect<RemoteControlClientsListResult, ProviderServiceError>;
+
+  readonly remoteControlClientRevoke: (
+    input: RemoteControlClientRevokeInput,
+  ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
    * Roll back provider conversation state by a number of turns.

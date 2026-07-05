@@ -263,6 +263,34 @@ export interface CodexSessionRuntimeShape {
     EffectCodexSchema.V2WindowsSandboxSetupStartResponse,
     CodexSessionRuntimeError
   >;
+  readonly remoteControlEnable: (
+    input: EffectCodexSchema.RemoteControlEnableParams,
+  ) => Effect.Effect<EffectCodexSchema.RemoteControlEnableResponse, CodexSessionRuntimeError>;
+  readonly remoteControlDisable: (
+    input: EffectCodexSchema.RemoteControlDisableParams,
+  ) => Effect.Effect<EffectCodexSchema.RemoteControlDisableResponse, CodexSessionRuntimeError>;
+  readonly remoteControlStatusRead: Effect.Effect<
+    EffectCodexSchema.RemoteControlStatusReadResponse,
+    CodexSessionRuntimeError
+  >;
+  readonly remoteControlPairingStart: (
+    input: EffectCodexSchema.RemoteControlPairingStartParams,
+  ) => Effect.Effect<EffectCodexSchema.RemoteControlPairingStartResponse, CodexSessionRuntimeError>;
+  readonly remoteControlPairingStatus: (
+    input: EffectCodexSchema.RemoteControlPairingStatusParams,
+  ) => Effect.Effect<
+    EffectCodexSchema.RemoteControlPairingStatusResponse,
+    CodexSessionRuntimeError
+  >;
+  readonly remoteControlClientsList: (
+    input: EffectCodexSchema.RemoteControlClientsListParams,
+  ) => Effect.Effect<EffectCodexSchema.RemoteControlClientsListResponse, CodexSessionRuntimeError>;
+  readonly remoteControlClientRevoke: (
+    input: EffectCodexSchema.RemoteControlClientsRevokeParams,
+  ) => Effect.Effect<
+    EffectCodexSchema.RemoteControlClientsRevokeResponse,
+    CodexSessionRuntimeError
+  >;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -2166,6 +2194,15 @@ export const makeCodexSessionRuntime = (
           mode: input.mode,
           cwd: options.cwd,
         }),
+      remoteControlEnable: (input) => client.request("remoteControl/enable", input),
+      remoteControlDisable: (input) => client.request("remoteControl/disable", input),
+      remoteControlStatusRead: client.request("remoteControl/status/read", undefined),
+      remoteControlPairingStart: (input) =>
+        client.request("remoteControl/pairing/start", input),
+      remoteControlPairingStatus: (input) =>
+        client.request("remoteControl/pairing/status", input),
+      remoteControlClientsList: (input) => client.request("remoteControl/client/list", input),
+      remoteControlClientRevoke: (input) => client.request("remoteControl/client/revoke", input),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);
