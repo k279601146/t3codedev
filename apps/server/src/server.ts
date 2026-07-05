@@ -92,6 +92,8 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { RemoteControlLayerLive } from "./remoteControl/RemoteControlLayer.ts";
 import { qqRemoteControlWebhookRouteLayer } from "./remoteControl/http.ts";
+import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
+import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { AutomationRepositoryLive } from "./automations/Layers/AutomationRepository.ts";
 import { AutomationServiceLive } from "./automations/Layers/AutomationService.ts";
@@ -174,8 +176,17 @@ const ProviderSessionDirectoryLayerLive = ProviderSessionDirectoryLive.pipe(
 // `create()`; `ProviderEventLoggersLive` owns the shared native/canonical
 // NDJSON writers and is provided at the outer runtime layer so both
 // `ProviderService` and the per-instance drivers read the same logger pair.
+const ProviderInstanceRegistryLayerLive = ProviderInstanceRegistryHydrationLive.pipe(
+  Layer.provideMerge(ProviderEventLoggersLive),
+  Layer.provideMerge(ServerSettingsLive),
+);
+
+const ProviderAdapterRegistryLayerLive = ProviderAdapterRegistryLive.pipe(
+  Layer.provideMerge(ProviderInstanceRegistryLayerLive),
+);
+
 const ProviderLayerLive = ProviderServiceLive.pipe(
-  Layer.provide(ProviderAdapterRegistryLive),
+  Layer.provide(ProviderAdapterRegistryLayerLive),
   Layer.provideMerge(ProviderSessionDirectoryLayerLive),
 );
 
@@ -196,11 +207,6 @@ const SourceControlProviderRegistryLayerLive = SourceControlProviderRegistry.lay
   ),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(VcsDriverRegistryLayerLive),
-);
-
-const ProviderInstanceRegistryLayerLive = ProviderInstanceRegistryHydrationLive.pipe(
-  Layer.provideMerge(ProviderEventLoggersLive),
-  Layer.provideMerge(ServerSettingsLive),
 );
 
 const TextGenerationLayerLive = TextGeneration.layer.pipe(
@@ -227,6 +233,11 @@ const GitWorkflowLayerLive = GitWorkflowService.layer.pipe(
 const SourceControlRepositoryServiceLayerLive = SourceControlRepositoryService.layer.pipe(
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
+);
+
+const SourceControlDiscoveryLayerLive = SourceControlDiscovery.layer.pipe(
+  Layer.provideMerge(SourceControlProviderRegistryLayerLive),
+  Layer.provideMerge(VcsProcess.layer),
 );
 
 const VcsLayerLive = Layer.empty.pipe(
@@ -277,6 +288,10 @@ const ProviderRegistryLayerLive = ProviderRegistryLive.pipe(
   Layer.provideMerge(ProviderEventLoggersLive),
 );
 
+const ProviderMaintenanceRunnerLayerLive = ProviderMaintenanceRunner.layer.pipe(
+  Layer.provideMerge(ProviderRegistryLayerLive),
+);
+
 const SkillsServiceLayerLive = SkillsServiceLive.pipe(
   Layer.provide(SkillsCatalogServiceLive),
   Layer.provideMerge(ProviderRegistryLayerLive),
@@ -298,6 +313,12 @@ const AutomationLayerLive = AutomationServiceLive.pipe(
 
 const AutomationPermissionAuditLayerLive = AutomationPermissionAuditServiceLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
+);
+
+const RemoteControlServiceLayerLive = RemoteControlLayerLive.pipe(
+  Layer.provideMerge(ProviderLayerLive),
+  Layer.provideMerge(CheckpointingLayerLive),
+  Layer.provideMerge(ServerSecretStoreLive),
 );
 
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
@@ -323,6 +344,8 @@ const RuntimeCoreBaseDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(KeybindingsLive),
   Layer.provideMerge(ProviderRegistryLayerLive),
+  Layer.provideMerge(ProviderMaintenanceRunnerLayerLive),
+  Layer.provideMerge(SourceControlDiscoveryLayerLive),
   Layer.provideMerge(DynamicToolServicesLayerLive),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // drivers (native stream, written from inside each `<X>Adapter`) and
@@ -348,7 +371,7 @@ const RuntimeCoreDependenciesLive = RuntimeCoreBaseDependenciesLive.pipe(
   Layer.provideMerge(PluginsLayerLive),
   Layer.provideMerge(AutomationLayerLive),
   Layer.provideMerge(AutomationPermissionAuditLayerLive),
-  Layer.provideMerge(RemoteControlLayerLive),
+  Layer.provideMerge(RemoteControlServiceLayerLive),
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(

@@ -20,6 +20,8 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ResolvedKeybindingRule,
+  ServerProviderUpdateError,
+  type SourceControlDiscoveryResult,
   ThreadId,
   WS_METHODS,
   WsRpcGroup,
@@ -80,6 +82,7 @@ import {
   type ProviderRegistryShape,
 } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService.ts";
+import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
@@ -118,12 +121,17 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import {
+  RemoteControlService,
+  type RemoteControlServiceShape,
+} from "./remoteControl/RemoteControlService.ts";
 import * as Data from "effect/Data";
 import {
   AutomationService,
@@ -335,6 +343,9 @@ const buildAppUnderTest = (options?: {
     keybindings?: Partial<KeybindingsShape>;
     providerRegistry?: Partial<ProviderRegistryShape>;
     providerService?: Partial<ProviderServiceShape>;
+    providerMaintenanceRunner?: Partial<ProviderMaintenanceRunner.ProviderMaintenanceRunnerShape>;
+    sourceControlDiscovery?: Partial<SourceControlDiscovery.SourceControlDiscoveryShape>;
+    remoteControl?: Partial<RemoteControlServiceShape>;
     serverSettings?: Partial<ServerSettingsShape>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncherShape>;
     vcsDriver?: Partial<VcsDriver.VcsDriverShape>;
@@ -497,6 +508,23 @@ const buildAppUnderTest = (options?: {
     const gitManagerLayer = Layer.mock(GitManager)({
       ...options?.layers?.gitManager,
     });
+    const emptySourceControlDiscoveryResult: SourceControlDiscoveryResult = {
+      versionControlSystems: [],
+      sourceControlProviders: [],
+    };
+    const remoteControlStatus = {
+      status: "disabled" as const,
+      serverName: "Test server",
+      installationId: "installation-test",
+      environmentId: testEnvironmentDescriptor.environmentId,
+    };
+    const qqBotConfig = {
+      enabled: false,
+      appId: null,
+      secretConfigured: false,
+      tokenConfigured: false,
+      webhookPath: "/remote-control/qq",
+    };
     const workspaceEntriesLayer = WorkspaceEntriesLive.pipe(
       Layer.provide(WorkspacePathsLive),
       Layer.provideMerge(vcsDriverRegistryLayer),
@@ -681,6 +709,57 @@ const buildAppUnderTest = (options?: {
           rollbackConversation: () => Effect.void,
           streamEvents: Stream.empty,
           ...options?.layers?.providerService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProviderMaintenanceRunner.ProviderMaintenanceRunner)({
+          updateProvider: (target) =>
+            Effect.fail(
+              new ServerProviderUpdateError({
+                provider: typeof target === "string" ? target : target.provider,
+                reason: "测试未提供 ProviderMaintenanceRunner.updateProvider",
+              }),
+            ),
+          ...options?.layers?.providerMaintenanceRunner,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(SourceControlDiscovery.SourceControlDiscovery)({
+          discover: Effect.succeed(emptySourceControlDiscoveryResult),
+          ...options?.layers?.sourceControlDiscovery,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(RemoteControlService)({
+          getSnapshot: () =>
+            Effect.succeed({
+              status: remoteControlStatus,
+              qqBot: qqBotConfig,
+              bindings: [],
+              clients: [],
+            }),
+          getStatus: () => Effect.succeed(remoteControlStatus),
+          enable: () => Effect.succeed(remoteControlStatus),
+          disable: () => Effect.succeed(remoteControlStatus),
+          startPairing: () =>
+            Effect.succeed({
+              pairingCode: "pairing-code-test",
+              manualPairingCode: null,
+              environmentId: testEnvironmentDescriptor.environmentId,
+              expiresAt: 1,
+            }),
+          getPairingStatus: () => Effect.succeed({ claimed: false }),
+          listClients: () => Effect.succeed({ data: [], nextCursor: null }),
+          revokeClient: () => Effect.void,
+          updateQqBotConfig: () => Effect.succeed(qqBotConfig),
+          listQqBindings: () => Effect.succeed({ bindings: [] }),
+          revokeQqBinding: () => Effect.succeed({ bindings: [] }),
+          handleQqMessage: () =>
+            Effect.succeed({
+              command: { kind: "unknown" as const, argument: "" },
+              reply: "Remote control is disabled.",
+            }),
+          ...options?.layers?.remoteControl,
         }),
       ),
       Layer.provide(automationsAndSkillsLayer),
