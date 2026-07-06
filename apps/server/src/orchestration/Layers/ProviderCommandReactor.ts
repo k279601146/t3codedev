@@ -13,10 +13,13 @@
   type ProviderSession,
   type RuntimeMode,
   type TurnId,
+  DEFAULT_MODEL,
   DEFAULT_RUNTIME_MODE,
+  ProviderInstanceId,
 } from "@t3tools/contracts";
 import { isGoalTerminal, mergeGoalTiming } from "@t3tools/shared/goal";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
+import { createModelSelection } from "@t3tools/shared/model";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -224,6 +227,10 @@ const make = Effect.gen(function* () {
   const deferredFirstTurnBranchEnhancements = new Map<ThreadId, DeferredFirstTurnBranchEnhancement>();
   const goalRetryAttempts = new Map<ThreadId, number>();
   const goalAdvanceFibers = new Map<ThreadId, Fiber.Fiber<void, never>>();
+  const defaultTextGenerationModelSelection = createModelSelection(
+    ProviderInstanceId.make("codex"),
+    DEFAULT_MODEL,
+  );
 
   const hasHandledTurnStartRecently = (key: string) =>
     Cache.getOption(handledTurnStartKeys, key).pipe(
@@ -686,7 +693,7 @@ const make = Effect.gen(function* () {
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
       const thread = yield* resolveThread(input.threadId);
-      let modelSelection = (yield* serverSettingsService.getSettings).textGenerationModelSelection;
+      let modelSelection = defaultTextGenerationModelSelection;
 
       if (thread) {
         modelSelection = thread.modelSelection;
@@ -735,8 +742,7 @@ const make = Effect.gen(function* () {
       const attachments = input.attachments ?? [];
       yield* Effect.gen(function* () {
         const thread = yield* resolveThread(input.threadId);
-        let modelSelection = (yield* serverSettingsService.getSettings)
-          .textGenerationModelSelection;
+        let modelSelection = defaultTextGenerationModelSelection;
 
         if (thread) {
           modelSelection = thread.modelSelection;

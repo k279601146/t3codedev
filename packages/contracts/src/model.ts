@@ -133,7 +133,7 @@ const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 export const DEFAULT_MODEL = "gpt-5.4";
-export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini";
+export const DEFAULT_GIT_TEXT_GENERATION_MODEL = DEFAULT_MODEL;
 
 export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, string>> = {
   [CODEX_DRIVER_KIND]: DEFAULT_MODEL,
@@ -145,12 +145,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
 /** Per-provider text generation model defaults. */
 export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Partial<
   Record<ProviderDriverKind, string>
-> = {
-  [CODEX_DRIVER_KIND]: DEFAULT_GIT_TEXT_GENERATION_MODEL,
-  [CLAUDE_DRIVER_KIND]: "claude-haiku-4-5",
-  [CURSOR_DRIVER_KIND]: "composer-2",
-  [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
-};
+> = DEFAULT_MODEL_BY_PROVIDER;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Partial<
   Record<ProviderDriverKind, Record<string, string>>

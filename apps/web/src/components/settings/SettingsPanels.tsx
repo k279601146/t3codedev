@@ -14,7 +14,6 @@ import {
   type DesktopCommercialAuthState,
   type DesktopUpdateChannel,
   type ProviderPersonality,
-  ProviderDriverKind,
   type ProviderInstanceId,
   type ServerProvider,
   type ScopedThreadRef,
@@ -26,7 +25,6 @@ import {
   DEFAULT_PROVIDER_PERSONALITY,
   DEFAULT_UNIFIED_SETTINGS,
 } from "@t3tools/contracts/settings";
-import { createModelSelection } from "@t3tools/shared/model";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
@@ -37,8 +35,6 @@ import {
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
 } from "../../components/desktopUpdate.logic";
-import { ProviderModelPicker } from "../chat/ProviderModelPicker";
-import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useTheme } from "../../hooks/useTheme";
@@ -49,14 +45,7 @@ import {
   useDesktopUpdateState,
 } from "../../lib/desktopUpdateReactQuery";
 import { runElevatedWindowsSandboxSetupFlow } from "../../lib/windowsSandboxSetupFlow";
-import {
-  getCustomModelOptionsByInstance,
-  resolveAppModelSelectionState,
-} from "../../modelSelection";
-import {
-  deriveProviderInstanceEntries,
-  sortProviderInstanceEntries,
-} from "../../providerInstances";
+import { deriveProviderInstanceEntries, sortProviderInstanceEntries } from "../../providerInstances";
 import { ensureLocalApi, readLocalApi } from "../../localApi";
 import { useShallow } from "zustand/react/shallow";
 import { selectProjectsAcrossEnvironments, useStore } from "../../store";
@@ -164,8 +153,6 @@ function personalityOptionLabel(value: ProviderPersonality, t: ReturnType<typeof
       "settings.personalityFriendly",
   );
 }
-
-const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
 function AboutVersionTitle() {
   const { t } = useI18n();
@@ -812,11 +799,6 @@ export function useSettingsRestore(onRestored?: () => void) {
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
 
-  const isGitWritingModelDirty = !Equal.equals(
-    settings.textGenerationModelSelection ?? null,
-    DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
-  );
-
   const changedSettingLabels = useMemo(
     () => [
       ...(theme !== "light" ? ["Theme"] : []),
@@ -859,10 +841,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(!Equal.equals(settings.telemetryConsent, DEFAULT_UNIFIED_SETTINGS.telemetryConsent)
         ? ["Telemetry consent"]
         : []),
-      ...(isGitWritingModelDirty ? ["Git writing model"] : []),
     ],
     [
-      isGitWritingModelDirty,
       settings.autoOpenPlanSidebar,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
@@ -906,7 +886,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       telemetryConsent: DEFAULT_UNIFIED_SETTINGS.telemetryConsent,
-      textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
     });
     onRestored?.();
   }, [changedSettingLabels, onRestored, setTheme, updateSettings]);
@@ -1069,28 +1048,6 @@ export function GeneralSettingsPanel() {
   const serverProviders = useServerProviders();
   const refreshingProvidersRef = useRef(false);
 
-  const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
-  const textGenInstanceId = textGenerationModelSelection.instanceId;
-  const textGenModel = textGenerationModelSelection.model;
-  const textGenModelOptions = textGenerationModelSelection.options;
-  const gitModelInstanceEntries = sortProviderInstanceEntries(
-    deriveProviderInstanceEntries(serverProviders),
-  );
-  const textGenInstanceEntry = gitModelInstanceEntries.find(
-    (entry) => entry.instanceId === textGenInstanceId,
-  );
-  const textGenProvider: ProviderDriverKind =
-    textGenInstanceEntry?.driverKind ?? DEFAULT_DRIVER_KIND;
-  const gitModelOptionsByInstance = getCustomModelOptionsByInstance(
-    settings,
-    serverProviders,
-    textGenInstanceId,
-    textGenModel,
-  );
-  const isGitWritingModelDirty = !Equal.equals(
-    settings.textGenerationModelSelection ?? null,
-    DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
-  );
   const refreshProviders = useCallback(() => {
     if (refreshingProvidersRef.current) return;
     refreshingProvidersRef.current = true;
@@ -1541,82 +1498,6 @@ export function GeneralSettingsPanel() {
               }
               aria-label={t("settings.deleteConfirmation")}
             />
-          }
-        />
-      </SettingsSection>
-
-      <SettingsSection title={t("settings.section.aiGit")}>
-        <SettingsRow
-          title={t("settings.textGenerationModel")}
-          description={t("settings.textGenerationModelDescription")}
-          resetAction={
-            isGitWritingModelDirty ? (
-              <SettingResetButton
-                label="text generation model"
-                onClick={() =>
-                  updateSettings({
-                    textGenerationModelSelection:
-                      DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              <ProviderModelPicker
-                activeInstanceId={textGenInstanceId}
-                model={textGenModel}
-                lockedProvider={null}
-                instanceEntries={gitModelInstanceEntries}
-                modelOptionsByInstance={gitModelOptionsByInstance}
-                triggerVariant="outline"
-                triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
-                onInstanceModelChange={(instanceId, model) => {
-                  updateSettings({
-                    textGenerationModelSelection: resolveAppModelSelectionState(
-                      {
-                        ...settings,
-                        textGenerationModelSelection: createModelSelection(instanceId, model),
-                      },
-                      serverProviders,
-                    ),
-                  });
-                }}
-              />
-              <TraitsPicker
-                provider={textGenProvider}
-                models={
-                  // Use the exact instance's models (rather than the
-                  // first-kind-match) so a custom text-gen instance like
-                  // `codex_personal` gets its own model list, not the
-                  // default Codex one.
-                  textGenInstanceEntry?.models ?? []
-                }
-                model={textGenModel}
-                prompt=""
-                onPromptChange={() => {}}
-                modelOptions={textGenModelOptions}
-                allowPromptInjectedEffort={false}
-                triggerVariant="outline"
-                triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
-                onModelOptionsChange={(nextOptions) => {
-                  updateSettings({
-                    textGenerationModelSelection: resolveAppModelSelectionState(
-                      {
-                        ...settings,
-                        textGenerationModelSelection: createModelSelection(
-                          textGenInstanceId,
-                          textGenModel,
-                          nextOptions,
-                        ),
-                      },
-                      serverProviders,
-                    ),
-                  });
-                }}
-              />
-            </div>
           }
         />
       </SettingsSection>

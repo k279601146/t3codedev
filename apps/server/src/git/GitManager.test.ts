@@ -19,7 +19,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
-import { GitCommandError, TextGenerationError } from "@t3tools/contracts";
+import { DEFAULT_MODEL, GitCommandError, TextGenerationError } from "@t3tools/contracts";
 import { type GitManagerShape } from "./GitManager.ts";
 import {
   GitHubCliError,
@@ -34,7 +34,6 @@ import * as GitHubSourceControlProvider from "../sourceControl/GitHubSourceContr
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { makeGitManager } from "./GitManager.ts";
 import { ServerConfig } from "../config.ts";
-import { ServerSettingsService } from "../serverSettings.ts";
 import {
   ProjectSetupScriptRunner,
   ProjectSetupScriptRunnerError,
@@ -658,8 +657,6 @@ function makeManager(input?: {
     prefix: "t3-git-manager-test-",
   });
 
-  const serverSettingsLayer = ServerSettingsService.layerTest();
-
   const vcsDriverLayer = GitVcsDriver.layer.pipe(
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(NodeServices.layer),
@@ -689,7 +686,6 @@ function makeManager(input?: {
       },
     ),
     vcsDriverLayer,
-    serverSettingsLayer,
   ).pipe(Layer.provideMerge(sourceControlRegistryLayer), Layer.provideMerge(NodeServices.layer));
 
   return makeGitManager().pipe(
@@ -1353,8 +1349,19 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, "README.md"), "hello\nworld\n");
+      let generatedModel: string | undefined;
 
-      const { manager } = yield* makeManager();
+      const { manager } = yield* makeManager({
+        textGeneration: {
+          generateCommitMessage: (input) => {
+            generatedModel = input.modelSelection.model;
+            return Effect.succeed({
+              subject: "Implement stacked git actions",
+              body: "",
+            });
+          },
+        },
+      });
       const result = yield* runStackedAction(manager, {
         cwd: repoDir,
         action: "commit",
@@ -1375,6 +1382,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         },
       });
       expect(result.toast.title).toMatch(/^Committed [0-9a-f]{7}$/);
+      expect(generatedModel).toBe(DEFAULT_MODEL);
       expect(
         yield* runGit(repoDir, ["log", "-1", "--pretty=%s"]).pipe(
           Effect.map((result) => result.stdout.trim()),

@@ -170,9 +170,6 @@ const TRANSLATIONS = {
       "Require a second click on the inline archive action before a thread is archived.",
     "settings.deleteConfirmation": "Delete confirmation",
     "settings.deleteConfirmationDescription": "Ask before deleting a thread and its chat history.",
-    "settings.textGenerationModel": "Text generation model",
-    "settings.textGenerationModelDescription":
-      "Configure the model used for generated commit messages, PR titles, and similar Git text.",
     "settings.operationalTelemetry": "Basic operational telemetry",
     "settings.operationalTelemetryDescription":
       "Send install, version, platform, and limited error-summary signals. Code, prompts, file paths, secrets, and full logs are never sent.",
@@ -555,9 +552,6 @@ const TRANSLATIONS = {
     "settings.archiveConfirmationDescription": "归档会话前，要求再次点击内联归档操作。",
     "settings.deleteConfirmation": "删除确认",
     "settings.deleteConfirmationDescription": "删除会话及聊天历史前先询问确认。",
-    "settings.textGenerationModel": "文本生成模型",
-    "settings.textGenerationModelDescription":
-      "配置用于生成提交信息、PR 标题以及类似 Git 文案的模型。",
     "settings.operationalTelemetry": "基础运营统计",
     "settings.operationalTelemetryDescription":
       "发送安装、版本、平台和有限错误摘要信号。不会发送代码、提示词、文件路径、密钥或完整日志。",
