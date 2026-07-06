@@ -8,6 +8,7 @@ import { resilientFetch } from "@t3tools/shared/Net";
 import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
+  resolveCommercialEngineOpenAiBaseUrl,
   resolveCommercialEngineWebAuthBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import { parseCommercialGatewayModelListResponse } from "@t3tools/shared/commercialEngineModels";
@@ -39,7 +40,8 @@ export const listGatewayModels = makeIpcMethod({
 
     const { gatewayBaseUrl, ideJwt } = credentials.value;
     const baseUrl = gatewayBaseUrl || resolveCommercialEngineGatewayBaseUrl();
-    const modelsUrl = `${baseUrl.replace(/\/+$/, "")}/models`;
+    const openAiBaseUrl = resolveCommercialEngineOpenAiBaseUrl(baseUrl);
+    const modelsUrl = `${openAiBaseUrl.replace(/\/+$/, "")}/models`;
 
     const response = yield* Effect.tryPromise({
       try: () =>

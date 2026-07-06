@@ -338,8 +338,13 @@ function gatewayModelsUrl() {
     process.env.MYIDE_GATEWAY_BASE_URL ||
     process.env.MYIDE_API_URL ||
     "https://sub.bahew.com/v1"
-  ).replace(/\/+$/, "");
-  return `${baseUrl}/models`;
+  ).trim();
+  const url = new URL(baseUrl);
+  url.hash = "";
+  url.search = "";
+  const normalizedPath = url.pathname.replace(/\/+$/, "");
+  url.pathname = normalizedPath === "" ? "/v1" : normalizedPath;
+  return `${url.toString().replace(/\/$/, "")}/models`;
 }
 
 function readRecordString(record, key) {

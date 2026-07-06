@@ -155,6 +155,15 @@ export function resolveCommercialEngineIdeApiBaseUrlCandidates(gatewayBaseUrl: s
   return [primary];
 }
 
+export function resolveCommercialEngineOpenAiBaseUrl(gatewayBaseUrl: string): string {
+  const url = new URL(gatewayBaseUrl);
+  url.hash = "";
+  url.search = "";
+  const normalizedPath = url.pathname.replace(/\/+$/, "");
+  url.pathname = normalizedPath === "" ? "/v1" : normalizedPath;
+  return url.toString().replace(/\/$/, "");
+}
+
 export function resolveCommercialEngineIdeJwt(
   env: CommercialEngineEnv = getDefaultCommercialEngineEnv(),
 ): string | undefined {

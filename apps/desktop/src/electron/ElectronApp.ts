@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
+import desktopPackageJson from "../../package.json" with { type: "json" };
 
 export interface ElectronAppMetadata {
   readonly appVersion: string;
@@ -58,7 +59,7 @@ const addScopedAppListener = <Args extends ReadonlyArray<unknown>>(
 
 const make = ElectronApp.of({
   metadata: Effect.sync(() => ({
-    appVersion: Electron.app.getVersion(),
+    appVersion: resolveAppVersion(Electron.app.getVersion()),
     appPath: Electron.app.getAppPath(),
     isPackaged: Electron.app.isPackaged,
     resourcesPath: process.resourcesPath,
@@ -114,5 +115,10 @@ const make = ElectronApp.of({
     }),
   on: addScopedAppListener,
 });
+
+function resolveAppVersion(rawVersion: string): string {
+  const electronVersion = process.versions.electron;
+  return rawVersion === electronVersion ? desktopPackageJson.version : rawVersion;
+}
 
 export const layer = Layer.succeed(ElectronApp, make);

@@ -21,6 +21,7 @@ import {
   getCommercialEngineEnvVar,
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineOpenAiBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 
 /** Absolute packaged engine binary path injected by the Electron main process. */
@@ -68,6 +69,7 @@ export function resolveBundledEngineConfig(
   }
 
   const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(env);
+  const openAiBaseUrl = resolveCommercialEngineOpenAiBaseUrl(gatewayBaseUrl);
   const ideJwt = resolveCommercialEngineIdeJwt(env);
   const engineHome = getCommercialEngineEnvVar(env, ENV_ENGINE_HOME) || "";
   const configFlags: string[] = [];
@@ -76,7 +78,7 @@ export function resolveBundledEngineConfig(
     [`CODEX_MODEL_PROVIDERS_${COMMERCIAL_ENGINE_PROVIDER_ID.toUpperCase()}_NAME`]:
       PROVIDER_DISPLAY_NAME,
     [`CODEX_MODEL_PROVIDERS_${COMMERCIAL_ENGINE_PROVIDER_ID.toUpperCase()}_BASE_URL`]:
-      gatewayBaseUrl,
+      openAiBaseUrl,
     [`CODEX_MODEL_PROVIDERS_${COMMERCIAL_ENGINE_PROVIDER_ID.toUpperCase()}_WIRE_API`]:
       COMMERCIAL_ENGINE_WIRE_API,
     [`CODEX_MODEL_PROVIDERS_${COMMERCIAL_ENGINE_PROVIDER_ID.toUpperCase()}_ENV_KEY`]: ENV_IDE_JWT,
@@ -88,12 +90,12 @@ export function resolveBundledEngineConfig(
     CODEX_DISABLE_TELEMETRY: "true",
     CODEX_FEATURES_IMAGEGENEXT: "true",
     // Route built-in OpenAI provider traffic through the commercial gateway.
-    CODEX_OPENAI_BASE_URL: gatewayBaseUrl,
-    CODEX_CHATGPT_BASE_URL: gatewayBaseUrl,
-    CODEX_MODEL_PROVIDERS_OPENAI_BASE_URL: gatewayBaseUrl,
+    CODEX_OPENAI_BASE_URL: openAiBaseUrl,
+    CODEX_CHATGPT_BASE_URL: openAiBaseUrl,
+    CODEX_MODEL_PROVIDERS_OPENAI_BASE_URL: openAiBaseUrl,
     CODEX_MODEL_PROVIDERS_OPENAI_REQUIRES_OPENAI_AUTH: "false",
     CODEX_MODEL_PROVIDERS_OPENAI_ENV_KEY: ENV_IDE_JWT,
-    OPENAI_BASE_URL: gatewayBaseUrl,
+    OPENAI_BASE_URL: openAiBaseUrl,
   };
 
   if (ideJwt) {

@@ -22,6 +22,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineOpenAiBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import { sanitizeProviderErrorMessage } from "@t3tools/shared/providerErrors";
 import {
@@ -313,6 +314,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     const runCommercialGatewayJson = Effect.fn("runCodexJson.runCommercialGatewayJson")(
       function* () {
         const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
+        const openAiBaseUrl = resolveCommercialEngineOpenAiBaseUrl(gatewayBaseUrl);
         const ideJwt = resolveCommercialEngineIdeJwt(environment);
         if (!ideJwt) {
           return yield* new TextGenerationError({
@@ -323,7 +325,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
 
         const url = new URL(
           "chat/completions",
-          gatewayBaseUrl.endsWith("/") ? gatewayBaseUrl : `${gatewayBaseUrl}/`,
+          openAiBaseUrl.endsWith("/") ? openAiBaseUrl : `${openAiBaseUrl}/`,
         ).toString();
 
         type GatewayResult =

@@ -15,6 +15,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineOpenAiBaseUrl,
   resolveCommercialEngineWebAuthBaseUrl,
   resolveCommercialEngineWindowsSandboxMode,
 } from "./commercialEngine.ts";
@@ -76,6 +77,17 @@ describe("commercialEngine", () => {
     assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://sub.bahew.com/v1"), [
       "https://sub.bahew.com",
     ]);
+  });
+
+  it("derives OpenAI-compatible base URLs from gateway roots", () => {
+    assert.equal(
+      resolveCommercialEngineOpenAiBaseUrl("http://localhost:3000"),
+      "http://localhost:3000/v1",
+    );
+    assert.equal(
+      resolveCommercialEngineOpenAiBaseUrl("https://sub.bahew.com/v1"),
+      "https://sub.bahew.com/v1",
+    );
   });
 
   it("only resolves the IDE JWT environment variable as the AI bearer token", () => {

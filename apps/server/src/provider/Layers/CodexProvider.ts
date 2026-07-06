@@ -31,6 +31,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineIdeApiBaseUrlCandidates,
   resolveCommercialEngineIdeJwt,
+  resolveCommercialEngineOpenAiBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import { parseCommercialGatewayModelListResponse } from "@t3tools/shared/commercialEngineModels";
 import { buildCommercialUsageLimitSnapshot } from "@t3tools/shared/commercialUsage";
@@ -172,7 +173,8 @@ const CommercialGatewayUsageResponse = Schema.Struct({
 
 function commercialGatewayModelsUrl(environment: NodeJS.ProcessEnv): string {
   const baseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
-  return new URL("models", baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+  const openAiBaseUrl = resolveCommercialEngineOpenAiBaseUrl(baseUrl);
+  return new URL("models", openAiBaseUrl.endsWith("/") ? openAiBaseUrl : `${openAiBaseUrl}/`).toString();
 }
 
 function commercialGatewayAccountUrl(environment: NodeJS.ProcessEnv): string {

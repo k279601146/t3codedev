@@ -91,6 +91,17 @@ describe("ElectronApp", () => {
     }).pipe(Effect.provide(ElectronApp.layer)),
   );
 
+  it.effect("does not expose the Electron runtime version as the app version", () =>
+    Effect.gen(function* () {
+      getVersionMock.mockReturnValueOnce(process.versions.electron);
+
+      const electronApp = yield* ElectronApp.ElectronApp;
+      const metadata = yield* electronApp.metadata;
+
+      assert.equal(metadata.appVersion, "0.0.23");
+    }).pipe(Effect.provide(ElectronApp.layer)),
+  );
+
   it.effect("scopes app event listeners", () =>
     Effect.gen(function* () {
       const listener = vi.fn();

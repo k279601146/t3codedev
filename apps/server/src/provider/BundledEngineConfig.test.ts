@@ -21,7 +21,7 @@ describe("BundledEngineConfig", () => {
     const config = resolveBundledEngineConfig({
       MYIDE_ENGINE_PATH: "/opt/myide/ai-engine",
       MYIDE_ENGINE_HOME: "/home/user/.myide/agent-data",
-      MYIDE_GATEWAY_BASE_URL: "https://api.example.com/v1",
+      MYIDE_GATEWAY_BASE_URL: "https://api.example.com",
       [COMMERCIAL_ENGINE_IDE_JWT_ENV]: "jwt-token",
       MYIDE_API_KEY: "legacy-real-key",
     });
@@ -37,6 +37,7 @@ describe("BundledEngineConfig", () => {
       config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_BASE_URL,
       "https://api.example.com/v1",
     );
+    assert.equal(config.spawnEnvPatch.OPENAI_BASE_URL, "https://api.example.com/v1");
     assert.equal(config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_WIRE_API, "responses");
     assert.equal(
       config.spawnEnvPatch.CODEX_MODEL_PROVIDERS_MYSERVICE_ENV_KEY,

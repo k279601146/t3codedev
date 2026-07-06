@@ -1,3 +1,4 @@
+import * as Cause from "effect/Cause";
 import {
   DesktopCommercialAuthBrowserSignInCancelInputSchema,
   DesktopCommercialAuthBrowserSignInInputSchema,
@@ -9,20 +10,44 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
+import * as DesktopObservability from "../../app/DesktopObservability.ts";
 import * as DesktopCommercialAuth from "../../settings/DesktopCommercialAuth.ts";
 import * as DesktopApm from "../../telemetry/DesktopApm.ts";
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";
 
 const BACKEND_AUTH_RESTART_TIMEOUT = Duration.seconds(3);
+const { logWarning: logCommercialAuthWarning } =
+  DesktopObservability.makeComponentLogger("desktop-commercial-auth-ipc");
 
-const restartBackendAfterAuthChange = Effect.fn("desktop.ipc.commercialAuth.restartBackend")(
+const stopBackendAfterAuthChange = Effect.fn("desktop.ipc.commercialAuth.stopBackend")(
   function* () {
     const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
     yield* backendManager.stop({ timeout: BACKEND_AUTH_RESTART_TIMEOUT });
+  },
+);
+
+const startBackendAfterAuthChange = Effect.fn("desktop.ipc.commercialAuth.startBackend")(
+  function* () {
+    const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
     yield* backendManager.start;
   },
 );
+
+const scheduleBackendRestartAfterAuthChange = Effect.fn(
+  "desktop.ipc.commercialAuth.scheduleBackendRestart",
+)(function* () {
+  yield* stopBackendAfterAuthChange();
+  yield* startBackendAfterAuthChange().pipe(
+    Effect.catchCause((cause) =>
+      logCommercialAuthWarning("commercial auth backend start failed after auth change", {
+        cause: Cause.pretty(cause),
+      }),
+    ),
+    Effect.forkDetach,
+    Effect.asVoid,
+  );
+});
 
 export const getCommercialAuthState = makeIpcMethod({
   channel: IpcChannels.GET_COMMERCIAL_AUTH_STATE_CHANNEL,
@@ -43,7 +68,7 @@ export const signInCommercialAuth = makeIpcMethod({
     const apm = yield* DesktopApm.DesktopApm;
     const state = yield* commercialAuth.signIn(input);
     yield* apm.heartbeat("sign_in");
-    yield* restartBackendAfterAuthChange();
+    yield* scheduleBackendRestartAfterAuthChange();
     return state;
   }),
 });
@@ -57,7 +82,7 @@ export const signInCommercialAuthWithBrowser = makeIpcMethod({
     const apm = yield* DesktopApm.DesktopApm;
     const state = yield* commercialAuth.signInWithBrowser(input);
     yield* apm.heartbeat("sign_in");
-    yield* restartBackendAfterAuthChange();
+    yield* scheduleBackendRestartAfterAuthChange();
     return state;
   }),
 });
@@ -79,7 +104,7 @@ export const signOutCommercialAuth = makeIpcMethod({
   handler: Effect.fn("desktop.ipc.commercialAuth.signOut")(function* () {
     const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
     const state = yield* commercialAuth.signOut;
-    yield* restartBackendAfterAuthChange();
+    yield* scheduleBackendRestartAfterAuthChange();
     return state;
   }),
 });

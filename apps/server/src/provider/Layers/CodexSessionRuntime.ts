@@ -32,6 +32,7 @@ import {
   COMMERCIAL_ENGINE_PROVIDER_ID,
   COMMERCIAL_ENGINE_WIRE_API,
   resolveCommercialEngineGatewayBaseUrl,
+  resolveCommercialEngineOpenAiBaseUrl,
 } from "@t3tools/shared/commercialEngine";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -463,11 +464,12 @@ function buildThreadStartParams(input: {
 function buildCommercialThreadConfigOverrides(
   environment: NodeJS.ProcessEnv,
 ): CodexThreadConfigOverrides {
+  const gatewayBaseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
   return {
     model_provider: COMMERCIAL_ENGINE_PROVIDER_ID,
     [`model_providers.${COMMERCIAL_ENGINE_PROVIDER_ID}`]: {
       name: COMMERCIAL_ENGINE_PROVIDER_DISPLAY_NAME,
-      base_url: resolveCommercialEngineGatewayBaseUrl(environment),
+      base_url: resolveCommercialEngineOpenAiBaseUrl(gatewayBaseUrl),
       env_key: COMMERCIAL_ENGINE_IDE_JWT_ENV,
       wire_api: COMMERCIAL_ENGINE_WIRE_API,
       requires_openai_auth: false,
