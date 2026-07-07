@@ -553,7 +553,7 @@ export function deriveTurnProcessCollapseState(
       return;
     }
 
-    const memberRowIds = span.memberRowIds.filter((id) => id !== span.lastResultRow?.id);
+    const memberRowIds = span.memberRowIds;
     if (memberRowIds.length === 0) {
       return;
     }
@@ -562,11 +562,7 @@ export function deriveTurnProcessCollapseState(
     for (const rowId of memberRowIds) {
       owner.set(rowId, ownerId);
     }
-    const hostRowId =
-      span.hostRowId && memberRowIds.includes(span.hostRowId) ? span.hostRowId : memberRowIds[0];
-    if (hostRowId) {
-      hostByRowId.set(hostRowId, ownerId);
-    }
+    hostByRowId.set(span.lastResultRow.id, ownerId);
 
     const completedAt = resolveResultCompletedAt(span.lastResultRow);
     if (span.firstProcessAt && completedAt) {

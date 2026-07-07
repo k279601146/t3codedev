@@ -72,7 +72,8 @@ type ProviderIntentEvent = Extract<
       | "thread.context-compact-requested"
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
-      | "thread.session-stop-requested";
+      | "thread.session-stop-requested"
+      | "thread.session-set";
   }
 >;
 
@@ -227,6 +228,7 @@ const make = Effect.gen(function* () {
   const deferredFirstTurnBranchEnhancements = new Map<ThreadId, DeferredFirstTurnBranchEnhancement>();
   const goalRetryAttempts = new Map<ThreadId, number>();
   const goalAdvanceFibers = new Map<ThreadId, Fiber.Fiber<void, never>>();
+  const userStoppedGoalThreadIds = new Set<ThreadId>();
   const defaultTextGenerationModelSelection = createModelSelection(
     ProviderInstanceId.make("codex"),
     DEFAULT_MODEL,
@@ -1160,6 +1162,7 @@ const make = Effect.gen(function* () {
   const processSessionStopRequested = Effect.fn("processSessionStopRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.session-stop-requested" }>,
   ) {
+    userStoppedGoalThreadIds.add(event.payload.threadId);
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
       return;
@@ -1231,14 +1234,25 @@ const make = Effect.gen(function* () {
           yield* cancelGoalAdvance(input.threadId);
           return;
         }
+        if (userStoppedGoalThreadIds.has(input.threadId)) {
+          yield* cancelGoalAdvance(input.threadId);
+          return;
+        }
 
         if (
-          thread.session?.status === "stopped" ||
           thread.session?.status === "starting" ||
           thread.session?.status === "running" ||
           thread.session?.activeTurnId != null ||
-          thread.latestTurn?.state === "running"
+          (thread.latestTurn?.state === "running" &&
+            thread.session?.activeTurnId === thread.latestTurn.turnId)
         ) {
+          const attempt = (goalRetryAttempts.get(input.threadId) ?? 0) + 1;
+          goalRetryAttempts.set(input.threadId, attempt);
+          yield* scheduleGoalAdvance({
+            threadId: input.threadId,
+            reason: "goal-thread-busy",
+            delay: goalRetryDelay(attempt),
+          });
           return;
         }
 
@@ -1273,7 +1287,7 @@ const make = Effect.gen(function* () {
               });
             }),
           ),
-          Effect.forkDetach,
+          Effect.forkScoped,
         );
       }).pipe(
         Effect.catchCause((cause) => {
@@ -1300,7 +1314,7 @@ const make = Effect.gen(function* () {
             });
           });
         }),
-        Effect.forkDetach,
+        Effect.forkScoped,
       );
       goalAdvanceFibers.set(input.threadId, fiber);
     });
@@ -1347,6 +1361,7 @@ const make = Effect.gen(function* () {
   const processGoalSetRequested = Effect.fn("processGoalSetRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.goal-set-requested" }>,
   ) {
+    userStoppedGoalThreadIds.delete(event.payload.threadId);
     const result = yield* providerService.setGoal({
       threadId: event.payload.threadId,
       objective: event.payload.objective,
@@ -1362,6 +1377,9 @@ const make = Effect.gen(function* () {
   const processGoalStatusSetRequested = Effect.fn("processGoalStatusSetRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.goal-status-set-requested" }>,
   ) {
+    if (event.payload.status === "active") {
+      userStoppedGoalThreadIds.delete(event.payload.threadId);
+    }
     const result = yield* providerService.setGoalStatus({
       threadId: event.payload.threadId,
       status: event.payload.status,
@@ -1376,6 +1394,7 @@ const make = Effect.gen(function* () {
   const processGoalClearRequested = Effect.fn("processGoalClearRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.goal-clear-requested" }>,
   ) {
+    userStoppedGoalThreadIds.delete(event.payload.threadId);
     yield* providerService.clearGoal({ threadId: event.payload.threadId });
     yield* syncGoal({
       threadId: event.payload.threadId,
@@ -1409,6 +1428,23 @@ const make = Effect.gen(function* () {
         );
         return;
       }
+      case "thread.session-set": {
+        if (
+          event.payload.session.status === "ready" ||
+          event.payload.session.status === "interrupted" ||
+          event.payload.session.status === "stopped" ||
+          event.payload.session.status === "error"
+        ) {
+          if (!userStoppedGoalThreadIds.has(event.payload.threadId)) {
+            yield* cancelGoalAdvance(event.payload.threadId);
+            yield* scheduleGoalAdvance({
+              threadId: event.payload.threadId,
+              reason: "session-available",
+            });
+          }
+        }
+        return;
+      }
       case "thread.goal-set-requested":
         yield* processGoalSetRequested(event);
         return;
@@ -1419,6 +1455,7 @@ const make = Effect.gen(function* () {
         yield* processGoalClearRequested(event);
         return;
       case "thread.turn-start-requested":
+        userStoppedGoalThreadIds.delete(event.payload.threadId);
         yield* processTurnStartRequested(event);
         return;
       case "thread.turn-steer-requested":
@@ -1470,7 +1507,8 @@ const make = Effect.gen(function* () {
         event.type === "thread.context-compact-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
-        event.type === "thread.session-stop-requested"
+        event.type === "thread.session-stop-requested" ||
+        event.type === "thread.session-set"
       ) {
         return yield* worker.enqueue(event);
       }

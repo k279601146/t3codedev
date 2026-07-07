@@ -696,6 +696,13 @@ describe("MessagesTimeline", () => {
     expect(creationSummaryCount).toBe(1);
     expect(markup).not.toContain("已运行 2 条命令，已创建 4 个文件");
     expect(markup).not.toContain("已编辑 4 个文件");
+
+    const assistantTextIndex = markup.indexOf("Done");
+    const processSummaryIndex = markup.indexOf("已处理");
+    const fileSummaryIndex = markup.indexOf("已创建 4 个文件");
+    expect(assistantTextIndex).toBeGreaterThanOrEqual(0);
+    expect(processSummaryIndex).toBeGreaterThan(assistantTextIndex);
+    expect(fileSummaryIndex).toBeGreaterThan(processSummaryIndex);
   });
 
   it("filters invalid checkpoint file paths before rendering assistant file summaries", async () => {
@@ -1087,7 +1094,7 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("运行时错误");
     expect(markup).not.toContain("重新连接失败");
-    expect(markup).toContain("账户余额不足，请充值后重试。");
+    expect(markup).toContain("账户余额不足，请充值或等待额度刷新后继续使用。");
     expect(markup).not.toContain("unexpected status");
     expect(markup).not.toContain("url:");
     expect(markup).toContain('data-runtime-issue-card="true"');

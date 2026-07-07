@@ -317,8 +317,8 @@ describe("deriveTurnProcessCollapseState", () => {
 
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("assistant-1");
     expect(state.ownerAssistantMessageIdByRowId.has("row-plan")).toBe(false);
-    expect(state.ownerAssistantMessageIdByRowId.has("row-assistant")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("assistant-1");
+    expect(state.ownerAssistantMessageIdByRowId.get("row-assistant")).toBe("assistant-1");
+    expect(state.summaryButtonHostByRowId.get("row-assistant")).toBe("assistant-1");
     expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("7.0s");
   });
 
@@ -411,10 +411,11 @@ describe("deriveTurnProcessCollapseState", () => {
     ]);
 
     expect(state.ownerAssistantMessageIdByRowId.get("row-work-before")).toBe("assistant-good");
-    expect(state.ownerAssistantMessageIdByRowId.has("row-good")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.get("row-good")).toBe("assistant-good");
     expect(state.ownerAssistantMessageIdByRowId.get("row-work-after")).toBe("assistant-good");
+    expect(state.summaryButtonHostByRowId.get("row-good")).toBe("assistant-good");
     expect(state.summaryButtonHostByRowId.has("row-work-before")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-work-after")).toBe("assistant-good");
+    expect(state.summaryButtonHostByRowId.has("row-work-after")).toBe(false);
     expect(state.summaryAssistantMessageIds.size).toBe(1);
   });
 
@@ -553,10 +554,10 @@ describe("deriveTurnProcessCollapseState", () => {
     expect(state.ownerAssistantMessageIdByRowId.get("row-process")).toBe("assistant-final");
     expect(state.ownerAssistantMessageIdByRowId.get("row-processing")).toBe("assistant-final");
     expect(state.ownerAssistantMessageIdByRowId.get("row-write")).toBe("assistant-final");
-    expect(state.ownerAssistantMessageIdByRowId.has("row-final")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.get("row-final")).toBe("assistant-final");
     expect(state.summaryButtonHostByRowId.has("row-fetch")).toBe(false);
     expect(state.summaryButtonHostByRowId.has("row-process")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-write")).toBe("assistant-final");
+    expect(state.summaryButtonHostByRowId.get("row-final")).toBe("assistant-final");
     expect(state.elapsedByAssistantMessageId.get("assistant-final")).toBe("1m");
   });
 
@@ -636,7 +637,7 @@ describe("deriveTurnProcessCollapseState", () => {
     expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.has("row-image")).toBe(false);
-    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-image");
+    expect(state.summaryButtonHostByRowId.get("row-image")).toBe("row-image");
     expect(state.elapsedByAssistantMessageId.get("row-image")).toBe("9.0s");
   });
 });

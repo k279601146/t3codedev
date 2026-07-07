@@ -278,11 +278,19 @@ type TimelineSearchWorkGroupDetailsRow = {
   groupedEntries: TimelineWorkEntry[];
 };
 
+type TimelineAssistantChangedFilesRow = {
+  kind: "assistant-changed-files";
+  id: string;
+  createdAt: string;
+  turnSummary: TurnDiffSummary;
+};
+
 type TimelineRenderableRow =
   | MessagesTimelineRow
   | TimelineWorkGroupSummaryRow
   | TimelineWorkEntryRow
-  | TimelineSearchWorkGroupDetailsRow;
+  | TimelineSearchWorkGroupDetailsRow
+  | TimelineAssistantChangedFilesRow;
 
 type TimelineTurnProcessSpanRow = {
   kind: "turn-process-span";
@@ -290,6 +298,7 @@ type TimelineTurnProcessSpanRow = {
   createdAt: string;
   ownerId: string;
   memberRows: TimelineRenderableRow[];
+  changedFilesRow?: TimelineAssistantChangedFilesRow | undefined;
 };
 
 type TimelineRow = TimelineRenderableRow | TimelineTurnProcessSpanRow;
@@ -392,6 +401,13 @@ function isTimelineRenderableRowUnchanged(
         readonlyArrayItemsEqual(previous.groupedEntries, typedNext.groupedEntries)
       );
     }
+    case "assistant-changed-files": {
+      const typedNext = next as typeof previous;
+      return (
+        previous.createdAt === typedNext.createdAt &&
+        previous.turnSummary === typedNext.turnSummary
+      );
+    }
     default:
       return previous === next;
   }
@@ -405,6 +421,9 @@ function isMaterializedTimelineRowUnchanged(previous: TimelineRow, next: Timelin
 
   const typedNext = next as typeof previous;
   if (previous.createdAt !== typedNext.createdAt || previous.ownerId !== typedNext.ownerId) {
+    return false;
+  }
+  if (previous.changedFilesRow !== typedNext.changedFilesRow) {
     return false;
   }
   if (previous.memberRows.length !== typedNext.memberRows.length) {
@@ -583,7 +602,21 @@ export const MessagesTimeline = memo(
   const materializedRows = useMemo<TimelineRow[]>(() => {
     const nextRows: TimelineRow[] = [];
     const processMemberRowsByOwnerId = new Map<string, TimelineRenderableRow[]>();
+    const changedFilesRowsByAssistantId = new Map<string, TimelineAssistantChangedFilesRow>();
     for (const row of effectiveStableRows) {
+      if (
+        row.kind === "message" &&
+        row.message.role === "assistant" &&
+        row.assistantTurnDiffSummary
+      ) {
+        changedFilesRowsByAssistantId.set(row.message.id, {
+          kind: "assistant-changed-files",
+          id: `${row.id}:changed-files`,
+          createdAt: row.message.completedAt ?? row.createdAt,
+          turnSummary: row.assistantTurnDiffSummary,
+        });
+      }
+
       const ownerId = ownerAssistantMessageIdByRowId.get(row.id);
       if (!ownerId) continue;
       const memberRows = processMemberRowsByOwnerId.get(ownerId) ?? [];
@@ -596,12 +629,14 @@ export const MessagesTimeline = memo(
       if (ownerId) {
         if (summaryButtonHostByRowId.get(row.id) === ownerId) {
           const memberRows = processMemberRowsByOwnerId.get(ownerId) ?? [row];
+          const changedFilesRow = changedFilesRowsByAssistantId.get(ownerId);
           nextRows.push({
             kind: "turn-process-span",
             id: `turn-process:${ownerId}:${row.id}`,
             createdAt: row.createdAt ?? "",
             ownerId,
             memberRows,
+            ...(changedFilesRow ? { changedFilesRow } : {}),
           });
         }
         continue;
@@ -1231,6 +1266,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 });
 
 function TimelineRowBody({ row }: { row: TimelineRenderableRow }) {
+  const ctx = use(TimelineRowCtx);
   return (
     <div
       className={cn(
@@ -1257,6 +1293,21 @@ function TimelineRowBody({ row }: { row: TimelineRenderableRow }) {
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
       ) : null}
+      {row.kind === "message" &&
+      row.message.role === "assistant" &&
+      row.assistantTurnDiffSummary &&
+      !ctx.summaryAssistantMessageIds.has(row.message.id) ? (
+        <AssistantChangedFilesSection
+          turnSummary={row.assistantTurnDiffSummary}
+          markdownCwd={ctx.markdownCwd}
+          workspaceRoot={ctx.workspaceRoot}
+          onOpenFile={ctx.onOpenMarkdownFile}
+          onOpenTurnDiff={ctx.onOpenTurnDiff}
+        />
+      ) : null}
+      {row.kind === "assistant-changed-files" ? (
+        <AssistantChangedFilesTimelineRow row={row} />
+      ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "image-generation" ? <ImageGenerationTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
@@ -1268,18 +1319,27 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(row.ownerId);
   const animate = ctx.manuallyToggledAssistantMessageIds.has(row.ownerId);
+  const isOwnerRow = (memberRow: TimelineRenderableRow) =>
+    memberRow.id === row.ownerId ||
+    (memberRow.kind === "message" &&
+      memberRow.message.role === "assistant" &&
+      memberRow.message.id === row.ownerId);
+  const ownerRow = row.memberRows.find(isOwnerRow);
+  const processRows = row.memberRows.filter((memberRow) => !isOwnerRow(memberRow));
   return (
     <div
       className="[overflow-anchor:none]"
       data-turn-process-span="true"
       data-turn-process-owner-id={row.ownerId}
     >
+      {ownerRow ? <TimelineRowBody row={ownerRow} /> : null}
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
       <CollapsibleMember collapsed={isCollapsed} animate={animate}>
-        {row.memberRows.map((memberRow) => (
+        {processRows.map((memberRow) => (
           <TimelineRowBody key={memberRow.id} row={memberRow} />
         ))}
       </CollapsibleMember>
+      {row.changedFilesRow ? <TimelineRowBody row={row.changedFilesRow} /> : null}
     </div>
   );
 }
@@ -1845,13 +1905,6 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           skills={ctx.skills}
           onOpenFile={ctx.onOpenMarkdownFile}
         />
-        <AssistantChangedFilesSection
-          turnSummary={row.assistantTurnDiffSummary}
-          markdownCwd={ctx.markdownCwd}
-          workspaceRoot={ctx.workspaceRoot}
-          onOpenFile={ctx.onOpenMarkdownFile}
-          onOpenTurnDiff={ctx.onOpenTurnDiff}
-        />
         {previewUrl ? <UrlPreviewCard url={previewUrl} /> : null}
         {row.showAssistantMeta ? (
           <div className="mt-1 flex items-center gap-2">
@@ -1879,6 +1932,23 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       </div>
       {row.showCompletionDivider && <AssistantCompletionDivider />}
     </>
+  );
+}
+
+function AssistantChangedFilesTimelineRow({
+  row,
+}: {
+  row: TimelineAssistantChangedFilesRow;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <AssistantChangedFilesSection
+      turnSummary={row.turnSummary}
+      markdownCwd={ctx.markdownCwd}
+      workspaceRoot={ctx.workspaceRoot}
+      onOpenFile={ctx.onOpenMarkdownFile}
+      onOpenTurnDiff={ctx.onOpenTurnDiff}
+    />
   );
 }
 
