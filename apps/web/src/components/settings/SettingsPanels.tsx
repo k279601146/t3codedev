@@ -9,7 +9,7 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type DesktopCommercialAuthState,
   type DesktopUpdateChannel,
@@ -72,6 +72,7 @@ import {
   getFriendlyProviderInfrastructureMessage,
   getServerProviderLabel,
 } from "../../providerStatusCopy";
+import { refreshProvidersOnceForSettings } from "./SettingsPanels.logic";
 
 const THEME_OPTIONS = [
   {
@@ -116,7 +117,6 @@ const PERSONALITY_OPTIONS: ReadonlyArray<{
     descriptionKey: "settings.personalityNoneDescription",
   },
 ];
-
 function languageOptionLabel(
   value: (typeof LANGUAGE_OPTIONS)[number],
   t: ReturnType<typeof useI18n>["t"],
@@ -1043,19 +1043,11 @@ export function GeneralSettingsPanel() {
   const { updateSettings } = useUpdateSettings();
   const { t } = useI18n();
   const serverProviders = useServerProviders();
-  const refreshingProvidersRef = useRef(false);
-
   const refreshProviders = useCallback(() => {
-    if (refreshingProvidersRef.current) return;
-    refreshingProvidersRef.current = true;
-    void ensureLocalApi()
-      .server.refreshProviders()
-      .catch((error: unknown) => {
-        console.warn("Failed to refresh providers", error);
-      })
-      .finally(() => {
-        refreshingProvidersRef.current = false;
-      });
+    refreshProvidersOnceForSettings({
+      refresh: () => ensureLocalApi().server.refreshProviders(),
+      onError: (error) => console.warn("Failed to refresh providers", error),
+    });
   }, []);
 
   return (
@@ -1670,19 +1662,11 @@ export function AboutSettingsPanel() {
 
 export function ProviderSettingsPanel() {
   const serverProviders = useServerProviders();
-  const refreshingRef = useRef(false);
-
   const refreshProviders = useCallback(() => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
-    void ensureLocalApi()
-      .server.refreshProviders()
-      .catch((error: unknown) => {
-        console.warn("Failed to refresh providers", error);
-      })
-      .finally(() => {
-        refreshingRef.current = false;
-      });
+    refreshProvidersOnceForSettings({
+      refresh: () => ensureLocalApi().server.refreshProviders(),
+      onError: (error) => console.warn("Failed to refresh providers", error),
+    });
   }, []);
 
   return (

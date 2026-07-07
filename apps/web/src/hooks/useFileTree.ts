@@ -14,7 +14,10 @@ export function useFileTree(environmentId: EnvironmentId | null | undefined, cwd
       return api.projects.listDirectory({ cwd, depth: 6 });
     },
     enabled: Boolean(environmentId && cwd),
-    staleTime: 30_000,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: 2,
     retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 4_000),
     placeholderData: (previous) => previous ?? undefined,

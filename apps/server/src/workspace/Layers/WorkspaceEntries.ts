@@ -10,8 +10,13 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 
-import { type FilesystemBrowseInput, type ProjectEntry } from "@t3tools/contracts";
+import {
+  type FilesystemBrowseInput,
+  type ProjectEntry,
+  type ProjectListDirectoryResult,
+} from "@t3tools/contracts";
 import type { ProjectDirectoryTreeNode } from "@t3tools/contracts";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { isWindowsSandboxWorkspaceArtifactRootName } from "@t3tools/shared/windowsSandboxArtifacts";
@@ -33,6 +38,8 @@ import { WorkspacePaths } from "../Services/WorkspacePaths.ts";
 
 const WORKSPACE_CACHE_TTL_MS = 15_000;
 const WORKSPACE_CACHE_MAX_KEYS = 4;
+const DIRECTORY_TREE_CACHE_TTL_MS = 15_000;
+const DIRECTORY_TREE_CACHE_MAX_KEYS = 8;
 const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_SCAN_READDIR_CONCURRENCY = 32;
 const IGNORED_DIRECTORY_NAMES = new Set([
@@ -63,6 +70,24 @@ type RankedWorkspaceEntry = RankedSearchResult<SearchableWorkspaceEntry>;
 
 function toPosixPath(input: string): string {
   return input.replaceAll("\\", "/");
+}
+
+function directoryTreeCacheKey(cwd: string, depth: number): string {
+  return JSON.stringify({ cwd, depth });
+}
+
+function parseDirectoryTreeCacheKey(cacheKey: string): {
+  readonly cwd: string;
+  readonly depth: number;
+} | null {
+  try {
+    const parsed = JSON.parse(cacheKey) as { readonly cwd?: unknown; readonly depth?: unknown };
+    return typeof parsed.cwd === "string" && typeof parsed.depth === "number"
+      ? { cwd: parsed.cwd, depth: parsed.depth }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function expandHomePath(input: string, path: Path.Path): string {
@@ -416,6 +441,29 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
         Exit.isSuccess(exit) ? Duration.millis(WORKSPACE_CACHE_TTL_MS) : Duration.zero,
     },
   );
+  const directoryTreeCacheKeys = yield* Ref.make(new Set<string>());
+
+  const directoryTreeCache = yield* Cache.makeWith<
+    string,
+    ProjectListDirectoryResult,
+    WorkspaceEntriesError
+  >(
+    (cacheKey) =>
+      Effect.gen(function* () {
+        const parsed = JSON.parse(cacheKey) as { readonly cwd: string; readonly depth: number };
+        const entryCount = { count: 0 };
+        const tree = yield* buildDirectoryTree(parsed.cwd, "", parsed.depth, entryCount);
+        return {
+          tree,
+          truncated: entryCount.count >= DIRECTORY_TREE_MAX_ENTRY_COUNT,
+        };
+      }),
+    {
+      capacity: DIRECTORY_TREE_CACHE_MAX_KEYS,
+      timeToLive: (exit) =>
+        Exit.isSuccess(exit) ? Duration.millis(DIRECTORY_TREE_CACHE_TTL_MS) : Duration.zero,
+    },
+  );
 
   const normalizeWorkspaceRoot = Effect.fn("WorkspaceEntries.normalizeWorkspaceRoot")(function* (
     cwd: string,
@@ -442,6 +490,21 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
       if (normalizedCwd !== cwd) {
         yield* Cache.invalidate(workspaceIndexCache, normalizedCwd);
       }
+      const keys = yield* Ref.get(directoryTreeCacheKeys);
+      const keysToInvalidate = [...keys].filter((key) => {
+        const parsed = parseDirectoryTreeCacheKey(key);
+        return parsed?.cwd === cwd || parsed?.cwd === normalizedCwd;
+      });
+      yield* Effect.forEach(keysToInvalidate, (key) => Cache.invalidate(directoryTreeCache, key), {
+        discard: true,
+      });
+      yield* Ref.update(directoryTreeCacheKeys, (current) => {
+        const next = new Set(current);
+        for (const key of keysToInvalidate) {
+          next.delete(key);
+        }
+        return next;
+      });
     },
   );
 
@@ -567,12 +630,9 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
     "WorkspaceEntries.listDirectory",
   )(function* (input) {
     const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
-    const entryCount = { count: 0 };
-    const tree = yield* buildDirectoryTree(normalizedCwd, "", input.depth, entryCount);
-    return {
-      tree,
-      truncated: entryCount.count >= DIRECTORY_TREE_MAX_ENTRY_COUNT,
-    };
+    const cacheKey = directoryTreeCacheKey(normalizedCwd, input.depth);
+    yield* Ref.update(directoryTreeCacheKeys, (keys) => new Set(keys).add(cacheKey));
+    return yield* Cache.get(directoryTreeCache, cacheKey);
   });
 
   const search: WorkspaceEntriesShape["search"] = Effect.fn("WorkspaceEntries.search")(

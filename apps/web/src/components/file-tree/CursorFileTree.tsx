@@ -8,12 +8,20 @@ import {
   XIcon,
 } from "lucide-react";
 import type { EnvironmentId, ProjectDirectoryTreeNode } from "@t3tools/contracts";
+import { LegendList } from "@legendapp/list/react";
 import { Button } from "../ui/button";
 import { useFileTree } from "../../hooks/useFileTree";
 import { cn } from "../../lib/utils";
 import { useEditorStore } from "../../editorStore";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  flattenVisibleFileTreeNodes,
+  type VisibleFileTreeNode,
+} from "./CursorFileTree.logic";
+
+const VIRTUALIZED_FILE_TREE_THRESHOLD = 200;
+const FILE_TREE_ROW_HEIGHT = 28;
 
 interface CursorFileTreeProps {
   projectKey: string;
@@ -67,7 +75,15 @@ export function CursorFileTree({
     });
   }, [rootPath]);
 
-  const renderedNodes = useMemo(() => root?.children ?? [], [root?.children]);
+  const renderedNodes = useMemo(
+    () =>
+      flattenVisibleFileTreeNodes({
+        nodes: root?.children ?? [],
+        openDirectories,
+      }),
+    [openDirectories, root?.children],
+  );
+  const shouldVirtualize = renderedNodes.length > VIRTUALIZED_FILE_TREE_THRESHOLD;
 
   return (
     <section className="border-b border-border/60 last:border-b-0" data-project-key={projectKey}>
@@ -123,17 +139,39 @@ export function CursorFileTree({
         <div className="py-1.5">
           {root ? (
             renderedNodes.length > 0 ? (
-              renderedNodes.map((node) => (
-                <CursorFileTreeNode
-                  key={node.path}
-                  node={node}
-                  depth={0}
-                  activeTabPath={activeTabPath}
-                  openDirectories={openDirectories}
-                  setOpenDirectories={setOpenDirectories}
-                  onOpenFile={onOpenFile}
+              shouldVirtualize ? (
+                <LegendList
+                  data={renderedNodes}
+                  estimatedItemSize={FILE_TREE_ROW_HEIGHT}
+                  recycleItems
+                  style={{
+                    height: Math.min(520, renderedNodes.length * FILE_TREE_ROW_HEIGHT),
+                  }}
+                  renderItem={({ item }) => (
+                    <CursorFileTreeNode
+                      node={item.node}
+                      depth={item.depth}
+                      activeTabPath={activeTabPath}
+                      openDirectories={openDirectories}
+                      setOpenDirectories={setOpenDirectories}
+                      onOpenFile={onOpenFile}
+                    />
+                  )}
+                  keyExtractor={(item) => item.node.path}
                 />
-              ))
+              ) : (
+                renderedNodes.map((item) => (
+                  <CursorFileTreeNode
+                    key={item.node.path}
+                    node={item.node}
+                    depth={item.depth}
+                    activeTabPath={activeTabPath}
+                    openDirectories={openDirectories}
+                    setOpenDirectories={setOpenDirectories}
+                    onOpenFile={onOpenFile}
+                  />
+                ))
+              )
             ) : (
               <div className="px-4 py-3 text-xs text-muted-foreground">No files</div>
             )
@@ -232,19 +270,6 @@ function CursorFileTreeNode({
         </span>
         <span className="min-w-0 truncate">{node.name}</span>
       </button>
-      {isFolder && isOpen
-        ? (node.children ?? []).map((child) => (
-            <CursorFileTreeNode
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              activeTabPath={activeTabPath}
-              openDirectories={openDirectories}
-              setOpenDirectories={setOpenDirectories}
-              onOpenFile={onOpenFile}
-            />
-          ))
-        : null}
     </>
   );
 }

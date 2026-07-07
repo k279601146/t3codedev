@@ -25,6 +25,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
 import { toastManager } from "~/components/ui/toast";
+import { useDebouncedValue } from "~/hooks/useDebouncedValue";
 
 import { CatalogMetaRow } from "./SkillCatalogBadges";
 import { SkillDetailDialog } from "./SkillDetailDialog";
@@ -32,6 +33,7 @@ import { SkillDetailDialog } from "./SkillDetailDialog";
 const SKILLS_LIST_QUERY = ["skills", "list"] as const;
 const SKILLS_CATALOG_QUERY = ["skills", "catalog"] as const;
 const CATALOG_PAGE_SIZE = 30;
+const CATALOG_SEARCH_DEBOUNCE_MS = 280;
 
 type CatalogSortBy = "updated" | "downloads" | "favorites";
 
@@ -184,6 +186,7 @@ export function SkillsPage({
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
   const [uninstallingSkillName, setUninstallingSkillName] = useState<string | null>(null);
   const trimmedSearch = search.trim();
+  const debouncedSearch = useDebouncedValue(trimmedSearch, CATALOG_SEARCH_DEBOUNCE_MS);
 
   const installedQuery = useQuery({
     queryKey: SKILLS_LIST_QUERY,
@@ -205,7 +208,7 @@ export function SkillsPage({
         category: selectedCategory,
         page: catalogPage,
         pageSize: CATALOG_PAGE_SIZE,
-        query: trimmedSearch,
+        query: debouncedSearch,
         sortBy: catalogSortBy,
       },
     ] as const,
@@ -216,7 +219,7 @@ export function SkillsPage({
         sortBy: catalogSortBy,
         order: "desc",
         ...(selectedCategory !== "all" ? { category: selectedCategory } : {}),
-        ...(trimmedSearch ? { query: trimmedSearch } : {}),
+        ...(debouncedSearch ? { query: debouncedSearch } : {}),
       }),
     staleTime: 60_000,
   });
@@ -230,7 +233,7 @@ export function SkillsPage({
         sortBy: catalogSortBy,
         order: "desc",
         ...(selectedCategory !== "all" ? { category: selectedCategory } : {}),
-        ...(trimmedSearch ? { query: trimmedSearch } : {}),
+        ...(debouncedSearch ? { query: debouncedSearch } : {}),
       }),
     onSuccess: () => {
       resetCatalogPagination();
@@ -411,7 +414,7 @@ export function SkillsPage({
 
   useEffect(() => {
     resetCatalogPagination();
-  }, [trimmedSearch, selectedCategory, catalogSortBy, resetCatalogPagination]);
+  }, [debouncedSearch, selectedCategory, catalogSortBy, resetCatalogPagination]);
 
   useEffect(() => {
     const data = catalogQuery.data;

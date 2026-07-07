@@ -7,11 +7,13 @@
  */
 
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import { HttpClient } from "effect/unstable/http";
 
 import type { SkillCatalogCategory } from "@t3tools/contracts";
@@ -41,6 +43,28 @@ const BUNDLED_SKILL_SOURCE: SkillSource = {
   ref: "bundled",
   curatedPath: "skills",
 };
+const SKILLS_CATALOG_CACHE_TTL_MS = 60_000;
+const BUNDLED_SKILLS_CACHE_TTL_MS = 60_000;
+
+interface CacheEntry<T> {
+  readonly expiresAtMs: number;
+  readonly value: T;
+}
+
+function isCacheEntryFresh<T>(entry: CacheEntry<T> | undefined, nowMs: number): entry is CacheEntry<T> {
+  return entry !== undefined && entry.expiresAtMs > nowMs;
+}
+
+function catalogCacheKey(options?: SkillCatalogQuery): string {
+  return JSON.stringify({
+    category: options?.category?.trim() ?? "",
+    order: options?.order ?? "",
+    page: options?.page ?? null,
+    pageSize: options?.pageSize ?? null,
+    query: options?.query?.trim() ?? "",
+    sortBy: options?.sortBy ?? "",
+  });
+}
 
 export interface SourceCatalogSnapshot {
   readonly source: SkillSource;
@@ -99,6 +123,10 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
   const path = yield* Path.Path;
   const httpClient = yield* HttpClient.HttpClient;
   const providers: ReadonlyArray<SkillCatalogProvider> = [makeSkillHubCatalogProvider(httpClient)];
+  const catalogCacheRef = yield* Ref.make(new Map<string, CacheEntry<SkillsCatalogState>>());
+  const bundledCacheRef = yield* Ref.make<CacheEntry<ReadonlyArray<CatalogSkillEntry>> | null>(
+    null,
+  );
 
   const resolveBundledRoot = () =>
     resolveBundledExtensionsRoot().pipe(
@@ -176,19 +204,35 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
     },
   );
 
-  const buildBundledCatalogSnapshot = Effect.fn("buildBundledCatalogSnapshot")(function* (
-    query?: SkillCatalogQuery,
+  const loadBundledSkills = Effect.fn("SkillsCatalogService.loadBundledSkills")(function* (
+    options?: { readonly force?: boolean | undefined },
   ) {
+    const nowMs = yield* Clock.currentTimeMillis;
+    const cached = yield* Ref.get(bundledCacheRef);
+    if (options?.force !== true && cached !== null && cached.expiresAtMs > nowMs) {
+      return cached.value;
+    }
     const bundledRoot = yield* resolveBundledRoot().pipe(Effect.orElseSucceed(() => undefined));
-    if (!bundledRoot) return undefined;
+    if (!bundledRoot) return [] as ReadonlyArray<CatalogSkillEntry>;
     const skills = yield* buildCatalogFromSkillsDirectory({
       source: BUNDLED_SKILL_SOURCE,
       skillsDir: path.join(bundledRoot, "skills"),
       repoPathPrefix: "skills",
     });
+    yield* Ref.set(bundledCacheRef, {
+      expiresAtMs: nowMs + BUNDLED_SKILLS_CACHE_TTL_MS,
+      value: skills,
+    });
+    return skills;
+  });
+
+  const buildBundledCatalogSnapshot = Effect.fn("buildBundledCatalogSnapshot")(function* (
+    query?: SkillCatalogQuery,
+  ) {
+    const skills = yield* loadBundledSkills({ force: query?.force });
     const filtered = filterCatalogEntries(skills, query);
     if (filtered.length === 0) return undefined;
-    const fetchedAt = yield* Effect.sync(() => Date.now());
+    const fetchedAt = yield* Clock.currentTimeMillis;
     return {
       source: BUNDLED_SKILL_SOURCE,
       fetchedAt,
@@ -196,60 +240,81 @@ const make = Effect.fn("makeSkillsCatalogService")(function* () {
     } satisfies SourceCatalogSnapshot;
   });
 
+  const loadCatalog = Effect.fn("SkillsCatalogService.loadCatalog")(function* (
+    options?: SkillCatalogQuery,
+  ) {
+    const page = clampPositiveInteger(options?.page, 1, 1, 500);
+    const pageSize = clampPositiveInteger(options?.pageSize, 20, 1, 100);
+    const results = yield* Effect.forEach(
+      providers,
+      (provider) =>
+        provider.list({ ...options, page, pageSize }).pipe(
+          Effect.matchEffect({
+            onFailure: (cause) =>
+              Effect.logWarning("skills.catalog provider failed", {
+                sourceId: provider.sourceId,
+                detail: String(cause),
+              }).pipe(Effect.as({ ok: false as const, provider })),
+            onSuccess: (result) => Effect.succeed({ ok: true as const, provider, result }),
+          }),
+        ),
+      { concurrency: 2 },
+    );
+
+    const snapshots: SourceCatalogSnapshot[] = [];
+    const categories: SkillCatalogCategory[] = [];
+    let total = 0;
+    let fetchedAt = 0;
+    let hasErrors = false;
+    for (const result of results) {
+      if (!result.ok) {
+        hasErrors = true;
+        continue;
+      }
+      if (result.result.fetchedAt > fetchedAt) fetchedAt = result.result.fetchedAt;
+      total += result.result.total;
+      categories.push(...result.result.categories);
+      snapshots.push({
+        source: providerSource(result.provider),
+        fetchedAt: result.result.fetchedAt,
+        skills: result.result.items,
+      });
+    }
+
+    const bundledSnapshot = yield* buildBundledCatalogSnapshot(options);
+    if (bundledSnapshot) {
+      snapshots.push(bundledSnapshot);
+      total += bundledSnapshot.skills.length;
+    }
+
+    return {
+      snapshots,
+      categories: dedupeCategories(categories),
+      total,
+      page,
+      pageSize,
+      hasErrors,
+    } satisfies SkillsCatalogState;
+  });
+
   const getCatalog: SkillsCatalogServiceShape["getCatalog"] = (options) =>
     Effect.gen(function* () {
-      const page = clampPositiveInteger(options?.page, 1, 1, 500);
-      const pageSize = clampPositiveInteger(options?.pageSize, 20, 1, 100);
-      const results = yield* Effect.forEach(
-        providers,
-        (provider) =>
-          provider.list({ ...options, page, pageSize }).pipe(
-            Effect.matchEffect({
-              onFailure: (cause) =>
-                Effect.logWarning("skills.catalog provider failed", {
-                  sourceId: provider.sourceId,
-                  detail: String(cause),
-                }).pipe(Effect.as({ ok: false as const, provider })),
-              onSuccess: (result) => Effect.succeed({ ok: true as const, provider, result }),
-            }),
-          ),
-        { concurrency: 2 },
-      );
-
-      const snapshots: SourceCatalogSnapshot[] = [];
-      const categories: SkillCatalogCategory[] = [];
-      let total = 0;
-      let fetchedAt = 0;
-      let hasErrors = false;
-      for (const result of results) {
-        if (!result.ok) {
-          hasErrors = true;
-          continue;
-        }
-        if (result.result.fetchedAt > fetchedAt) fetchedAt = result.result.fetchedAt;
-        total += result.result.total;
-        categories.push(...result.result.categories);
-        snapshots.push({
-          source: providerSource(result.provider),
-          fetchedAt: result.result.fetchedAt,
-          skills: result.result.items,
+      const key = catalogCacheKey(options);
+      const nowMs = yield* Clock.currentTimeMillis;
+      const cached = (yield* Ref.get(catalogCacheRef)).get(key);
+      if (options?.force !== true && isCacheEntryFresh(cached, nowMs)) {
+        return cached.value;
+      }
+      const state = yield* loadCatalog(options);
+      yield* Ref.update(catalogCacheRef, (cache) => {
+        const next = new Map(cache);
+        next.set(key, {
+          expiresAtMs: nowMs + SKILLS_CATALOG_CACHE_TTL_MS,
+          value: state,
         });
-      }
-
-      const bundledSnapshot = yield* buildBundledCatalogSnapshot(options);
-      if (bundledSnapshot) {
-        snapshots.push(bundledSnapshot);
-        total += bundledSnapshot.skills.length;
-      }
-
-      return {
-        snapshots,
-        categories: dedupeCategories(categories),
-        total,
-        page,
-        pageSize,
-        hasErrors,
-      } satisfies SkillsCatalogState;
+        return next;
+      });
+      return state;
     });
 
   const findCatalogItem: SkillsCatalogServiceShape["findCatalogItem"] = (catalogItemId) =>

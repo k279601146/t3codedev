@@ -7,6 +7,23 @@ import type {
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 
+let refreshProvidersInFlight: Promise<unknown> | null = null;
+
+export function refreshProvidersOnceForSettings(input: {
+  readonly refresh: () => Promise<unknown>;
+  readonly onError?: (error: unknown) => void;
+}): void {
+  if (refreshProvidersInFlight) return;
+  refreshProvidersInFlight = input
+    .refresh()
+    .catch((error: unknown) => {
+      input.onError?.(error);
+    })
+    .finally(() => {
+      refreshProvidersInFlight = null;
+    });
+}
+
 export function buildProviderInstanceUpdatePatch(input: {
   readonly settings: Pick<ServerSettings, "providers" | "providerInstances">;
   readonly instanceId: ProviderInstanceId;

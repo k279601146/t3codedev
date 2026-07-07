@@ -245,6 +245,33 @@ it.layer(TestLayer)("WorkspaceEntriesLive", (it) => {
       }),
     );
 
+    it.effect("caches directory trees until invalidated", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-tree-cache-" });
+        yield* writeTextFile(cwd, "src/index.ts", "export {};\n");
+
+        let rootReadCount = 0;
+        const originalReaddir = fsPromises.readdir.bind(fsPromises);
+        vi.spyOn(fsPromises, "readdir").mockImplementation((async (
+          ...args: Parameters<typeof fsPromises.readdir>
+        ) => {
+          if (args[0] === cwd) {
+            rootReadCount += 1;
+          }
+          return originalReaddir(...args);
+        }) as typeof fsPromises.readdir);
+
+        const workspaceEntries = yield* WorkspaceEntries;
+        yield* workspaceEntries.listDirectory({ cwd, depth: 6 });
+        yield* workspaceEntries.listDirectory({ cwd, depth: 6 });
+        expect(rootReadCount).toBe(1);
+
+        yield* workspaceEntries.invalidate(cwd);
+        yield* workspaceEntries.listDirectory({ cwd, depth: 6 });
+        expect(rootReadCount).toBe(2);
+      }),
+    );
+
     it.effect("deduplicates concurrent index builds for the same cwd", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-concurrent-build-" });

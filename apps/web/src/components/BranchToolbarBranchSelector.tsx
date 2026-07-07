@@ -28,6 +28,7 @@ import {
   deriveLocalBranchNameFromRemoteRef,
   resolveBranchSelectionTarget,
   resolveBranchToolbarValue,
+  resolveBranchMenuStateChange,
   resolveDraftEnvModeAfterBranchChange,
   resolveEffectiveEnvMode,
   shouldIncludeBranchPickerItem,
@@ -421,16 +422,13 @@ export function BranchToolbarBranchSelector({
   // ---------------------------------------------------------------------------
   const handleOpenChange = useCallback(
     (open: boolean) => {
+      const stateChange = resolveBranchMenuStateChange({ open });
       setIsBranchMenuOpen(open);
-      if (!open) {
+      if (stateChange.shouldClearQuery) {
         setBranchQuery("");
-        return;
       }
-      void queryClient.invalidateQueries({
-        queryKey: gitQueryKeys.refs(environmentId, branchCwd),
-      });
     },
-    [branchCwd, environmentId, queryClient],
+    [],
   );
 
   const branchListScrollElementRef = useRef<HTMLDivElement | null>(null);

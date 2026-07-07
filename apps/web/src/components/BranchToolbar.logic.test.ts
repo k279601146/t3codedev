@@ -5,6 +5,7 @@ import {
   deriveLocalBranchNameFromRemoteRef,
   resolveEnvironmentOptionLabel,
   resolveBranchSelectionTarget,
+  resolveBranchMenuStateChange,
   resolveCurrentWorkspaceLabel,
   resolveDraftEnvModeAfterBranchChange,
   resolveEffectiveEnvMode,
@@ -81,6 +82,22 @@ describe("resolveBranchToolbarValue", () => {
         currentGitBranch: "main",
       }),
     ).toBe("main");
+  });
+});
+
+describe("resolveBranchMenuStateChange", () => {
+  it("keeps cached refs when the branch menu opens", () => {
+    expect(resolveBranchMenuStateChange({ open: true })).toEqual({
+      shouldClearQuery: false,
+      shouldInvalidateRefs: false,
+    });
+  });
+
+  it("clears the local query when the branch menu closes", () => {
+    expect(resolveBranchMenuStateChange({ open: false })).toEqual({
+      shouldClearQuery: true,
+      shouldInvalidateRefs: false,
+    });
   });
 });
 

@@ -1,6 +1,10 @@
+import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 
 import {
   GitManagerError,
@@ -164,6 +168,27 @@ function nonRepositoryListCommits(): VcsListCommitsResult {
   };
 }
 
+const REFS_CACHE_TTL = Duration.seconds(15);
+const REFS_CACHE_CAPACITY = 256;
+
+function refsCacheKey(input: VcsListRefsInput): string {
+  return JSON.stringify({
+    cwd: input.cwd,
+    cursor: input.cursor ?? 0,
+    limit: input.limit ?? null,
+    query: input.query?.trim() ?? "",
+  });
+}
+
+function parseRefsCacheKey(cacheKey: string): { readonly cwd: string } | null {
+  try {
+    const parsed = JSON.parse(cacheKey) as { readonly cwd?: unknown };
+    return typeof parsed.cwd === "string" ? { cwd: parsed.cwd } : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseCommitLogOutput(output: string): VcsListCommitsResult["commits"] {
   return output
     .split("\n")
@@ -303,6 +328,39 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
     ) =>
     (input: Input) =>
       ensureGit(operation, input.cwd).pipe(Effect.andThen(run(input)));
+
+  const listRefsUncached = Effect.fn("GitWorkflowService.listRefsUncached")(function* (
+    input: VcsListRefsInput,
+  ) {
+    return yield* detectGitRepositoryForCommand("GitWorkflowService.listRefs", input.cwd).pipe(
+      Effect.flatMap((isGitRepository) =>
+        isGitRepository ? git.listRefs(input) : Effect.succeed(nonRepositoryListRefs()),
+      ),
+    );
+  });
+  const refsCache = yield* Cache.makeWith<string, VcsListRefsResult, GitCommandError>(
+    (key) => listRefsUncached(JSON.parse(key) as VcsListRefsInput),
+    {
+      capacity: REFS_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? REFS_CACHE_TTL : Duration.zero),
+    },
+  );
+  const refsCacheKeys = yield* Ref.make(new Set<string>());
+  const invalidateRefs = (cwd: string) =>
+    Effect.gen(function* () {
+      const keys = yield* Ref.get(refsCacheKeys);
+      const keysToInvalidate = [...keys].filter((key) => parseRefsCacheKey(key)?.cwd === cwd);
+      yield* Effect.forEach(keysToInvalidate, (key) => Cache.invalidate(refsCache, key), {
+        discard: true,
+      });
+      yield* Ref.update(refsCacheKeys, (current) => {
+        const next = new Set(current);
+        for (const key of keysToInvalidate) {
+          next.delete(key);
+        }
+        return next;
+      });
+    });
 
   return GitWorkflowService.of({
     status: (input) =>
@@ -459,12 +517,15 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
               ),
         ),
       ),
-    invalidateLocalStatus: gitManager.invalidateLocalStatus,
+    invalidateLocalStatus: (cwd) =>
+      gitManager.invalidateLocalStatus(cwd).pipe(Effect.andThen(invalidateRefs(cwd))),
     invalidateRemoteStatus: gitManager.invalidateRemoteStatus,
-    invalidateStatus: gitManager.invalidateStatus,
+    invalidateStatus: (cwd) =>
+      gitManager.invalidateStatus(cwd).pipe(Effect.andThen(invalidateRefs(cwd))),
     pullCurrentBranch: (cwd) =>
       ensureGitCommand("GitWorkflowService.pullCurrentBranch", cwd).pipe(
         Effect.andThen(git.pullCurrentBranch(cwd)),
+        Effect.tap(() => invalidateRefs(cwd)),
       ),
     runStackedAction: (input, options) =>
       ensureGit("GitWorkflowService.runStackedAction", input.cwd).pipe(
@@ -478,12 +539,12 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
       "GitWorkflowService.preparePullRequestThread",
       gitManager.preparePullRequestThread,
     ),
-    listRefs: (input) =>
-      detectGitRepositoryForCommand("GitWorkflowService.listRefs", input.cwd).pipe(
-        Effect.flatMap((isGitRepository) =>
-          isGitRepository ? git.listRefs(input) : Effect.succeed(nonRepositoryListRefs()),
-        ),
-      ),
+    listRefs: (input) => {
+      const cacheKey = refsCacheKey(input);
+      return Ref.update(refsCacheKeys, (keys) => new Set(keys).add(cacheKey)).pipe(
+        Effect.andThen(Cache.get(refsCache, cacheKey)),
+      );
+    },
     listCommits: (input) =>
       detectGitRepositoryForCommand("GitWorkflowService.listCommits", input.cwd).pipe(
         Effect.flatMap((isGitRepository) => {
@@ -537,22 +598,27 @@ export const make = Effect.fn("makeGitWorkflowService")(function* () {
     createWorktree: (input) =>
       ensureGitCommand("GitWorkflowService.createWorktree", input.cwd).pipe(
         Effect.andThen(git.createWorktree(input)),
+        Effect.tap(() => invalidateRefs(input.cwd)),
       ),
     removeWorktree: (input) =>
       ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
         Effect.andThen(git.removeWorktree(input)),
+        Effect.tap(() => invalidateRefs(input.cwd)),
       ),
     createRef: (input) =>
       ensureGitCommand("GitWorkflowService.createRef", input.cwd).pipe(
         Effect.andThen(git.createRef(input)),
+        Effect.tap(() => invalidateRefs(input.cwd)),
       ),
     switchRef: (input) =>
       ensureGitCommand("GitWorkflowService.switchRef", input.cwd).pipe(
         Effect.andThen(Effect.scoped(git.switchRef(input))),
+        Effect.tap(() => invalidateRefs(input.cwd)),
       ),
     renameBranch: (input) =>
       ensureGit("GitWorkflowService.renameBranch", input.cwd).pipe(
         Effect.andThen(git.renameBranch(input)),
+        Effect.tap(() => invalidateRefs(input.cwd)),
       ),
   });
 });

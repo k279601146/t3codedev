@@ -97,6 +97,15 @@ export function resolveBranchToolbarValue(input: {
   return currentGitBranch ?? activeThreadBranch;
 }
 
+export function resolveBranchMenuStateChange(input: {
+  readonly open: boolean;
+}): { readonly shouldClearQuery: boolean; readonly shouldInvalidateRefs: boolean } {
+  return {
+    shouldClearQuery: !input.open,
+    shouldInvalidateRefs: false,
+  };
+}
+
 export function resolveBranchSelectionTarget(input: {
   activeProjectCwd: string;
   activeWorktreePath: string | null;
