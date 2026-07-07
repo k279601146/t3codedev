@@ -52,6 +52,8 @@ export interface DesktopEnvironmentShape {
   readonly serverSettingsPath: string;
   readonly logDir: string;
   readonly localFileLogsEnabled: boolean;
+  readonly startupDiagnosticsEnabled: boolean;
+  readonly startupDiagnosticsLogPath: string;
   readonly rootDir: string;
   readonly appRoot: string;
   readonly backendEntryPath: string;
@@ -170,6 +172,10 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
   const rootDir = path.resolve(input.dirname, "../../..");
   const usesPackagedLayout = input.isPackaged && !isDevelopment;
   const appRoot = usesPackagedLayout ? input.appPath : rootDir;
+  const startupDiagnosticsEnabled = Option.getOrElse(
+    config.startupDiagnosticLogs,
+    () => usesPackagedLayout,
+  );
   const branding = resolveDesktopAppBranding({
     isDevelopment,
     appVersion: input.appVersion,
@@ -202,6 +208,8 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     serverSettingsPath: path.join(stateDir, "settings.json"),
     logDir: path.join(stateDir, "logs"),
     localFileLogsEnabled: config.localFileLogsEnabled,
+    startupDiagnosticsEnabled,
+    startupDiagnosticsLogPath: path.join(stateDir, "logs", "startup-diagnostics.ndjson"),
     rootDir,
     appRoot,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),

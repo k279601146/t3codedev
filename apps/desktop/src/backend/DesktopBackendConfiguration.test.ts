@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopEngineIntegrity from "../engine/DesktopEngineIntegrity.ts";
 import * as DesktopEngineUpdater from "../engine/DesktopEngineUpdater.ts";
 import * as DesktopWindowsSandbox from "../security/DesktopWindowsSandbox.ts";
@@ -232,6 +233,7 @@ const withHarness = <A, E, R>(
         DesktopBackendConfiguration.layer.pipe(
           Layer.provideMerge(DesktopCommercialAuth.layerTest()),
           Layer.provideMerge(DesktopClientSettings.layerTest(options?.clientSettings)),
+          Layer.provideMerge(DesktopObservability.DesktopStartupDiagnosticsNoopLayer),
           Layer.provideMerge(DesktopEngineIntegrity.layerTest),
           Layer.provideMerge(DesktopEngineUpdater.layerTest()),
           Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
@@ -277,11 +279,7 @@ const withProcessEnv = <A, E, R>(
 describe("DesktopBackendConfiguration", () => {
   it("生成托管引擎配置时保留已有插件和 marketplace 状态", () => {
     const merged = DesktopBackendConfiguration.mergeManagedEngineConfigWithPersistedExtensionState({
-      managedConfig: [
-        "[features]",
-        "plugins = true",
-        "apps = true",
-      ].join("\n"),
+      managedConfig: ["[features]", "plugins = true", "apps = true"].join("\n"),
       existingConfig: [
         'model_provider = "old"',
         "",
@@ -458,6 +456,7 @@ describe("DesktopBackendConfiguration", () => {
           DesktopBackendConfiguration.layer.pipe(
             Layer.provideMerge(DesktopCommercialAuth.layerTest()),
             Layer.provideMerge(DesktopClientSettings.layerTest()),
+            Layer.provideMerge(DesktopObservability.DesktopStartupDiagnosticsNoopLayer),
             Layer.provideMerge(DesktopEngineIntegrity.layerTest),
             Layer.provideMerge(DesktopEngineUpdater.layerTest()),
             Layer.provideMerge(DesktopWindowsSandbox.layerTest()),
@@ -601,6 +600,7 @@ describe("DesktopBackendConfiguration", () => {
                 }),
               ),
               Layer.provideMerge(DesktopClientSettings.layerTest()),
+              Layer.provideMerge(DesktopObservability.DesktopStartupDiagnosticsNoopLayer),
               Layer.provideMerge(DesktopEngineIntegrity.layerTest),
               Layer.provideMerge(DesktopEngineUpdater.layerTest()),
               Layer.provideMerge(DesktopWindowsSandbox.layerTest()),

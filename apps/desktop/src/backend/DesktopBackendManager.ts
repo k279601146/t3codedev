@@ -304,6 +304,7 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
   const fileSystem = yield* FileSystem.FileSystem;
   const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
   const backendOutputLog = yield* DesktopObservability.DesktopBackendOutputLog;
+  const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
   const desktopState = yield* DesktopState.DesktopState;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const apm = yield* DesktopApm.DesktopApm;
@@ -444,6 +445,16 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
               );
 
               if (isCurrentRun) {
+                yield* startupDiagnostics.record({
+                  event: "desktop.backend.exited",
+                  level: Option.isSome(code) && code.value === 0 ? "INFO" : "ERROR",
+                  stage: "backend",
+                  details: {
+                    pid: Option.getOrNull(pid),
+                    exitCode: Option.getOrNull(code),
+                    exitReason: reason,
+                  },
+                });
                 if (Option.isSome(pid)) {
                   yield* backendOutputLog.writeSessionBoundary({
                     phase: "END",
@@ -476,6 +487,17 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
               phase: "START",
               details: `pid=${pid} port=${config.bootstrap.port} cwd=${config.cwd}`,
             });
+            yield* startupDiagnostics.record({
+              event: "desktop.backend.spawned",
+              stage: "backend",
+              details: {
+                pid,
+                port: config.bootstrap.port,
+                host: config.bootstrap.host,
+                backendEntryPath: config.entryPath,
+                captureOutput: config.captureOutput,
+              },
+            });
           }),
           onReady: Effect.fn("desktop.backendManager.onReady")(function* () {
             const readyAt = yield* currentIsoTimestamp;
@@ -501,6 +523,14 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
             }
 
             yield* Ref.set(desktopState.backendReady, true);
+            yield* startupDiagnostics.record({
+              event: "desktop.backend.ready",
+              stage: "backend",
+              details: {
+                pid: Option.getOrNull(activePid((yield* Ref.get(state)).active)),
+                port: config.bootstrap.port,
+              },
+            });
             yield* apm.track("backend_ready", {
               pid: Option.getOrUndefined(activePid((yield* Ref.get(state)).active)),
             });
@@ -516,6 +546,17 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
             logBackendManagerWarning("backend readiness check failed during bootstrap", {
               error: error.message,
             }).pipe(
+              Effect.andThen(
+                startupDiagnostics.record({
+                  event: "desktop.backend.readiness_failed",
+                  level: "ERROR",
+                  stage: "backend",
+                  details: {
+                    message: error.message,
+                    port: config.bootstrap.port,
+                  },
+                }),
+              ),
               Effect.andThen(
                 apm.track("backend_start_failed", {
                   reason: "readiness_timeout",
@@ -576,6 +617,15 @@ const makeDesktopBackendManager = Effect.fn("makeDesktopBackendManager")(functio
         yield* logBackendManagerError("backend exited unexpectedly; restart scheduled", {
           reason,
           delayMs: Duration.toMillis(delay),
+        });
+        yield* startupDiagnostics.record({
+          event: "desktop.backend.restart_scheduled",
+          level: "WARN",
+          stage: "backend",
+          details: {
+            exitReason: reason,
+            delayMs: Duration.toMillis(delay),
+          },
         });
         yield* apm.track("engine_crash", {
           reason,

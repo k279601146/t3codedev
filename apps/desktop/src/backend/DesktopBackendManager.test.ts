@@ -106,6 +106,7 @@ function makeManagerLayer(input: {
   readonly spawnerLayer: Layer.Layer<ChildProcessSpawner.ChildProcessSpawner>;
   readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
   readonly backendOutputLog?: Partial<DesktopObservability.DesktopBackendOutputLogShape>;
+  readonly startupDiagnostics?: Partial<DesktopObservability.DesktopStartupDiagnosticsShape>;
   readonly desktopState?: DesktopState.DesktopStateShape;
   readonly desktopWindow?: Partial<DesktopWindow.DesktopWindowShape>;
   readonly config?: DesktopBackendManager.DesktopBackendStartConfig;
@@ -129,6 +130,10 @@ function makeManagerLayer(input: {
           writeOutputChunk: () => Effect.void,
           ...input.backendOutputLog,
         } satisfies DesktopObservability.DesktopBackendOutputLogShape),
+        Layer.succeed(DesktopObservability.DesktopStartupDiagnostics, {
+          record: () => Effect.void,
+          ...input.startupDiagnostics,
+        } satisfies DesktopObservability.DesktopStartupDiagnosticsShape),
         DesktopApm.layerNoop,
         Layer.succeed(DesktopWindow.DesktopWindow, {
           createMain: Effect.die("unexpected createMain"),
@@ -501,6 +506,65 @@ describe("DesktopBackendManager", () => {
 
         assert.equal(yield* Queue.size(starts), 0);
         assert.equal((yield* manager.snapshot).desiredRunning, false);
+      }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
+    }),
+  );
+
+  it.effect("records startup diagnostics for backend lifecycle events", () =>
+    Effect.gen(function* () {
+      const events: Array<string> = [];
+      let startCount = 0;
+      const firstReady = yield* Deferred.make<void>();
+
+      const spawnerLayer = Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make(() =>
+          Effect.sync(() => {
+            startCount += 1;
+            return makeProcess({
+              exitCode:
+                startCount === 1
+                  ? Deferred.await(firstReady).pipe(Effect.as(ChildProcessSpawner.ExitCode(1)))
+                  : Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+            });
+          }),
+        ),
+      );
+
+      const managerLayer = makeManagerLayer({
+        spawnerLayer,
+        desktopWindow: {
+          handleBackendReady: Deferred.succeed(firstReady, void 0).pipe(Effect.asVoid),
+        },
+        startupDiagnostics: {
+          record: ({ event }) =>
+            Effect.sync(() => {
+              events.push(event);
+            }),
+        },
+      });
+
+      yield* Effect.gen(function* () {
+        const manager = yield* DesktopBackendManager.DesktopBackendManager;
+        yield* manager.start;
+        yield* Deferred.await(firstReady);
+        yield* Effect.yieldNow;
+
+        let restartScheduled = false;
+        while (!restartScheduled) {
+          restartScheduled = (yield* manager.snapshot).restartScheduled;
+          if (!restartScheduled) {
+            yield* Effect.yieldNow;
+          }
+        }
+
+        assert.includeMembers(events, [
+          "desktop.backend.spawned",
+          "desktop.backend.ready",
+          "desktop.backend.exited",
+          "desktop.backend.restart_scheduled",
+        ]);
+        yield* TestClock.adjust(Duration.millis(500));
       }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
     }),
   );

@@ -36,6 +36,24 @@ const TraceRecordLine = Schema.Struct({
 
 const decodeTraceRecordLine = Schema.decodeUnknownSync(Schema.fromJsonString(TraceRecordLine));
 
+const StartupDiagnosticsRecordLine = Schema.Struct({
+  event: Schema.String,
+  level: Schema.Literals(["INFO", "WARN", "ERROR"]),
+  appVersion: Schema.String,
+  platform: Schema.String,
+  arch: Schema.String,
+  isPackaged: Schema.Boolean,
+  stage: Schema.optionalKey(Schema.String),
+  details: Schema.Record(
+    Schema.String,
+    Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
+  ),
+});
+
+const decodeStartupDiagnosticsRecordLine = Schema.decodeUnknownSync(
+  Schema.fromJsonString(StartupDiagnosticsRecordLine),
+);
+
 const environmentInput = (baseDir: string) =>
   ({
     dirname: "/repo/apps/desktop/dist-electron",
@@ -190,6 +208,58 @@ describe("DesktopObservability", () => {
         ),
       );
 
+      assert.isFalse(yield* fileSystem.exists(paths.tracePath));
+      assert.isFalse(yield* fileSystem.exists(paths.childLogPath));
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerUndici)),
+    ),
+  );
+
+  it.effect("persists startup diagnostics without enabling full local file logs", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-desktop-startup-diagnostics-test-",
+      });
+      const environmentLayer = makeEnvironmentLayer(baseDir, {
+        T3CODE_STARTUP_DIAGNOSTIC_LOGS: "true",
+      });
+      const paths = yield* Effect.gen(function* () {
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        return {
+          startupDiagnosticsPath: environment.startupDiagnosticsLogPath,
+          tracePath: environment.path.join(environment.logDir, "desktop.trace.ndjson"),
+          childLogPath: environment.path.join(environment.logDir, "server-child.log"),
+        };
+      }).pipe(Effect.provide(environmentLayer));
+
+      yield* Effect.gen(function* () {
+        const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
+        const outputLog = yield* DesktopObservability.DesktopBackendOutputLog;
+        yield* startupDiagnostics.record({
+          event: "desktop.startup.begin",
+          stage: "startup",
+          details: {
+            message: "hello\nworld",
+            token: undefined,
+            port: 3773,
+          },
+        });
+        yield* outputLog.writeOutputChunk("stdout", new TextEncoder().encode("hello server\n"));
+      }).pipe(
+        Effect.provide(DesktopObservability.layer.pipe(Layer.provideMerge(environmentLayer))),
+      );
+
+      const log = yield* fileSystem.readFileString(paths.startupDiagnosticsPath);
+      const record = decodeStartupDiagnosticsRecordLine(log.trim());
+
+      assert.equal(record.event, "desktop.startup.begin");
+      assert.equal(record.level, "INFO");
+      assert.equal(record.appVersion, "1.2.3");
+      assert.equal(record.details.message, "hello world");
+      assert.equal(record.details.port, 3773);
+      assert.equal("token" in record.details, false);
       assert.isFalse(yield* fileSystem.exists(paths.tracePath));
       assert.isFalse(yield* fileSystem.exists(paths.childLogPath));
     }).pipe(

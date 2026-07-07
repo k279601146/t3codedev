@@ -6,6 +6,7 @@ import * as Layer from "effect/Layer";
 
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopEngineIntegrity from "./DesktopEngineIntegrity.ts";
 
 const textEncoder = new TextEncoder();
@@ -28,6 +29,36 @@ function makeLayer(baseDir: string) {
   return DesktopEngineIntegrity.layer.pipe(
     Layer.provideMerge(environmentLayer),
     Layer.provideMerge(configLayer),
+    Layer.provideMerge(DesktopObservability.DesktopStartupDiagnosticsNoopLayer),
+    Layer.provideMerge(NodeServices.layer),
+  );
+}
+
+function makeLayerWithDiagnostics(baseDir: string, events: Array<string>) {
+  const configLayer = DesktopConfig.layerTest({ BAHEW_HOME: baseDir });
+  const environmentLayer = DesktopEnvironment.layer({
+    dirname: "/repo/apps/desktop/src",
+    homeDirectory: baseDir,
+    platform: process.platform,
+    processArch: process.arch,
+    appVersion: "1.2.3",
+    appPath: "/repo",
+    isPackaged: true,
+    resourcesPath: "/missing/resources",
+    runningUnderArm64Translation: false,
+  }).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, configLayer)));
+
+  return DesktopEngineIntegrity.layer.pipe(
+    Layer.provideMerge(environmentLayer),
+    Layer.provideMerge(configLayer),
+    Layer.provideMerge(
+      Layer.succeed(DesktopObservability.DesktopStartupDiagnostics, {
+        record: ({ event }) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
+      } satisfies DesktopObservability.DesktopStartupDiagnosticsShape),
+    ),
     Layer.provideMerge(NodeServices.layer),
   );
 }
@@ -117,5 +148,41 @@ describe("DesktopEngineIntegrity", () => {
         assert.include(error.message, "unsupported protocol version");
       }),
     ),
+  );
+
+  it.effect("records startup diagnostics for engine integrity success and failure", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-desktop-engine-integrity-diagnostics-test-",
+      });
+      const events: Array<string> = [];
+
+      yield* Effect.gen(function* () {
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const integrity = yield* DesktopEngineIntegrity.DesktopEngineIntegrity;
+        const engineDir = environment.path.join(environment.stateDir, "diagnostics");
+        const goodEnginePath = environment.path.join(engineDir, "ai-engine");
+        const badEnginePath = environment.path.join(engineDir, "bad-engine");
+
+        yield* fileSystem.makeDirectory(engineDir, { recursive: true });
+        yield* fileSystem.writeFile(goodEnginePath, textEncoder.encode("engine-binary"));
+        yield* fileSystem.writeFile(badEnginePath, textEncoder.encode("engine-binary"));
+        yield* fileSystem.writeFileString(
+          environment.path.join(engineDir, "engine-manifest.json"),
+          ["{", `"binaries":{"ai-engine":"${ENGINE_BINARY_SHA256}","bad-engine":"00"}`, "}"].join(
+            "",
+          ),
+        );
+
+        yield* integrity.ensure(goodEnginePath);
+        yield* integrity.ensure(badEnginePath).pipe(Effect.flip);
+
+        assert.includeMembers(events, [
+          "desktop.engine.integrity.verified",
+          "desktop.engine.integrity.failed",
+        ]);
+      }).pipe(Effect.provide(makeLayerWithDiagnostics(baseDir, events)));
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 });

@@ -85,6 +85,11 @@ describe("DesktopEnvironment", () => {
       assert.deepEqual(environment.configuredBackendPort, Option.some(4949));
       assert.deepEqual(environment.commitHashOverride, Option.some("0123456789abcdef"));
       assert.equal(environment.localFileLogsEnabled, true);
+      assert.equal(environment.startupDiagnosticsEnabled, false);
+      assert.equal(
+        slash(environment.startupDiagnosticsLogPath),
+        "/tmp/t3/userdata/logs/startup-diagnostics.ndjson",
+      );
       assert.deepEqual(environment.otlpTracesUrl, Option.some("http://127.0.0.1:4318/v1/traces"));
       assert.equal(environment.otlpExportIntervalMs, 2500);
     }),
@@ -103,7 +108,54 @@ describe("DesktopEnvironment", () => {
       assert.equal(slash(environment.stateDir), "/tmp/t3/userdata");
       assert.equal(slash(environment.logDir), "/tmp/t3/userdata/logs");
       assert.equal(environment.localFileLogsEnabled, false);
+      assert.equal(environment.startupDiagnosticsEnabled, false);
       assert.equal(slash(environment.serverSettingsPath), "/tmp/t3/userdata/settings.json");
+    }),
+  );
+
+  it.effect("enables startup diagnostics by default only for packaged production", () =>
+    Effect.gen(function* () {
+      const packaged = yield* makeEnvironment(
+        {
+          isPackaged: true,
+        },
+        {
+          BAHEW_HOME: "/tmp/t3",
+        },
+      );
+      const packagedDisabled = yield* makeEnvironment(
+        {
+          isPackaged: true,
+        },
+        {
+          BAHEW_HOME: "/tmp/t3",
+          T3CODE_STARTUP_DIAGNOSTIC_LOGS: "false",
+        },
+      );
+      const devPackaged = yield* makeEnvironment(
+        {
+          isPackaged: true,
+        },
+        {
+          BAHEW_HOME: "/tmp/t3",
+          VITE_DEV_SERVER_URL: "http://localhost:5173",
+        },
+      );
+      const devEnabled = yield* makeEnvironment(
+        {
+          isPackaged: false,
+        },
+        {
+          BAHEW_HOME: "/tmp/t3",
+          VITE_DEV_SERVER_URL: "http://localhost:5173",
+          T3CODE_STARTUP_DIAGNOSTIC_LOGS: "true",
+        },
+      );
+
+      assert.equal(packaged.startupDiagnosticsEnabled, true);
+      assert.equal(packagedDisabled.startupDiagnosticsEnabled, false);
+      assert.equal(devPackaged.startupDiagnosticsEnabled, false);
+      assert.equal(devEnabled.startupDiagnosticsEnabled, true);
     }),
   );
 

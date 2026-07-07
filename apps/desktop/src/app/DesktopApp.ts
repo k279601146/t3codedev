@@ -104,6 +104,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   never,
   | DesktopLifecycle.DesktopShutdown
   | DesktopState.DesktopState
+  | DesktopObservability.DesktopStartupDiagnostics
   | ElectronApp.ElectronApp
   | ElectronDialog.ElectronDialog
 > {
@@ -111,6 +112,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   const state = yield* DesktopState.DesktopState;
   const electronApp = yield* ElectronApp.ElectronApp;
   const electronDialog = yield* ElectronDialog.ElectronDialog;
+  const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
   const message = error instanceof Error ? error.message : String(error);
   const detail =
     error instanceof Error && typeof error.stack === "string" ? `\n${error.stack}` : "";
@@ -118,6 +120,15 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
     stage,
     message,
     ...(detail.length > 0 ? { detail } : {}),
+  });
+  yield* startupDiagnostics.record({
+    event: "desktop.startup.fatal",
+    level: "ERROR",
+    stage,
+    details: {
+      message,
+      errorName: error instanceof Error ? error.name : null,
+    },
   });
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
@@ -139,6 +150,7 @@ const bootstrap = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
+  const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
   yield* logBootstrapInfo("bootstrap start");
 
   if (environment.isDevelopment && Option.isNone(environment.configuredBackendPort)) {
@@ -147,6 +159,15 @@ const bootstrap = Effect.gen(function* () {
 
   const backendPortSelection = yield* resolveDesktopBackendPort(environment.configuredBackendPort);
   const backendPort = backendPortSelection.port;
+  yield* startupDiagnostics.record({
+    event: "desktop.bootstrap.port.selected",
+    stage: "bootstrap",
+    details: {
+      port: backendPort,
+      selectedByScan: backendPortSelection.selectedByScan,
+      startPort: backendPortSelection.selectedByScan ? DEFAULT_DESKTOP_BACKEND_PORT : null,
+    },
+  });
   yield* logBootstrapInfo(
     backendPortSelection.selectedByScan
       ? "selected backend port via sequential scan"
@@ -199,7 +220,15 @@ const startup = Effect.gen(function* () {
   const engineUpdater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const apm = yield* DesktopApm.DesktopApm;
+  const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
 
+  yield* startupDiagnostics.record({
+    event: "desktop.startup.begin",
+    stage: "startup",
+    details: {
+      isDevelopment: environment.isDevelopment,
+    },
+  });
   yield* shellEnvironment.installIntoProcess;
   const userDataPath = yield* appIdentity.resolveUserDataPath;
   yield* electronApp.setPath("userData", userDataPath);
@@ -218,6 +247,10 @@ const startup = Effect.gen(function* () {
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),
   );
   yield* logStartupInfo("app ready");
+  yield* startupDiagnostics.record({
+    event: "desktop.electron.ready",
+    stage: "whenReady",
+  });
   yield* apm.track("app_launch", {
     packaged: environment.isPackaged,
     development: environment.isDevelopment,

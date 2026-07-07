@@ -21,6 +21,8 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 const DESKTOP_LOG_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const DESKTOP_LOG_FILE_MAX_FILES = 10;
+const STARTUP_DIAGNOSTICS_MAX_BYTES = 1024 * 1024;
+const STARTUP_DIAGNOSTICS_MAX_FILES = 5;
 const DESKTOP_BACKEND_CHILD_LOG_FIBER_ID = "#backend-child";
 const DESKTOP_TRACE_BATCH_WINDOW_MS = 200;
 
@@ -44,6 +46,33 @@ export class DesktopBackendOutputLog extends Context.Service<
   DesktopBackendOutputLog,
   DesktopBackendOutputLogShape
 >()("t3/desktop/BackendOutputLog") {}
+
+export type StartupDiagnosticsLevel = "INFO" | "WARN" | "ERROR";
+export type StartupDiagnosticsDetails = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+export interface DesktopStartupDiagnosticsShape {
+  readonly record: (input: {
+    readonly event: string;
+    readonly level?: StartupDiagnosticsLevel;
+    readonly stage?: string;
+    readonly details?: StartupDiagnosticsDetails;
+  }) => Effect.Effect<void>;
+}
+
+export class DesktopStartupDiagnostics extends Context.Service<
+  DesktopStartupDiagnostics,
+  DesktopStartupDiagnosticsShape
+>()("t3/desktop/StartupDiagnostics") {}
+
+export const DesktopStartupDiagnosticsNoopLayer = Layer.succeed(
+  DesktopStartupDiagnostics,
+  DesktopStartupDiagnostics.of({
+    record: () => Effect.void,
+  }),
+);
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -116,6 +145,43 @@ const DesktopBackendOutputLogNoop: DesktopBackendOutputLogShape = {
   writeSessionBoundary: () => Effect.void,
   writeOutputChunk: () => Effect.void,
 };
+
+const DesktopStartupDiagnosticsNoop = DesktopStartupDiagnostics.of({
+  record: () => Effect.void,
+});
+
+const StartupDiagnosticsRecord = Schema.Struct({
+  timestamp: Schema.String,
+  event: Schema.String,
+  level: Schema.Literals(["INFO", "WARN", "ERROR"]),
+  appVersion: Schema.String,
+  platform: Schema.String,
+  arch: Schema.String,
+  isPackaged: Schema.Boolean,
+  stage: Schema.optionalKey(Schema.String),
+  details: Schema.Record(
+    Schema.String,
+    Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
+  ),
+});
+
+const encodeStartupDiagnosticsRecord = Schema.encodeEffect(
+  Schema.fromJsonString(StartupDiagnosticsRecord),
+);
+
+const compactStartupDiagnosticsDetails = (
+  details: StartupDiagnosticsDetails | undefined,
+): Record<string, string | number | boolean | null> =>
+  Object.fromEntries(
+    Object.entries(details ?? {})
+      .filter(
+        (entry): entry is [string, string | number | boolean | null] => entry[1] !== undefined,
+      )
+      .map(([key, value]) => [
+        key,
+        typeof value === "string" ? sanitizeLogValue(value).slice(0, 500) : value,
+      ]),
+  );
 
 const currentDesktopRunId = Effect.gen(function* () {
   const annotations = yield* References.CurrentLogAnnotations;
@@ -301,7 +367,9 @@ const backendOutputLogLayer = Layer.effect(
       return {
         writeSessionBoundary: () => Effect.void,
         writeOutputChunk: (streamName, chunk) =>
-          environment.isDevelopment ? writeDevelopmentConsoleOutput(streamName, chunk) : Effect.void,
+          environment.isDevelopment
+            ? writeDevelopmentConsoleOutput(streamName, chunk)
+            : Effect.void,
       } satisfies DesktopBackendOutputLogShape;
     }
 
@@ -347,6 +415,45 @@ const backendOutputLogLayer = Layer.effect(
             },
           ),
         }) satisfies DesktopBackendOutputLogShape,
+    });
+  }),
+);
+
+const startupDiagnosticsLayer = Layer.effect(
+  DesktopStartupDiagnostics,
+  Effect.gen(function* () {
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    if (!environment.startupDiagnosticsEnabled) {
+      return DesktopStartupDiagnosticsNoop;
+    }
+
+    const writer = yield* makeRotatingLogFileWriter({
+      filePath: environment.startupDiagnosticsLogPath,
+      maxBytes: STARTUP_DIAGNOSTICS_MAX_BYTES,
+      maxFiles: STARTUP_DIAGNOSTICS_MAX_FILES,
+    }).pipe(Effect.option);
+
+    return Option.match(writer, {
+      onNone: () => DesktopStartupDiagnosticsNoop,
+      onSome: (logFile) =>
+        ({
+          record: (input) =>
+            Effect.gen(function* () {
+              const timestamp = DateTime.formatIso(yield* DateTime.now);
+              const encoded = yield* encodeStartupDiagnosticsRecord({
+                timestamp,
+                event: input.event,
+                level: input.level ?? "INFO",
+                appVersion: environment.appVersion,
+                platform: environment.platform,
+                arch: environment.processArch,
+                isPackaged: environment.isPackaged,
+                ...(input.stage ? { stage: input.stage } : {}),
+                details: compactStartupDiagnosticsDetails(input.details),
+              });
+              yield* logFile.writeText(`${encoded}\n`);
+            }).pipe(Effect.ignore),
+        }) satisfies DesktopStartupDiagnosticsShape,
     });
   }),
 );
@@ -404,6 +511,7 @@ const tracerLayer = Layer.unwrap(
 
 export const layer = Layer.mergeAll(
   backendOutputLogLayer,
+  startupDiagnosticsLayer,
   desktopLoggerLayer,
   tracerLayer,
   Layer.succeed(Tracer.MinimumTraceLevel, "Info"),

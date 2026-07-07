@@ -16,6 +16,8 @@ const trimmedStringWithDefault = (name: string, fallback: string) =>
 const optionalBoolean = (name: string) =>
   Config.boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
 
+const optionalBooleanOverride = (name: string) => Config.boolean(name).pipe(Config.option);
+
 const commaSeparatedStrings = (name: string) =>
   trimmedString(name).pipe(
     Config.map(
@@ -44,6 +46,7 @@ export const DesktopConfig = Config.all({
   configuredBackendPort: Config.port("T3CODE_PORT").pipe(Config.option),
   commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),
   localFileLogsEnabled: Config.boolean("T3CODE_LOCAL_FILE_LOGS").pipe(Config.withDefault(false)),
+  startupDiagnosticLogs: optionalBooleanOverride("T3CODE_STARTUP_DIAGNOSTIC_LOGS"),
   desktopLanHostOverride: trimmedString("T3CODE_DESKTOP_LAN_HOST"),
   desktopHttpsEndpointUrls: commaSeparatedStrings("T3CODE_DESKTOP_HTTPS_ENDPOINTS"),
   otlpTracesUrl: trimmedString("T3CODE_OTLP_TRACES_URL"),

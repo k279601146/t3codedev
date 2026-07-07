@@ -426,6 +426,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const fileSystem = yield* FileSystem.FileSystem;
+    const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
     const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
     const commercialAuth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
     const engineIntegrity = yield* DesktopEngineIntegrity.DesktopEngineIntegrity;
@@ -553,7 +554,7 @@ export const layer = Layer.effect(
             }),
           ),
         );
-        return yield* resolveBackendStartConfig({
+        const startConfig = yield* resolveBackendStartConfig({
           bootstrapToken,
           commercialCredentials,
           engineBinaryPath,
@@ -572,6 +573,27 @@ export const layer = Layer.effect(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
           Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),
         );
+        const backendEntryExists = yield* fileSystem
+          .exists(startConfig.entryPath)
+          .pipe(Effect.orElseSucceed(() => false));
+        const engineBinaryExists = yield* fileSystem
+          .exists(engineBinaryPath)
+          .pipe(Effect.orElseSucceed(() => false));
+        yield* startupDiagnostics.record({
+          event: "desktop.backend.config.resolved",
+          stage: "backend-config",
+          details: {
+            port: startConfig.bootstrap.port,
+            host: startConfig.bootstrap.host,
+            backendEntryPath: startConfig.entryPath,
+            backendEntryExists,
+            engineBinaryPath,
+            engineBinaryExists,
+            engineBuild,
+            windowsSandboxMode,
+          },
+        });
+        return startConfig;
       }).pipe(Effect.withSpan("desktop.backendConfiguration.resolve")),
     });
   }),
