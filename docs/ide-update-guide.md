@@ -9,14 +9,14 @@
 
 `MYIDE_ENGINE_MANIFEST_URL` 是桌面端主进程读取的运行时环境变量，读取位置在 `apps/desktop/src/app/DesktopConfig.ts`。
 
-它不是前端页面配置，也不是 sub2api 后台配置。它必须在启动桌面端进程前注入到桌面端进程环境里。
+它不是前端页面配置，也不是 T3 Code 本机设置项。更新 release 元数据由 dev2 后端管理；这个变量只是告诉桌面端到哪个 dev2 地址查询 `ai-engine` 更新清单。
 
 ### 开发环境配置
 
 在 PowerShell 中启动桌面端前设置：
 
 ```powershell
-$env:MYIDE_ENGINE_MANIFEST_URL="http://localhost:3000/ide/api/version/engine?current=bundled&platform=win32&arch=x64"
+$env:MYIDE_ENGINE_MANIFEST_URL="http://localhost:8000/ide/api/version/engine?current=bundled&platform=win32&arch=x64"
 $env:MYIDE_ENGINE_SIGNATURE_PUBLIC_KEY=""
 bun run dev
 ```
@@ -26,7 +26,7 @@ bun run dev
 在 `cmd.exe` 中启动桌面端前设置：
 
 ```cmd
-set MYIDE_ENGINE_MANIFEST_URL=http://localhost:3000/ide/api/version/engine?current=bundled^&platform=win32^&arch=x64
+set MYIDE_ENGINE_MANIFEST_URL=http://localhost:8000/ide/api/version/engine?current=bundled^&platform=win32^&arch=x64
 set MYIDE_ENGINE_SIGNATURE_PUBLIC_KEY=
 bun run dev
 ```
@@ -84,19 +84,19 @@ setx MYIDE_ENGINE_MANIFEST_URL "https://api.example.com/ide/api/version/engine?c
 后端接口：
 
 ```text
-POST http://localhost:3000/api/v1/admin/ide/releases
+POST http://localhost:8000/api/v1/admin/ide/releases
 ```
 
 查询接口：
 
 ```text
-GET http://localhost:3000/ide/api/version/engine?current=bundled&platform=win32&arch=x64
+GET http://localhost:8000/ide/api/version/engine?current=bundled&platform=win32&arch=x64
 ```
 
 健康检查：
 
 ```text
-GET http://localhost:3000/health
+GET http://localhost:8000/health
 ```
 
 ### Windows `cmd.exe` 发布示例
@@ -110,7 +110,7 @@ GET http://localhost:3000/health
 正确写法：
 
 ```cmd
-curl -X POST "http://localhost:3000/api/v1/admin/ide/releases" ^
+curl -X POST "http://localhost:8000/api/v1/admin/ide/releases" ^
   -H "Authorization: Bearer <JWT>" ^
   -H "Content-Type: application/json" ^
   --data-raw "{\"kind\":\"engine\",\"version\":\"0.1.0\",\"min_app_version\":\"\",\"release_notes\":\"ai-engine 0.1.0\",\"is_mandatory\":false,\"protocolVersion\":\"app-server-v1\",\"engineName\":\"ai-engine\",\"upstream\":\"openai/codex\",\"upstreamVersion\":\"0.0.0\",\"build\":\"20260526\",\"binaries\":{\"win32-x64\":{\"url\":\"https://cdn.example.com/ai-engine.exe\",\"sha256\":\"6EDDDEEF2CE6C89A6698EAF48125AC24CD88DBC41350754DEF9999B165A626A0\",\"signature\":\"\",\"size\":12345678}}}"
@@ -142,7 +142,7 @@ $body = @{
   }
 } | ConvertTo-Json -Depth 5
 
-curl.exe -X POST "http://localhost:3000/api/v1/admin/ide/releases" `
+curl.exe -X POST "http://localhost:8000/api/v1/admin/ide/releases" `
   -H "Authorization: Bearer <JWT>" `
   -H "Content-Type: application/json" `
   --data-raw $body
@@ -171,7 +171,7 @@ $env:MYIDE_ENGINE_SIGNATURE_PUBLIC_KEY="<base64-spki-public-key>"
 ### 发布后验证
 
 ```cmd
-curl "http://localhost:3000/ide/api/version/engine?current=bundled&platform=win32&arch=x64" -H "Authorization: Bearer <JWT>"
+curl "http://localhost:8000/ide/api/version/engine?current=bundled&platform=win32&arch=x64" -H "Authorization: Bearer <JWT>"
 ```
 
 期望看到：
@@ -242,10 +242,10 @@ Automatic updates are not available because no update feed is configured.
 
 ### `kind=app` 的作用边界
 
-sub2api 的 `kind=app` 当前表示后端保存了一份 App release 元数据，可通过下面接口查询：
+dev2 的 `kind=app` 当前表示后端保存了一份 App release 元数据，可通过下面接口查询：
 
 ```text
-GET http://localhost:3000/ide/api/version/app
+GET http://localhost:8000/ide/api/version/app
 ```
 
 但当前桌面端的 Electron 自动更新并不会直接消费这个接口。也就是说，发布：
@@ -275,7 +275,7 @@ GET http://localhost:3000/ide/api/version/app
 2. 上传到 HTTPS CDN
 3. 计算 SHA256
 4. 可选生成 Ed25519 签名
-5. POST `kind=engine` 到 sub2api
+5. POST `kind=engine` 到 dev2 的 `/api/v1/admin/ide/releases`
 6. 确认客户端配置了 `MYIDE_ENGINE_MANIFEST_URL`
 7. 等待客户端后台静默更新
 

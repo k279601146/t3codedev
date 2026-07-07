@@ -1,7 +1,6 @@
 import {
   type DesktopCommercialAuthBrowserSignInInput,
   type DesktopCommercialAuthBrowserSignInCancelInput,
-  type DesktopCommercialAuthSignInInput,
   type DesktopCommercialAuthState,
 } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -109,7 +108,7 @@ export class DesktopCommercialAuthExchangeError extends Data.TaggedError(
   override get message() {
     return this.cause instanceof Error
       ? this.cause.message
-      : "Failed to exchange web token for an IDE token.";
+      : "Failed to exchange authorization code for an IDE token.";
   }
 }
 
@@ -142,7 +141,7 @@ export interface DesktopCommercialAuthShape {
     DesktopCommercialAuthGetCredentialsError
   >;
   readonly signIn: (
-    input: DesktopCommercialAuthSignInInput,
+    input: DesktopCommercialAuthBrowserSignInInput,
   ) => Effect.Effect<DesktopCommercialAuthState, DesktopCommercialAuthSignInError>;
   readonly signInWithBrowser: (
     input: DesktopCommercialAuthBrowserSignInInput,
@@ -575,44 +574,6 @@ function waitForPKCECallback(
   });
 }
 
-function exchangeWebTokenForIDEToken(
-  input: DesktopCommercialAuthSignInInput,
-): Effect.Effect<IDETokenExchangeResult, DesktopCommercialAuthExchangeError> {
-  return Effect.tryPromise({
-    try: async () => {
-      const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
-      const webAccessToken = input.webAccessToken.trim();
-      if (webAccessToken.length === 0) {
-        throw new Error("Web access token is required.");
-      }
-
-      const response = await resilientFetch(resolveAuthTokenEndpoint(gatewayBaseUrl), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${webAccessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          access_token: webAccessToken,
-          client_id: "t3code-desktop",
-          client_version: "desktop",
-        }),
-        maxRetries: 2,
-        timeoutMs: 30_000,
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const message = readString(payload, "message") ?? readString(payload, "error");
-        throw new Error(message ?? `Gateway token exchange failed with HTTP ${response.status}.`);
-      }
-
-      return parseExchangePayload(payload);
-    },
-    catch: (cause) => new DesktopCommercialAuthExchangeError({ cause }),
-  });
-}
-
 function exchangePKCECodeForIDEToken(input: {
   readonly gatewayBaseUrl: string;
   readonly code: string;
@@ -683,6 +644,68 @@ export const layer = Layer.effect(
         document,
       }).pipe(Effect.mapError((cause) => new DesktopCommercialAuthWriteError({ cause })));
 
+    const signInWithBrowser = Effect.fn("desktop.commercialAuth.signInWithBrowser")(function* (
+      input: DesktopCommercialAuthBrowserSignInInput,
+    ) {
+      const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
+      const webAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
+      const codeVerifier = makePKCEVerifier();
+      const codeChallenge = makePKCEChallenge(codeVerifier);
+      const authorization = yield* Effect.tryPromise({
+        try: () =>
+          waitForPKCECallback(
+            (authorizeUrl) => runShellPromise(shell.openExternal(authorizeUrl)),
+            input.requestId
+              ? {
+                  gatewayBaseUrl,
+                  webAuthBaseUrl,
+                  codeChallenge,
+                  requestId: input.requestId,
+                }
+              : {
+                  gatewayBaseUrl,
+                  webAuthBaseUrl,
+                  codeChallenge,
+                },
+          ),
+        catch: (cause) => new DesktopCommercialAuthPKCEError({ cause }),
+      });
+      const exchanged = yield* exchangePKCECodeForIDEToken({
+        gatewayBaseUrl,
+        code: authorization.code,
+        codeVerifier,
+        clientVersion: environment.appVersion,
+        platform: process.platform,
+        deviceId: makeDeviceId(environment),
+      });
+
+      if (!(yield* safeStorage.isEncryptionAvailable)) {
+        return yield* new ElectronSafeStorage.ElectronSafeStorageAvailabilityError({
+          cause: new Error("safeStorage encryption is unavailable"),
+        });
+      }
+
+      const now = yield* DateTime.now;
+      const tokenExpiresAt =
+        exchanged.expiresIn !== null && exchanged.expiresIn > 0
+          ? DateTime.formatIso(DateTime.add(now, { seconds: exchanged.expiresIn }))
+          : null;
+      const document: CommercialAuthDocument = {
+        version: 1,
+        gatewayBaseUrl,
+        webAuthBaseUrl,
+        encryptedIdeJwt: Encoding.encodeBase64(
+          yield* safeStorage.encryptString(exchanged.accessToken),
+        ),
+        authenticatedAt: DateTime.formatIso(now),
+        tokenExpiresAt,
+        userLabel: exchanged.userLabel,
+      };
+
+      yield* writeAuthDocument(document);
+      return toState(document);
+    });
+
     return DesktopCommercialAuth.of({
       getState: readDocument(fileSystem, environment.commercialAuthPath).pipe(
         Effect.map(toState),
@@ -702,97 +725,9 @@ export const layer = Layer.effect(
         });
       }).pipe(Effect.withSpan("desktop.commercialAuth.getCredentials")),
       signIn: Effect.fn("desktop.commercialAuth.signIn")(function* (input) {
-        const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
-        const webAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
-        const exchanged = yield* exchangeWebTokenForIDEToken({
-          ...input,
-        });
-
-        if (!(yield* safeStorage.isEncryptionAvailable)) {
-          return yield* new ElectronSafeStorage.ElectronSafeStorageAvailabilityError({
-            cause: new Error("safeStorage encryption is unavailable"),
-          });
-        }
-
-        const now = yield* DateTime.now;
-        const tokenExpiresAt =
-          exchanged.expiresIn !== null && exchanged.expiresIn > 0
-            ? DateTime.formatIso(DateTime.add(now, { seconds: exchanged.expiresIn }))
-            : null;
-        const document: CommercialAuthDocument = {
-          version: 1,
-          gatewayBaseUrl,
-          webAuthBaseUrl,
-          encryptedIdeJwt: Encoding.encodeBase64(
-            yield* safeStorage.encryptString(exchanged.accessToken),
-          ),
-          authenticatedAt: DateTime.formatIso(now),
-          tokenExpiresAt,
-          userLabel: exchanged.userLabel,
-        };
-
-        yield* writeAuthDocument(document);
-        return toState(document);
+        return yield* signInWithBrowser(input);
       }),
-      signInWithBrowser: Effect.fn("desktop.commercialAuth.signInWithBrowser")(function* (input) {
-        const gatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
-        const webAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
-        const codeVerifier = makePKCEVerifier();
-        const codeChallenge = makePKCEChallenge(codeVerifier);
-        const authorization = yield* Effect.tryPromise({
-          try: () =>
-            waitForPKCECallback(
-              (authorizeUrl) => runShellPromise(shell.openExternal(authorizeUrl)),
-              input.requestId
-                ? {
-                    gatewayBaseUrl,
-                    webAuthBaseUrl,
-                    codeChallenge,
-                    requestId: input.requestId,
-                  }
-                : {
-                    gatewayBaseUrl,
-                    webAuthBaseUrl,
-                    codeChallenge,
-                  },
-            ),
-          catch: (cause) => new DesktopCommercialAuthPKCEError({ cause }),
-        });
-        const exchanged = yield* exchangePKCECodeForIDEToken({
-          gatewayBaseUrl,
-          code: authorization.code,
-          codeVerifier,
-          clientVersion: environment.appVersion,
-          platform: process.platform,
-          deviceId: makeDeviceId(environment),
-        });
-
-        if (!(yield* safeStorage.isEncryptionAvailable)) {
-          return yield* new ElectronSafeStorage.ElectronSafeStorageAvailabilityError({
-            cause: new Error("safeStorage encryption is unavailable"),
-          });
-        }
-
-        const now = yield* DateTime.now;
-        const tokenExpiresAt =
-          exchanged.expiresIn !== null && exchanged.expiresIn > 0
-            ? DateTime.formatIso(DateTime.add(now, { seconds: exchanged.expiresIn }))
-            : null;
-        const document: CommercialAuthDocument = {
-          version: 1,
-          gatewayBaseUrl,
-          webAuthBaseUrl,
-          encryptedIdeJwt: Encoding.encodeBase64(
-            yield* safeStorage.encryptString(exchanged.accessToken),
-          ),
-          authenticatedAt: DateTime.formatIso(now),
-          tokenExpiresAt,
-          userLabel: exchanged.userLabel,
-        };
-
-        yield* writeAuthDocument(document);
-        return toState(document);
-      }),
+      signInWithBrowser,
       cancelBrowserSignIn: Effect.fn("desktop.commercialAuth.cancelBrowserSignIn")(
         function* (input) {
           yield* Effect.sync(() => {

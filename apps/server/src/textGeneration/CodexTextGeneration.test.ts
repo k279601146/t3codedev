@@ -622,7 +622,7 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
           {
             MYIDE_ENGINE_PATH: "C:\\Bahew\\ai-engine.exe",
             MYIDE_IDE_JWT: "jwt-token",
-            MYIDE_GATEWAY_BASE_URL: "https://sub.bahew.com/v1",
+            MYIDE_GATEWAY_BASE_URL: "https://www.bahew.com/v1",
           },
         );
 

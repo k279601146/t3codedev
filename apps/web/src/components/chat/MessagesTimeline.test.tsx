@@ -1058,7 +1058,7 @@ describe("MessagesTimeline", () => {
   it("renders runtime error notices while ignoring reconnect runtime warnings", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const retryMessage =
-      "unexpected status 403 Forbidden: insufficient balance, url: https://sub.bahew.com/v1/responses";
+      "unexpected status 403 Forbidden: insufficient balance, url: https://www.bahew.com/v1/responses";
     const timelineEntries = [
       ...Array.from({ length: 5 }, (_, index) => ({
         id: `warning-entry-${index + 1}`,

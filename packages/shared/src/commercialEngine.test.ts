@@ -74,8 +74,8 @@ describe("commercialEngine", () => {
     assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://api.example.com/v1"), [
       "https://api.example.com",
     ]);
-    assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://sub.bahew.com/v1"), [
-      "https://sub.bahew.com",
+    assert.deepEqual(resolveCommercialEngineIdeApiBaseUrlCandidates("https://www.bahew.com/v1"), [
+      "https://www.bahew.com",
     ]);
   });
 
@@ -85,8 +85,8 @@ describe("commercialEngine", () => {
       "http://localhost:3000/v1",
     );
     assert.equal(
-      resolveCommercialEngineOpenAiBaseUrl("https://sub.bahew.com/v1"),
-      "https://sub.bahew.com/v1",
+      resolveCommercialEngineOpenAiBaseUrl("https://www.bahew.com/v1"),
+      "https://www.bahew.com/v1",
     );
   });
 

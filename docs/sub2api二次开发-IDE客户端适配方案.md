@@ -1,4 +1,6 @@
-# sub2api 二次开发方案
+# sub2api 二次开发方案（历史归档，已废弃）
+
+> 2026-07-07 起，T3 Code 已迁移为全量依赖 dev2 后端。本文档只保留为历史方案归档，后续开发不要再按本文扩展 sub2api。当前登录、IDE JWT、模型列表、模型请求、usage、余额、5 小时窗口、每周窗口和扣费都走 dev2；计费权威以 `D:\workspace\dev2_OpenHarness_SaaS\docs\dev2-local-billing-authority.md` 为准。
 
 ## 面向 AI 编程助手 IDE 客户端的适配与扩展
 

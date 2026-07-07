@@ -337,7 +337,7 @@ function gatewayModelsUrl() {
   const baseUrl = (
     process.env.MYIDE_GATEWAY_BASE_URL ||
     process.env.MYIDE_API_URL ||
-    "https://sub.bahew.com/v1"
+    "https://www.bahew.com/v1"
   ).trim();
   const url = new URL(baseUrl);
   url.hash = "";

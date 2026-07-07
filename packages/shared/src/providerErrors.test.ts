@@ -20,7 +20,7 @@ describe("providerErrors", () => {
 
   it("normalizes gateway provider errors and preserves request id", () => {
     const normalized = sanitizeProviderErrorMessage(
-      "unexpected status 404 Not Found: model is not found, url: https://sub.bahew.com/v1/responses, cf-ray: a13956896e4a115c-ORD, request id: 10c59330-90a7-44e4-ae39-6c351ac8a5a5",
+      "unexpected status 404 Not Found: model is not found, url: https://www.bahew.com/v1/responses, cf-ray: a13956896e4a115c-ORD, request id: 10c59330-90a7-44e4-ae39-6c351ac8a5a5",
     );
 
     expect(normalized).toBe(
@@ -47,7 +47,7 @@ describe("providerErrors", () => {
     const normalized = normalizeProviderErrorMessage("Reconnecting... 1/5", {
       error: {
         additionalDetails:
-          "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://sub.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+          "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://www.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
       },
     });
 
@@ -63,7 +63,7 @@ describe("providerErrors", () => {
       {
         error: {
           additionalDetails:
-            "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://sub.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+            "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://www.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
         },
       },
     );

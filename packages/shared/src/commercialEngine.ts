@@ -8,7 +8,7 @@ export const COMMERCIAL_ENGINE_LEGACY_GATEWAY_BASE_URL_ENV = "MYIDE_API_URL";
 export const COMMERCIAL_ENGINE_IDE_JWT_ENV = "MYIDE_IDE_JWT";
 export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_ENV = "MYIDE_WINDOWS_SANDBOX_MODE";
 
-export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "https://sub.bahew.com/v1";
+export const DEFAULT_COMMERCIAL_ENGINE_GATEWAY_BASE_URL = "https://www.bahew.com/v1";
 export const DEFAULT_COMMERCIAL_ENGINE_WEB_AUTH_BASE_URL = "https://www.bahew.com";
 export const COMMERCIAL_ENGINE_WIRE_API = "responses";
 export const COMMERCIAL_ENGINE_WINDOWS_SANDBOX_MODES = ["unelevated", "elevated"] as const;

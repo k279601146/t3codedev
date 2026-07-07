@@ -157,7 +157,7 @@ describe("DesktopEngineUpdater", () => {
     );
   });
 
-  it.effect("accepts the sub2api IDE version envelope as an engine manifest", () => {
+  it.effect("accepts the dev2 IDE version envelope as an engine manifest", () => {
     const manifestUrl = "https://updates.example.test/ide/api/version/engine";
     const binaryUrl = "https://updates.example.test/ai-engine";
     const binaryBytes = textEncoder.encode("new-engine-binary");

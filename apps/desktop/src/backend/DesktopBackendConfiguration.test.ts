@@ -550,7 +550,7 @@ describe("DesktopBackendConfiguration", () => {
 
         const engineConfig = yield* fileSystem.readFileString(engineConfigPath);
         assert.equal(engineConfig.includes("[model_providers.myservice]"), false);
-        assert.equal(engineConfig.includes("https://sub.bahew.com/v1"), false);
+        assert.equal(engineConfig.includes("https://www.bahew.com/v1"), false);
         assert.match(engineConfig, /\[features\]/);
         assert.match(engineConfig, /image_generation = true/);
         assert.match(engineConfig, /imagegenext = true/);

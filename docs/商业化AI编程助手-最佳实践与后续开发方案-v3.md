@@ -1,4 +1,8 @@
-# 商业化 AI 编程助手 IDE 客户端
+# 商业化 AI 编程助手 IDE 客户端（历史归档，已废弃）
+
+> 2026-07-07 归档说明：本文早期方案中直接使用 sub2api 作为模型网关和计费系统的内容已废弃。当前 T3 Code 登录、IDE JWT、模型请求、usage 和计费都走 dev2；dev2 的 T3 Code upstream 使用后台专用配置，不向客户端暴露真实 Base URL 或 API key。
+>
+> 当前实施方案请看 `docs/多模型支持开发计划.md` 和 `docs/usage-billing-system.md`。本文正文仅保留为早期商业化思路归档，不得作为当前开发或部署依据。
 
 ## 最佳实践 · 后续开发方案
 

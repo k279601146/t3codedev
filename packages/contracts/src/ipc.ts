@@ -366,7 +366,6 @@ export interface DesktopCommercialAuthState {
 export interface DesktopCommercialAuthSignInInput {
   gatewayBaseUrl: string;
   webAuthBaseUrl?: string;
-  webAccessToken: string;
 }
 
 export interface DesktopCommercialAuthBrowserSignInInput {
@@ -391,7 +390,6 @@ export const DesktopCommercialAuthStateSchema = Schema.Struct({
 export const DesktopCommercialAuthSignInInputSchema = Schema.Struct({
   gatewayBaseUrl: Schema.String,
   webAuthBaseUrl: Schema.optionalKey(Schema.String),
-  webAccessToken: Schema.String,
 });
 
 export const DesktopCommercialAuthBrowserSignInInputSchema = Schema.Struct({

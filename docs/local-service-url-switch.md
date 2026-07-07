@@ -1,29 +1,27 @@
-# 本地服务 URL 临时切换提醒
+# 本地服务 URL 切换提醒
 
-当前开发阶段，根目录环境变量已临时指向本地服务：
+当前 T3 Code 商业化后端全量指向 dev2，不再默认依赖 sub2api。
+
+本地开发推荐：
 
 ```env
-MYIDE_WEB_AUTH_BASE_URL=http://localhost:3001/
-MYIDE_GATEWAY_BASE_URL=http://localhost:3000
+MYIDE_WEB_AUTH_BASE_URL=http://localhost:3001
+MYIDE_GATEWAY_BASE_URL=http://localhost:8000/v1
 ```
 
-## 上线前必须恢复
-
-正式上线前检查并恢复以下位置：
-
-- `.env`
-- `.env.example`
-- 部署平台或打包流水线中注入的同名环境变量
-
-建议恢复为当前线上默认值：
+线上默认：
 
 ```env
-MYIDE_WEB_AUTH_BASE_URL=https://www.bahew.com/
-MYIDE_GATEWAY_BASE_URL=https://sub.bahew.com/v1
+MYIDE_WEB_AUTH_BASE_URL=https://www.bahew.com
+MYIDE_GATEWAY_BASE_URL=https://www.bahew.com/v1
 ```
 
 ## 地址语义
 
-- `MYIDE_WEB_AUTH_BASE_URL` 是 Web 认证服务根地址，程序会自动拼接 `/ide/auth/authorize`。
-- `MYIDE_GATEWAY_BASE_URL` 是 sub2api 网关地址。填写根地址时，OpenAI 兼容模型调用会自动使用 `/v1`；登录换取 IDE token、用量和账户接口会使用网关根地址。
-- 如果未来线上网关不再使用 `/v1` 作为 OpenAI 兼容前缀，需要同步检查 `packages/shared/src/commercialEngine.ts` 中的 `resolveCommercialEngineOpenAiBaseUrl`。
+- `MYIDE_WEB_AUTH_BASE_URL` 是 dev2 Web 根地址，程序会自动拼接 `/ide/auth/authorize`。
+- `MYIDE_GATEWAY_BASE_URL` 变量名保留，但语义已经改为 “dev2 billing proxy base URL”，不是 sub2api 网关地址。
+- 登录 token exchange、模型列表、账户余额、usage 窗口、遥测和模型请求都走 dev2。
+- `CODEX_OPENAI_BASE_URL`、`OPENAI_BASE_URL`、`CODEX_MODEL_PROVIDERS_*_BASE_URL` 会由运行时注入为 dev2 `/v1`，不得配置为真实第三方 upstream。
+- 真实 upstream Base URL 和 API key 在 dev2 后台 “T3 Code 客户端” 菜单配置，不进入客户端环境变量。
+
+如果线上 API 域名与 Web 域名不同，部署或打包流水线应显式覆盖 `MYIDE_GATEWAY_BASE_URL`，但仍必须指向 dev2 计费代理。

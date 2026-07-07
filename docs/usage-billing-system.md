@@ -1,96 +1,95 @@
 # T3 Code 用量计量与计费体系
 
-本文档描述当前项目内置的计量计费雏形，供后续接入真实支付、订阅套餐和商业化网站时使用。
+更新时间：2026-07-07
 
-## 目标
+T3 Code 的登录、IDE JWT、模型请求入口、模型列表、账户余额、5 小时窗口、每周窗口和扣费都以 dev2 为后端。dev2 Web/API 的资产权威已经迁移到 dev2 本地数据库；计费、扣费、5 小时窗口、每周窗口、余额、奖励和退款只以 `D:\workspace\dev2_OpenHarness_SaaS\docs\dev2-local-billing-authority.md` 为准。
 
-T3 Code 采用类似 Gemini 的“计算用量限额”模型：所有用户都有可消费的 units，用量窗口每 5 小时刷新，同时保留每周总上限。超过任一窗口后，网关应拒绝继续调用高级模型或要求用户升级订阅。
+## 当前边界
 
-客户端不保存真实 AI 提供方密钥。用户登录后持有的是 IDE JWT，AI 请求进入 sub2api 网关后由服务端验证、扣量、转发。
+T3 Code 客户端负责：
 
-## 套餐模型
+- 打开 dev2 Web 授权页。
+- 安全保存 dev2 签发的 IDE JWT。
+- 把 `MYIDE_IDE_JWT` 注入 app-server / ai-engine 子进程。
+- 从 dev2 查询模型列表、账户余额和 usage 窗口。
+- 展示余额不足、窗口超限、模型不可用等错误。
+
+dev2 负责：
+
+- 签发 IDE authorization code 和 IDE JWT。
+- 用本地 IDE session 记录 IDE JWT 的 `jti`，支持撤销、过期和用户停用校验。
+- 暴露 OpenAI-compatible `/v1/models`、`/v1/responses`、`/v1/chat/completions`。
+- 在后台 “T3 Code 客户端” 菜单维护专用 upstream `base_url`、API key、模型白名单、输出 token 上限和超时。
+- 请求前做本地额度预检。
+- 请求后解析 upstream usage，并按本地账务规则写 `ResourceLog`、`BillingLedgerEntry` 和 `BillingAccount`。
+
+T3 Code 不保存真实 AI 提供方密钥，不保存真实 upstream Base URL，不用客户端上报值作为扣费依据。
+
+## 套餐和窗口
+
+套餐语义沿用 dev2：
 
 | 套餐 | 展示名称 | 限额倍率 |
 | --- | --- | --- |
-| `free` | 未订阅方案 | 标准限额的 1 倍 |
-| `plus` | AI Plus | 标准限额的 2 倍 |
-| `pro` | AI Pro | 标准限额的 4 倍 |
+| `free` | Free | 标准限额 1 倍 |
+| `plus` | AI Plus | 按 dev2 配置 |
+| `pro` | AI Pro | 按 dev2 配置 |
 
-当前内置基线用于本地展示兜底：
+窗口默认基线以 dev2 为准：
 
-| 窗口 | 标准限额 |
+| 窗口 | 默认标准限额 |
 | --- | --- |
 | 5 小时窗口 | 100 units |
 | 每周窗口 | 700 units |
 
-真实上线时，sub2api 应返回服务端配置的准确限额，客户端只负责展示。
+客户端展示窗口进度，但最终放行或拒绝由 dev2 代理返回决定。
 
-## units 计量口径
+## 请求路径
 
-当前版本以 `unit` 作为产品层计量单位，避免直接把不同模型、不同功能的 token 等价处理。网关返回窗口字段时以网关为准；旧网关只返回 token 或请求数时，客户端不再把这些原始计数当成 used units，避免一个很短的请求被显示成已经消耗 1 unit。
+```text
+MYIDE_WEB_AUTH_BASE_URL -> dev2 Web
+MYIDE_GATEWAY_BASE_URL  -> dev2 /v1 billing proxy
+```
 
-建议服务端采用以下计量方式：
+关键接口：
 
-| 行为 | 建议计量 |
-| --- | --- |
-| 普通文本对话 | `raw_units = input_tokens / 1000 + output_tokens / 1000 * 2`，单次 `raw_units < 1` 时记为 `0`，否则按 `round(raw_units, 2)` 入账 |
-| Pro 模型 | 在普通文本基础上乘以模型倍率，例如 2x 到 4x |
-| 扩展思考 / Deep Think | 在普通文本基础上增加 reasoning token 权重 |
-| 图片生成 | 每张图片按固定 units 或按模型返回成本换算 |
-| 视频生成 | 按秒数、分辨率、模型等级换算 units |
-| 音乐生成 | 按秒数、模型等级换算 units |
-| Deep Research | 按检索次数、子任务次数和最终 token 一起折算 |
+- `POST /ide/auth/token`
+- `GET /api/v1/auth/me`
+- `GET /ide/api/usage`
+- `GET /ide/api/usage/stats`
+- `GET /ide/api/usage/trend`
+- `GET /ide/api/usage/models`
+- `GET /v1/models`
+- `POST /v1/responses`
+- `POST /v1/chat/completions`
+- `POST /ide/api/telemetry`
+- `POST /ide/api/installations/heartbeat`
 
-最终扣量必须由 sub2api 在服务端完成，客户端展示值不能作为计费依据。IDE JWT 请求不应因为账户余额为 `0` 被直接拦截；是否允许继续调用由 5 小时窗口和每周窗口的 units 限额决定。
+## `/ide/api/usage` 响应
 
-## 当前代码实现
-
-共享模型位于 `packages/contracts/src/model.ts`：
-
-- `CommercialSubscriptionPlanSchema`
-- `CommercialUsageWindowSchema`
-- `CommercialAccountUsageSchema`
-
-共享解析与兜底计算位于 `packages/shared/src/commercialUsage.ts`：
-
-- `buildCommercialUsageLimitSnapshot`
-- `buildCommercialAccountUsageSnapshot`
-- `normalizeCommercialPlan`
-
-桌面端通过 `apps/desktop/src/ipc/methods/gatewayModels.ts` 请求：
-
-- `/api/v1/auth/me` 获取账户余额
-- `/ide/api/usage` 获取 token 成本和窗口限额
-
-服务端 Codex provider 通过 `apps/server/src/provider/Layers/CodexProvider.ts` 将商业用量合并进 provider 状态，Web 侧可以从 `provider.auth.rateLimits.usage` 读取。
-
-Web 设置菜单位于 `apps/web/src/components/Sidebar.tsx`。底部设置按钮弹出的菜单会展示：
-
-- 当前登录用户
-- 当前套餐和倍率
-- 5 小时窗口进度
-- 每周窗口进度
-- 升级、个人设置、订阅账单、帮助支持和退出登录入口
-
-## `/ide/api/usage` 建议响应
+客户端从 dev2 读取本地聚合结果，兼容字段如下：
 
 ```json
 {
   "data": {
-    "plan": "plus",
+    "provider": "dev2",
+    "plan": "free",
+    "balance": 0,
     "total_tokens": 21000150,
     "today_tokens": 122700,
-    "total_actual_cost": 994.6604659,
-    "today_actual_cost": 0.0312,
+    "total_actual_cost": 994.66,
+    "today_actual_cost": 0.03,
     "current_window": {
       "used_units": 122.7,
       "limit_units": 200,
-      "resets_at": "2026-05-27T03:00:00.000Z"
+      "remaining_units": 77.3,
+      "resets_at": "2026-05-27T03:00:00Z"
     },
     "weekly_window": {
       "used_units": 333.7,
       "limit_units": 1400,
-      "resets_at": "2026-06-01T00:00:00.000Z"
+      "remaining_units": 1066.3,
+      "resets_at": "2026-06-01T00:00:00Z"
     }
   }
 }
@@ -102,16 +101,11 @@ Web 设置菜单位于 `apps/web/src/components/Sidebar.tsx`。底部设置按�
 - `current_window_units` / `current_window_limit` / `current_window_resets_at` 可替代 `current_window`
 - `weekly_units` / `weekly_limit` / `weekly_resets_at` 可替代 `weekly_window`
 
-## 支付接入边界
-
-未来接 Stripe、支付宝、微信支付或自研订阅系统时，建议分工如下：
-
-- 支付系统负责订单、发票、订阅状态、续费失败和退款。
-- sub2api 负责把订阅状态映射为 `plan`、倍率、窗口限额，并在请求前做配额检查。
-- T3 Code 客户端只展示状态和打开升级/账单网页，不直接决定是否可用。
-
 ## 安全要求
 
-- 客户端只持有 IDE JWT。
-- 所有扣量和余额判断必须在 sub2api 服务端完成。
-- 日志只记录用量 metadata，不记录用户 prompt、代码内容或真实上游密钥。
+- `MYIDE_IDE_JWT` 不进入 shell include list，不进入普通前端页面状态。
+- `MYIDE_IDE_JWT` 必须来自 dev2 PKCE 授权码交换；撤销后 `/v1/*`、`/ide/api/*` 和 `/api/v1/auth/me` 都应返回 401。
+- `CODEX_OPENAI_BASE_URL`、`OPENAI_BASE_URL` 和 `CODEX_MODEL_PROVIDERS_*_BASE_URL` 只能指向 dev2 `/v1`。
+- 真实 upstream Base URL 和 API key 只在 dev2 后台 “T3 Code 客户端” 菜单的专用配置中保存，不能复用 dev2 全局 OpenAI 配置。
+- usage 缺失、流式中断、upstream 失败或 dev2 扣费失败时，dev2 fail closed。
+- 客户端 usage gate 只做用户体验预阻断，不作为计费权威。

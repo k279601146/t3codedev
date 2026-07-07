@@ -30,7 +30,7 @@ const commercialThreadConfigOverrides = {
   model_provider: "myservice",
   "model_providers.myservice": {
     name: "MyService",
-    base_url: "https://sub.bahew.com/v1",
+    base_url: "https://www.bahew.com/v1",
     env_key: "MYIDE_IDE_JWT",
     wire_api: "responses",
     requires_openai_auth: false,

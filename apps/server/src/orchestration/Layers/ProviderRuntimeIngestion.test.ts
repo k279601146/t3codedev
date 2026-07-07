@@ -2745,7 +2745,7 @@ describe("ProviderRuntimeIngestion", () => {
         detail: {
           error: {
             additionalDetails:
-              "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://sub.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
+              "unexpected status 403 Forbidden: 账户余额不足，请充值后重试, url: https://www.bahew.com/v1/responses, request id: 46b10970-db7e-4d8d-885d-a4f5d36e46ec",
           },
         },
       },

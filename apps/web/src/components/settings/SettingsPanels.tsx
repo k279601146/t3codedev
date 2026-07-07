@@ -633,12 +633,13 @@ function SandboxPermissionsSection({
 function CommercialGatewaySection() {
   const { t } = useI18n();
   const [authState, setAuthState] = useState<DesktopCommercialAuthState | null>(null);
-  const [webAccessToken, setWebAccessToken] = useState("");
   const [isWorking, setIsWorking] = useState(false);
 
   const bridge = typeof window !== "undefined" ? window.desktopBridge : undefined;
   const canManageCommercialAuth =
-    bridge?.getCommercialAuthState && bridge.signInCommercialAuth && bridge.signOutCommercialAuth;
+    bridge?.getCommercialAuthState &&
+    bridge.signInCommercialAuthWithBrowser &&
+    bridge.signOutCommercialAuth;
 
   useEffect(() => {
     if (!bridge?.getCommercialAuthState) return;
@@ -664,16 +665,15 @@ function CommercialGatewaySection() {
   }, [bridge]);
 
   const handleSignIn = useCallback(() => {
-    if (!bridge?.signInCommercialAuth) return;
+    if (!bridge?.signInCommercialAuthWithBrowser) return;
     setIsWorking(true);
     void bridge
-      .signInCommercialAuth({
+      .signInCommercialAuthWithBrowser({
         gatewayBaseUrl: authState?.gatewayBaseUrl ?? "",
-        webAccessToken,
+        webAuthBaseUrl: authState?.webAuthBaseUrl ?? "",
       })
       .then((state) => {
         setAuthState(state);
-        setWebAccessToken("");
         toastManager.add(
           stackedThreadToast({
             type: "success",
@@ -694,7 +694,7 @@ function CommercialGatewaySection() {
       .finally(() => {
         setIsWorking(false);
       });
-  }, [bridge, webAccessToken]);
+  }, [authState?.gatewayBaseUrl, authState?.webAuthBaseUrl, bridge]);
 
   const handleSignOut = useCallback(() => {
     if (!bridge?.signOutCommercialAuth) return;
@@ -723,7 +723,6 @@ function CommercialGatewaySection() {
   }
 
   const signedIn = authState?.signedIn ?? false;
-  const canSignIn = webAccessToken.trim().length > 0;
 
   return (
     <SettingsSection title={t("settings.section.account")}>
@@ -760,7 +759,7 @@ function CommercialGatewaySection() {
               type="button"
               size="xs"
               variant="default"
-              disabled={isWorking || !canSignIn}
+              disabled={isWorking}
               onClick={handleSignIn}
             >
               {isWorking ? (
@@ -773,23 +772,6 @@ function CommercialGatewaySection() {
           )
         }
       />
-      {!signedIn ? (
-        <SettingsRow
-          title={t("settings.webToken")}
-          description={t("settings.webTokenDescription")}
-          control={
-            <DraftInput
-              className="w-full sm:w-80"
-              value={webAccessToken}
-              onCommit={setWebAccessToken}
-              placeholder="eyJ..."
-              spellCheck={false}
-              type="password"
-              aria-label={t("settings.webToken")}
-            />
-          }
-        />
-      ) : null}
     </SettingsSection>
   );
 }

@@ -1,12 +1,16 @@
-# codex app-server 多模型支持方案
+# codex app-server 多模型支持方案（历史归档，已废弃）
+
+> 2026-07-07 归档说明：本文中 “sub2api 作为统一协议转换层” 的路线已废弃。当前 T3 Code 只请求 dev2 暴露的 `/v1` 计费代理；dev2 只转发 OpenAI-compatible upstream，不做协议转换。计费权威以 `D:\workspace\dev2_OpenHarness_SaaS\docs\dev2-local-billing-authority.md` 为准。
+>
+> 当前实施方案请看 `docs/多模型支持开发计划.md`。本文正文仅用于理解早期设计背景，不得作为当前开发、部署或后台配置依据。
 
 ## 用单一引擎二进制文件驱动 Claude、Gemini、GPT 全系列模型
 
 > **文档版本**：1.2  
 > **更新日期**：2025 年 5 月  
 > **适用项目**：T3 Code IDE 客户端  
-> **关联文档**：AGENTS.md · 商业化AI编程助手-最佳实践v3 · sub2api二次开发方案  
-> **sub2api 本地仓库**：`D:\workspace\sub2api-fork`  
+> **关联文档**：AGENTS.md · docs/多模型支持开发计划.md · docs/usage-billing-system.md
+> **当前后端仓库**：`D:\workspace\dev2_OpenHarness_SaaS`
 > **核心结论**：codex app-server 二进制文件本身已支持多模型，所有配置通过启动参数注入，不需要多个二进制文件
 
 ---
