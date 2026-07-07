@@ -31,6 +31,13 @@ describe("ClientSettings telemetry consent", () => {
   });
 });
 
+describe("ClientSettings workflow defaults", () => {
+  it("keeps the task panel closed until the user enables auto-open", () => {
+    expect(DEFAULT_CLIENT_SETTINGS.autoOpenPlanSidebar).toBe(false);
+    expect(decodeClientSettings({}).autoOpenPlanSidebar).toBe(false);
+  });
+});
+
 describe("ClientSettingsPatch language", () => {
   it("accepts client language updates", () => {
     expect(decodeClientSettingsPatch({ language: "zh-CN" }).language).toBe("zh-CN");

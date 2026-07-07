@@ -900,7 +900,6 @@ function CodexGlobalGuidanceSection() {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const [saved, setSaved] = useState("");
-  const [filePath, setFilePath] = useState("");
   const [overrideFilePath, setOverrideFilePath] = useState("");
   const [overrideActive, setOverrideActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -919,7 +918,6 @@ function CodexGlobalGuidanceSection() {
         if (disposed) return;
         setDraft(guidance.content);
         setSaved(guidance.content);
-        setFilePath(guidance.filePath);
         setOverrideFilePath(guidance.overrideFilePath);
         setOverrideActive(guidance.overrideActive);
       } catch (error) {
@@ -949,7 +947,6 @@ function CodexGlobalGuidanceSection() {
       });
       setDraft(guidance.content);
       setSaved(guidance.content);
-      setFilePath(guidance.filePath);
       setOverrideFilePath(guidance.overrideFilePath);
       setOverrideActive(guidance.overrideActive);
       toastManager.add(
@@ -987,17 +984,17 @@ function CodexGlobalGuidanceSection() {
     </>
   );
 
-  const status = (
-    <span className="flex flex-col gap-1">
-      {filePath ? <span>{filePath}</span> : null}
-      {overrideActive ? (
-        <span className="text-amber-600 dark:text-amber-400">
-          {t("settings.customInstructionsOverrideActive", { path: overrideFilePath })}
-        </span>
-      ) : null}
-      {loadError ? <span className="text-destructive">{loadError}</span> : null}
-    </span>
-  );
+  const status =
+    overrideActive || loadError ? (
+      <span className="flex flex-col gap-1">
+        {overrideActive ? (
+          <span className="text-amber-600 dark:text-amber-400">
+            {t("settings.customInstructionsOverrideActive", { path: overrideFilePath })}
+          </span>
+        ) : null}
+        {loadError ? <span className="text-destructive">{loadError}</span> : null}
+      </span>
+    ) : null;
 
   return (
     <SettingsSection title={t("settings.customInstructions")}>
