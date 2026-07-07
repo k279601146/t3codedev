@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  coalesceTerminalOutputEvents,
   resolveTerminalSelectionActionPosition,
   selectPendingTerminalEventEntries,
   selectTerminalEventEntriesAfterSnapshot,
@@ -133,5 +134,41 @@ describe("resolveTerminalSelectionActionPosition", () => {
         1,
       ).map((entry) => entry.id),
     ).toEqual([2]);
+  });
+
+  it("coalesces contiguous terminal output events before status events", () => {
+    const events = coalesceTerminalOutputEvents([
+      {
+        threadId: "thread-1",
+        terminalId: "default",
+        createdAt: "2026-04-02T20:00:00.000Z",
+        type: "output",
+        data: "one",
+      },
+      {
+        threadId: "thread-1",
+        terminalId: "default",
+        createdAt: "2026-04-02T20:00:00.001Z",
+        type: "output",
+        data: "two",
+      },
+      {
+        threadId: "thread-1",
+        terminalId: "default",
+        createdAt: "2026-04-02T20:00:00.002Z",
+        type: "cleared",
+      },
+      {
+        threadId: "thread-1",
+        terminalId: "default",
+        createdAt: "2026-04-02T20:00:00.003Z",
+        type: "output",
+        data: "three",
+      },
+    ]);
+
+    expect(events.map((event) => event.type)).toEqual(["output", "cleared", "output"]);
+    expect(events[0]).toMatchObject({ type: "output", data: "onetwo" });
+    expect(events[2]).toMatchObject({ type: "output", data: "three" });
   });
 });

@@ -293,4 +293,79 @@ describe("GitHubCli.layer", () => {
       assert.equal(error.message.includes("Pull request not found"), true);
     }).pipe(Effect.provide(layer)),
   );
+
+  it.effect("caches missing gh for passive pull request list probes", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.fail(
+          new VcsProcessExitError({
+            operation: "GitHubCli.execute",
+            command: "gh pr list",
+            cwd: "/repo",
+            exitCode: 1,
+            detail: "spawn gh ENOENT",
+          }),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const first = yield* gh.listOpenPullRequests({
+        cwd: "/repo",
+        headSelector: "feature/missing-gh",
+      });
+      const second = yield* gh.listOpenPullRequests({
+        cwd: "/repo",
+        headSelector: "feature/missing-gh",
+      });
+
+      assert.deepStrictEqual(first, []);
+      assert.deepStrictEqual(second, []);
+      expect(mockRun).toHaveBeenCalledTimes(1);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("does not skip explicit pull request operations after gh is missing", () =>
+    Effect.gen(function* () {
+      mockRun
+        .mockReturnValueOnce(
+          Effect.fail(
+            new VcsProcessExitError({
+              operation: "GitHubCli.execute",
+              command: "gh pr list",
+              cwd: "/repo",
+              exitCode: 1,
+              detail: "spawn gh ENOENT",
+            }),
+          ),
+        )
+        .mockReturnValueOnce(
+          Effect.fail(
+            new VcsProcessExitError({
+              operation: "GitHubCli.execute",
+              command: "gh pr view",
+              cwd: "/repo",
+              exitCode: 1,
+              detail: "spawn gh ENOENT",
+            }),
+          ),
+        );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh
+        .listOpenPullRequests({
+          cwd: "/repo",
+          headSelector: "feature/missing-gh",
+        })
+        .pipe(Effect.asVoid);
+      const error = yield* gh
+        .getPullRequest({
+          cwd: "/repo",
+          reference: "123",
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(error.message.includes("not available on PATH"), true);
+      expect(mockRun).toHaveBeenCalledTimes(2);
+    }).pipe(Effect.provide(layer)),
+  );
 });

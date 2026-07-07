@@ -22,7 +22,7 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 
 const PROVIDER_DETECTION_CACHE_CAPACITY = 2_048;
-const PROVIDER_DETECTION_CACHE_TTL = Duration.seconds(5);
+const PROVIDER_DETECTION_CACHE_TTL = Duration.seconds(60);
 
 export interface SourceControlProviderRegistration {
   readonly kind: SourceControlProviderKind;

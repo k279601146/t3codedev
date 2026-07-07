@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { buildPluginListCwds } from "./CodexPluginService.ts";
+import { buildPluginListCwds, isPluginListCacheEntryFresh } from "./CodexPluginService.ts";
 
 describe("CodexPluginService", () => {
   it("插件列表会保留工作区 cwd 并追加内置扩展根目录", () => {
@@ -21,5 +21,20 @@ describe("CodexPluginService", () => {
       }),
       ["/workspace/project"],
     );
+  });
+  it("插件列表缓存只在 TTL 内命中", () => {
+    const entry = {
+      expiresAtMs: 1_030,
+      value: {
+        marketplaces: [],
+        builtinPlugins: [],
+        featuredPluginIds: [],
+        marketplaceLoadErrors: [],
+      },
+    };
+
+    assert.equal(isPluginListCacheEntryFresh(entry, 1_000), true);
+    assert.equal(isPluginListCacheEntryFresh(entry, 1_030), false);
+    assert.equal(isPluginListCacheEntryFresh(null, 1_000), false);
   });
 });

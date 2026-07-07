@@ -91,6 +91,31 @@ export function selectPendingTerminalEventEntries(
   return entries.filter((entry) => entry.id > lastAppliedTerminalEventId);
 }
 
+export function coalesceTerminalOutputEvents(
+  events: ReadonlyArray<TerminalEvent>,
+): ReadonlyArray<TerminalEvent> {
+  const coalesced: TerminalEvent[] = [];
+  let pendingOutput: TerminalEvent | null = null;
+  for (const event of events) {
+    if (event.type === "output") {
+      pendingOutput =
+        pendingOutput?.type === "output"
+          ? { ...event, data: `${pendingOutput.data}${event.data}` }
+          : event;
+      continue;
+    }
+    if (pendingOutput) {
+      coalesced.push(pendingOutput);
+      pendingOutput = null;
+    }
+    coalesced.push(event);
+  }
+  if (pendingOutput) {
+    coalesced.push(pendingOutput);
+  }
+  return coalesced;
+}
+
 function normalizeComputedColor(value: string | null | undefined, fallback: string): string {
   const normalizedValue = value?.trim().toLowerCase();
   if (
@@ -331,6 +356,29 @@ export function TerminalViewport({
 
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    const pendingOutputRef = { current: "" };
+    const outputFrameRef = { current: null as number | null };
+    const flushPendingOutput = () => {
+      if (outputFrameRef.current !== null) {
+        window.cancelAnimationFrame(outputFrameRef.current);
+        outputFrameRef.current = null;
+      }
+      if (pendingOutputRef.current.length === 0) {
+        return;
+      }
+      const pendingOutput = pendingOutputRef.current;
+      pendingOutputRef.current = "";
+      terminalRef.current?.write(pendingOutput);
+    };
+    const scheduleOutputFlush = () => {
+      if (outputFrameRef.current !== null) {
+        return;
+      }
+      outputFrameRef.current = window.requestAnimationFrame(() => {
+        outputFrameRef.current = null;
+        flushPendingOutput();
+      });
+    };
 
     const clearSelectionAction = () => {
       selectionActionRequestIdRef.current += 1;
@@ -580,11 +628,13 @@ export function TerminalViewport({
       }
 
       if (event.type === "output") {
-        activeTerminal.write(event.data);
+        pendingOutputRef.current += event.data;
+        scheduleOutputFlush();
         clearSelectionAction();
         return;
       }
 
+      flushPendingOutput();
       if (event.type === "started" || event.type === "restarted") {
         hasHandledExitRef.current = false;
         clearSelectionAction();
@@ -635,8 +685,8 @@ export function TerminalViewport({
       if (pendingEntries.length === 0) {
         return;
       }
-      for (const entry of pendingEntries) {
-        applyTerminalEvent(entry.event);
+      for (const event of coalesceTerminalOutputEvents(pendingEntries.map((entry) => entry.event))) {
+        applyTerminalEvent(event);
       }
       lastAppliedTerminalEventIdRef.current =
         pendingEntries.at(-1)?.id ?? lastAppliedTerminalEventIdRef.current;
@@ -692,8 +742,8 @@ export function TerminalViewport({
           bufferedEntries,
           snapshot.updatedAt,
         );
-        for (const entry of replayEntries) {
-          applyTerminalEvent(entry.event);
+        for (const event of coalesceTerminalOutputEvents(replayEntries.map((entry) => entry.event))) {
+          applyTerminalEvent(event);
         }
         lastAppliedTerminalEventIdRef.current = bufferedEntries.at(-1)?.id ?? 0;
         terminalHydratedRef.current = true;
@@ -744,6 +794,7 @@ export function TerminalViewport({
       if (selectionActionTimerRef.current !== null) {
         window.clearTimeout(selectionActionTimerRef.current);
       }
+      flushPendingOutput();
       window.removeEventListener("mouseup", handleMouseUp);
       mount.removeEventListener("pointerdown", handlePointerDown);
       themeObserver.disconnect();

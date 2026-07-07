@@ -107,7 +107,7 @@ describe("VcsStatusBroadcaster", () => {
     }).pipe(Effect.provide(makeTestLayer(state)));
   });
 
-  it.effect("refreshes the cached snapshot after explicit invalidation", () => {
+  it.effect("refreshes local status first and updates remote status asynchronously", () => {
     const state = {
       currentLocalStatus: baseLocalStatus,
       currentRemoteStatus: baseRemoteStatus,
@@ -135,7 +135,7 @@ describe("VcsStatusBroadcaster", () => {
       assert.deepStrictEqual(initial, baseStatus);
       assert.deepStrictEqual(refreshed, {
         ...state.currentLocalStatus,
-        ...state.currentRemoteStatus,
+        ...baseRemoteStatus,
       });
       assert.deepStrictEqual(cached, {
         ...state.currentLocalStatus,

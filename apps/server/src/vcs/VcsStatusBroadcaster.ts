@@ -247,11 +247,14 @@ export const layer = Layer.effect(
       "VcsStatusBroadcaster.refreshStatus",
     )(function* (rawCwd) {
       const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
-      const [local, remote] = yield* Effect.all([
-        refreshLocalStatus(cwd),
-        refreshRemoteStatus(cwd),
-      ]);
-      return mergeGitStatusParts(local, remote);
+      const cachedRemote = (yield* getCachedStatus(cwd))?.remote?.value ?? null;
+      const local = yield* refreshLocalStatus(cwd);
+      yield* refreshRemoteStatus(cwd).pipe(
+        Effect.ignoreCause({ log: true }),
+        Effect.forkIn(broadcasterScope),
+        Effect.asVoid,
+      );
+      return mergeGitStatusParts(local, cachedRemote);
     });
 
     const makeRemoteRefreshLoop = (

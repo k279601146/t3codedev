@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
@@ -15,6 +16,8 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitHubPullRequests from "./gitHubPullRequests.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+type GitHubCliAvailability = "unknown" | "available" | "missing" | "unauthenticated";
+const EMPTY_PULL_REQUEST_LIST: ReadonlyArray<GitHubPullRequestSummary> = [];
 
 export class GitHubCliError extends Schema.TaggedErrorClass<GitHubCliError>()("GitHubCliError", {
   operation: Schema.String,
@@ -155,6 +158,46 @@ function normalizeGitHubCliError(
   });
 }
 
+export function isGitHubCliMissingError(error: GitHubCliError): boolean {
+  return error.detail.toLowerCase().includes("not available on path");
+}
+
+export function isGitHubCliUnauthenticatedError(error: GitHubCliError): boolean {
+  return error.detail.toLowerCase().includes("not authenticated");
+}
+
+export function isGitHubCliListProbeUnavailableError(error: GitHubCliError): boolean {
+  return isGitHubCliMissingError(error) || isGitHubCliUnauthenticatedError(error);
+}
+
+function isCachedUnavailableForPassivePullRequestList(availability: GitHubCliAvailability) {
+  return availability === "missing" || availability === "unauthenticated";
+}
+
+function isPassivePullRequestList(args: ReadonlyArray<string>): boolean {
+  return args[0] === "pr" && args[1] === "list";
+}
+
+function missingGitHubCliError(operation: string): GitHubCliError {
+  return new GitHubCliError({
+    operation,
+    detail: "GitHub CLI (`gh`) is required but not available on PATH.",
+  });
+}
+
+function cachedUnavailableGitHubCliError(
+  operation: string,
+  availability: GitHubCliAvailability,
+): GitHubCliError {
+  if (availability === "unauthenticated") {
+    return new GitHubCliError({
+      operation,
+      detail: "GitHub CLI is not authenticated. Run `gh auth login` and retry.",
+    });
+  }
+  return missingGitHubCliError(operation);
+}
+
 const RawGitHubRepositoryCloneUrlsSchema = Schema.Struct({
   nameWithOwner: TrimmedNonEmptyString,
   url: TrimmedNonEmptyString,
@@ -228,17 +271,43 @@ function decodeGitHubJson<S extends Schema.Top>(
 
 export const make = Effect.fn("makeGitHubCli")(function* () {
   const process = yield* VcsProcess.VcsProcess;
+  const availabilityRef = yield* Ref.make<GitHubCliAvailability>("unknown");
 
   const execute: GitHubCliShape["execute"] = (input) =>
-    process
-      .run({
-        operation: "GitHubCli.execute",
-        command: "gh",
-        args: input.args,
-        cwd: input.cwd,
-        timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      })
-      .pipe(Effect.mapError((error) => normalizeGitHubCliError("execute", error)));
+    Effect.gen(function* () {
+      const availability = yield* Ref.get(availabilityRef);
+      if (
+        isCachedUnavailableForPassivePullRequestList(availability) &&
+        isPassivePullRequestList(input.args)
+      ) {
+        return yield* Effect.fail(
+          cachedUnavailableGitHubCliError("GitHubCli.execute", availability),
+        );
+      }
+
+      return yield* process
+        .run({
+          operation: "GitHubCli.execute",
+          command: "gh",
+          args: input.args,
+          cwd: input.cwd,
+          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        })
+        .pipe(
+          Effect.mapError((error) => normalizeGitHubCliError("execute", error)),
+          Effect.tap(() => Ref.set(availabilityRef, "available")),
+          Effect.catch((error: GitHubCliError) =>
+            Ref.set(
+              availabilityRef,
+              isGitHubCliMissingError(error)
+                ? "missing"
+                : isGitHubCliUnauthenticatedError(error)
+                  ? "unauthenticated"
+                  : "unknown",
+            ).pipe(Effect.flatMap(() => Effect.fail(error))),
+          ),
+        );
+    });
 
   return GitHubCli.of({
     execute,
@@ -279,6 +348,9 @@ export const make = Effect.fn("makeGitHubCli")(function* () {
                   );
                 }),
               ),
+        ),
+        Effect.catchIf(isGitHubCliListProbeUnavailableError, () =>
+          Effect.succeed(EMPTY_PULL_REQUEST_LIST),
         ),
       ),
     getPullRequest: (input) =>

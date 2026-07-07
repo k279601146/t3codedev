@@ -1,9 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off instanceOfSchema:off
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexErrors from "effect-codex-app-server/errors";
@@ -48,6 +50,11 @@ interface CodexPluginClientContext {
   readonly args: ReadonlyArray<string>;
   readonly cwd: string;
   readonly env: Record<string, string>;
+}
+
+export interface PluginListCacheEntry {
+  readonly expiresAtMs: number;
+  readonly value: PluginListResponse;
 }
 
 export interface CodexPluginServiceShape {
@@ -144,6 +151,14 @@ const BUILTIN_MARKETPLACE: PluginMarketplace = {
   path: null,
   plugins: [...BUILTIN_PLUGINS],
 };
+const PLUGIN_LIST_CACHE_TTL_MS = 30_000;
+
+export function isPluginListCacheEntryFresh(
+  entry: PluginListCacheEntry | null,
+  nowMs: number,
+): entry is PluginListCacheEntry {
+  return entry !== null && entry.expiresAtMs > nowMs;
+}
 
 export function buildPluginListCwds(input: {
   readonly workspaceCwd: string;
@@ -393,6 +408,7 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const clientServices = { config, settings, spawner } as const;
+  const pluginListCacheRef = yield* Ref.make<PluginListCacheEntry | null>(null);
   const resolveBundledRoot = () =>
     resolveBundledExtensionsRoot().pipe(
       Effect.provideService(FileSystem.FileSystem, fs),
@@ -407,35 +423,59 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
       Effect.asVoid,
     );
 
+  const readCachedPluginList = Effect.gen(function* () {
+    const nowMs = yield* Clock.currentTimeMillis;
+    const cached = yield* Ref.get(pluginListCacheRef);
+    return isPluginListCacheEntryFresh(cached, nowMs) ? cached.value : null;
+  });
+
+  const writeCachedPluginList = (value: PluginListResponse) =>
+    Effect.gen(function* () {
+      const nowMs = yield* Clock.currentTimeMillis;
+      yield* Ref.set(pluginListCacheRef, {
+        expiresAtMs: nowMs + PLUGIN_LIST_CACHE_TTL_MS,
+        value,
+      });
+    });
+
+  const invalidatePluginListCache = Ref.set(pluginListCacheRef, null);
+
+  const loadPluginList = Effect.gen(function* () {
+    const bundledExtensionsRoot = yield* resolveBundledRoot().pipe(
+      Effect.orElseSucceed(() => undefined),
+    );
+    const cwds = buildPluginListCwds({
+      workspaceCwd: config.cwd,
+      bundledExtensionsRoot,
+    });
+    return yield* withClient("plugins.list", clientServices, (client) =>
+      client
+        .request("plugin/list", {
+          cwds,
+        })
+        .pipe(
+          Effect.map((response) => ({
+            marketplaces: [BUILTIN_MARKETPLACE, ...response.marketplaces.map(normalizeMarketplace)],
+            builtinPlugins: [...BUILTIN_PLUGINS],
+            featuredPluginIds: [...(response.featuredPluginIds ?? [])],
+            marketplaceLoadErrors: (response.marketplaceLoadErrors ?? []).map((error) => ({
+              marketplacePath: error.marketplacePath,
+              message: error.message,
+            })),
+          })),
+        ),
+    );
+  });
+
   const list: CodexPluginServiceShape["list"] = () =>
     Effect.gen(function* () {
-      const bundledExtensionsRoot = yield* resolveBundledRoot().pipe(
-        Effect.orElseSucceed(() => undefined),
-      );
-      const cwds = buildPluginListCwds({
-        workspaceCwd: config.cwd,
-        bundledExtensionsRoot,
-      });
-      return yield* withClient("plugins.list", clientServices, (client) =>
-        client
-          .request("plugin/list", {
-            cwds,
-          })
-          .pipe(
-            Effect.map((response) => ({
-              marketplaces: [
-                BUILTIN_MARKETPLACE,
-                ...response.marketplaces.map(normalizeMarketplace),
-              ],
-              builtinPlugins: [...BUILTIN_PLUGINS],
-              featuredPluginIds: [...(response.featuredPluginIds ?? [])],
-              marketplaceLoadErrors: (response.marketplaceLoadErrors ?? []).map((error) => ({
-                marketplacePath: error.marketplacePath,
-                message: error.message,
-              })),
-            })),
-          ),
-      );
+      const cached = yield* readCachedPluginList;
+      if (cached) {
+        return cached;
+      }
+      const response = yield* loadPluginList;
+      yield* writeCachedPluginList(response);
+      return response;
     }).pipe(
       Effect.catch((error: PluginServiceError) =>
         Effect.succeed({
@@ -488,6 +528,7 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
           remoteMarketplaceName: input.remoteMarketplaceName ?? null,
         })
         .pipe(
+          Effect.tap(() => invalidatePluginListCache),
           Effect.tap(() => refreshCodexProvider("install")),
           Effect.map((response) => ({
             appsNeedingAuth: response.appsNeedingAuth.map(normalizeAppSummary),
@@ -503,6 +544,7 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
           pluginId: input.pluginId,
         })
         .pipe(
+          Effect.tap(() => invalidatePluginListCache),
           Effect.tap(() => refreshCodexProvider("uninstall")),
           Effect.as({ uninstalled: true }),
         ),
@@ -517,6 +559,7 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
           sparsePaths: input.sparsePaths ?? null,
         })
         .pipe(
+          Effect.tap(() => invalidatePluginListCache),
           Effect.tap(() => refreshCodexProvider("marketplace.add")),
           Effect.map(
             (response): MarketplaceAddResponse => ({
@@ -535,6 +578,7 @@ const make = Effect.fn("makeCodexPluginService")(function* () {
           marketplaceName: input.marketplaceName ?? null,
         })
         .pipe(
+          Effect.tap(() => invalidatePluginListCache),
           Effect.tap(() => refreshCodexProvider("marketplace.upgrade")),
           Effect.map(
             (response): MarketplaceUpgradeResponse => ({

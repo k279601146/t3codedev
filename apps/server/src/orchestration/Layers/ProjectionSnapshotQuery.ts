@@ -28,6 +28,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -167,6 +168,7 @@ const REQUIRED_SNAPSHOT_PROJECTORS = [
 ] as const;
 const DEFAULT_THREAD_HISTORY_LIMIT_TURNS = 40;
 const MAX_THREAD_HISTORY_LIMIT_TURNS = 120;
+const REPOSITORY_IDENTITY_SNAPSHOT_TIMEOUT = Duration.seconds(1);
 
 interface ThreadHistoryCursor {
   readonly requestedAt: string;
@@ -329,6 +331,11 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         (workspaceRoot) =>
           repositoryIdentityResolver
             .resolve(workspaceRoot)
+            .pipe(
+              Effect.timeoutOption(REPOSITORY_IDENTITY_SNAPSHOT_TIMEOUT),
+              Effect.map((identity) => Option.getOrNull(identity)),
+              Effect.catch(() => Effect.succeed(null)),
+            )
             .pipe(Effect.map((identity) => [workspaceRoot, identity] as const)),
         { concurrency: repositoryIdentityResolutionConcurrency },
       ),

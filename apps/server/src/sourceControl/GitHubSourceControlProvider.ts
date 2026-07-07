@@ -158,6 +158,16 @@ export const make = Effect.fn("makeGitHubSourceControlProvider")(function* () {
               ? error
               : providerError("listChangeRequests", error),
           ),
+          Effect.catchIf(
+            (error) => {
+              const cause = error instanceof SourceControlProviderError ? error.cause : undefined;
+              return (
+                cause instanceof GitHubCli.GitHubCliError &&
+                GitHubCli.isGitHubCliListProbeUnavailableError(cause)
+              );
+            },
+            () => Effect.succeed([]),
+          ),
         );
     };
 
