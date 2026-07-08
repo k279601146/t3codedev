@@ -22,4 +22,21 @@ describe("CommercialPublicRuntimeConfigSchema", () => {
       t3ClientModelSelectorEnabled: true,
     });
   });
+
+  it("decodes desktop client public endpoints", () => {
+    const decoded = decodeCommercialPublicRuntimeConfig({
+      featureFlags: {
+        upgradeEntryEnabled: false,
+      },
+      desktopClient: {
+        gatewayBaseUrl: "http://localhost:8000/v1",
+        downloadUrl: "/api/t3code-download",
+      },
+    });
+
+    expect(decoded.desktopClient).toEqual({
+      gatewayBaseUrl: "http://localhost:8000/v1",
+      downloadUrl: "/api/t3code-download",
+    });
+  });
 });

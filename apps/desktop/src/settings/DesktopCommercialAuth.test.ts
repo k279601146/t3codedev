@@ -405,4 +405,64 @@ describe("DesktopCommercialAuth", () => {
       ),
     );
   });
+
+  it.effect("uses the gateway published by the web auth runtime config", () => {
+    const openedUrls: string[] = [];
+    return withGatewayBaseUrl(
+      "http://stale-gateway.example.test/v1",
+      withWebAuthBaseUrl(
+        "https://app.example.com",
+        withCommercialAuth(
+          withFetch(
+            (async (url, init) => {
+              if (url === "https://app.example.com/api/public-runtime-config") {
+                return jsonResponse({
+                  featureFlags: {
+                    upgradeEntryEnabled: false,
+                  },
+                  desktopClient: {
+                    gatewayBaseUrl: "https://runtime-gateway.example.com/v1",
+                  },
+                });
+              }
+
+              assert.equal(url, "https://runtime-gateway.example.com/ide/auth/token");
+              const body = await new Response(init?.body).json();
+              assert.equal(body.code, "pkce-code");
+              return jsonResponse(
+                {
+                  data: {
+                    access_token: "ide-jwt",
+                    expires_in: 3600,
+                    user: { email: "dev@example.com" },
+                  },
+                },
+                { status: 200 },
+              );
+            }) as typeof fetch,
+            Effect.gen(function* () {
+              const auth = yield* DesktopCommercialAuth.DesktopCommercialAuth;
+              const state = yield* auth.signInWithBrowser({
+                gatewayBaseUrl: "http://stale-gateway.example.test/v1",
+                webAuthBaseUrl: "https://app.example.com",
+              });
+
+              assert.equal(state.signedIn, true);
+              assert.equal(state.gatewayBaseUrl, "https://runtime-gateway.example.com/v1");
+              assert.equal(state.webAuthBaseUrl, "https://app.example.com");
+              assert.equal(openedUrls.length, 1);
+              assert.deepEqual(
+                yield* auth.getCredentials,
+                Option.some({
+                  gatewayBaseUrl: "https://runtime-gateway.example.com/v1",
+                  ideJwt: "ide-jwt",
+                }),
+              );
+            }),
+          ),
+          { openedUrls },
+        ),
+      ),
+    );
+  });
 });

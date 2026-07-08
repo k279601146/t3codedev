@@ -246,6 +246,12 @@ export const CommercialPublicRuntimeConfigSchema = Schema.Struct({
       Schema.withDecodingDefault(Effect.succeed(true)),
     ),
   }),
+  desktopClient: Schema.optionalKey(
+    Schema.Struct({
+      gatewayBaseUrl: Schema.optionalKey(Schema.String),
+      downloadUrl: Schema.optionalKey(Schema.String),
+    }),
+  ),
 });
 export type CommercialPublicRuntimeConfigSchema =
   typeof CommercialPublicRuntimeConfigSchema.Type;

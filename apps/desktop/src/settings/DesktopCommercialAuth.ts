@@ -1,4 +1,5 @@
 import {
+  CommercialPublicRuntimeConfigSchema,
   type DesktopCommercialAuthBrowserSignInInput,
   type DesktopCommercialAuthBrowserSignInCancelInput,
   type DesktopCommercialAuthState,
@@ -38,9 +39,12 @@ export interface DesktopCommercialAuthCredentials {
   readonly ideJwt: string;
 }
 
+type CommercialAuthGatewayBaseUrlSource = "configured" | "runtime-config";
+
 interface CommercialAuthDocument {
   readonly version: number;
   readonly gatewayBaseUrl: string;
+  readonly gatewayBaseUrlSource?: CommercialAuthGatewayBaseUrlSource;
   readonly webAuthBaseUrl: string;
   readonly encryptedIdeJwt?: string;
   readonly authenticatedAt?: string | null;
@@ -51,6 +55,7 @@ interface CommercialAuthDocument {
 interface CommercialAuthStorageDocument {
   readonly version?: number;
   readonly gatewayBaseUrl?: string;
+  readonly gatewayBaseUrlSource?: CommercialAuthGatewayBaseUrlSource;
   readonly webAuthBaseUrl?: string;
   readonly encryptedIdeJwt?: string;
   readonly authenticatedAt?: string | null;
@@ -69,6 +74,7 @@ function resolveConfiguredWebAuthBaseUrl(): string {
 const CommercialAuthDocumentSchema = Schema.Struct({
   version: Schema.optionalKey(Schema.Number),
   gatewayBaseUrl: Schema.optionalKey(Schema.String),
+  gatewayBaseUrlSource: Schema.optionalKey(Schema.Literals(["configured", "runtime-config"])),
   webAuthBaseUrl: Schema.optionalKey(Schema.String),
   encryptedIdeJwt: Schema.optionalKey(Schema.String),
   authenticatedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -79,6 +85,9 @@ const CommercialAuthDocumentSchema = Schema.Struct({
 const CommercialAuthDocumentJson = fromLenientJson(CommercialAuthDocumentSchema);
 const decodeCommercialAuthDocumentJson = Schema.decodeEffect(CommercialAuthDocumentJson);
 const encodeCommercialAuthDocumentJson = Schema.encodeEffect(CommercialAuthDocumentJson);
+const decodeCommercialPublicRuntimeConfig = Schema.decodeUnknownEffect(
+  CommercialPublicRuntimeConfigSchema,
+);
 
 export class DesktopCommercialAuthWriteError extends Data.TaggedError(
   "DesktopCommercialAuthWriteError",
@@ -208,12 +217,34 @@ function resolveAuthTokenEndpoint(gatewayBaseUrl: string): string {
   return new URL("/ide/auth/token", url.origin).toString();
 }
 
+function resolvePublicRuntimeConfigEndpoint(webAuthBaseUrl: string): string {
+  return new URL("/api/public-runtime-config", normalizeWebAuthBaseUrl(webAuthBaseUrl)).toString();
+}
+
+function normalizeOptionalGatewayBaseUrl(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  try {
+    return normalizeGatewayBaseUrl(trimmed);
+  } catch {
+    return null;
+  }
+}
+
 function normalizeDocument(document: CommercialAuthStorageDocument): CommercialAuthDocument {
   const configuredGatewayBaseUrl = resolveConfiguredGatewayBaseUrl();
   const configuredWebAuthBaseUrl = resolveConfiguredWebAuthBaseUrl();
+  const runtimeGatewayBaseUrl =
+    document.gatewayBaseUrlSource === "runtime-config"
+      ? normalizeOptionalGatewayBaseUrl(document.gatewayBaseUrl)
+      : null;
   const baseDocument = {
     version: document.version ?? 1,
-    gatewayBaseUrl: configuredGatewayBaseUrl,
+    gatewayBaseUrl: runtimeGatewayBaseUrl ?? configuredGatewayBaseUrl,
+    ...(runtimeGatewayBaseUrl !== null
+      ? ({ gatewayBaseUrlSource: "runtime-config" } as const)
+      : ({} as const)),
     webAuthBaseUrl: configuredWebAuthBaseUrl,
     authenticatedAt: document.authenticatedAt ?? null,
     tokenExpiresAt: document.tokenExpiresAt ?? null,
@@ -585,7 +616,8 @@ function exchangePKCECodeForIDEToken(input: {
   return Effect.tryPromise({
     try: async () => {
       const gatewayBaseUrl = normalizeGatewayBaseUrl(input.gatewayBaseUrl);
-      const response = await resilientFetch(resolveAuthTokenEndpoint(gatewayBaseUrl), {
+      const tokenEndpoint = resolveAuthTokenEndpoint(gatewayBaseUrl);
+      const response = await resilientFetch(tokenEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -600,17 +632,74 @@ function exchangePKCECodeForIDEToken(input: {
         }),
         maxRetries: 2,
         timeoutMs: 30_000,
+      }).catch((cause: unknown) => {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`Gateway token exchange failed at ${tokenEndpoint}: ${detail}`, { cause });
       });
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
         const message = readString(payload, "message") ?? readString(payload, "error");
-        throw new Error(message ?? `Gateway token exchange failed with HTTP ${response.status}.`);
+        throw new Error(
+          message ??
+            `Gateway token exchange failed at ${tokenEndpoint} with HTTP ${response.status}.`,
+        );
       }
 
       return parseExchangePayload(payload);
     },
     catch: (cause) => new DesktopCommercialAuthExchangeError({ cause }),
+  });
+}
+
+function requestPublicRuntimeGatewayBaseUrl(webAuthBaseUrl: string): Effect.Effect<string | null> {
+  return Effect.gen(function* () {
+    const endpoint = resolvePublicRuntimeConfigEndpoint(webAuthBaseUrl);
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        resilientFetch(endpoint, {
+          headers: {
+            Accept: "application/json",
+            "Cache-Control": "no-cache",
+          },
+          maxRetries: 0,
+          timeoutMs: 5_000,
+        }),
+      catch: (cause) => new Error("Failed to fetch commercial public runtime config.", { cause }),
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
+
+    if (response === null || !response.ok) {
+      return null;
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json() as Promise<unknown>,
+      catch: (cause) => new Error("Failed to parse commercial public runtime config.", { cause }),
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
+
+    if (payload === null) {
+      return null;
+    }
+
+    const config = yield* decodeCommercialPublicRuntimeConfig(payload).pipe(
+      Effect.catch(() => Effect.succeed(null)),
+    );
+    return normalizeOptionalGatewayBaseUrl(config?.desktopClient?.gatewayBaseUrl);
+  });
+}
+
+function resolveExchangeGatewayBaseUrl(input: {
+  readonly configuredGatewayBaseUrl: string;
+  readonly webAuthBaseUrl: string;
+}): Effect.Effect<{
+  readonly gatewayBaseUrl: string;
+  readonly source: CommercialAuthGatewayBaseUrlSource;
+}> {
+  return Effect.gen(function* () {
+    const runtimeGatewayBaseUrl = yield* requestPublicRuntimeGatewayBaseUrl(input.webAuthBaseUrl);
+    return runtimeGatewayBaseUrl !== null
+      ? { gatewayBaseUrl: runtimeGatewayBaseUrl, source: "runtime-config" as const }
+      : { gatewayBaseUrl: input.configuredGatewayBaseUrl, source: "configured" as const };
   });
 }
 
@@ -670,8 +759,12 @@ export const layer = Layer.effect(
           ),
         catch: (cause) => new DesktopCommercialAuthPKCEError({ cause }),
       });
+      const exchangeGateway = yield* resolveExchangeGatewayBaseUrl({
+        configuredGatewayBaseUrl: gatewayBaseUrl,
+        webAuthBaseUrl,
+      });
       const exchanged = yield* exchangePKCECodeForIDEToken({
-        gatewayBaseUrl,
+        gatewayBaseUrl: exchangeGateway.gatewayBaseUrl,
         code: authorization.code,
         codeVerifier,
         clientVersion: environment.appVersion,
@@ -692,7 +785,8 @@ export const layer = Layer.effect(
           : null;
       const document: CommercialAuthDocument = {
         version: 1,
-        gatewayBaseUrl,
+        gatewayBaseUrl: exchangeGateway.gatewayBaseUrl,
+        gatewayBaseUrlSource: exchangeGateway.source,
         webAuthBaseUrl,
         encryptedIdeJwt: Encoding.encodeBase64(
           yield* safeStorage.encryptString(exchanged.accessToken),
@@ -740,6 +834,9 @@ export const layer = Layer.effect(
         const nextDocument: CommercialAuthDocument = {
           version: document.version,
           gatewayBaseUrl: document.gatewayBaseUrl,
+          ...(document.gatewayBaseUrlSource
+            ? { gatewayBaseUrlSource: document.gatewayBaseUrlSource }
+            : {}),
           webAuthBaseUrl: document.webAuthBaseUrl,
           authenticatedAt: null,
           tokenExpiresAt: null,
