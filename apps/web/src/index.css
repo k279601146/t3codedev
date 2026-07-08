@@ -533,10 +533,27 @@ body {
     -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
     "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "T3 PingFang SC", Helvetica, Arial,
     sans-serif;
+  --t3-chat-font-size: 14px;
+  --t3-chat-line-height: 1.64;
+  --t3-chat-block-spacing: 10px;
   --t3-chat-text-color: #111827;
   --t3-chat-list-marker-color: #111827;
+  --t3-chat-inline-code-bg: color-mix(in srgb, var(--foreground) 5.5%, var(--background));
+  --t3-chat-inline-code-fg: #1f2328;
   --t3-sidebar-font-family:
     var(--t3-chat-font-family);
+  --t3-sidebar-font-size: 14px;
+  --t3-sidebar-line-height: 1.5;
+  --t3-sidebar-title-font-size: 13px;
+  --t3-sidebar-title-line-height: 1.46;
+  --t3-sidebar-meta-font-size: 12px;
+  --t3-sidebar-meta-line-height: 1.42;
+  --t3-sidebar-tiny-font-size: 11px;
+  --t3-sidebar-tiny-line-height: 1.36;
+  --t3-sidebar-badge-font-size: 9px;
+  --t3-sidebar-badge-line-height: 1.25;
+  --t3-sidebar-section-font-size: 12.5px;
+  --t3-sidebar-section-line-height: 1.5;
   --t3-sidebar-bg: #f8f8f7;
   --t3-sidebar-row-hover: #efefee;
   --t3-sidebar-row-active: #e9e9e7;
@@ -569,6 +586,8 @@ body.dark,
 .dark body {
   --t3-chat-text-color: color-mix(in srgb, var(--foreground) 86%, transparent);
   --t3-chat-list-marker-color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  --t3-chat-inline-code-bg: color-mix(in srgb, var(--foreground) 10%, var(--background));
+  --t3-chat-inline-code-fg: color-mix(in srgb, var(--foreground) 88%, transparent);
   --t3-sidebar-bg: #181818;
   --t3-sidebar-row-hover: #242424;
   --t3-sidebar-row-active: #2a2a2a;
@@ -608,11 +627,11 @@ body {
 
 .chat-text {
   font-family: var(--t3-chat-font-family);
-  --chat-inline-code-bg: #f3f4f6;
-  --chat-inline-code-fg: #1f2023;
-  font-size: 14px;
+  --chat-inline-code-bg: var(--t3-chat-inline-code-bg);
+  --chat-inline-code-fg: var(--t3-chat-inline-code-fg);
+  font-size: var(--t3-chat-font-size);
   font-weight: 400;
-  line-height: 1.64;
+  line-height: var(--t3-chat-line-height);
   color: var(--t3-chat-text-color);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -678,14 +697,14 @@ body {
 
 .chat-text > code,
 .chat-text :not(pre) > code {
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--chat-inline-code-bg);
-  padding: 2px 6px;
+  padding: 1px 4px;
   color: var(--chat-inline-code-fg);
   font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.42;
   letter-spacing: 0;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -810,12 +829,15 @@ code {
 .t3-project-sidebar,
 .t3-project-sidebar-footer {
   font-family: var(--t3-sidebar-font-family);
-  font-size: 14.5px;
+  font-size: var(--t3-sidebar-font-size);
   font-weight: 400;
+  line-height: var(--t3-sidebar-line-height);
   letter-spacing: 0;
-  text-rendering: auto;
-  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   font-kerning: normal;
+  font-feature-settings: normal;
+  font-variation-settings: normal;
   font-synthesis-weight: none;
 }
 
@@ -854,18 +876,18 @@ code {
 .t3-sidebar-thread-row {
   font-family: inherit;
   min-height: 30px;
-  font-size: 14.5px;
+  font-size: var(--t3-sidebar-font-size);
   font-weight: 400;
   letter-spacing: 0;
-  line-height: 1.55;
+  line-height: var(--t3-sidebar-line-height);
 }
 
 .t3-project-sidebar .t3-sidebar-nav-row,
 .t3-project-sidebar .t3-sidebar-project-row {
   gap: 10px;
   color: var(--t3-sidebar-text);
-  font-size: 14.5px;
-  line-height: 1.55;
+  font-size: var(--t3-sidebar-font-size);
+  line-height: var(--t3-sidebar-line-height);
 }
 
 .t3-project-sidebar .t3-sidebar-nav-row:hover,
@@ -881,7 +903,7 @@ code {
 
 .t3-project-sidebar .t3-sidebar-nav-row span,
 .t3-project-sidebar .t3-sidebar-project-row span {
-  line-height: 1.55;
+  line-height: var(--t3-sidebar-line-height);
 }
 
 .t3-project-sidebar .t3-sidebar-project-row span.truncate:not(.t3-sidebar-project-title) {
@@ -895,9 +917,9 @@ code {
 .t3-project-sidebar .t3-sidebar-project-title,
 .t3-project-sidebar .t3-sidebar-thread-title {
   color: color-mix(in srgb, var(--t3-sidebar-text) 88%, transparent);
-  font-size: 13.5px;
+  font-size: var(--t3-sidebar-title-font-size);
   font-weight: 400;
-  line-height: 1.48;
+  line-height: var(--t3-sidebar-title-line-height);
   letter-spacing: 0;
 }
 
@@ -910,9 +932,9 @@ code {
 
 .t3-project-sidebar .t3-sidebar-thread-row .tabular-nums {
   color: var(--t3-sidebar-meta);
-  font-size: 12px;
+  font-size: var(--t3-sidebar-meta-font-size);
   font-weight: 400;
-  line-height: 1.45;
+  line-height: var(--t3-sidebar-meta-line-height);
 }
 
 .t3-sidebar-nav-row[data-active="true"],
@@ -963,10 +985,10 @@ code {
 .t3-project-sidebar .group\/section-title button {
   height: 28px;
   color: var(--t3-sidebar-text-muted);
-  font-size: 14px;
+  font-size: var(--t3-sidebar-section-font-size);
   font-weight: 400;
   letter-spacing: 0;
-  line-height: 1.55;
+  line-height: var(--t3-sidebar-section-line-height);
 }
 
 .t3-project-sidebar-footer {
@@ -975,7 +997,7 @@ code {
 
 .t3-project-sidebar-footer [data-slot="button"] {
   color: var(--t3-sidebar-text);
-  font-size: 14.5px;
+  font-size: var(--t3-sidebar-font-size);
   font-weight: 400;
 }
 
@@ -986,8 +1008,8 @@ code {
 
 .t3-project-sidebar .t3-sidebar-thread-row {
   color: var(--t3-sidebar-text);
-  font-size: 13.5px;
-  line-height: 1.48;
+  font-size: var(--t3-sidebar-title-font-size);
+  line-height: var(--t3-sidebar-title-line-height);
 }
 
 .t3-project-sidebar .t3-sidebar-thread-row:hover {
@@ -996,7 +1018,7 @@ code {
 }
 
 .t3-project-sidebar .t3-sidebar-thread-row span {
-  line-height: 1.48;
+  line-height: var(--t3-sidebar-title-line-height);
 }
 
 .t3-project-sidebar .text-muted-foreground\/50,
@@ -1490,15 +1512,15 @@ label:has(> select#reasoning-effort) select {
   container-type: inline-size;
   min-width: 0;
   max-width: min(100%, 736px);
-  --chat-markdown-inline-code-bg: #f3f4f6;
-  --chat-markdown-inline-code-fg: #1f2328;
+  --chat-markdown-inline-code-bg: var(--t3-chat-inline-code-bg);
+  --chat-markdown-inline-code-fg: var(--t3-chat-inline-code-fg);
   overflow-wrap: break-word;
   word-break: normal;
   font-family: var(--t3-chat-font-family);
-  font-size: 14px;
+  font-size: var(--t3-chat-font-size);
   font-weight: 400;
   color: var(--t3-chat-text-color);
-  line-height: 1.64;
+  line-height: var(--t3-chat-line-height);
   letter-spacing: 0;
   text-align: left;
   text-rendering: optimizeLegibility;
@@ -1524,7 +1546,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown blockquote,
 .chat-markdown pre,
 .chat-markdown table {
-  margin: 0 0 10px 0;
+  margin: 0 0 var(--t3-chat-block-spacing) 0;
 }
 
 .chat-markdown h1,
@@ -1859,21 +1881,21 @@ label:has(> select#reasoning-effort) select {
   border-radius: 0;
   background: transparent;
   padding: 0.2rem 0 0.2rem 0.74rem;
-  color: #374151;
-  font-size: 14.5px;
-  line-height: 1.74;
+  color: color-mix(in srgb, var(--t3-chat-text-color) 84%, transparent);
+  font-size: var(--t3-chat-font-size);
+  line-height: var(--t3-chat-line-height);
 }
 
 .chat-markdown :not(pre) > code {
   border: 0;
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--chat-markdown-inline-code-bg);
-  padding: 2px 6px;
+  padding: 1px 4px;
   color: var(--chat-markdown-inline-code-fg);
   font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.42;
   letter-spacing: 0;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -2237,26 +2259,27 @@ label:has(> select#reasoning-effort) select {
 [data-slot="sidebar-container"],
 [data-slot="sidebar-inner"] {
   font-family: var(--t3-sidebar-font-family);
-  font-size: 14.5px;
+  font-size: var(--t3-sidebar-font-size);
   font-weight: 400;
-  line-height: 1.55;
+  line-height: var(--t3-sidebar-line-height);
   color: var(--t3-sidebar-text);
-  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   font-kerning: normal;
 }
 
 [data-slot="sidebar"] .text-xs,
 [data-slot="sidebar-container"] .text-xs,
 [data-slot="sidebar-inner"] .text-xs {
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--t3-sidebar-meta-font-size);
+  line-height: var(--t3-sidebar-meta-line-height);
 }
 
 [data-slot="sidebar"] .text-sm,
 [data-slot="sidebar-container"] .text-sm,
 [data-slot="sidebar-inner"] .text-sm {
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: var(--t3-sidebar-font-size);
+  line-height: var(--t3-sidebar-line-height);
 }
 
 [data-slot="sidebar"] .text-\[10px\],
@@ -2265,7 +2288,25 @@ label:has(> select#reasoning-effort) select {
 [data-slot="sidebar"] .text-\[11px\],
 [data-slot="sidebar-container"] .text-\[11px\],
 [data-slot="sidebar-inner"] .text-\[11px\] {
-  font-size: 12px;
+  font-size: var(--t3-sidebar-tiny-font-size);
+  line-height: var(--t3-sidebar-tiny-line-height);
+}
+
+[data-slot="sidebar"] .text-\[8px\],
+[data-slot="sidebar-container"] .text-\[8px\],
+[data-slot="sidebar-inner"] .text-\[8px\] {
+  font-size: var(--t3-sidebar-badge-font-size);
+  line-height: var(--t3-sidebar-badge-line-height);
+}
+
+:is([data-slot="sidebar"], [data-slot="sidebar-container"], [data-slot="sidebar-inner"])
+  [class*="text-muted-foreground"] {
+  color: var(--t3-sidebar-meta);
+}
+
+:is([data-slot="sidebar"], [data-slot="sidebar-container"], [data-slot="sidebar-inner"])
+  svg:is([class*="text-muted-foreground"], [class*="text-foreground/"]) {
+  color: var(--t3-sidebar-icon);
 }
 
 .chat-markdown th,

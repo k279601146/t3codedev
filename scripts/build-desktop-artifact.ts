@@ -4,6 +4,10 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { stat as statFile, writeFile } from "node:fs/promises";
+
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -223,6 +227,19 @@ interface StagePackageJson {
   readonly overrides: Record<string, unknown>;
 }
 
+interface DesktopReleaseAssetManifest {
+  readonly version: string;
+  readonly kind: "app";
+  readonly channel: "latest" | "nightly";
+  readonly platform: "win32" | "darwin" | "linux";
+  readonly arch: typeof BuildArch.Type;
+  readonly file: string;
+  readonly filename: string;
+  readonly size_bytes: number;
+  readonly sha512: string;
+  readonly sha256: string;
+}
+
 const AzureTrustedSigningOptionsConfig = Config.all({
   publisherName: Config.string("AZURE_TRUSTED_SIGNING_PUBLISHER_NAME"),
   endpoint: Config.string("AZURE_TRUSTED_SIGNING_ENDPOINT"),
@@ -352,6 +369,86 @@ const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.Comm
       message: `Command exited with non-zero exit code (${exitCode})`,
     });
   }
+});
+
+const hashFile = Effect.fn("hashFile")(function* (filePath: string, algorithm: "sha256" | "sha512") {
+  return yield* Effect.tryPromise({
+    try: () =>
+      new Promise<string>((resolve, reject) => {
+        const hash = createHash(algorithm);
+        const stream = createReadStream(filePath);
+        stream.on("data", (chunk) => hash.update(chunk));
+        stream.on("error", reject);
+        stream.on("end", () => resolve(hash.digest("hex")));
+      }),
+    catch: (cause) =>
+      new BuildScriptError({
+        message: `Failed to hash release asset ${filePath}.`,
+        cause,
+      }),
+  });
+});
+
+function toClientReleasePlatform(platform: typeof BuildPlatform.Type): DesktopReleaseAssetManifest["platform"] {
+  if (platform === "win") return "win32";
+  if (platform === "mac") return "darwin";
+  return "linux";
+}
+
+function isPrimaryReleaseAsset(filePath: string, path: Path.Path): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return [".exe", ".dmg", ".appimage", ".zip"].includes(ext);
+}
+
+const writeReleaseAssetManifest = Effect.fn("writeReleaseAssetManifest")(function* (input: {
+  readonly artifacts: readonly string[];
+  readonly appVersion: string;
+  readonly platform: typeof BuildPlatform.Type;
+  readonly arch: typeof BuildArch.Type;
+  readonly outputDir: string;
+}) {
+  const path = yield* Path.Path;
+  const manifestItems: DesktopReleaseAssetManifest[] = [];
+  for (const artifact of input.artifacts) {
+    if (!isPrimaryReleaseAsset(artifact, path)) {
+      continue;
+    }
+    const stat = yield* Effect.tryPromise({
+      try: () => statFile(artifact),
+      catch: (cause) =>
+        new BuildScriptError({
+          message: `Failed to stat release asset ${artifact}.`,
+          cause,
+        }),
+    });
+    manifestItems.push({
+      version: input.appVersion,
+      kind: "app",
+      channel: resolveDesktopUpdateChannel(input.appVersion),
+      platform: toClientReleasePlatform(input.platform),
+      arch: input.arch,
+      file: artifact,
+      filename: path.basename(artifact),
+      size_bytes: stat.size,
+      sha512: yield* hashFile(artifact, "sha512"),
+      sha256: yield* hashFile(artifact, "sha256"),
+    });
+  }
+
+  if (manifestItems.length === 0) {
+    return;
+  }
+
+  const manifestPath = path.join(input.outputDir, `bahew-client-release-${input.appVersion}.json`);
+  yield* Effect.tryPromise({
+    try: () => writeFile(manifestPath, `${JSON.stringify({ assets: manifestItems }, null, 2)}\n`, "utf8"),
+    catch: (cause) =>
+      new BuildScriptError({
+        message: `Failed to write release helper JSON ${manifestPath}.`,
+        cause,
+      }),
+  });
+  yield* Effect.log(`[desktop-artifact] Wrote release helper JSON: ${manifestPath}`);
 });
 
 function generateMacIconSet(
@@ -784,6 +881,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const appVersion = options.version ?? serverPackageJson.version;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
+  const buildVersionEnv = {
+    ...process.env,
+    APP_VERSION: appVersion,
+    T3CODE_DESKTOP_VERSION: appVersion,
+  };
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
   const stageRoot = yield* mkdir({
     prefix: `t3code-desktop-${options.platform}-stage-`,
@@ -804,6 +906,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     yield* runCommand(
       ChildProcess.make({
         cwd: repoRoot,
+        env: buildVersionEnv,
         ...commandOutputOptions(options.verbose),
         // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
         shell: process.platform === "win32",
@@ -909,7 +1012,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   );
 
   const buildEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...buildVersionEnv,
   };
   for (const [key, value] of Object.entries(buildEnv)) {
     if (value === "") {
@@ -974,6 +1077,14 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       message: `Build completed but no files were produced in ${stageDistDir}`,
     });
   }
+
+  yield* writeReleaseAssetManifest({
+    artifacts: copiedArtifacts,
+    appVersion,
+    platform: options.platform,
+    arch: options.arch,
+    outputDir: options.outputDir,
+  });
 
   yield* Effect.log("[desktop-artifact] Done. Artifacts:").pipe(
     Effect.annotateLogs({ artifacts: copiedArtifacts }),

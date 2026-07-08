@@ -101,9 +101,10 @@ describe("attachmentStore", () => {
       expect(resolved).not.toBeNull();
       expect(resolved?.workspaceRoot).toBe(path.resolve(path.join(baseDir, "thread-1")));
       expect(resolved?.relativePath).toBe(
-        ".t3code/imports/thread-1-11111111-1111-4111-8111-111111111111/unsafe_app.log",
+        "files-mentioned-by-the-user/thread-1-11111111-1111-4111-8111-111111111111/unsafe_app.log",
       );
       expect(resolved?.path.startsWith(`${resolved.workspaceRoot}${path.sep}`)).toBe(true);
+      expect(resolved?.path.includes(`${path.sep}.t3code${path.sep}`)).toBe(false);
     } finally {
       fs.rmSync(baseDir, { recursive: true, force: true });
     }

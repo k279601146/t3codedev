@@ -206,6 +206,35 @@ describe("buildTurnStartParams", () => {
     ]);
   });
 
+  it("passes text elements through with text input", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        prompt: "Inspect @file",
+        textElements: [
+          {
+            byteRange: { start: 8, end: 13 },
+            placeholder: "@file",
+          },
+        ],
+      }),
+    );
+
+    assert.deepStrictEqual(params.input, [
+      {
+        type: "text",
+        text: "Inspect @file",
+        text_elements: [
+          {
+            byteRange: { start: 8, end: 13 },
+            placeholder: "@file",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("omits collaboration mode when interaction mode is absent", () => {
     const params = Effect.runSync(
       buildTurnStartParams({
@@ -344,7 +373,7 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
-  it("injects T3 browser, external browser, and computer dynamic tools when starting a thread", async () => {
+  it("omits T3 browser, external browser, and computer dynamic tools by default", async () => {
     let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
     let settingsPayload: CodexRpc.ClientRequestParamsByMethod["thread/settings/update"] | undefined;
     const client = {
@@ -385,6 +414,54 @@ describe("openCodexThread", () => {
     assert.equal(startPayload.approvalsReviewer, "user");
     assert.equal(startPayload.modelProvider, "myservice");
     assert.deepStrictEqual(startPayload.config, commercialThreadConfigOverrides);
+    assert.equal(startPayload.dynamicTools, undefined);
+    assert.deepStrictEqual(settingsPayload, {
+      threadId: "fresh-thread",
+      cwd: "/tmp/project",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: {
+        type: "dangerFullAccess",
+      },
+      model: "gpt-5.3-codex",
+    });
+  });
+
+  it("injects T3 dynamic tools only when explicitly enabled", async () => {
+    let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
+    const client = {
+      request: <M extends TestThreadOpenMethod>(
+        method: M,
+        payload: CodexRpc.ClientRequestParamsByMethod[M],
+      ) => {
+        if (method === "thread/start") {
+          startPayload = payload as CodexRpc.ClientRequestParamsByMethod["thread/start"];
+        }
+        return Effect.succeed(
+          (method === "thread/settings/update"
+            ? {}
+            : makeThreadOpenResponse("fresh-thread")) as CodexRpc.ClientRequestResponsesByMethod[M],
+        );
+      },
+    };
+
+    await Effect.runPromise(
+      openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        requestedModelProvider: "myservice",
+        requestedConfigOverrides: commercialThreadConfigOverrides,
+        serviceTier: undefined,
+        personality: undefined,
+        enableT3DynamicTools: true,
+        resumeThreadId: undefined,
+      }),
+    );
+
+    assert.ok(startPayload);
     assert.deepStrictEqual(startPayload.dynamicTools, [
       ...buildT3BrowserDynamicTools(),
       ...buildT3BrowserExternalDynamicTools(),
@@ -406,21 +483,10 @@ describe("openCodexThread", () => {
     assert.equal(externalToolNames.includes("browser_reset_viewport"), false);
     assert.equal(externalToolNames.includes("browser_set_visibility"), false);
     assert.equal(startPayload.dynamicTools?.at(-1)?.name, T3_COMPUTER_TOOL_NAMESPACE);
-    assert.deepStrictEqual([browserTools.length, externalTools.length, computerTools.length], [
-      1,
-      1,
-      1,
-    ]);
-    assert.deepStrictEqual(settingsPayload, {
-      threadId: "fresh-thread",
-      cwd: "/tmp/project",
-      approvalPolicy: "never",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "dangerFullAccess",
-      },
-      model: "gpt-5.3-codex",
-    });
+    assert.deepStrictEqual(
+      [browserTools.length, externalTools.length, computerTools.length],
+      [1, 1, 1],
+    );
   });
 
   it("falls back to thread/start when resume fails recoverably", async () => {

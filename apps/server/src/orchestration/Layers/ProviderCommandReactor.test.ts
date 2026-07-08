@@ -222,11 +222,12 @@ describe("ProviderCommandReactor", () => {
         turnId: asTurnId("turn-1"),
       }),
     );
-    const steerTurn = vi.fn((input: { readonly threadId: ThreadId; readonly expectedTurnId: TurnId }) =>
-      Effect.succeed({
-        threadId: input.threadId,
-        turnId: input.expectedTurnId,
-      }),
+    const steerTurn = vi.fn(
+      (input: { readonly threadId: ThreadId; readonly expectedTurnId: TurnId }) =>
+        Effect.succeed({
+          threadId: input.threadId,
+          turnId: input.expectedTurnId,
+        }),
     );
     const interruptTurn = vi.fn((_: unknown) => Effect.void);
     const compactThread = vi.fn<ProviderServiceShape["compactThread"]>(() => Effect.void);
@@ -531,6 +532,60 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("enables T3 dynamic tools when the composer message mentions Browser", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-browser"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-browser"),
+          role: "user",
+          text: "@Browser open https://example.test",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      enableT3DynamicTools: true,
+    });
+  });
+
+  it("enables T3 dynamic tools when the composer adds plugin launch context", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-plugin-context"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-plugin-context"),
+          role: "user",
+          text: '@Notepad 输入 hello\n\n<plugin_launch_context>\n- @Notepad: treat this as a desktop app target; use computer_list_windows with query "Notepad", select the matching window, then computer_get_window_state.\n</plugin_launch_context>',
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      enableT3DynamicTools: true,
+    });
   });
 
   it("syncs goal set through provider API and advances the active goal", async () => {

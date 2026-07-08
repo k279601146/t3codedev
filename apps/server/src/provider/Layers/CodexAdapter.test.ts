@@ -74,6 +74,22 @@ const testConversationWorkspaceForThread = (threadId: string | ThreadId) =>
   path.join(testConversationWorkspace(), String(threadId));
 type WindowsSandboxReadinessStatus = "ready" | "notConfigured" | "updateRequired";
 
+function makeTestGoal(input: {
+  readonly objective: string;
+  readonly status: OrchestrationGoalStatus;
+  readonly now: string;
+}): OrchestrationGoal {
+  return {
+    objective: input.objective,
+    status: input.status,
+    updatedAt: input.now,
+    startedAt: input.now,
+    activeSince: input.status === "active" ? input.now : null,
+    elapsedMs: 0,
+    completedAt: input.status === "complete" ? input.now : null,
+  };
+}
+
 class FakeCodexRuntime implements CodexSessionRuntimeShape {
   private readonly eventQueue = Effect.runSync(Queue.unbounded<ProviderEvent>());
   private readonly now = "2026-01-01T00:00:00.000Z";
@@ -245,11 +261,11 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
 
   setGoal(input: { readonly objective: string; readonly status?: OrchestrationGoalStatus }) {
     return Effect.sync(() => {
-      this.goal = {
+      this.goal = makeTestGoal({
         objective: input.objective,
         status: input.status ?? "active",
-        updatedAt: this.now,
-      };
+        now: this.now,
+      });
       return this.goal;
     });
   }
@@ -260,6 +276,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
         objective: this.goal?.objective ?? "测试目标",
         status,
         updatedAt: this.now,
+        startedAt: this.now,
+        activeSince: status === "active" ? this.now : null,
+        elapsedMs: 0,
+        completedAt: status === "complete" ? this.now : null,
       };
       return this.goal;
     });
@@ -277,6 +297,8 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   }
 
   close = Effect.promise(() => this.closeImpl());
+
+  compactThread = Effect.void;
 
   get windowsSandboxReadiness() {
     return Effect.promise(() => this.windowsSandboxReadinessImpl());
@@ -296,6 +318,50 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   setWindowsSandboxSetupStartFailure(error: CodexErrors.CodexAppServerError | null) {
     this.windowsSandboxSetupStartFailure = error;
   }
+
+  remoteControlEnable = () =>
+    Effect.succeed({
+      status: "disabled" as const,
+      serverName: "test-server",
+      installationId: "test-installation",
+      environmentId: null,
+    });
+
+  remoteControlDisable = () =>
+    Effect.succeed({
+      status: "disabled" as const,
+      serverName: "test-server",
+      installationId: "test-installation",
+      environmentId: null,
+    });
+
+  remoteControlStatusRead = Effect.succeed({
+    status: "disabled" as const,
+    serverName: "test-server",
+    installationId: "test-installation",
+    environmentId: null,
+  });
+
+  remoteControlPairingStart = () =>
+    Effect.succeed({
+      pairingCode: "test-pairing-code",
+      manualPairingCode: null,
+      environmentId: "test-environment",
+      expiresAt: 0,
+    });
+
+  remoteControlPairingStatus = () =>
+    Effect.succeed({
+      claimed: false,
+    });
+
+  remoteControlClientsList = () =>
+    Effect.succeed({
+      data: [],
+      nextCursor: null,
+    });
+
+  remoteControlClientRevoke = () => Effect.succeed({});
 
   emit(event: ProviderEvent) {
     return Queue.offer(this.eventQueue, event).pipe(Effect.asVoid);
@@ -415,12 +481,14 @@ validationLayer("CodexAdapterLive validation", (it) => {
         modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [
           { id: "fastMode", value: true },
         ]),
+        enableT3DynamicTools: true,
         runtimeMode: "full-access",
       });
 
       assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
         binaryPath: "codex",
         cwd: testConversationWorkspaceForThread("thread-1"),
+        enableT3DynamicTools: true,
         model: "gpt-5.3-codex",
         providerInstanceId: ProviderInstanceId.make("codex"),
         serviceTier: "fast",
@@ -503,55 +571,61 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
     }),
   );
 
-  it.effect("imports non-image attachments into the thread workspace without inlining content", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CodexAdapter;
-      const config = yield* ServerConfig;
-      yield* adapter.startSession({
-        provider: ProviderDriverKind.make("codex"),
-        threadId: asThreadId("thread-large-log"),
-        runtimeMode: "full-access",
-      });
-      const runtime = sessionRuntimeFactory.lastRuntime;
-      assert.ok(runtime);
-      runtime.sendTurnImpl.mockClear();
+  it.effect(
+    "imports non-image attachments into the thread workspace without inlining content",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* CodexAdapter;
+        const config = yield* ServerConfig;
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-large-log"),
+          runtimeMode: "full-access",
+        });
+        const runtime = sessionRuntimeFactory.lastRuntime;
+        assert.ok(runtime);
+        runtime.sendTurnImpl.mockClear();
 
-      const largeLogContent = `head\n${"x".repeat(1_100_000)}\ntail`;
-      const attachment = {
-        type: "file" as const,
-        id: "thread-large-log-11111111-1111-4111-8111-111111111111",
-        name: "../unsafe app.log",
-        mimeType: "text/plain",
-        sizeBytes: largeLogContent.length,
-      };
-      const attachmentPath = path.join(config.attachmentsDir, attachmentRelativePath(attachment));
-      fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
-      fs.writeFileSync(attachmentPath, largeLogContent);
+        const largeLogContent = `head\n${"x".repeat(1_100_000)}\ntail`;
+        const attachment = {
+          type: "file" as const,
+          id: "thread-large-log-11111111-1111-4111-8111-111111111111",
+          name: "../unsafe app.log",
+          mimeType: "text/plain",
+          sizeBytes: largeLogContent.length,
+        };
+        const attachmentPath = path.join(config.attachmentsDir, attachmentRelativePath(attachment));
+        fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+        fs.writeFileSync(attachmentPath, largeLogContent);
 
-      yield* adapter.sendTurn({
-        threadId: asThreadId("thread-large-log"),
-        input: "Analyze the attached log",
-        attachments: [attachment],
-      });
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-large-log"),
+          input: "Analyze the attached log",
+          attachments: [attachment],
+        });
 
-      const runtimeInput = runtime.sendTurnImpl.mock.calls[0]?.[0];
-      assert.ok(runtimeInput);
-      assert.ok(runtimeInput.input?.includes("Analyze the attached log"));
-      assert.ok(runtimeInput.input?.includes("Imported file path:"));
-      assert.ok(runtimeInput.input?.includes(".t3code/imports"));
-      assert.ok(!runtimeInput.input?.includes(largeLogContent));
-      assert.equal(runtimeInput.attachments, undefined);
+        const runtimeInput = runtime.sendTurnImpl.mock.calls[0]?.[0];
+        assert.ok(runtimeInput);
+        assert.ok(runtimeInput.input?.includes("# Files mentioned by the user:"));
+        assert.ok(runtimeInput.input?.includes("## unsafe_app.log:"));
+        assert.ok(runtimeInput.input?.includes("files-mentioned-by-the-user"));
+        assert.ok(
+          runtimeInput.input?.includes("## My request for Codex:\nAnalyze the attached log"),
+        );
+        assert.ok(!runtimeInput.input?.includes("Imported file path:"));
+        assert.ok(!runtimeInput.input?.includes(".t3code/imports"));
+        assert.ok(!runtimeInput.input?.includes(largeLogContent));
+        assert.equal(runtimeInput.attachments, undefined);
 
-      const importedPath = path.join(
-        config.conversationWorkspaceDir,
-        "thread-large-log",
-        ".t3code",
-        "imports",
-        attachment.id,
-        "unsafe_app.log",
-      );
-      assert.equal(fs.readFileSync(importedPath, "utf-8"), largeLogContent);
-    }),
+        const importedPath = path.join(
+          config.conversationWorkspaceDir,
+          "thread-large-log",
+          "files-mentioned-by-the-user",
+          attachment.id,
+          "unsafe_app.log",
+        );
+        assert.equal(fs.readFileSync(importedPath, "utf-8"), largeLogContent);
+      }),
   );
 
   it.effect("passes image attachments as localImage inputs without embedding base64 text", () =>

@@ -116,9 +116,18 @@ const make = ElectronApp.of({
   on: addScopedAppListener,
 });
 
-function resolveAppVersion(rawVersion: string): string {
-  const electronVersion = process.versions.electron;
-  return rawVersion === electronVersion ? desktopPackageJson.version : rawVersion;
+export function resolveAppVersion(rawVersion: string | undefined): string {
+  const fallback =
+    process.env.T3CODE_DESKTOP_VERSION?.trim() ||
+    process.env.APP_VERSION?.trim() ||
+    desktopPackageJson.version;
+  const normalizedRaw = (rawVersion ?? "").trim();
+  const electronVersions = new Set(
+    [process.versions.electron, desktopPackageJson.dependencies.electron].filter(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    ),
+  );
+  return !normalizedRaw || electronVersions.has(normalizedRaw) ? fallback : normalizedRaw;
 }
 
 export const layer = Layer.succeed(ElectronApp, make);

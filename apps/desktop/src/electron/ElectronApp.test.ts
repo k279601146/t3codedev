@@ -69,6 +69,8 @@ describe("ElectronApp", () => {
   beforeEach(() => {
     appendSwitchMock.mockClear();
     exitMock.mockClear();
+    delete process.env.APP_VERSION;
+    delete process.env.T3CODE_DESKTOP_VERSION;
     onMock.mockClear();
     quitMock.mockClear();
     relaunchMock.mockClear();
@@ -93,7 +95,7 @@ describe("ElectronApp", () => {
 
   it.effect("does not expose the Electron runtime version as the app version", () =>
     Effect.gen(function* () {
-      getVersionMock.mockReturnValueOnce(process.versions.electron);
+      getVersionMock.mockReturnValueOnce("41.5.0");
 
       const electronApp = yield* ElectronApp.ElectronApp;
       const metadata = yield* electronApp.metadata;
@@ -101,6 +103,12 @@ describe("ElectronApp", () => {
       assert.equal(metadata.appVersion, "0.0.23");
     }).pipe(Effect.provide(ElectronApp.layer)),
   );
+
+  it("prefers the injected desktop app version when Electron returns its runtime version", () => {
+    process.env.T3CODE_DESKTOP_VERSION = "0.0.24";
+
+    assert.equal(ElectronApp.resolveAppVersion("41.5.0"), "0.0.24");
+  });
 
   it.effect("scopes app event listeners", () =>
     Effect.gen(function* () {

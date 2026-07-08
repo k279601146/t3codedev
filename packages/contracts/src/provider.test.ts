@@ -34,9 +34,11 @@ describe("ProviderSessionStartInput", () => {
           { id: "fastMode", value: true },
         ],
       },
+      enableT3DynamicTools: true,
       runtimeMode: "full-access",
     });
     expect(parsed.runtimeMode).toBe("full-access");
+    expect(parsed.enableT3DynamicTools).toBe(true);
     expect(parsed.modelSelection?.instanceId).toBe("codex");
     expect(parsed.modelSelection?.model).toBe("gpt-5.3-codex");
     expect(getOptionValue(parsed.modelSelection?.options, "reasoningEffort")).toBe("high");

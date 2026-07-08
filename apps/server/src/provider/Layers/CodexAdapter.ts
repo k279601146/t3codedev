@@ -36,6 +36,8 @@ import {
   type RemoteControlPairingSession,
   type RemoteControlStatus,
 } from "@t3tools/contracts";
+import { randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import fsPromises from "node:fs/promises";
 import * as Data from "effect/Data";
@@ -287,6 +289,10 @@ function shouldCleanupWindowsSandboxArtifacts(event: ProviderEvent): boolean {
   }
   const payload = readPayload(EffectCodexSchema.V2ItemCompletedNotification, event.payload);
   return toCanonicalItemType(payload?.item.type) === "command_execution";
+}
+
+function isCodexDesktopAlignmentDebugEnabled(): boolean {
+  return process.env.T3CODE_CODEX_ALIGNMENT_DEBUG === "1";
 }
 
 function cleanupWindowsSandboxWorkspaceArtifacts(cwd: string): Effect.Effect<void> {
@@ -682,7 +688,10 @@ function mapFileChangePatchUpdated(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
 ): ProviderRuntimeEvent | undefined {
-  const payload = readPayload(EffectCodexSchema.V2FileChangePatchUpdatedNotification, event.payload);
+  const payload = readPayload(
+    EffectCodexSchema.V2FileChangePatchUpdatedNotification,
+    event.payload,
+  );
   if (!payload) {
     return undefined;
   }
@@ -2054,13 +2063,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ),
       ),
       Effect.map(toRemoteControlStatus),
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/enable",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/enable",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2078,13 +2088,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ),
       ),
       Effect.map(toRemoteControlStatus),
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/disable",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/disable",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2096,13 +2107,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           : withTemporaryClient((client) => client.request("remoteControl/status/read", undefined)),
       ),
       Effect.map(toRemoteControlStatus),
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/status/read",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/status/read",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2120,13 +2132,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ),
       ),
       Effect.map(toRemoteControlPairingSession),
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/pairing/start",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/pairing/start",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2141,18 +2154,17 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         };
         return runtime
           ? runtime.remoteControlPairingStatus(params)
-          : withTemporaryClient((client) =>
-              client.request("remoteControl/pairing/status", params),
-            );
+          : withTemporaryClient((client) => client.request("remoteControl/pairing/status", params));
       }),
       Effect.map((response) => ({ claimed: response.claimed })),
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/pairing/status",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/pairing/status",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2166,13 +2178,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       }),
     ).pipe(
       Effect.map(toRemoteControlClientsListResult),
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/client/list",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/client/list",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2184,13 +2197,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       }),
     ).pipe(
       Effect.asVoid,
-      Effect.mapError((cause) =>
-        new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "remoteControl/client/revoke",
-          detail: cause.message,
-          cause,
-        }),
+      Effect.mapError(
+        (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "remoteControl/client/revoke",
+            detail: cause.message,
+            cause,
+          }),
       ),
     );
 
@@ -2368,6 +2382,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               ? { serviceTier: "fast" }
               : {}),
             ...(input.personality !== undefined ? { personality: input.personality } : {}),
+            ...(input.enableT3DynamicTools !== undefined
+              ? { enableT3DynamicTools: input.enableT3DynamicTools }
+              : {}),
             ...(jsonRpcLogPath !== undefined ? { jsonRpcLogPath } : {}),
           };
           const sessionScope = yield* Scope.make("sequential");
@@ -2490,14 +2507,27 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   };
 
   const copyAttachmentIntoThreadWorkspace = Effect.fn("copyAttachmentIntoThreadWorkspace")(
-    function* (
-      attachmentPath: string,
-      importPath: string,
-    ) {
+    function* (attachmentPath: string, importPath: string, workspaceRoot: string) {
       yield* Effect.tryPromise({
         try: async () => {
-          await fsPromises.mkdir(path.dirname(importPath), { recursive: true });
-          await fsPromises.copyFile(attachmentPath, importPath);
+          const importDir = path.dirname(importPath);
+          await fsPromises.mkdir(importDir, { recursive: true });
+          const [realWorkspaceRoot, realImportDir] = await Promise.all([
+            fsPromises.realpath(workspaceRoot),
+            fsPromises.realpath(importDir),
+          ]);
+          if (!isPathInsideRoot(realWorkspaceRoot, realImportDir)) {
+            throw new Error("Attachment import directory resolves outside the thread workspace.");
+          }
+
+          const tempPath = path.join(importDir, `.t3-attachment-${randomUUID()}.tmp`);
+          try {
+            await fsPromises.copyFile(attachmentPath, tempPath, fsConstants.COPYFILE_EXCL);
+            await fsPromises.rename(tempPath, importPath);
+          } catch (cause) {
+            await fsPromises.rm(tempPath, { force: true });
+            throw cause;
+          }
         },
         catch: (cause) =>
           new ProviderAdapterRequestError({
@@ -2545,10 +2575,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           detail: `Failed to resolve safe import path for attachment '${attachment.id}'.`,
         });
       }
-      yield* copyAttachmentIntoThreadWorkspace(attachmentPath, imported.path);
+      yield* copyAttachmentIntoThreadWorkspace(
+        attachmentPath,
+        imported.path,
+        imported.workspaceRoot,
+      );
       return {
         type: "file" as const,
-        name: attachment.name ?? "attachment",
+        name: path.basename(imported.path),
         path: imported.path,
         relativePath: imported.relativePath,
       };
@@ -2571,19 +2605,37 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       | { readonly type: "image"; readonly url: string }
       | { readonly type: "localImage"; readonly path: string }
     > = [];
-    let extraTextInput = "";
+    const fileAttachments: Array<{
+      readonly name: string;
+      readonly path: string;
+    }> = [];
 
     for (const attachment of codexAttachments) {
-      if (attachment.type === "image" || attachment.type === "localImage") {
+      if (attachment.type === "localImage") {
         imageAttachments.push(attachment);
       } else if (attachment.type === "file") {
-        extraTextInput += `\n\n[Attachment: ${attachment.name}]\nImported file path: ${attachment.path}\nWorkspace relative path: ${attachment.relativePath}\n`;
+        fileAttachments.push({
+          name: attachment.name,
+          path: attachment.path,
+        });
       }
     }
 
     let finalPrompt = input.input ?? "";
-    if (extraTextInput.length > 0) {
-      finalPrompt = finalPrompt ? `${finalPrompt}${extraTextInput}` : extraTextInput.trim();
+    if (fileAttachments.length > 0) {
+      const mentionedFiles = fileAttachments
+        .map((attachment) => `## ${attachment.name}: ${attachment.path}`)
+        .join("\n\n");
+      finalPrompt = `# Files mentioned by the user:\n\n${mentionedFiles}\n\n## My request for Codex:\n${finalPrompt}`;
+    }
+
+    if (isCodexDesktopAlignmentDebugEnabled()) {
+      yield* Effect.logDebug("codex desktop alignment turn input prepared", {
+        threadId: input.threadId,
+        textInputChars: finalPrompt.length,
+        fileAttachments,
+        imageAttachmentCount: imageAttachments.length,
+      });
     }
 
     return {

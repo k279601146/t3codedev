@@ -120,10 +120,20 @@ const DEFAULT_THREAD_TITLE = "New thread";
 const GOAL_ADVANCE_INITIAL_DELAY = Duration.millis(200);
 const GOAL_RETRY_BASE_DELAY_MS = 1_000;
 const GOAL_RETRY_MAX_DELAY_MS = 60_000;
+const T3_DYNAMIC_TOOL_MENTION_REGEX = /(^|\s)@(Browser|Chrome|Computer)(?=\s|$)/i;
+const T3_DYNAMIC_TOOL_LAUNCH_CONTEXT_REGEX =
+  /<plugin_launch_context>[\s\S]*?<\/plugin_launch_context>/i;
 
 export function providerErrorLabel(value: string | undefined): string {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : "unknown";
+}
+
+function shouldEnableT3DynamicToolsForMessage(messageText: string): boolean {
+  return (
+    T3_DYNAMIC_TOOL_MENTION_REGEX.test(messageText) ||
+    T3_DYNAMIC_TOOL_LAUNCH_CONTEXT_REGEX.test(messageText)
+  );
 }
 
 export function providerErrorLabelFromInstanceHint(input: {
@@ -225,7 +235,10 @@ const make = Effect.gen(function* () {
     timeToLive: HANDLED_TURN_START_KEY_TTL,
     lookup: () => Effect.succeed(true),
   });
-  const deferredFirstTurnBranchEnhancements = new Map<ThreadId, DeferredFirstTurnBranchEnhancement>();
+  const deferredFirstTurnBranchEnhancements = new Map<
+    ThreadId,
+    DeferredFirstTurnBranchEnhancement
+  >();
   const goalRetryAttempts = new Map<ThreadId, number>();
   const goalAdvanceFibers = new Map<ThreadId, Fiber.Fiber<void, never>>();
   const userStoppedGoalThreadIds = new Set<ThreadId>();
@@ -242,6 +255,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+  const t3DynamicToolsEnabledThreads = new Map<string, boolean>();
 
   const currentIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -369,6 +383,7 @@ const make = Effect.gen(function* () {
     options?: {
       readonly modelSelection?: ModelSelection;
       readonly personality?: ProviderPersonality | null;
+      readonly enableT3DynamicTools?: boolean;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -476,17 +491,28 @@ const make = Effect.gen(function* () {
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
       readonly provider?: ProviderDriverKind;
-    }) =>
-      providerService.startSession(threadId, {
-        threadId,
-        ...(preferredProvider ? { provider: preferredProvider } : {}),
-        providerInstanceId: desiredInstanceId,
-        ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-        modelSelection: desiredModelSelection,
-        ...(options?.personality !== undefined ? { personality: options.personality } : {}),
-        ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-        runtimeMode: desiredRuntimeMode,
-      });
+    }) => {
+      const enableT3DynamicTools = options?.enableT3DynamicTools === true;
+      return providerService
+        .startSession(threadId, {
+          threadId,
+          ...(preferredProvider ? { provider: preferredProvider } : {}),
+          providerInstanceId: desiredInstanceId,
+          ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+          modelSelection: desiredModelSelection,
+          ...(options?.personality !== undefined ? { personality: options.personality } : {}),
+          ...(enableT3DynamicTools ? { enableT3DynamicTools } : {}),
+          ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+          runtimeMode: desiredRuntimeMode,
+        })
+        .pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              t3DynamicToolsEnabledThreads.set(threadId, enableT3DynamicTools);
+            }),
+          ),
+        );
+    };
 
     const bindSessionToThread = (session: ProviderSession) =>
       Effect.gen(function* () {
@@ -533,13 +559,17 @@ const make = Effect.gen(function* () {
         preferredProvider === "claudeAgent" &&
         requestedModelSelection !== undefined &&
         !Equal.equals(previousModelSelection, requestedModelSelection);
+      const shouldRestartForT3DynamicTools =
+        options?.enableT3DynamicTools === true &&
+        t3DynamicToolsEnabledThreads.get(threadId) !== true;
 
       if (
         !runtimeModeChanged &&
         !cwdChanged &&
         !instanceChanged &&
         !shouldRestartForModelChange &&
-        !shouldRestartForModelSelectionChange
+        !shouldRestartForModelSelectionChange &&
+        !shouldRestartForT3DynamicTools
       ) {
         return existingSessionThreadId;
       }
@@ -564,6 +594,7 @@ const make = Effect.gen(function* () {
         instanceChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
+        shouldRestartForT3DynamicTools,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(
@@ -605,13 +636,17 @@ const make = Effect.gen(function* () {
       input.personality !== undefined
         ? input.personality
         : (yield* serverSettingsService.getSettings).defaultProviderPersonality;
+    const requiresT3DynamicTools = shouldEnableT3DynamicToolsForMessage(input.messageText);
     yield* ensureSessionForThread(
       input.threadId,
       input.createdAt,
-      input.modelSelection !== undefined || effectivePersonality !== undefined
+      input.modelSelection !== undefined ||
+        effectivePersonality !== undefined ||
+        requiresT3DynamicTools
         ? {
             ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
             ...(effectivePersonality !== undefined ? { personality: effectivePersonality } : {}),
+            ...(requiresT3DynamicTools ? { enableT3DynamicTools: true } : {}),
           }
         : {},
     );
@@ -937,23 +972,21 @@ const make = Effect.gen(function* () {
 
   const processDeferredFirstTurnBranchEnhancement = Effect.fn(
     "processDeferredFirstTurnBranchEnhancement",
-  )(
-    function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
-      const pending = deferredFirstTurnBranchEnhancements.get(event.threadId);
-      if (!pending) {
-        return;
-      }
-      deferredFirstTurnBranchEnhancements.delete(event.threadId);
+  )(function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
+    const pending = deferredFirstTurnBranchEnhancements.get(event.threadId);
+    if (!pending) {
+      return;
+    }
+    deferredFirstTurnBranchEnhancements.delete(event.threadId);
 
-      yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
-        threadId: pending.threadId,
-        branch: pending.branch,
-        worktreePath: pending.worktreePath,
-        messageText: pending.messageText,
-        ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
-      }).pipe(Effect.forkScoped);
-    },
-  );
+    yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
+      threadId: pending.threadId,
+      branch: pending.branch,
+      worktreePath: pending.worktreePath,
+      messageText: pending.messageText,
+      ...(pending.attachments !== undefined ? { attachments: pending.attachments } : {}),
+    }).pipe(Effect.forkScoped);
+  });
 
   const processTurnSteerRequested = Effect.fn("processTurnSteerRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-steer-requested" }>,

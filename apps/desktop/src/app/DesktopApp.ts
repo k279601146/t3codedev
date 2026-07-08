@@ -15,6 +15,7 @@ import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import * as DesktopConfig from "./DesktopConfig.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
@@ -219,6 +220,7 @@ const startup = Effect.gen(function* () {
   const updates = yield* DesktopUpdates.DesktopUpdates;
   const engineUpdater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const config = yield* DesktopConfig.DesktopConfig;
   const apm = yield* DesktopApm.DesktopApm;
   const startupDiagnostics = yield* DesktopObservability.DesktopStartupDiagnostics;
 
@@ -226,7 +228,11 @@ const startup = Effect.gen(function* () {
     event: "desktop.startup.begin",
     stage: "startup",
     details: {
+      appVersion: environment.appVersion,
+      electronVersion: process.versions.electron,
       isDevelopment: environment.isDevelopment,
+      isPackaged: environment.isPackaged,
+      updateFeedUrl: Option.getOrNull(config.desktopUpdateFeedUrl),
     },
   });
   yield* shellEnvironment.installIntoProcess;

@@ -15,7 +15,7 @@ const ATTACHMENT_FILENAME_EXTENSIONS = [...SAFE_IMAGE_FILE_EXTENSIONS, ".bin"];
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const ATTACHMENT_IMPORTS_DIR = ".t3code/imports";
+const ATTACHMENT_IMPORTS_DIR = "files-mentioned-by-the-user";
 const ATTACHMENT_IMPORT_FILENAME_MAX_CHARS = 160;
 const ATTACHMENT_ID_PATTERN = new RegExp(
   `^(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN})-(${ATTACHMENT_ID_UUID_PATTERN})$`,
@@ -109,7 +109,11 @@ export function resolveThreadAttachmentImport(input: {
   readonly conversationWorkspaceDir: string;
   readonly threadId: string;
   readonly attachment: ChatAttachment;
-}): { readonly workspaceRoot: string; readonly path: string; readonly relativePath: string } | null {
+}): {
+  readonly workspaceRoot: string;
+  readonly path: string;
+  readonly relativePath: string;
+} | null {
   const workspaceRoot = path.resolve(path.join(input.conversationWorkspaceDir, input.threadId));
   const conversationRoot = path.resolve(input.conversationWorkspaceDir);
   if (!isPathInsideRoot(conversationRoot, workspaceRoot)) {

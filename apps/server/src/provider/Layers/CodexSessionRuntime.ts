@@ -146,7 +146,7 @@ export type CodexResumeCursor = typeof CodexResumeCursorSchema.Type;
 type CodexServiceTier = NonNullable<EffectCodexSchema.V2ThreadStartParams["serviceTier"]>;
 type T3DynamicTools = ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec>;
 type ThreadStartParamsWithDynamicTools = EffectCodexSchema.V2ThreadStartParams & {
-  readonly dynamicTools: T3DynamicTools;
+  readonly dynamicTools?: T3DynamicTools;
 };
 type CodexThreadConfigOverrides = NonNullable<EffectCodexSchema.V2ThreadStartParams["config"]>;
 type CodexThreadItem =
@@ -167,17 +167,22 @@ export interface CodexSessionRuntimeOptions {
   readonly resumeCursor?: CodexResumeCursor;
   readonly prewarmedChild?: ChildProcessSpawner.ChildProcessHandle;
   readonly jsonRpcLogPath?: string;
+  readonly enableT3DynamicTools?: boolean;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
   readonly input?: string;
-  readonly attachments?: ReadonlyArray<{
-    readonly type: "image";
-    readonly url: string;
-  } | {
-    readonly type: "localImage";
-    readonly path: string;
-  }>;
+  readonly textElements?: ReadonlyArray<EffectCodexSchema.V2TurnStartParams__TextElement>;
+  readonly attachments?: ReadonlyArray<
+    | {
+        readonly type: "image";
+        readonly url: string;
+      }
+    | {
+        readonly type: "localImage";
+        readonly path: string;
+      }
+  >;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort | undefined;
@@ -188,13 +193,17 @@ export interface CodexSessionRuntimeSendTurnInput {
 export interface CodexSessionRuntimeSteerTurnInput {
   readonly expectedTurnId: TurnId;
   readonly input?: string;
-  readonly attachments?: ReadonlyArray<{
-    readonly type: "image";
-    readonly url: string;
-  } | {
-    readonly type: "localImage";
-    readonly path: string;
-  }>;
+  readonly textElements?: ReadonlyArray<EffectCodexSchema.V2TurnStartParams__TextElement>;
+  readonly attachments?: ReadonlyArray<
+    | {
+        readonly type: "image";
+        readonly url: string;
+      }
+    | {
+        readonly type: "localImage";
+        readonly path: string;
+      }
+  >;
 }
 
 export interface CodexSessionRuntimeUpdateSettingsInput {
@@ -447,18 +456,22 @@ function buildThreadStartParams(input: {
   readonly configOverrides: CodexThreadConfigOverrides | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
+  readonly enableT3DynamicTools?: boolean;
 }): ThreadStartParamsWithDynamicTools {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
+  const dynamicTools = input.enableT3DynamicTools
+    ? [
+        ...buildT3BrowserDynamicTools(),
+        ...buildT3BrowserExternalDynamicTools(),
+        ...buildT3ComputerDynamicTools(),
+      ]
+    : undefined;
   return {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
     approvalsReviewer: config.approvalsReviewer,
     sandbox: config.sandbox,
-    dynamicTools: [
-      ...buildT3BrowserDynamicTools(),
-      ...buildT3BrowserExternalDynamicTools(),
-      ...buildT3ComputerDynamicTools(),
-    ],
+    ...(dynamicTools ? { dynamicTools } : {}),
     ...(input.model ? { model: input.model } : {}),
     ...(input.modelProvider ? { modelProvider: input.modelProvider } : {}),
     ...(input.configOverrides ? { config: input.configOverrides } : {}),
@@ -577,13 +590,17 @@ export function buildTurnStartParams(input: {
   readonly threadId: string;
   readonly runtimeMode: RuntimeMode;
   readonly prompt?: string;
-  readonly attachments?: ReadonlyArray<{
-    readonly type: "image";
-    readonly url: string;
-  } | {
-    readonly type: "localImage";
-    readonly path: string;
-  }>;
+  readonly textElements?: ReadonlyArray<EffectCodexSchema.V2TurnStartParams__TextElement>;
+  readonly attachments?: ReadonlyArray<
+    | {
+        readonly type: "image";
+        readonly url: string;
+      }
+    | {
+        readonly type: "localImage";
+        readonly path: string;
+      }
+  >;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
@@ -620,19 +637,26 @@ export function buildTurnStartParams(input: {
 
 function buildCodexTurnInput(input: {
   readonly prompt?: string;
-  readonly attachments?: ReadonlyArray<{
-    readonly type: "image";
-    readonly url: string;
-  } | {
-    readonly type: "localImage";
-    readonly path: string;
-  }>;
+  readonly textElements?: ReadonlyArray<EffectCodexSchema.V2TurnStartParams__TextElement>;
+  readonly attachments?: ReadonlyArray<
+    | {
+        readonly type: "image";
+        readonly url: string;
+      }
+    | {
+        readonly type: "localImage";
+        readonly path: string;
+      }
+  >;
 }): Array<EffectCodexSchema.V2TurnStartParams__UserInput> {
   const turnInput: Array<EffectCodexSchema.V2TurnStartParams__UserInput> = [];
   if (input.prompt) {
     turnInput.push({
       type: "text",
       text: input.prompt,
+      ...(input.textElements && input.textElements.length > 0
+        ? { text_elements: input.textElements }
+        : {}),
     });
   }
   for (const attachment of input.attachments ?? []) {
@@ -734,6 +758,7 @@ export const openCodexThread = (input: {
   readonly requestedConfigOverrides?: CodexThreadConfigOverrides | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
+  readonly enableT3DynamicTools?: boolean;
   readonly resumeThreadId: string | undefined;
 }): Effect.Effect<CodexThreadOpenResponse, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
@@ -745,6 +770,9 @@ export const openCodexThread = (input: {
     configOverrides: input.requestedConfigOverrides,
     serviceTier: input.serviceTier,
     personality: input.personality,
+    ...(input.enableT3DynamicTools !== undefined
+      ? { enableT3DynamicTools: input.enableT3DynamicTools }
+      : {}),
   });
   const syncThreadSettings = (opened: CodexThreadOpenResponse) =>
     input.client
@@ -1934,6 +1962,9 @@ export const makeCodexSessionRuntime = (
         requestedConfigOverrides: bundledConfigOverrides,
         serviceTier: options.serviceTier,
         personality: options.personality,
+        ...(options.enableT3DynamicTools !== undefined
+          ? { enableT3DynamicTools: options.enableT3DynamicTools }
+          : {}),
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
       });
 
@@ -1990,6 +2021,7 @@ export const makeCodexSessionRuntime = (
             threadId: providerThreadId,
             runtimeMode: currentSession.runtimeMode,
             ...(input.input ? { prompt: input.input } : {}),
+            ...(input.textElements ? { textElements: input.textElements } : {}),
             ...(input.attachments ? { attachments: input.attachments } : {}),
             ...(normalizedModel ? { model: normalizedModel } : {}),
             ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
@@ -2058,6 +2090,7 @@ export const makeCodexSessionRuntime = (
             expectedTurnId: input.expectedTurnId,
             input: buildCodexTurnInput({
               ...(input.input ? { prompt: input.input } : {}),
+              ...(input.textElements ? { textElements: input.textElements } : {}),
               ...(input.attachments ? { attachments: input.attachments } : {}),
             }),
           }).pipe(
@@ -2216,10 +2249,8 @@ export const makeCodexSessionRuntime = (
       remoteControlEnable: (input) => client.request("remoteControl/enable", input),
       remoteControlDisable: (input) => client.request("remoteControl/disable", input),
       remoteControlStatusRead: client.request("remoteControl/status/read", undefined),
-      remoteControlPairingStart: (input) =>
-        client.request("remoteControl/pairing/start", input),
-      remoteControlPairingStatus: (input) =>
-        client.request("remoteControl/pairing/status", input),
+      remoteControlPairingStart: (input) => client.request("remoteControl/pairing/start", input),
+      remoteControlPairingStatus: (input) => client.request("remoteControl/pairing/status", input),
       remoteControlClientsList: (input) => client.request("remoteControl/client/list", input),
       remoteControlClientRevoke: (input) => client.request("remoteControl/client/revoke", input),
       respondToRequest: (requestId, decision) =>

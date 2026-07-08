@@ -1348,6 +1348,22 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
     (memberRow.kind === "message" &&
       memberRow.message.role === "assistant" &&
       memberRow.message.id === row.ownerId);
+  const orderedSegments: Array<
+    | { kind: "owner"; row: TimelineRenderableRow }
+    | { kind: "collapsible"; id: string; rows: TimelineRenderableRow[] }
+  > = [];
+  for (const memberRow of row.memberRows) {
+    if (isOwnerRow(memberRow)) {
+      orderedSegments.push({ kind: "owner", row: memberRow });
+      continue;
+    }
+    const previousSegment = orderedSegments.at(-1);
+    if (previousSegment?.kind === "collapsible") {
+      previousSegment.rows.push(memberRow);
+      continue;
+    }
+    orderedSegments.push({ kind: "collapsible", id: memberRow.id, rows: [memberRow] });
+  }
   return (
     <div
       className="[overflow-anchor:none]"
@@ -1355,12 +1371,14 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
       data-turn-process-owner-id={row.ownerId}
     >
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
-      {row.memberRows.map((memberRow) =>
-        isOwnerRow(memberRow) ? (
-          <TimelineRowBody key={memberRow.id} row={memberRow} />
+      {orderedSegments.map((segment) =>
+        segment.kind === "owner" ? (
+          <TimelineRowBody key={segment.row.id} row={segment.row} />
         ) : (
-          <CollapsibleMember key={memberRow.id} collapsed={isCollapsed} animate={animate}>
-            <TimelineRowBody row={memberRow} />
+          <CollapsibleMember key={segment.id} collapsed={isCollapsed} animate={animate}>
+            {segment.rows.map((memberRow) => (
+              <TimelineRowBody key={memberRow.id} row={memberRow} />
+            ))}
           </CollapsibleMember>
         ),
       )}

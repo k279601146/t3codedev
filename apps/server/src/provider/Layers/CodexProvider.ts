@@ -174,7 +174,10 @@ const CommercialGatewayUsageResponse = Schema.Struct({
 function commercialGatewayModelsUrl(environment: NodeJS.ProcessEnv): string {
   const baseUrl = resolveCommercialEngineGatewayBaseUrl(environment);
   const openAiBaseUrl = resolveCommercialEngineOpenAiBaseUrl(baseUrl);
-  return new URL("models", openAiBaseUrl.endsWith("/") ? openAiBaseUrl : `${openAiBaseUrl}/`).toString();
+  return new URL(
+    "models",
+    openAiBaseUrl.endsWith("/") ? openAiBaseUrl : `${openAiBaseUrl}/`,
+  ).toString();
 }
 
 function commercialGatewayAccountUrl(environment: NodeJS.ProcessEnv): string {
@@ -346,9 +349,9 @@ function requestCommercialGatewayBalance(
           cause,
         }),
     });
-    const decoded = yield* Schema.decodeUnknownEffect(
-      CommercialGatewayAccountResponse,
-    )(payload).pipe(
+    const decoded = yield* Schema.decodeUnknownEffect(CommercialGatewayAccountResponse)(
+      payload,
+    ).pipe(
       Effect.mapError(
         (cause) =>
           new CommercialModelCatalogError({
@@ -579,13 +582,12 @@ function appendCustomCodexModels(
   return customEntries.length === 0 ? models : [...models, ...customEntries];
 }
 
-function resolveSkillInstallTimestampMs(
-  skillPath: string,
-): Effect.Effect<number | undefined> {
+function resolveSkillInstallTimestampMs(skillPath: string): Effect.Effect<number | undefined> {
   return Effect.gen(function* () {
-    const statPath = nodePath.basename(skillPath).toLowerCase() === "skill.md"
-      ? nodePath.dirname(skillPath)
-      : skillPath;
+    const statPath =
+      nodePath.basename(skillPath).toLowerCase() === "skill.md"
+        ? nodePath.dirname(skillPath)
+        : skillPath;
     const entryStat = yield* Effect.tryPromise({
       try: () => stat(statPath),
       catch: () => undefined,
@@ -594,10 +596,7 @@ function resolveSkillInstallTimestampMs(
   }).pipe(Effect.orElseSucceed(() => undefined));
 }
 
-function compareCodexSkillsByInstallTime(
-  a: ServerProviderSkill,
-  b: ServerProviderSkill,
-): number {
+function compareCodexSkillsByInstallTime(a: ServerProviderSkill, b: ServerProviderSkill): number {
   const aTime = a.installedAtMs ?? Number.NEGATIVE_INFINITY;
   const bTime = b.installedAtMs ?? Number.NEGATIVE_INFINITY;
   if (aTime !== bTime) {
@@ -662,6 +661,7 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
     },
     capabilities: {
       experimentalApi: true,
+      optOutNotificationMethods: null,
     },
   };
 }
@@ -726,20 +726,18 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   const initialize = yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
   yield* enableCodexPluginExperimentalFeatures(client, { operation: "provider.probe" });
-  const windowsSandboxReadiness = yield* client
-    .request("windowsSandbox/readiness", undefined)
-    .pipe(
-      Effect.map((response) => ({
-        status: response.status,
-        error: null as string | null,
-      })),
-      Effect.catch((cause) =>
-        Effect.succeed({
-          status: undefined,
-          error: cause.message ?? String(cause),
-        }),
-      ),
-    );
+  const windowsSandboxReadiness = yield* client.request("windowsSandbox/readiness", undefined).pipe(
+    Effect.map((response) => ({
+      status: response.status,
+      error: null as string | null,
+    })),
+    Effect.catch((cause) =>
+      Effect.succeed({
+        status: undefined,
+        error: cause.message ?? String(cause),
+      }),
+    ),
+  );
 
   // Extract the version string after the first '/' in userAgent, up to the next space or the end
   const versionMatch = initialize.userAgent.match(/\/([^\s]+)/);
