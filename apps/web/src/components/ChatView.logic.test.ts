@@ -28,8 +28,8 @@ import {
   hasServerAcknowledgedLocalDispatch,
   inferRevertTurnCountBeforeUserMessage,
   reconcileMountedTerminalThreadIds,
+  resolveThreadErrorDisplay,
   resolveSendEnvMode,
-  shouldRenderThreadErrorAsAssistantMessage,
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   waitForThreadRevertedAfter,
@@ -38,24 +38,29 @@ import {
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
-describe("shouldRenderThreadErrorAsAssistantMessage", () => {
-  it("treats backend request failures as assistant responses", () => {
-    expect(
-      shouldRenderThreadErrorAsAssistantMessage(
-        "请求失败: Input exceeds the maximum length of 1048576 characters.",
-      ),
-    ).toBe(true);
-    expect(
-      shouldRenderThreadErrorAsAssistantMessage(
-        "Input exceeds the maximum length of 1048576 characters.",
-      ),
-    ).toBe(true);
-    expect(shouldRenderThreadErrorAsAssistantMessage("Request failed: bad request")).toBe(true);
+describe("resolveThreadErrorDisplay", () => {
+  it("defaults plain thread errors to the banner placement", () => {
+    expect(resolveThreadErrorDisplay("停止当前任务失败。")).toEqual({
+      message: "停止当前任务失败。",
+      placement: "banner",
+    });
   });
 
-  it("keeps non-turn operation errors out of the assistant timeline", () => {
-    expect(shouldRenderThreadErrorAsAssistantMessage("停止当前任务失败。")).toBe(false);
-    expect(shouldRenderThreadErrorAsAssistantMessage(null)).toBe(false);
+  it("keeps explicit assistant placement for send failures", () => {
+    expect(
+      resolveThreadErrorDisplay({
+        message: "请求失败: Input exceeds the maximum length of 1048576 characters.",
+        placement: "assistant",
+      }),
+    ).toEqual({
+      message: "请求失败: Input exceeds the maximum length of 1048576 characters.",
+      placement: "assistant",
+    });
+  });
+
+  it("clears null errors without relying on message text", () => {
+    expect(resolveThreadErrorDisplay(null)).toBeNull();
+    expect(resolveThreadErrorDisplay({ message: null, placement: "assistant" })).toBeNull();
   });
 });
 

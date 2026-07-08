@@ -80,6 +80,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           activeTurnId: null,
           updatedAt: nowIso,
         },
+        stopReason: "reaper",
         createdAt: nowIso,
       });
       yield* Effect.logInfo("provider.session.reaper.settled-terminal-active-turn", {

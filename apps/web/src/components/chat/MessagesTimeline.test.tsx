@@ -244,7 +244,7 @@ describe("MessagesTimeline", () => {
       <MessagesTimeline
         {...buildProps()}
         timelineEntries={[buildUserTimelineEntry("请分析这个日志")]}
-        threadErrorMessage={errorMessage}
+        threadAssistantErrorMessage={errorMessage}
       />,
     );
 
@@ -660,7 +660,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("+1");
   });
 
-  it("renders turn diff file creations only on the assistant result card", async () => {
+  it("renders interleaved turn diff file creations only after the assistant result", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const assistantId = MessageId.make("assistant-1");
     const turnId = TurnId.make("turn-1");
@@ -683,20 +683,6 @@ describe("MessagesTimeline", () => {
             },
           },
           {
-            id: "work-entry-2",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:32.000Z",
-            entry: {
-              id: "work-2",
-              createdAt: "2026-03-17T19:12:32.000Z",
-              label: "Ran command",
-              tone: "tool",
-              command: "python verify_dashboard.py",
-              itemType: "command_execution",
-              status: "completed",
-            },
-          },
-          {
             id: "assistant-entry",
             kind: "message",
             createdAt: "2026-03-17T19:12:40.000Z",
@@ -707,6 +693,20 @@ describe("MessagesTimeline", () => {
               turnId,
               createdAt: "2026-03-17T19:12:40.000Z",
               streaming: false,
+            },
+          },
+          {
+            id: "work-entry-2",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:42.000Z",
+            entry: {
+              id: "work-2",
+              createdAt: "2026-03-17T19:12:42.000Z",
+              label: "Ran command",
+              tone: "tool",
+              command: "python verify_dashboard.py",
+              itemType: "command_execution",
+              status: "completed",
             },
           },
         ]}
@@ -745,7 +745,7 @@ describe("MessagesTimeline", () => {
     expect(fileSummaryIndex).toBeGreaterThan(assistantTextIndex);
   });
 
-  it("keeps work emitted after a streaming assistant message below that message", async () => {
+  it("groups interleaved streaming work before the assistant result", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const turnId = TurnId.make("turn-1");
     const markup = renderToStaticMarkup(
@@ -787,8 +787,8 @@ describe("MessagesTimeline", () => {
     const afterCommandIndex = markup.indexOf("bun test");
 
     expect(beforeCommandIndex).toBeGreaterThanOrEqual(0);
-    expect(assistantTextIndex).toBeGreaterThan(beforeCommandIndex);
-    expect(afterCommandIndex).toBeGreaterThan(assistantTextIndex);
+    expect(afterCommandIndex).toBeGreaterThan(beforeCommandIndex);
+    expect(assistantTextIndex).toBeGreaterThan(afterCommandIndex);
   });
 
   it("keeps completed turn process rows collapsed while the assistant result stays visible", async () => {

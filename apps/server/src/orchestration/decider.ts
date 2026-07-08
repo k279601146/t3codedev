@@ -724,6 +724,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.session-stop-requested",
         payload: {
           threadId: command.threadId,
+          reason: command.reason ?? "user",
           createdAt: command.createdAt,
         },
       };
@@ -747,6 +748,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           session: command.session,
+          ...(command.stopReason !== undefined ? { stopReason: command.stopReason } : {}),
         },
       };
     }

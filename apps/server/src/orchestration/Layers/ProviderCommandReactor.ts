@@ -7,6 +7,7 @@
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
+  type OrchestrationSessionStopReason,
   type ProviderPersonality,
   type ProviderRuntimeEvent,
   ThreadId,
@@ -318,6 +319,44 @@ const make = Effect.gen(function* () {
       createdAt: input.createdAt,
     });
 
+  const appendGoalAdvanceWaitingActivity = (input: {
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId | null;
+    readonly reason: string;
+    readonly attempt: number;
+    readonly retryDelay: Duration.Duration;
+  }) =>
+    Effect.gen(function* () {
+      const thread = yield* resolveThread(input.threadId);
+      if (!thread || thread.activities.some((activity) => activity.kind === "goal.advance.waiting")) {
+        return;
+      }
+      const now = yield* DateTime.now;
+      const createdAt = DateTime.formatIso(now);
+      const nextRetryAt = DateTime.formatIso(
+        DateTime.add(now, { milliseconds: Duration.toMillis(input.retryDelay) }),
+      );
+      yield* orchestrationEngine.dispatch({
+        type: "thread.activity.append",
+        commandId: serverCommandId("goal-advance-waiting"),
+        threadId: input.threadId,
+        activity: {
+          id: EventId.make(crypto.randomUUID()),
+          tone: "info",
+          kind: "goal.advance.waiting",
+          summary: "等待当前任务结束后继续目标",
+          payload: {
+            reason: input.reason,
+            attempt: input.attempt,
+            nextRetryAt,
+          },
+          turnId: input.turnId,
+          createdAt,
+        },
+        createdAt,
+      });
+    });
+
   const formatFailureDetail = (cause: Cause.Cause<unknown>): string => {
     const failReason = cause.reasons.find(Cause.isFailReason);
     const providerError = isProviderAdapterRequestError(failReason?.error)
@@ -333,12 +372,14 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly session: OrchestrationSession;
     readonly createdAt: string;
+    readonly stopReason?: OrchestrationSessionStopReason;
   }) =>
     orchestrationEngine.dispatch({
       type: "thread.session.set",
       commandId: serverCommandId("provider-session-set"),
       threadId: input.threadId,
       session: input.session,
+      ...(input.stopReason !== undefined ? { stopReason: input.stopReason } : {}),
       createdAt: input.createdAt,
     });
 
@@ -1195,13 +1236,16 @@ const make = Effect.gen(function* () {
   const processSessionStopRequested = Effect.fn("processSessionStopRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.session-stop-requested" }>,
   ) {
-    userStoppedGoalThreadIds.add(event.payload.threadId);
+    const stopReason = event.payload.reason;
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
       return;
     }
 
-    yield* cancelGoalAdvance(event.payload.threadId);
+    if (stopReason === "user") {
+      userStoppedGoalThreadIds.add(event.payload.threadId);
+      yield* cancelGoalAdvance(event.payload.threadId);
+    }
 
     const now = event.payload.createdAt;
     if (thread.session && thread.session.status !== "stopped") {
@@ -1223,6 +1267,7 @@ const make = Effect.gen(function* () {
         updatedAt: now,
       },
       createdAt: now,
+      ...(stopReason !== undefined ? { stopReason } : {}),
     });
   });
 
@@ -1281,10 +1326,18 @@ const make = Effect.gen(function* () {
         ) {
           const attempt = (goalRetryAttempts.get(input.threadId) ?? 0) + 1;
           goalRetryAttempts.set(input.threadId, attempt);
+          const retryDelay = goalRetryDelay(attempt);
+          yield* appendGoalAdvanceWaitingActivity({
+            threadId: input.threadId,
+            reason: "goal-thread-busy",
+            attempt,
+            retryDelay,
+            turnId: thread.session?.activeTurnId ?? thread.latestTurn?.turnId ?? null,
+          });
           yield* scheduleGoalAdvance({
             threadId: input.threadId,
             reason: "goal-thread-busy",
-            delay: goalRetryDelay(attempt),
+            delay: retryDelay,
           });
           return;
         }
@@ -1462,6 +1515,11 @@ const make = Effect.gen(function* () {
         return;
       }
       case "thread.session-set": {
+        if (event.payload.session.status === "stopped" && event.payload.stopReason === "user") {
+          userStoppedGoalThreadIds.add(event.payload.threadId);
+          yield* cancelGoalAdvance(event.payload.threadId);
+          return;
+        }
         if (
           event.payload.session.status === "ready" ||
           event.payload.session.status === "interrupted" ||

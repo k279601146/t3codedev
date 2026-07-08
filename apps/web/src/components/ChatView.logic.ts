@@ -35,11 +35,31 @@ export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
-const REQUEST_FAILURE_ERROR_PATTERN =
-  /^\s*(?:\u8bf7\u6c42\u5931\u8d25|request failed)\s*[:：]|\binput exceeds\b|\bmaximum length\b|\bcontext length\b/i;
+export type ThreadErrorPlacement = "banner" | "assistant";
 
-export function shouldRenderThreadErrorAsAssistantMessage(error: string | null): boolean {
-  return error !== null && REQUEST_FAILURE_ERROR_PATTERN.test(error);
+export interface ThreadErrorDisplay {
+  readonly message: string;
+  readonly placement: ThreadErrorPlacement;
+}
+
+export type ThreadErrorInput =
+  | string
+  | null
+  | {
+      readonly message: string | null;
+      readonly placement?: ThreadErrorPlacement;
+    };
+
+export function resolveThreadErrorDisplay(error: ThreadErrorInput): ThreadErrorDisplay | null {
+  if (error === null) return null;
+  if (typeof error === "string") {
+    return { message: error, placement: "banner" };
+  }
+  if (error.message === null) return null;
+  return {
+    message: error.message,
+    placement: error.placement ?? "banner",
+  };
 }
 
 const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;

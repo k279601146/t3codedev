@@ -373,6 +373,14 @@ export const OrchestrationSessionStatus = Schema.Literals([
 ]);
 export type OrchestrationSessionStatus = typeof OrchestrationSessionStatus.Type;
 
+export const OrchestrationSessionStopReason = Schema.Literals([
+  "user",
+  "reaper",
+  "runtime",
+  "error",
+]);
+export type OrchestrationSessionStopReason = typeof OrchestrationSessionStopReason.Type;
+
 export const OrchestrationSession = Schema.Struct({
   threadId: ThreadId,
   status: OrchestrationSessionStatus,
@@ -902,6 +910,7 @@ const ThreadSessionStopCommand = Schema.Struct({
   type: Schema.Literal("thread.session.stop"),
   commandId: CommandId,
   threadId: ThreadId,
+  reason: Schema.optional(OrchestrationSessionStopReason),
   createdAt: IsoDateTime,
 });
 
@@ -963,6 +972,7 @@ const ThreadSessionSetCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   session: OrchestrationSession,
+  stopReason: Schema.optional(OrchestrationSessionStopReason),
   createdAt: IsoDateTime,
 });
 
@@ -1290,12 +1300,14 @@ export const ThreadRevertedPayload = Schema.Struct({
 
 export const ThreadSessionStopRequestedPayload = Schema.Struct({
   threadId: ThreadId,
+  reason: Schema.optional(OrchestrationSessionStopReason),
   createdAt: IsoDateTime,
 });
 
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+  stopReason: Schema.optional(OrchestrationSessionStopReason),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({

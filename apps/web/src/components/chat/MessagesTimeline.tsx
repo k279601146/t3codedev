@@ -216,7 +216,7 @@ interface MessagesTimelineProps {
   activeTurnId?: TurnId | null;
   activeTurnStartedAt: string | null;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
-  threadErrorMessage?: string | null;
+  threadAssistantErrorMessage?: string | null;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
@@ -465,7 +465,7 @@ export const MessagesTimeline = memo(
       activeTurnId,
       activeTurnStartedAt,
       timelineEntries,
-      threadErrorMessage = null,
+      threadAssistantErrorMessage = null,
       completionDividerBeforeEntryId,
       completionSummary,
       turnDiffSummaryByAssistantMessageId,
@@ -658,12 +658,12 @@ export const MessagesTimeline = memo(
 
       appendMaterializedTimelineRows(nextRows, row, expandedWorkGroupIds);
     }
-    if (threadErrorMessage) {
+    if (threadAssistantErrorMessage) {
       nextRows.push({
         kind: "assistant-error",
-        id: `thread-error:${threadErrorMessage}`,
+        id: `thread-error:${threadAssistantErrorMessage}`,
         createdAt: effectiveStableRows.at(-1)?.createdAt ?? "",
-        message: threadErrorMessage,
+        message: threadAssistantErrorMessage,
       });
     }
     return nextRows;
@@ -672,7 +672,7 @@ export const MessagesTimeline = memo(
     expandedWorkGroupIds,
     ownerAssistantMessageIdByRowId,
     summaryButtonHostByRowId,
-    threadErrorMessage,
+    threadAssistantErrorMessage,
   ]);
   const rows = useStableMaterializedRows(materializedRows);
   const useStreamingHeavyMode =
@@ -1348,21 +1348,14 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
     (memberRow.kind === "message" &&
       memberRow.message.role === "assistant" &&
       memberRow.message.id === row.ownerId);
-  const orderedSegments: Array<
-    | { kind: "owner"; row: TimelineRenderableRow }
-    | { kind: "collapsible"; id: string; rows: TimelineRenderableRow[] }
-  > = [];
+  const processRows: TimelineRenderableRow[] = [];
+  const ownerRows: TimelineRenderableRow[] = [];
   for (const memberRow of row.memberRows) {
     if (isOwnerRow(memberRow)) {
-      orderedSegments.push({ kind: "owner", row: memberRow });
+      ownerRows.push(memberRow);
       continue;
     }
-    const previousSegment = orderedSegments.at(-1);
-    if (previousSegment?.kind === "collapsible") {
-      previousSegment.rows.push(memberRow);
-      continue;
-    }
-    orderedSegments.push({ kind: "collapsible", id: memberRow.id, rows: [memberRow] });
+    processRows.push(memberRow);
   }
   return (
     <div
@@ -1371,17 +1364,16 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
       data-turn-process-owner-id={row.ownerId}
     >
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
-      {orderedSegments.map((segment) =>
-        segment.kind === "owner" ? (
-          <TimelineRowBody key={segment.row.id} row={segment.row} />
-        ) : (
-          <CollapsibleMember key={segment.id} collapsed={isCollapsed} animate={animate}>
-            {segment.rows.map((memberRow) => (
-              <TimelineRowBody key={memberRow.id} row={memberRow} />
-            ))}
-          </CollapsibleMember>
-        ),
-      )}
+      {processRows.length > 0 ? (
+        <CollapsibleMember collapsed={isCollapsed} animate={animate}>
+          {processRows.map((memberRow) => (
+            <TimelineRowBody key={memberRow.id} row={memberRow} />
+          ))}
+        </CollapsibleMember>
+      ) : null}
+      {ownerRows.map((ownerRow) => (
+        <TimelineRowBody key={ownerRow.id} row={ownerRow} />
+      ))}
       {row.changedFilesRow ? <TimelineRowBody row={row.changedFilesRow} /> : null}
     </div>
   );

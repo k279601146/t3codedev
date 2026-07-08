@@ -704,8 +704,24 @@ describe("ProviderCommandReactor", () => {
     );
 
     await waitFor(() => harness.setGoal.mock.calls.length === 1);
-    await Effect.runPromise(Effect.sleep("20 millis"));
+    await Effect.runPromise(Effect.sleep("300 millis"));
+    await harness.drain();
     expect(harness.sendTurn).not.toHaveBeenCalled();
+    {
+      const readModel = await harness.readModel();
+      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      const waitingActivities =
+        thread?.activities.filter((activity) => activity.kind === "goal.advance.waiting") ?? [];
+      expect(waitingActivities).toHaveLength(1);
+      expect(waitingActivities[0]?.summary).toBe("等待当前任务结束后继续目标");
+      expect(waitingActivities[0]?.payload).toMatchObject({
+        reason: "goal-thread-busy",
+        attempt: 1,
+      });
+      expect(JSON.stringify(waitingActivities[0]?.payload)).not.toContain(
+        "等待忙碌线程继续",
+      );
+    }
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -782,6 +798,50 @@ describe("ProviderCommandReactor", () => {
     await harness.drain();
     await Effect.runPromise(Effect.sleep("250 millis"));
     expect(harness.sendTurn).not.toHaveBeenCalled();
+  });
+
+  it("continues an active goal after a reaper-stopped session becomes available", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.goal.set",
+        commandId: CommandId.make("cmd-goal-set-before-reaper-stop"),
+        threadId: ThreadId.make("thread-1"),
+        objective: "continue after reaper stop",
+        status: "active",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.setGoal.mock.calls.length === 1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-reaper-stopped-active-goal"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "stopped",
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        stopReason: "reaper",
+        createdAt: "2026-01-01T00:00:01.000Z",
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1, 5000);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      input: "continue after reaper stop",
+    });
   });
 
   it("reacts to thread.turn.steer by steering the active provider turn", async () => {

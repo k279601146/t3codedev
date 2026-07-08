@@ -1788,6 +1788,11 @@ const make = Effect.gen(function* () {
               lastError,
               updatedAt: now,
             },
+            ...(status === "stopped"
+              ? { stopReason: "runtime" as const }
+              : status === "error"
+                ? { stopReason: "error" as const }
+                : {}),
             createdAt: now,
           });
         }
@@ -2095,6 +2100,7 @@ const make = Effect.gen(function* () {
               lastError: runtimeErrorLastError,
               updatedAt: now,
             },
+            stopReason: "error",
             createdAt: now,
           });
         }

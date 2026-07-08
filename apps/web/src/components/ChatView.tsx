@@ -204,13 +204,15 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
+  resolveThreadErrorDisplay,
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
-  shouldRenderThreadErrorAsAssistantMessage,
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   threadHasStarted,
+  type ThreadErrorDisplay,
+  type ThreadErrorInput,
   waitForThreadRevertedAfter,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -1194,6 +1196,9 @@ export default function ChatView(props: ChatViewProps) {
   const [localDraftErrorsByDraftId, setLocalDraftErrorsByDraftId] = useState<
     Record<string, string | null>
   >({});
+  const [threadErrorDisplaysByKey, setThreadErrorDisplaysByKey] = useState<
+    Record<string, ThreadErrorDisplay | undefined>
+  >({});
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const [interruptPendingTurn, setInterruptPendingTurn] = useState<{
@@ -1398,6 +1403,8 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const activeThreadErrorKey =
+    activeThreadId === null ? null : isServerThread ? activeThreadId : (draftId ?? activeThreadId);
   const goalModeEnabled = Boolean(
     (activeThreadKey ? goalModeByThreadKey[activeThreadKey] : false) || activeThread?.goal,
   );
@@ -2002,11 +2009,18 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.session?.orchestrationStatus === "running" &&
     activeThread.session.activeTurnId === activeLatestTurn.turnId;
   const activeThreadError = activeThread?.error ?? null;
-  const inlineThreadError = shouldRenderThreadErrorAsAssistantMessage(activeThreadError)
-    ? activeThreadError
-    : null;
+  const activeThreadErrorDisplay =
+    activeThreadError !== null &&
+    activeThreadErrorKey !== null &&
+    threadErrorDisplaysByKey[activeThreadErrorKey]?.message === activeThreadError
+      ? threadErrorDisplaysByKey[activeThreadErrorKey]
+      : null;
+  const threadAssistantErrorMessage =
+    activeThreadErrorDisplay?.placement === "assistant" ? activeThreadError : null;
   const visibleThreadError =
-    isSendBusy || inlineThreadError !== null || !shouldShowThreadErrorBanner(activeThreadError)
+    isSendBusy ||
+    threadAssistantErrorMessage !== null ||
+    !shouldShowThreadErrorBanner(activeThreadError)
       ? null
       : activeThreadError;
   const canSteerActiveTurn =
@@ -2523,13 +2537,40 @@ export default function ChatView(props: ChatViewProps) {
   const hasReachedSplitLimit =
     (activeTerminalGroup?.terminalIds.length ?? 0) >= MAX_TERMINALS_PER_GROUP;
   const setThreadError = useCallback(
-    (targetThreadId: ThreadId | null, error: string | null) => {
+    (targetThreadId: ThreadId | null, error: ThreadErrorInput) => {
       if (!targetThreadId) return;
-      const nextError = sanitizeThreadErrorMessage(error);
+      const display = resolveThreadErrorDisplay(error);
+      const nextError = sanitizeThreadErrorMessage(display?.message ?? null);
+      const nextDisplay =
+        nextError === null
+          ? undefined
+          : ({
+              message: nextError,
+              placement: display?.placement ?? "banner",
+            } satisfies ThreadErrorDisplay);
       const isCurrentServerThread = shouldWriteThreadErrorToCurrentServerThread({
         serverThread,
         routeThreadRef,
         targetThreadId,
+      });
+      const threadErrorKey = isCurrentServerThread ? targetThreadId : (draftId ?? targetThreadId);
+      setThreadErrorDisplaysByKey((existing) => {
+        if (nextDisplay === undefined) {
+          if (existing[threadErrorKey] === undefined) return existing;
+          const { [threadErrorKey]: _removed, ...rest } = existing;
+          return rest;
+        }
+        const current = existing[threadErrorKey];
+        if (
+          current?.message === nextDisplay.message &&
+          current.placement === nextDisplay.placement
+        ) {
+          return existing;
+        }
+        return {
+          ...existing,
+          [threadErrorKey]: nextDisplay,
+        };
       });
       if (isCurrentServerThread) {
         setStoreThreadError(targetThreadId, nextError);
@@ -3526,7 +3567,10 @@ export default function ChatView(props: ChatViewProps) {
       }
       setThreadError(
         pending.threadId,
-        err instanceof Error ? err.message : "Failed to steer current turn.",
+        {
+          message: err instanceof Error ? err.message : "Failed to steer current turn.",
+          placement: "assistant",
+        },
       );
     });
     sendInFlightRef.current = false;
@@ -3689,7 +3733,10 @@ export default function ChatView(props: ChatViewProps) {
         }
         setThreadError(
           threadIdForSend,
-          err instanceof Error ? err.message : "发送编辑后的消息失败。",
+          {
+            message: err instanceof Error ? err.message : "发送编辑后的消息失败。",
+            placement: "assistant",
+          },
         );
         setEditedMessageResubmission(null);
         resetLocalDispatch();
@@ -4142,7 +4189,10 @@ export default function ChatView(props: ChatViewProps) {
       }
       setThreadError(
         threadIdForSend,
-        err instanceof Error ? err.message : "Failed to send message.",
+        {
+          message: err instanceof Error ? err.message : "Failed to send message.",
+          placement: "assistant",
+        },
       );
     });
     sendInFlightRef.current = false;
@@ -4528,7 +4578,10 @@ export default function ChatView(props: ChatViewProps) {
         );
         setThreadError(
           threadIdForSend,
-          err instanceof Error ? err.message : "Failed to send plan follow-up.",
+          {
+            message: err instanceof Error ? err.message : "Failed to send plan follow-up.",
+            placement: "assistant",
+          },
         );
         sendInFlightRef.current = false;
         resetLocalDispatch();
@@ -5432,7 +5485,7 @@ export default function ChatView(props: ChatViewProps) {
                   activeTurnId={activeLatestTurn?.turnId ?? null}
                   activeTurnStartedAt={activeWorkStartedAt}
                   timelineEntries={timelineEntries}
-                  threadErrorMessage={inlineThreadError}
+                  threadAssistantErrorMessage={threadAssistantErrorMessage}
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
                   turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
