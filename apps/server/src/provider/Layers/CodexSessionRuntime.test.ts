@@ -179,6 +179,33 @@ describe("buildTurnStartParams", () => {
     });
   });
 
+  it("passes local image attachments through to turn/start", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        prompt: "Inspect this screenshot",
+        attachments: [
+          {
+            type: "localImage",
+            path: "C:\\tmp\\screen.png",
+          },
+        ],
+      }),
+    );
+
+    assert.deepStrictEqual(params.input, [
+      {
+        type: "text",
+        text: "Inspect this screenshot",
+      },
+      {
+        type: "localImage",
+        path: "C:\\tmp\\screen.png",
+      },
+    ]);
+  });
+
   it("omits collaboration mode when interaction mode is absent", () => {
     const params = Effect.runSync(
       buildTurnStartParams({

@@ -9,6 +9,8 @@ import {
   createAttachmentId,
   parseThreadSegmentFromAttachmentId,
   resolveAttachmentPathById,
+  resolveThreadAttachmentImport,
+  sanitizeAttachmentImportFileName,
 } from "./attachmentStore.ts";
 
 describe("attachmentStore", () => {
@@ -71,6 +73,39 @@ describe("attachmentStore", () => {
       expect(resolved).toBeNull();
     } finally {
       fs.rmSync(attachmentsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sanitizes imported attachment file names", () => {
+    expect(sanitizeAttachmentImportFileName("..\\danger log.txt")).toBe("danger_log.txt");
+    expect(sanitizeAttachmentImportFileName("../../.env")).toBe("env");
+    expect(sanitizeAttachmentImportFileName("  日志 文件.log  ")).toBe("log");
+    expect(sanitizeAttachmentImportFileName("")).toBe("attachment");
+  });
+
+  it("resolves imported attachment paths inside the thread workspace", () => {
+    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-attachment-import-"));
+    try {
+      const resolved = resolveThreadAttachmentImport({
+        conversationWorkspaceDir: baseDir,
+        threadId: "thread-1",
+        attachment: {
+          type: "file",
+          id: "thread-1-11111111-1111-4111-8111-111111111111",
+          name: "../unsafe app.log",
+          mimeType: "text/plain",
+          sizeBytes: 12,
+        },
+      });
+
+      expect(resolved).not.toBeNull();
+      expect(resolved?.workspaceRoot).toBe(path.resolve(path.join(baseDir, "thread-1")));
+      expect(resolved?.relativePath).toBe(
+        ".t3code/imports/thread-1-11111111-1111-4111-8111-111111111111/unsafe_app.log",
+      );
+      expect(resolved?.path.startsWith(`${resolved.workspaceRoot}${path.sep}`)).toBe(true);
+    } finally {
+      fs.rmSync(baseDir, { recursive: true, force: true });
     }
   });
 });

@@ -84,7 +84,7 @@ import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import * as BrowserToolServiceLayer from "./BrowserToolService.ts";
 import * as BrowserExternalToolServiceLayer from "./BrowserExternalToolService.ts";
 import * as ComputerToolServiceLayer from "./ComputerToolService.ts";
-import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { resolveAttachmentPath, resolveThreadAttachmentImport } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import {
@@ -2489,6 +2489,29 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
   };
 
+  const copyAttachmentIntoThreadWorkspace = Effect.fn("copyAttachmentIntoThreadWorkspace")(
+    function* (
+      attachmentPath: string,
+      importPath: string,
+    ) {
+      yield* Effect.tryPromise({
+        try: async () => {
+          await fsPromises.mkdir(path.dirname(importPath), { recursive: true });
+          await fsPromises.copyFile(attachmentPath, importPath);
+        },
+        catch: (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "turn/start",
+            detail: `Failed to import attachment file: ${
+              cause instanceof Error ? cause.message : String(cause)
+            }.`,
+            cause,
+          }),
+      });
+    },
+  );
+
   const resolveAttachment = Effect.fn("resolveAttachment")(function* (
     input: Pick<ProviderSendTurnInput | ProviderSteerTurnInput, "threadId">,
     attachment: NonNullable<ProviderSendTurnInput["attachments"]>[number],
@@ -2504,28 +2527,30 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         detail: `Invalid attachment id '${attachment.id}'.`,
       });
     }
-    const bytes = yield* fileSystem.readFile(attachmentPath).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProviderAdapterRequestError({
-            provider: PROVIDER,
-            method: "turn/start",
-            detail: `Failed to read attachment file: ${cause.message}.`,
-            cause,
-          }),
-      ),
-    );
-
     if (isImageMimeType(attachment.mimeType)) {
       return {
-        type: "image" as const,
-        url: `data:${attachment.mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+        type: "localImage" as const,
+        path: attachmentPath,
       };
     } else {
+      const imported = resolveThreadAttachmentImport({
+        conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
+        threadId: input.threadId,
+        attachment,
+      });
+      if (!imported) {
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/start",
+          detail: `Failed to resolve safe import path for attachment '${attachment.id}'.`,
+        });
+      }
+      yield* copyAttachmentIntoThreadWorkspace(attachmentPath, imported.path);
       return {
-        type: "text" as const,
+        type: "file" as const,
         name: attachment.name ?? "attachment",
-        content: Buffer.from(bytes).toString("utf-8"),
+        path: imported.path,
+        relativePath: imported.relativePath,
       };
     }
   });
@@ -2542,15 +2567,17 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       { concurrency: 1 },
     );
 
-    const imageAttachments: Array<{ readonly type: "image"; readonly url: string }> = [];
+    const imageAttachments: Array<
+      | { readonly type: "image"; readonly url: string }
+      | { readonly type: "localImage"; readonly path: string }
+    > = [];
     let extraTextInput = "";
 
     for (const attachment of codexAttachments) {
-      if (attachment.type === "image") {
+      if (attachment.type === "image" || attachment.type === "localImage") {
         imageAttachments.push(attachment);
-      } else if (attachment.type === "text") {
-        const ext = attachment.name.split(".").pop() ?? "";
-        extraTextInput += `\n\n[Attachment: ${attachment.name}]\n\`\`\`${ext}\n${attachment.content}\n\`\`\`\n`;
+      } else if (attachment.type === "file") {
+        extraTextInput += `\n\n[Attachment: ${attachment.name}]\nImported file path: ${attachment.path}\nWorkspace relative path: ${attachment.relativePath}\n`;
       }
     }
 

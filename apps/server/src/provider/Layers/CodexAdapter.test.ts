@@ -45,6 +45,7 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
@@ -104,7 +105,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
       readonly expectedTurnId: TurnId;
       readonly input?: string | undefined;
       readonly attachments?:
-        | ReadonlyArray<{ readonly type: "image"; readonly url: string }>
+        | ReadonlyArray<
+            | { readonly type: "image"; readonly url: string }
+            | { readonly type: "localImage"; readonly path: string }
+          >
         | undefined;
     }): Promise<ProviderTurnSteerResult> =>
       Promise.resolve({
@@ -200,7 +204,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
     readonly expectedTurnId: TurnId;
     readonly input?: string | undefined;
     readonly attachments?:
-      | ReadonlyArray<{ readonly type: "image"; readonly url: string }>
+      | ReadonlyArray<
+          | { readonly type: "image"; readonly url: string }
+          | { readonly type: "localImage"; readonly path: string }
+        >
       | undefined;
   }) {
     return Effect.promise(() => this.steerTurnImpl(input));
@@ -414,7 +421,6 @@ validationLayer("CodexAdapterLive validation", (it) => {
       assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
         binaryPath: "codex",
         cwd: testConversationWorkspaceForThread("thread-1"),
-        jsonRpcLogPath: path.join(process.cwd(), "userdata", "logs", "provider", "jsonrpc.log"),
         model: "gpt-5.3-codex",
         providerInstanceId: ProviderInstanceId.make("codex"),
         serviceTier: "fast",
@@ -493,6 +499,100 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         effort: "high",
         serviceTier: "fast",
         personality: "friendly",
+      });
+    }),
+  );
+
+  it.effect("imports non-image attachments into the thread workspace without inlining content", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const config = yield* ServerConfig;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-large-log"),
+        runtimeMode: "full-access",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      assert.ok(runtime);
+      runtime.sendTurnImpl.mockClear();
+
+      const largeLogContent = `head\n${"x".repeat(1_100_000)}\ntail`;
+      const attachment = {
+        type: "file" as const,
+        id: "thread-large-log-11111111-1111-4111-8111-111111111111",
+        name: "../unsafe app.log",
+        mimeType: "text/plain",
+        sizeBytes: largeLogContent.length,
+      };
+      const attachmentPath = path.join(config.attachmentsDir, attachmentRelativePath(attachment));
+      fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+      fs.writeFileSync(attachmentPath, largeLogContent);
+
+      yield* adapter.sendTurn({
+        threadId: asThreadId("thread-large-log"),
+        input: "Analyze the attached log",
+        attachments: [attachment],
+      });
+
+      const runtimeInput = runtime.sendTurnImpl.mock.calls[0]?.[0];
+      assert.ok(runtimeInput);
+      assert.ok(runtimeInput.input?.includes("Analyze the attached log"));
+      assert.ok(runtimeInput.input?.includes("Imported file path:"));
+      assert.ok(runtimeInput.input?.includes(".t3code/imports"));
+      assert.ok(!runtimeInput.input?.includes(largeLogContent));
+      assert.equal(runtimeInput.attachments, undefined);
+
+      const importedPath = path.join(
+        config.conversationWorkspaceDir,
+        "thread-large-log",
+        ".t3code",
+        "imports",
+        attachment.id,
+        "unsafe_app.log",
+      );
+      assert.equal(fs.readFileSync(importedPath, "utf-8"), largeLogContent);
+    }),
+  );
+
+  it.effect("passes image attachments as localImage inputs without embedding base64 text", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const config = yield* ServerConfig;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-image-attachment"),
+        runtimeMode: "full-access",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      assert.ok(runtime);
+      runtime.sendTurnImpl.mockClear();
+
+      const attachment = {
+        type: "image" as const,
+        id: "thread-image-attachment-11111111-1111-4111-8111-111111111112",
+        name: "screen.png",
+        mimeType: "image/png",
+        sizeBytes: 4,
+        previewUrl: "/attachments/thread-image-attachment",
+      };
+      const attachmentPath = path.join(config.attachmentsDir, attachmentRelativePath(attachment));
+      fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+      fs.writeFileSync(attachmentPath, Buffer.from([1, 2, 3, 4]));
+
+      yield* adapter.sendTurn({
+        threadId: asThreadId("thread-image-attachment"),
+        input: "Look at this image",
+        attachments: [attachment],
+      });
+
+      assert.deepStrictEqual(runtime.sendTurnImpl.mock.calls[0]?.[0], {
+        input: "Look at this image",
+        attachments: [
+          {
+            type: "localImage",
+            path: attachmentPath,
+          },
+        ],
       });
     }),
   );

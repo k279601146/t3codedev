@@ -174,6 +174,9 @@ export interface CodexSessionRuntimeSendTurnInput {
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
     readonly url: string;
+  } | {
+    readonly type: "localImage";
+    readonly path: string;
   }>;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier | undefined;
@@ -188,6 +191,9 @@ export interface CodexSessionRuntimeSteerTurnInput {
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
     readonly url: string;
+  } | {
+    readonly type: "localImage";
+    readonly path: string;
   }>;
 }
 
@@ -574,6 +580,9 @@ export function buildTurnStartParams(input: {
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
     readonly url: string;
+  } | {
+    readonly type: "localImage";
+    readonly path: string;
   }>;
   readonly model?: string;
   readonly serviceTier?: CodexServiceTier;
@@ -614,6 +623,9 @@ function buildCodexTurnInput(input: {
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
     readonly url: string;
+  } | {
+    readonly type: "localImage";
+    readonly path: string;
   }>;
 }): Array<EffectCodexSchema.V2TurnStartParams__UserInput> {
   const turnInput: Array<EffectCodexSchema.V2TurnStartParams__UserInput> = [];

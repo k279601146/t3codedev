@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import path from "node:path";
 
 import type { ChatAttachment } from "@t3tools/contracts";
 
@@ -14,6 +15,8 @@ const ATTACHMENT_FILENAME_EXTENSIONS = [...SAFE_IMAGE_FILE_EXTENSIONS, ".bin"];
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const ATTACHMENT_IMPORTS_DIR = ".t3code/imports";
+const ATTACHMENT_IMPORT_FILENAME_MAX_CHARS = 160;
 const ATTACHMENT_ID_PATTERN = new RegExp(
   `^(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN})-(${ATTACHMENT_ID_UUID_PATTERN})$`,
   "i",
@@ -76,6 +79,60 @@ export function resolveAttachmentPath(input: {
     attachmentsDir: input.attachmentsDir,
     relativePath: attachmentRelativePath(input.attachment),
   });
+}
+
+function isPathInsideRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+export function sanitizeAttachmentImportFileName(name: string | undefined): string {
+  const baseName = path
+    .basename((name ?? "").replace(/\\/g, "/"))
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
+  const sanitized = baseName
+    .replace(/^\.+/g, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[._-]+/g, "")
+    .replace(/^[_-]+|[_-]+$/g, "")
+    .slice(0, ATTACHMENT_IMPORT_FILENAME_MAX_CHARS)
+    .replace(/[._-]+$/g, "");
+  return sanitized || "attachment";
+}
+
+export function resolveThreadAttachmentImport(input: {
+  readonly conversationWorkspaceDir: string;
+  readonly threadId: string;
+  readonly attachment: ChatAttachment;
+}): { readonly workspaceRoot: string; readonly path: string; readonly relativePath: string } | null {
+  const workspaceRoot = path.resolve(path.join(input.conversationWorkspaceDir, input.threadId));
+  const conversationRoot = path.resolve(input.conversationWorkspaceDir);
+  if (!isPathInsideRoot(conversationRoot, workspaceRoot)) {
+    return null;
+  }
+
+  const relativePath = path
+    .join(
+      ATTACHMENT_IMPORTS_DIR,
+      input.attachment.id,
+      sanitizeAttachmentImportFileName(input.attachment.name),
+    )
+    .replace(/\\/g, "/");
+  const importPath = path.resolve(path.join(workspaceRoot, relativePath));
+  if (!isPathInsideRoot(workspaceRoot, importPath)) {
+    return null;
+  }
+
+  return {
+    workspaceRoot,
+    path: importPath,
+    relativePath,
+  };
 }
 
 export function resolveAttachmentPathById(input: {
