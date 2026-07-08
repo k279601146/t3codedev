@@ -705,7 +705,6 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.setGoal.mock.calls.length === 1);
     await Effect.runPromise(Effect.sleep("300 millis"));
-    await harness.drain();
     expect(harness.sendTurn).not.toHaveBeenCalled();
     {
       const readModel = await harness.readModel();
@@ -748,6 +747,16 @@ describe("ProviderCommandReactor", () => {
       threadId: ThreadId.make("thread-1"),
       input: "等待忙碌线程继续",
     });
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.goal.status.set",
+        commandId: CommandId.make("cmd-goal-pause-after-busy-retry"),
+        threadId: ThreadId.make("thread-1"),
+        status: "paused",
+        createdAt: "2026-01-01T00:00:02.000Z",
+      }),
+    );
+    await harness.drain();
   });
 
   it("does not auto-advance an active goal after the user stops the session", async () => {
@@ -842,6 +851,16 @@ describe("ProviderCommandReactor", () => {
       threadId: ThreadId.make("thread-1"),
       input: "continue after reaper stop",
     });
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.goal.status.set",
+        commandId: CommandId.make("cmd-goal-pause-after-reaper-stop"),
+        threadId: ThreadId.make("thread-1"),
+        status: "paused",
+        createdAt: "2026-01-01T00:00:02.000Z",
+      }),
+    );
+    await harness.drain();
   });
 
   it("reacts to thread.turn.steer by steering the active provider turn", async () => {
