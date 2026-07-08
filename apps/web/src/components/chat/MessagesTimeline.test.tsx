@@ -110,6 +110,7 @@ function buildAssistantTimelineEntry(input: {
   turnId: TurnId | null;
   createdAt: string;
   completedAt?: string;
+  streaming?: boolean;
 }) {
   return {
     id: input.entryId,
@@ -122,7 +123,30 @@ function buildAssistantTimelineEntry(input: {
       turnId: input.turnId,
       createdAt: input.createdAt,
       ...(input.completedAt ? { completedAt: input.completedAt } : {}),
-      streaming: false,
+      streaming: input.streaming ?? false,
+    },
+  };
+}
+
+function buildCommandWorkTimelineEntry(input: {
+  id: string;
+  entryId: string;
+  command: string;
+  createdAt: string;
+  status?: "running" | "completed" | "failed";
+}) {
+  return {
+    id: input.entryId,
+    kind: "work" as const,
+    createdAt: input.createdAt,
+    entry: {
+      id: input.id,
+      createdAt: input.createdAt,
+      label: "Ran command",
+      tone: "tool" as const,
+      command: input.command,
+      itemType: "command_execution",
+      status: input.status ?? "completed",
     },
   };
 }
@@ -719,6 +743,82 @@ describe("MessagesTimeline", () => {
     expect(processSummaryIndex).toBeGreaterThanOrEqual(0);
     expect(processSummaryIndex).toBeLessThan(assistantTextIndex);
     expect(fileSummaryIndex).toBeGreaterThan(assistantTextIndex);
+  });
+
+  it("keeps work emitted after a streaming assistant message below that message", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const turnId = TurnId.make("turn-1");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        activeTurnInProgress
+        activeTurnId={turnId}
+        activeTurnStartedAt="2026-03-17T19:12:20.000Z"
+        timelineEntries={[
+          buildCommandWorkTimelineEntry({
+            id: "work-before",
+            entryId: "work-entry-before",
+            command: "bun run lint",
+            status: "running",
+            createdAt: "2026-03-17T19:12:28.000Z",
+          }),
+          buildAssistantTimelineEntry({
+            id: "assistant-1",
+            entryId: "assistant-entry",
+            text: "正在整理验证结果。",
+            turnId,
+            createdAt: "2026-03-17T19:12:30.000Z",
+            streaming: true,
+          }),
+          buildCommandWorkTimelineEntry({
+            id: "work-after",
+            entryId: "work-entry-after",
+            command: "bun test",
+            status: "running",
+            createdAt: "2026-03-17T19:12:32.000Z",
+          }),
+        ]}
+      />,
+    );
+
+    const beforeCommandIndex = markup.indexOf("bun run lint");
+    const assistantTextIndex = markup.indexOf("正在整理验证结果。");
+    const afterCommandIndex = markup.indexOf("bun test");
+
+    expect(beforeCommandIndex).toBeGreaterThanOrEqual(0);
+    expect(assistantTextIndex).toBeGreaterThan(beforeCommandIndex);
+    expect(afterCommandIndex).toBeGreaterThan(assistantTextIndex);
+  });
+
+  it("keeps completed turn process rows collapsed while the assistant result stays visible", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const turnId = TurnId.make("turn-1");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          buildCommandWorkTimelineEntry({
+            id: "work-before",
+            entryId: "work-entry-before",
+            command: "bun run lint",
+            createdAt: "2026-03-17T19:12:28.000Z",
+          }),
+          buildAssistantTimelineEntry({
+            id: "assistant-1",
+            entryId: "assistant-entry",
+            text: "验证完成。",
+            turnId,
+            createdAt: "2026-03-17T19:12:30.000Z",
+            completedAt: "2026-03-17T19:12:40.000Z",
+          }),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("已处理");
+    expect(markup).toContain("验证完成。");
+    expect(markup).not.toContain("bun run lint");
   });
 
   it("filters invalid checkpoint file paths before rendering assistant file summaries", async () => {

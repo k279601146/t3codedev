@@ -1348,8 +1348,6 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
     (memberRow.kind === "message" &&
       memberRow.message.role === "assistant" &&
       memberRow.message.id === row.ownerId);
-  const ownerRow = row.memberRows.find(isOwnerRow);
-  const processRows = row.memberRows.filter((memberRow) => !isOwnerRow(memberRow));
   return (
     <div
       className="[overflow-anchor:none]"
@@ -1357,12 +1355,15 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
       data-turn-process-owner-id={row.ownerId}
     >
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
-      <CollapsibleMember collapsed={isCollapsed} animate={animate}>
-        {processRows.map((memberRow) => (
+      {row.memberRows.map((memberRow) =>
+        isOwnerRow(memberRow) ? (
           <TimelineRowBody key={memberRow.id} row={memberRow} />
-        ))}
-      </CollapsibleMember>
-      {ownerRow ? <TimelineRowBody row={ownerRow} /> : null}
+        ) : (
+          <CollapsibleMember key={memberRow.id} collapsed={isCollapsed} animate={animate}>
+            <TimelineRowBody row={memberRow} />
+          </CollapsibleMember>
+        ),
+      )}
       {row.changedFilesRow ? <TimelineRowBody row={row.changedFilesRow} /> : null}
     </div>
   );
