@@ -207,6 +207,7 @@ import {
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
+  shouldRenderThreadErrorAsAssistantMessage,
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   threadHasStarted,
@@ -2001,8 +2002,13 @@ export default function ChatView(props: ChatViewProps) {
     activeThread?.session?.orchestrationStatus === "running" &&
     activeThread.session.activeTurnId === activeLatestTurn.turnId;
   const activeThreadError = activeThread?.error ?? null;
+  const inlineThreadError = shouldRenderThreadErrorAsAssistantMessage(activeThreadError)
+    ? activeThreadError
+    : null;
   const visibleThreadError =
-    isSendBusy || !shouldShowThreadErrorBanner(activeThreadError) ? null : activeThreadError;
+    isSendBusy || inlineThreadError !== null || !shouldShowThreadErrorBanner(activeThreadError)
+      ? null
+      : activeThreadError;
   const canSteerActiveTurn =
     phase === "running" &&
     isServerThread &&
@@ -5426,6 +5432,7 @@ export default function ChatView(props: ChatViewProps) {
                   activeTurnId={activeLatestTurn?.turnId ?? null}
                   activeTurnStartedAt={activeWorkStartedAt}
                   timelineEntries={timelineEntries}
+                  threadErrorMessage={inlineThreadError}
                   completionDividerBeforeEntryId={completionDividerBeforeEntryId}
                   completionSummary={completionSummary}
                   turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}

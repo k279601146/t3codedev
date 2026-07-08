@@ -213,6 +213,21 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain(LEGACY_EMPTY_TIMELINE_PROMPT);
   }, 20_000);
 
+  it("renders backend request failures as assistant timeline errors", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const errorMessage = "请求失败: Input exceeds the maximum length of 1048576 characters.";
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[buildUserTimelineEntry("请分析这个日志")]}
+        threadErrorMessage={errorMessage}
+      />,
+    );
+
+    expect(markup).toContain('data-assistant-error-message="true"');
+    expect(markup).toContain(errorMessage);
+  }, 20_000);
+
   it("renders a history skeleton while an existing thread detail is loading", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

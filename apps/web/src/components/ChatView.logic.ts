@@ -35,6 +35,13 @@ export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
+const REQUEST_FAILURE_ERROR_PATTERN =
+  /^\s*(?:\u8bf7\u6c42\u5931\u8d25|request failed)\s*[:：]|\binput exceeds\b|\bmaximum length\b|\bcontext length\b/i;
+
+export function shouldRenderThreadErrorAsAssistantMessage(error: string | null): boolean {
+  return error !== null && REQUEST_FAILURE_ERROR_PATTERN.test(error);
+}
+
 const IMAGE_ARTIFACT_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?[^\s]*)?$/i;
 
 export function buildRightPanelArtifacts(input: {

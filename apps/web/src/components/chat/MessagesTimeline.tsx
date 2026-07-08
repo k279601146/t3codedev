@@ -216,6 +216,7 @@ interface MessagesTimelineProps {
   activeTurnId?: TurnId | null;
   activeTurnStartedAt: string | null;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
+  threadErrorMessage?: string | null;
   completionDividerBeforeEntryId: string | null;
   completionSummary: string | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
@@ -285,12 +286,20 @@ type TimelineAssistantChangedFilesRow = {
   turnSummary: TurnDiffSummary;
 };
 
+type TimelineAssistantErrorRow = {
+  kind: "assistant-error";
+  id: string;
+  createdAt: string;
+  message: string;
+};
+
 type TimelineRenderableRow =
   | MessagesTimelineRow
   | TimelineWorkGroupSummaryRow
   | TimelineWorkEntryRow
   | TimelineSearchWorkGroupDetailsRow
-  | TimelineAssistantChangedFilesRow;
+  | TimelineAssistantChangedFilesRow
+  | TimelineAssistantErrorRow;
 
 type TimelineTurnProcessSpanRow = {
   kind: "turn-process-span";
@@ -408,6 +417,10 @@ function isTimelineRenderableRowUnchanged(
         previous.turnSummary === typedNext.turnSummary
       );
     }
+    case "assistant-error": {
+      const typedNext = next as typeof previous;
+      return previous.createdAt === typedNext.createdAt && previous.message === typedNext.message;
+    }
     default:
       return previous === next;
   }
@@ -452,6 +465,7 @@ export const MessagesTimeline = memo(
       activeTurnId,
       activeTurnStartedAt,
       timelineEntries,
+      threadErrorMessage = null,
       completionDividerBeforeEntryId,
       completionSummary,
       turnDiffSummaryByAssistantMessageId,
@@ -644,12 +658,21 @@ export const MessagesTimeline = memo(
 
       appendMaterializedTimelineRows(nextRows, row, expandedWorkGroupIds);
     }
+    if (threadErrorMessage) {
+      nextRows.push({
+        kind: "assistant-error",
+        id: `thread-error:${threadErrorMessage}`,
+        createdAt: effectiveStableRows.at(-1)?.createdAt ?? "",
+        message: threadErrorMessage,
+      });
+    }
     return nextRows;
   }, [
     effectiveStableRows,
     expandedWorkGroupIds,
     ownerAssistantMessageIdByRowId,
     summaryButtonHostByRowId,
+    threadErrorMessage,
   ]);
   const rows = useStableMaterializedRows(materializedRows);
   const useStreamingHeavyMode =
@@ -1308,6 +1331,7 @@ function TimelineRowBody({ row }: { row: TimelineRenderableRow }) {
       {row.kind === "assistant-changed-files" ? (
         <AssistantChangedFilesTimelineRow row={row} />
       ) : null}
+      {row.kind === "assistant-error" ? <AssistantErrorTimelineRow row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "image-generation" ? <ImageGenerationTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
@@ -1949,6 +1973,22 @@ function AssistantChangedFilesTimelineRow({
       onOpenFile={ctx.onOpenMarkdownFile}
       onOpenTurnDiff={ctx.onOpenTurnDiff}
     />
+  );
+}
+
+function AssistantErrorTimelineRow({ row }: { row: TimelineAssistantErrorRow }) {
+  return (
+    <div
+      className="min-w-0 py-0.5"
+      data-assistant-error-message="true"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex max-w-full items-start gap-2 rounded-lg border border-rose-500/20 bg-rose-500/[0.04] px-3 py-2 text-[13px] leading-5 text-rose-950/88 dark:text-rose-50/92">
+        <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-rose-500/78" />
+        <p className="min-w-0 flex-1 wrap-break-word">{row.message}</p>
+      </div>
+    </div>
   );
 }
 

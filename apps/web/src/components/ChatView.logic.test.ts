@@ -29,6 +29,7 @@ import {
   inferRevertTurnCountBeforeUserMessage,
   reconcileMountedTerminalThreadIds,
   resolveSendEnvMode,
+  shouldRenderThreadErrorAsAssistantMessage,
   shouldShowEmptyNewThread,
   shouldWriteThreadErrorToCurrentServerThread,
   waitForThreadRevertedAfter,
@@ -36,6 +37,27 @@ import {
 } from "./ChatView.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("shouldRenderThreadErrorAsAssistantMessage", () => {
+  it("treats backend request failures as assistant responses", () => {
+    expect(
+      shouldRenderThreadErrorAsAssistantMessage(
+        "请求失败: Input exceeds the maximum length of 1048576 characters.",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRenderThreadErrorAsAssistantMessage(
+        "Input exceeds the maximum length of 1048576 characters.",
+      ),
+    ).toBe(true);
+    expect(shouldRenderThreadErrorAsAssistantMessage("Request failed: bad request")).toBe(true);
+  });
+
+  it("keeps non-turn operation errors out of the assistant timeline", () => {
+    expect(shouldRenderThreadErrorAsAssistantMessage("停止当前任务失败。")).toBe(false);
+    expect(shouldRenderThreadErrorAsAssistantMessage(null)).toBe(false);
+  });
+});
 
 describe("buildRightPanelArtifacts", () => {
   it("dedupes generated artifacts and changed files", () => {
