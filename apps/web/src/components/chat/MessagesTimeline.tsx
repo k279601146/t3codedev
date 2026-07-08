@@ -1332,13 +1332,13 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
       data-turn-process-span="true"
       data-turn-process-owner-id={row.ownerId}
     >
-      {ownerRow ? <TimelineRowBody row={ownerRow} /> : null}
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
       <CollapsibleMember collapsed={isCollapsed} animate={animate}>
         {processRows.map((memberRow) => (
           <TimelineRowBody key={memberRow.id} row={memberRow} />
         ))}
       </CollapsibleMember>
+      {ownerRow ? <TimelineRowBody row={ownerRow} /> : null}
       {row.changedFilesRow ? <TimelineRowBody row={row.changedFilesRow} /> : null}
     </div>
   );

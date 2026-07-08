@@ -701,8 +701,9 @@ describe("MessagesTimeline", () => {
     const processSummaryIndex = markup.indexOf("已处理");
     const fileSummaryIndex = markup.indexOf("已创建 4 个文件");
     expect(assistantTextIndex).toBeGreaterThanOrEqual(0);
-    expect(processSummaryIndex).toBeGreaterThan(assistantTextIndex);
-    expect(fileSummaryIndex).toBeGreaterThan(processSummaryIndex);
+    expect(processSummaryIndex).toBeGreaterThanOrEqual(0);
+    expect(processSummaryIndex).toBeLessThan(assistantTextIndex);
+    expect(fileSummaryIndex).toBeGreaterThan(assistantTextIndex);
   });
 
   it("filters invalid checkpoint file paths before rendering assistant file summaries", async () => {
