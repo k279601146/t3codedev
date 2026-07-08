@@ -489,6 +489,47 @@ describe("openCodexThread", () => {
     );
   });
 
+  it("injects only requested T3 dynamic tool namespaces", async () => {
+    let startPayload: CodexRpc.ClientRequestParamsByMethod["thread/start"] | undefined;
+    const client = {
+      request: <M extends TestThreadOpenMethod>(
+        method: M,
+        payload: CodexRpc.ClientRequestParamsByMethod[M],
+      ) => {
+        if (method === "thread/start") {
+          startPayload = payload as CodexRpc.ClientRequestParamsByMethod["thread/start"];
+        }
+        return Effect.succeed(
+          (method === "thread/settings/update"
+            ? {}
+            : makeThreadOpenResponse("fresh-thread")) as CodexRpc.ClientRequestResponsesByMethod[M],
+        );
+      },
+    };
+
+    await Effect.runPromise(
+      openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: undefined,
+        requestedModelProvider: undefined,
+        requestedConfigOverrides: undefined,
+        serviceTier: undefined,
+        personality: undefined,
+        enabledT3DynamicToolNamespaces: ["computer", "browser", "computer"],
+        resumeThreadId: undefined,
+      }),
+    );
+
+    assert.ok(startPayload);
+    assert.deepStrictEqual(startPayload.dynamicTools, [
+      ...buildT3BrowserDynamicTools(),
+      ...buildT3ComputerDynamicTools(),
+    ]);
+  });
+
   it("falls back to thread/start when resume fails recoverably", async () => {
     const calls: Array<{ method: TestThreadOpenMethod; payload: unknown }> = [];
     const started = makeThreadOpenResponse("fresh-thread");

@@ -218,7 +218,10 @@ import {
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
-import { appendComposerPluginLaunchContext } from "../composerPluginLaunch";
+import {
+  appendComposerPluginLaunchContext,
+  resolveComposerPluginLaunchToolNamespaces,
+} from "../composerPluginLaunch";
 import {
   promptUsesChromePlugin,
   useBrowserExternalPluginState,
@@ -2418,7 +2421,9 @@ export default function ChatView(props: ChatViewProps) {
     if (!usageLimitBlock) return false;
     const toastCopy = buildCommercialUsageLimitToastCopy(usageLimitBlock);
     const openAccountPath = (path: string) => {
-      openCommercialAccountUrl(resolveCommercialAccountActionUrl(commercialAccountWebBaseUrl, path));
+      openCommercialAccountUrl(
+        resolveCommercialAccountActionUrl(commercialAccountWebBaseUrl, path),
+      );
     };
 
     toastManager.add(
@@ -3565,13 +3570,10 @@ export default function ChatView(props: ChatViewProps) {
         });
         setPendingSteerMessage(pending);
       }
-      setThreadError(
-        pending.threadId,
-        {
-          message: err instanceof Error ? err.message : "Failed to steer current turn.",
-          placement: "assistant",
-        },
-      );
+      setThreadError(pending.threadId, {
+        message: err instanceof Error ? err.message : "Failed to steer current turn.",
+        placement: "assistant",
+      });
     });
     sendInFlightRef.current = false;
     resetLocalDispatch();
@@ -3731,13 +3733,10 @@ export default function ChatView(props: ChatViewProps) {
             existing.filter((message) => message.id !== messageIdForSend),
           );
         }
-        setThreadError(
-          threadIdForSend,
-          {
-            message: err instanceof Error ? err.message : "发送编辑后的消息失败。",
-            placement: "assistant",
-          },
-        );
+        setThreadError(threadIdForSend, {
+          message: err instanceof Error ? err.message : "发送编辑后的消息失败。",
+          placement: "assistant",
+        });
         setEditedMessageResubmission(null);
         resetLocalDispatch();
         throw err;
@@ -3920,9 +3919,14 @@ export default function ChatView(props: ChatViewProps) {
 
     const composerImagesSnapshot = [...composerImages];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
-    const messageTextForSend = appendComposerPluginLaunchContext(
-      appendTerminalContextsToPrompt(promptForSend, composerTerminalContextsSnapshot),
+    const promptWithTerminalContexts = appendTerminalContextsToPrompt(
+      promptForSend,
+      composerTerminalContextsSnapshot,
     );
+    const enabledT3DynamicToolNamespaces = resolveComposerPluginLaunchToolNamespaces(
+      promptWithTerminalContexts,
+    );
+    const messageTextForSend = appendComposerPluginLaunchContext(promptWithTerminalContexts);
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const outgoingMessageText = formatOutgoingPrompt({
@@ -4138,6 +4142,7 @@ export default function ChatView(props: ChatViewProps) {
           role: "user",
           text: outgoingMessageText,
           attachments: turnAttachments,
+          ...(enabledT3DynamicToolNamespaces.length > 0 ? { enabledT3DynamicToolNamespaces } : {}),
         },
         modelSelection: ctxSelectedModelSelection,
         personality: settings.defaultProviderPersonality,
@@ -4187,13 +4192,10 @@ export default function ChatView(props: ChatViewProps) {
           detectTrigger: true,
         });
       }
-      setThreadError(
-        threadIdForSend,
-        {
-          message: err instanceof Error ? err.message : "Failed to send message.",
-          placement: "assistant",
-        },
-      );
+      setThreadError(threadIdForSend, {
+        message: err instanceof Error ? err.message : "Failed to send message.",
+        placement: "assistant",
+      });
     });
     sendInFlightRef.current = false;
     if (!turnStartSucceeded) {
@@ -4576,13 +4578,10 @@ export default function ChatView(props: ChatViewProps) {
         setOptimisticUserMessages((existing) =>
           existing.filter((message) => message.id !== messageIdForSend),
         );
-        setThreadError(
-          threadIdForSend,
-          {
-            message: err instanceof Error ? err.message : "Failed to send plan follow-up.",
-            placement: "assistant",
-          },
-        );
+        setThreadError(threadIdForSend, {
+          message: err instanceof Error ? err.message : "Failed to send plan follow-up.",
+          placement: "assistant",
+        });
         sendInFlightRef.current = false;
         resetLocalDispatch();
       }
@@ -5073,11 +5072,18 @@ export default function ChatView(props: ChatViewProps) {
         type: "thread.turn.interrupt",
         commandId: newCommandId(),
         threadId: activeThreadId,
-        ...(activeThread.session?.activeTurnId ? { turnId: activeThread.session.activeTurnId } : {}),
+        ...(activeThread.session?.activeTurnId
+          ? { turnId: activeThread.session.activeTurnId }
+          : {}),
         createdAt: new Date().toISOString(),
       });
     }
-  }, [activeThread?.latestTurn?.state, activeThread?.session?.activeTurnId, activeThreadId, environmentId]);
+  }, [
+    activeThread?.latestTurn?.state,
+    activeThread?.session?.activeTurnId,
+    activeThreadId,
+    environmentId,
+  ]);
   const onGoalModeChange = useCallback(
     (enabled: boolean) => {
       if (!activeThreadKey) return;

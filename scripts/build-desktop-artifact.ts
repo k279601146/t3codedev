@@ -1,11 +1,13 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 
 import rootPackageJson from "../package.json" with { type: "json" };
+import webPackageJson from "../apps/web/package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { stat as statFile, writeFile } from "node:fs/promises";
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
@@ -26,6 +28,26 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+
+// Load root .env so T3CODE_DESKTOP_VERSION is available without --build-version.
+(function loadRootDotenv() {
+  const envPath = resolve(process.cwd(), ".env");
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const sep = trimmed.indexOf("=");
+    if (sep <= 0) continue;
+    const key = trimmed.slice(0, sep).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = trimmed.slice(sep + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+})();
+
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
 const BuildArch = Schema.Literals(["arm64", "x64", "universal"]);
@@ -399,6 +421,30 @@ function isPrimaryReleaseAsset(filePath: string, path: Path.Path): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return [".exe", ".dmg", ".appimage", ".zip"].includes(ext);
 }
+
+const logPackageVersionConsistencyWarnings = Effect.fn("logPackageVersionConsistencyWarnings")(
+  function* (appVersion: string) {
+    const packageVersions = [
+      ["apps/web", webPackageJson.version],
+      ["apps/desktop", desktopPackageJson.version],
+      ["apps/server", serverPackageJson.version],
+    ] as const;
+    const mismatches = packageVersions.filter(([, version]) => version !== appVersion);
+    if (mismatches.length === 0) {
+      return;
+    }
+
+    yield* Effect.logWarning(
+      `[desktop-artifact] Package versions differ from build version ${appVersion}; build metadata will use ${appVersion}.`,
+    ).pipe(
+      Effect.annotateLogs({
+        appVersion,
+        packageVersions: Object.fromEntries(packageVersions),
+        mismatches: Object.fromEntries(mismatches),
+      }),
+    );
+  },
+);
 
 const writeReleaseAssetManifest = Effect.fn("writeReleaseAssetManifest")(function* (input: {
   readonly artifacts: readonly string[];
@@ -879,6 +925,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   });
 
   const appVersion = options.version ?? serverPackageJson.version;
+  yield* logPackageVersionConsistencyWarnings(appVersion);
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const buildVersionEnv = {

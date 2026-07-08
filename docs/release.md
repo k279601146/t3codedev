@@ -1,5 +1,7 @@
 # Release Checklist
 
+> **已归档**：本文档涉及 GitHub Actions CI/CD 工作流和旧 `electron-updater` 的 GitHub Releases 模式。桌面客户端的打包、发布、测试请以 **[Bahew 桌面客户端打包、发布与测试指南](bahew-desktop-release-guide.md)** 为准。
+
 This document covers the unified release workflow for stable and nightly desktop releases.
 
 ## What the workflow does

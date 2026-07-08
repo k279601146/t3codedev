@@ -14,6 +14,7 @@
   type ProviderSession,
   type RuntimeMode,
   type TurnId,
+  type T3DynamicToolNamespace,
   DEFAULT_MODEL,
   DEFAULT_RUNTIME_MODE,
   ProviderInstanceId,
@@ -121,20 +122,72 @@ const DEFAULT_THREAD_TITLE = "New thread";
 const GOAL_ADVANCE_INITIAL_DELAY = Duration.millis(200);
 const GOAL_RETRY_BASE_DELAY_MS = 1_000;
 const GOAL_RETRY_MAX_DELAY_MS = 60_000;
-const T3_DYNAMIC_TOOL_MENTION_REGEX = /(^|\s)@(Browser|Chrome|Computer)(?=\s|$)/i;
+const T3_DYNAMIC_TOOL_MENTION_REGEX = /(^|\s)@(Browser|Chrome|Computer)(?=\s|$)/gi;
 const T3_DYNAMIC_TOOL_LAUNCH_CONTEXT_REGEX =
   /<plugin_launch_context>[\s\S]*?<\/plugin_launch_context>/i;
+const T3_DYNAMIC_TOOL_NAMESPACE_ORDER = ["browser", "chrome", "computer"] as const;
 
 export function providerErrorLabel(value: string | undefined): string {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : "unknown";
 }
 
-function shouldEnableT3DynamicToolsForMessage(messageText: string): boolean {
-  return (
-    T3_DYNAMIC_TOOL_MENTION_REGEX.test(messageText) ||
-    T3_DYNAMIC_TOOL_LAUNCH_CONTEXT_REGEX.test(messageText)
-  );
+function normalizeT3DynamicToolNamespaces(
+  namespaces: ReadonlyArray<T3DynamicToolNamespace> | undefined,
+): ReadonlyArray<T3DynamicToolNamespace> {
+  if (!namespaces || namespaces.length === 0) {
+    return [];
+  }
+  const selected = new Set(namespaces);
+  return T3_DYNAMIC_TOOL_NAMESPACE_ORDER.filter((namespace) => selected.has(namespace));
+}
+
+function mergeT3DynamicToolNamespaces(
+  left: ReadonlyArray<T3DynamicToolNamespace>,
+  right: ReadonlyArray<T3DynamicToolNamespace>,
+): ReadonlyArray<T3DynamicToolNamespace> {
+  return normalizeT3DynamicToolNamespaces([...left, ...right]);
+}
+
+function parseT3DynamicToolNamespacesFromMessage(
+  messageText: string,
+): ReadonlyArray<T3DynamicToolNamespace> {
+  const namespaces: T3DynamicToolNamespace[] = [];
+  for (const match of messageText.matchAll(T3_DYNAMIC_TOOL_MENTION_REGEX)) {
+    const mention = match[2]?.toLowerCase();
+    if (mention === "browser") {
+      namespaces.push("browser");
+    } else if (mention === "chrome") {
+      namespaces.push("chrome");
+    } else if (mention === "computer") {
+      namespaces.push("computer");
+    }
+  }
+
+  const launchContextMatch = messageText.match(T3_DYNAMIC_TOOL_LAUNCH_CONTEXT_REGEX);
+  const launchContext = launchContextMatch?.[0] ?? "";
+  if (launchContext) {
+    if (/@Browser:/i.test(launchContext)) {
+      namespaces.push("browser");
+    }
+    if (/@Chrome:/i.test(launchContext)) {
+      namespaces.push("chrome");
+    }
+    if (/@Computer:/i.test(launchContext) || /computer_|desktop app target/i.test(launchContext)) {
+      namespaces.push("computer");
+    }
+  }
+
+  return normalizeT3DynamicToolNamespaces(namespaces);
+}
+
+function hasAllT3DynamicToolNamespaces(
+  current: ReadonlyArray<T3DynamicToolNamespace>,
+  required: ReadonlyArray<T3DynamicToolNamespace>,
+): boolean {
+  if (required.length === 0) return true;
+  const currentSet = new Set(current);
+  return required.every((ns) => currentSet.has(ns));
 }
 
 export function providerErrorLabelFromInstanceHint(input: {
@@ -256,7 +309,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
-  const t3DynamicToolsEnabledThreads = new Map<string, boolean>();
+  const t3DynamicToolNamespacesByThread = new Map<string, ReadonlyArray<T3DynamicToolNamespace>>();
 
   const currentIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -425,6 +478,7 @@ const make = Effect.gen(function* () {
       readonly modelSelection?: ModelSelection;
       readonly personality?: ProviderPersonality | null;
       readonly enableT3DynamicTools?: boolean;
+      readonly enabledT3DynamicToolNamespaces?: ReadonlyArray<T3DynamicToolNamespace>;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -529,11 +583,22 @@ const make = Effect.gen(function* () {
       projects: project ? [project] : [],
     });
 
+    const requestedT3DynamicToolNamespaces =
+      options?.enableT3DynamicTools === true
+        ? T3_DYNAMIC_TOOL_NAMESPACE_ORDER
+        : normalizeT3DynamicToolNamespaces(options?.enabledT3DynamicToolNamespaces);
+    const desiredT3DynamicToolNamespaces =
+      options?.enableT3DynamicTools === true
+        ? T3_DYNAMIC_TOOL_NAMESPACE_ORDER
+        : mergeT3DynamicToolNamespaces(
+            t3DynamicToolNamespacesByThread.get(threadId) ?? [],
+            requestedT3DynamicToolNamespaces,
+          );
+
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
       readonly provider?: ProviderDriverKind;
     }) => {
-      const enableT3DynamicTools = options?.enableT3DynamicTools === true;
       return providerService
         .startSession(threadId, {
           threadId,
@@ -542,14 +607,17 @@ const make = Effect.gen(function* () {
           ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
           modelSelection: desiredModelSelection,
           ...(options?.personality !== undefined ? { personality: options.personality } : {}),
-          ...(enableT3DynamicTools ? { enableT3DynamicTools } : {}),
+          ...(options?.enableT3DynamicTools === true ? { enableT3DynamicTools: true } : {}),
+          ...(desiredT3DynamicToolNamespaces.length > 0
+            ? { enabledT3DynamicToolNamespaces: desiredT3DynamicToolNamespaces }
+            : {}),
           ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
           runtimeMode: desiredRuntimeMode,
         })
         .pipe(
           Effect.tap(() =>
             Effect.sync(() => {
-              t3DynamicToolsEnabledThreads.set(threadId, enableT3DynamicTools);
+              t3DynamicToolNamespacesByThread.set(threadId, desiredT3DynamicToolNamespaces);
             }),
           ),
         );
@@ -601,8 +669,11 @@ const make = Effect.gen(function* () {
         requestedModelSelection !== undefined &&
         !Equal.equals(previousModelSelection, requestedModelSelection);
       const shouldRestartForT3DynamicTools =
-        options?.enableT3DynamicTools === true &&
-        t3DynamicToolsEnabledThreads.get(threadId) !== true;
+        requestedT3DynamicToolNamespaces.length > 0 &&
+        !hasAllT3DynamicToolNamespaces(
+          t3DynamicToolNamespacesByThread.get(threadId) ?? [],
+          requestedT3DynamicToolNamespaces,
+        );
 
       if (
         !runtimeModeChanged &&
@@ -677,17 +748,22 @@ const make = Effect.gen(function* () {
       input.personality !== undefined
         ? input.personality
         : (yield* serverSettingsService.getSettings).defaultProviderPersonality;
-    const requiresT3DynamicTools = shouldEnableT3DynamicToolsForMessage(input.messageText);
+    const enabledT3DynamicToolNamespaces =
+      input.enabledT3DynamicToolNamespaces !== undefined
+        ? normalizeT3DynamicToolNamespaces(input.enabledT3DynamicToolNamespaces)
+        : parseT3DynamicToolNamespacesFromMessage(input.messageText);
     yield* ensureSessionForThread(
       input.threadId,
       input.createdAt,
       input.modelSelection !== undefined ||
         effectivePersonality !== undefined ||
-        requiresT3DynamicTools
+        enabledT3DynamicToolNamespaces.length > 0
         ? {
             ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
             ...(effectivePersonality !== undefined ? { personality: effectivePersonality } : {}),
-            ...(requiresT3DynamicTools ? { enableT3DynamicTools: true } : {}),
+            ...(enabledT3DynamicToolNamespaces.length > 0
+              ? { enabledT3DynamicToolNamespaces }
+              : {}),
           }
         : {},
     );
@@ -969,6 +1045,9 @@ const make = Effect.gen(function* () {
         : {}),
       ...(event.payload.personality !== undefined
         ? { personality: event.payload.personality }
+        : {}),
+      ...(event.payload.enabledT3DynamicToolNamespaces !== undefined
+        ? { enabledT3DynamicToolNamespaces: event.payload.enabledT3DynamicToolNamespaces }
         : {}),
       interactionMode: event.payload.interactionMode,
       createdAt: event.payload.createdAt,

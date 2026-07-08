@@ -105,6 +105,21 @@ export function sanitizeAttachmentImportFileName(name: string | undefined): stri
   return sanitized || "attachment";
 }
 
+export function sanitizeAttachmentDisplayName(name: string | undefined): string {
+  const baseName = path
+    .basename((name ?? "").replace(/\\/g, "/"))
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  const sanitized = baseName
+    .replace(/^\.+/g, "")
+    .replace(/[._-]+$/g, "")
+    .slice(0, ATTACHMENT_IMPORT_FILENAME_MAX_CHARS)
+    .trim();
+  return sanitized || "attachment";
+}
+
 export function resolveThreadAttachmentImport(input: {
   readonly conversationWorkspaceDir: string;
   readonly threadId: string;

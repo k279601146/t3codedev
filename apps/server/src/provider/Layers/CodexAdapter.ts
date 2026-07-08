@@ -86,7 +86,11 @@ import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import * as BrowserToolServiceLayer from "./BrowserToolService.ts";
 import * as BrowserExternalToolServiceLayer from "./BrowserExternalToolService.ts";
 import * as ComputerToolServiceLayer from "./ComputerToolService.ts";
-import { resolveAttachmentPath, resolveThreadAttachmentImport } from "../../attachmentStore.ts";
+import {
+  resolveAttachmentPath,
+  resolveThreadAttachmentImport,
+  sanitizeAttachmentDisplayName,
+} from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import {
@@ -2385,8 +2389,18 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ...(input.enableT3DynamicTools !== undefined
               ? { enableT3DynamicTools: input.enableT3DynamicTools }
               : {}),
+            ...(input.enabledT3DynamicToolNamespaces !== undefined
+              ? { enabledT3DynamicToolNamespaces: input.enabledT3DynamicToolNamespaces }
+              : {}),
             ...(jsonRpcLogPath !== undefined ? { jsonRpcLogPath } : {}),
           };
+          if (isCodexDesktopAlignmentDebugEnabled()) {
+            yield* Effect.logDebug("codex desktop alignment session input prepared", {
+              threadId: input.threadId,
+              enableT3DynamicTools: input.enableT3DynamicTools === true,
+              enabledT3DynamicToolNamespaces: input.enabledT3DynamicToolNamespaces ?? [],
+            });
+          }
           const sessionScope = yield* Scope.make("sequential");
           let sessionScopeTransferred = false;
           yield* Effect.addFinalizer(() =>
@@ -2507,22 +2521,33 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   };
 
   const copyAttachmentIntoThreadWorkspace = Effect.fn("copyAttachmentIntoThreadWorkspace")(
-    function* (attachmentPath: string, importPath: string, workspaceRoot: string) {
+    function* (
+      attachmentPath: string,
+      importPath: string,
+      workspaceRoot: string,
+      attachmentsDir: string,
+    ) {
       yield* Effect.tryPromise({
         try: async () => {
           const importDir = path.dirname(importPath);
           await fsPromises.mkdir(importDir, { recursive: true });
-          const [realWorkspaceRoot, realImportDir] = await Promise.all([
-            fsPromises.realpath(workspaceRoot),
-            fsPromises.realpath(importDir),
-          ]);
+          const [realWorkspaceRoot, realImportDir, realAttachmentsDir, realAttachmentPath] =
+            await Promise.all([
+              fsPromises.realpath(workspaceRoot),
+              fsPromises.realpath(importDir),
+              fsPromises.realpath(attachmentsDir),
+              fsPromises.realpath(attachmentPath),
+            ]);
           if (!isPathInsideRoot(realWorkspaceRoot, realImportDir)) {
             throw new Error("Attachment import directory resolves outside the thread workspace.");
+          }
+          if (!isPathInsideRoot(realAttachmentsDir, realAttachmentPath)) {
+            throw new Error("Attachment source resolves outside the attachments directory.");
           }
 
           const tempPath = path.join(importDir, `.t3-attachment-${randomUUID()}.tmp`);
           try {
-            await fsPromises.copyFile(attachmentPath, tempPath, fsConstants.COPYFILE_EXCL);
+            await fsPromises.copyFile(realAttachmentPath, tempPath, fsConstants.COPYFILE_EXCL);
             await fsPromises.rename(tempPath, importPath);
           } catch (cause) {
             await fsPromises.rm(tempPath, { force: true });
@@ -2579,10 +2604,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         attachmentPath,
         imported.path,
         imported.workspaceRoot,
+        serverConfig.attachmentsDir,
       );
       return {
         type: "file" as const,
-        name: path.basename(imported.path),
+        name: sanitizeAttachmentDisplayName(attachment.name),
         path: imported.path,
         relativePath: imported.relativePath,
       };

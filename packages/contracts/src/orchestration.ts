@@ -262,6 +262,10 @@ export type ChatAttachment = typeof ChatAttachment.Type;
 const UploadChatAttachment = Schema.Union([UploadChatImageAttachment, UploadChatFileAttachment]);
 export type UploadChatAttachment = typeof UploadChatAttachment.Type;
 
+export const T3DynamicToolNamespace = Schema.Literals(["browser", "chrome", "computer"]);
+export type T3DynamicToolNamespace = typeof T3DynamicToolNamespace.Type;
+const T3DynamicToolNamespaces = Schema.Array(T3DynamicToolNamespace).check(Schema.isMaxLength(3));
+
 const hasMessageContent = (message: {
   readonly text: string;
   readonly attachments: ReadonlyArray<unknown>;
@@ -283,6 +287,7 @@ const ThreadUserMessage = Schema.Struct({
   attachments: Schema.Array(ChatAttachment).check(
     Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
   ),
+  enabledT3DynamicToolNamespaces: Schema.optional(T3DynamicToolNamespaces),
 }).check(nonEmptyMessageFilter);
 
 const ClientThreadUserMessage = Schema.Struct({
@@ -292,6 +297,7 @@ const ClientThreadUserMessage = Schema.Struct({
   attachments: Schema.Array(UploadChatAttachment).check(
     Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
   ),
+  enabledT3DynamicToolNamespaces: Schema.optional(T3DynamicToolNamespaces),
 }).check(nonEmptyMessageFilter);
 
 export const ProjectScriptIcon = Schema.Literals([
@@ -1230,6 +1236,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
   personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
+  enabledT3DynamicToolNamespaces: Schema.optional(T3DynamicToolNamespaces),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(

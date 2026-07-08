@@ -10,6 +10,7 @@ import {
   parseThreadSegmentFromAttachmentId,
   resolveAttachmentPathById,
   resolveThreadAttachmentImport,
+  sanitizeAttachmentDisplayName,
   sanitizeAttachmentImportFileName,
 } from "./attachmentStore.ts";
 
@@ -81,6 +82,13 @@ describe("attachmentStore", () => {
     expect(sanitizeAttachmentImportFileName("../../.env")).toBe("env");
     expect(sanitizeAttachmentImportFileName("  日志 文件.log  ")).toBe("log");
     expect(sanitizeAttachmentImportFileName("")).toBe("attachment");
+  });
+
+  it("keeps safe unicode attachment display names", () => {
+    expect(sanitizeAttachmentDisplayName("..\\崩溃 日志.log")).toBe("崩溃 日志.log");
+    expect(sanitizeAttachmentDisplayName("../../.env")).toBe("env");
+    expect(sanitizeAttachmentDisplayName("bad\u0000/name?.log")).toBe("name_.log");
+    expect(sanitizeAttachmentDisplayName("")).toBe("attachment");
   });
 
   it("resolves imported attachment paths inside the thread workspace", () => {

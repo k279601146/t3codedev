@@ -252,6 +252,25 @@ it.effect("decodes thread.turn.start defaults for provider and runtime mode", ()
   }),
 );
 
+it.effect("decodes thread.turn.start dynamic tool namespace hints", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: "thread.turn.start",
+      commandId: "cmd-turn-tools",
+      threadId: "thread-1",
+      message: {
+        messageId: "msg-tools",
+        role: "user",
+        text: "@Browser open docs",
+        attachments: [],
+        enabledT3DynamicToolNamespaces: ["browser", "computer"],
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(parsed.message.enabledT3DynamicToolNamespaces, ["browser", "computer"]);
+  }),
+);
+
 it.effect("decodes thread.turn.steer with expected active turn id", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadTurnSteerCommand({

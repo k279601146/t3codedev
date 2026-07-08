@@ -482,6 +482,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
           { id: "fastMode", value: true },
         ]),
         enableT3DynamicTools: true,
+        enabledT3DynamicToolNamespaces: ["browser"],
         runtimeMode: "full-access",
       });
 
@@ -489,6 +490,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
         binaryPath: "codex",
         cwd: testConversationWorkspaceForThread("thread-1"),
         enableT3DynamicTools: true,
+        enabledT3DynamicToolNamespaces: ["browser"],
         model: "gpt-5.3-codex",
         providerInstanceId: ProviderInstanceId.make("codex"),
         serviceTier: "fast",
@@ -590,7 +592,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         const attachment = {
           type: "file" as const,
           id: "thread-large-log-11111111-1111-4111-8111-111111111111",
-          name: "../unsafe app.log",
+          name: "../崩溃 日志.log",
           mimeType: "text/plain",
           sizeBytes: largeLogContent.length,
         };
@@ -607,7 +609,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         const runtimeInput = runtime.sendTurnImpl.mock.calls[0]?.[0];
         assert.ok(runtimeInput);
         assert.ok(runtimeInput.input?.includes("# Files mentioned by the user:"));
-        assert.ok(runtimeInput.input?.includes("## unsafe_app.log:"));
+        assert.ok(runtimeInput.input?.includes("## 崩溃 日志.log:"));
         assert.ok(runtimeInput.input?.includes("files-mentioned-by-the-user"));
         assert.ok(
           runtimeInput.input?.includes("## My request for Codex:\nAnalyze the attached log"),
@@ -622,10 +624,53 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
           "thread-large-log",
           "files-mentioned-by-the-user",
           attachment.id,
-          "unsafe_app.log",
+          "log",
         );
         assert.equal(fs.readFileSync(importedPath, "utf-8"), largeLogContent);
       }),
+  );
+
+  it.effect("rejects file attachments that resolve outside the attachments directory", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const config = yield* ServerConfig;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-attachment-symlink"),
+        runtimeMode: "full-access",
+      });
+
+      const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-external-attachment-"));
+      try {
+        const externalPath = path.join(externalDir, "secret.log");
+        fs.writeFileSync(externalPath, "secret");
+        const attachment = {
+          type: "file" as const,
+          id: "thread-attachment-symlink-11111111-1111-4111-8111-111111111113",
+          name: "linked.log",
+          mimeType: "text/plain",
+          sizeBytes: 6,
+        };
+        const attachmentPath = path.join(config.attachmentsDir, attachmentRelativePath(attachment));
+        fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+        try {
+          fs.symlinkSync(externalPath, attachmentPath);
+        } catch {
+          return;
+        }
+
+        const result = yield* Effect.exit(
+          adapter.sendTurn({
+            threadId: asThreadId("thread-attachment-symlink"),
+            input: "Analyze",
+            attachments: [attachment],
+          }),
+        );
+        assert.equal(result._tag, "Failure");
+      } finally {
+        fs.rmSync(externalDir, { recursive: true, force: true });
+      }
+    }),
   );
 
   it.effect("passes image attachments as localImage inputs without embedding base64 text", () =>

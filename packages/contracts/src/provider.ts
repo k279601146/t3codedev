@@ -23,6 +23,7 @@ import {
   ProviderSandboxMode,
   ProviderUserInputAnswers,
   RuntimeMode,
+  T3DynamicToolNamespace,
 } from "./orchestration.ts";
 import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
 import { ProviderPersonality } from "./personality.ts";
@@ -69,6 +70,9 @@ export const ProviderSessionStartInput = Schema.Struct({
   sandboxMode: Schema.optional(ProviderSandboxMode),
   personality: Schema.optional(Schema.NullOr(ProviderPersonality)),
   enableT3DynamicTools: Schema.optional(Schema.Boolean),
+  enabledT3DynamicToolNamespaces: Schema.optional(
+    Schema.Array(T3DynamicToolNamespace).check(Schema.isMaxLength(3)),
+  ),
   runtimeMode: RuntimeMode,
 });
 export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;

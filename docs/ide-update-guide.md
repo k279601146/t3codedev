@@ -1,5 +1,7 @@
 # IDE 更新发布指南
 
+> **已归档**：本文档涉及旧 IDE release 接口 (`kind=engine` / `kind=app` 旧模式) 和 `electron-updater` GitHub Releases 模式。桌面客户端的打包、发布、测试请以 **[Bahew 桌面客户端打包、发布与测试指南](bahew-desktop-release-guide.md)** 为准。
+
 本文档说明 T3 Code 桌面端两类更新的发布方式：
 
 - `ai-engine.exe` 引擎二进制更新，即 `kind=engine`

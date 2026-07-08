@@ -21,6 +21,7 @@ import {
   type ProviderTurnSteerResult,
   type ProviderUserInputAnswers,
   RuntimeMode,
+  type T3DynamicToolNamespace,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -168,6 +169,7 @@ export interface CodexSessionRuntimeOptions {
   readonly prewarmedChild?: ChildProcessSpawner.ChildProcessHandle;
   readonly jsonRpcLogPath?: string;
   readonly enableT3DynamicTools?: boolean;
+  readonly enabledT3DynamicToolNamespaces?: ReadonlyArray<T3DynamicToolNamespace>;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -448,6 +450,37 @@ function runtimeModeToThreadConfig(input: RuntimeMode): {
   }
 }
 
+function normalizeT3DynamicToolNamespaces(
+  namespaces: ReadonlyArray<T3DynamicToolNamespace> | undefined,
+): ReadonlyArray<T3DynamicToolNamespace> {
+  if (!namespaces || namespaces.length === 0) {
+    return [];
+  }
+  const selected = new Set(namespaces);
+  return (["browser", "chrome", "computer"] as const).filter((namespace) =>
+    selected.has(namespace),
+  );
+}
+
+function buildT3DynamicToolsForNamespaces(input: {
+  readonly enableAll: boolean;
+  readonly namespaces?: ReadonlyArray<T3DynamicToolNamespace>;
+}): T3DynamicTools {
+  const namespaces = input.enableAll
+    ? (["browser", "chrome", "computer"] as const)
+    : normalizeT3DynamicToolNamespaces(input.namespaces);
+  return namespaces.flatMap((namespace) => {
+    switch (namespace) {
+      case "browser":
+        return buildT3BrowserDynamicTools();
+      case "chrome":
+        return buildT3BrowserExternalDynamicTools();
+      case "computer":
+        return buildT3ComputerDynamicTools();
+    }
+  });
+}
+
 function buildThreadStartParams(input: {
   readonly cwd: string;
   readonly runtimeMode: RuntimeMode;
@@ -457,21 +490,19 @@ function buildThreadStartParams(input: {
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
   readonly enableT3DynamicTools?: boolean;
+  readonly enabledT3DynamicToolNamespaces?: ReadonlyArray<T3DynamicToolNamespace>;
 }): ThreadStartParamsWithDynamicTools {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
-  const dynamicTools = input.enableT3DynamicTools
-    ? [
-        ...buildT3BrowserDynamicTools(),
-        ...buildT3BrowserExternalDynamicTools(),
-        ...buildT3ComputerDynamicTools(),
-      ]
-    : undefined;
+  const dynamicTools = buildT3DynamicToolsForNamespaces({
+    enableAll: input.enableT3DynamicTools === true,
+    namespaces: input.enabledT3DynamicToolNamespaces,
+  });
   return {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
     approvalsReviewer: config.approvalsReviewer,
     sandbox: config.sandbox,
-    ...(dynamicTools ? { dynamicTools } : {}),
+    ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
     ...(input.model ? { model: input.model } : {}),
     ...(input.modelProvider ? { modelProvider: input.modelProvider } : {}),
     ...(input.configOverrides ? { config: input.configOverrides } : {}),
@@ -759,6 +790,7 @@ export const openCodexThread = (input: {
   readonly serviceTier: CodexServiceTier | undefined;
   readonly personality: EffectCodexSchema.V2ThreadStartParams__Personality | null | undefined;
   readonly enableT3DynamicTools?: boolean;
+  readonly enabledT3DynamicToolNamespaces?: ReadonlyArray<T3DynamicToolNamespace>;
   readonly resumeThreadId: string | undefined;
 }): Effect.Effect<CodexThreadOpenResponse, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
@@ -772,6 +804,9 @@ export const openCodexThread = (input: {
     personality: input.personality,
     ...(input.enableT3DynamicTools !== undefined
       ? { enableT3DynamicTools: input.enableT3DynamicTools }
+      : {}),
+    ...(input.enabledT3DynamicToolNamespaces !== undefined
+      ? { enabledT3DynamicToolNamespaces: input.enabledT3DynamicToolNamespaces }
       : {}),
   });
   const syncThreadSettings = (opened: CodexThreadOpenResponse) =>
@@ -1964,6 +1999,9 @@ export const makeCodexSessionRuntime = (
         personality: options.personality,
         ...(options.enableT3DynamicTools !== undefined
           ? { enableT3DynamicTools: options.enableT3DynamicTools }
+          : {}),
+        ...(options.enabledT3DynamicToolNamespaces !== undefined
+          ? { enabledT3DynamicToolNamespaces: options.enabledT3DynamicToolNamespaces }
           : {}),
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
       });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendComposerPluginLaunchContext,
   buildComposerPluginLaunchContext,
+  resolveComposerPluginLaunchToolNamespaces,
   stripTrailingComposerPluginLaunchContext,
 } from "./composerPluginLaunch";
 import {
@@ -26,6 +27,15 @@ describe("composerPluginLaunch", () => {
     expect(buildComposerPluginLaunchContext("@Chrome 检查登录页")).toContain(
       "@Chrome: use browser_use_external with the t3_browser_external namespace",
     );
+  });
+
+  it("resolves structured dynamic tool namespaces from plugin mentions", () => {
+    expect(
+      resolveComposerPluginLaunchToolNamespaces("@Computer 截屏 @Browser 打开 @Computer 再点"),
+    ).toEqual(["browser", "computer"]);
+    expect(resolveComposerPluginLaunchToolNamespaces("@Chrome 检查登录页")).toEqual(["chrome"]);
+    expect(resolveComposerPluginLaunchToolNamespaces("@Notepad 输入 hello")).toEqual(["computer"]);
+    expect(resolveComposerPluginLaunchToolNamespaces("解释 @chromeDriver")).toEqual([]);
   });
 
   it("treats simple app mentions as desktop app targets", () => {
@@ -170,11 +180,14 @@ describe("composerPluginLaunch", () => {
     );
 
     expect(resolvePromptComposerPluginMentionHealthBlock("@Browser 打开网页", mentions)).toBeNull();
-    expect(resolvePromptComposerPluginMentionHealthBlock("请用 @chrome 打开网页", mentions))
-      .toMatchObject({
-        mention: { id: "Chrome" },
-        title: "Chrome 需要处理",
-      });
-    expect(resolvePromptComposerPluginMentionHealthBlock("解释 @ChromeDriver", mentions)).toBeNull();
+    expect(
+      resolvePromptComposerPluginMentionHealthBlock("请用 @chrome 打开网页", mentions),
+    ).toMatchObject({
+      mention: { id: "Chrome" },
+      title: "Chrome 需要处理",
+    });
+    expect(
+      resolvePromptComposerPluginMentionHealthBlock("解释 @ChromeDriver", mentions),
+    ).toBeNull();
   });
 });

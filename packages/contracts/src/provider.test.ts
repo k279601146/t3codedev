@@ -35,10 +35,12 @@ describe("ProviderSessionStartInput", () => {
         ],
       },
       enableT3DynamicTools: true,
+      enabledT3DynamicToolNamespaces: ["browser", "computer"],
       runtimeMode: "full-access",
     });
     expect(parsed.runtimeMode).toBe("full-access");
     expect(parsed.enableT3DynamicTools).toBe(true);
+    expect(parsed.enabledT3DynamicToolNamespaces).toEqual(["browser", "computer"]);
     expect(parsed.modelSelection?.instanceId).toBe("codex");
     expect(parsed.modelSelection?.model).toBe("gpt-5.3-codex");
     expect(getOptionValue(parsed.modelSelection?.options, "reasoningEffort")).toBe("high");

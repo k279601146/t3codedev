@@ -503,6 +503,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             ? { modelSelection: command.modelSelection }
             : {}),
           ...(command.personality !== undefined ? { personality: command.personality } : {}),
+          ...(command.message.enabledT3DynamicToolNamespaces !== undefined
+            ? { enabledT3DynamicToolNamespaces: command.message.enabledT3DynamicToolNamespaces }
+            : {}),
           ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,

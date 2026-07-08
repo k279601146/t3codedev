@@ -557,7 +557,7 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      enableT3DynamicTools: true,
+      enabledT3DynamicToolNamespaces: ["browser"],
     });
   });
 
@@ -584,7 +584,35 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      enableT3DynamicTools: true,
+      enabledT3DynamicToolNamespaces: ["computer"],
+    });
+  });
+
+  it("uses structured composer dynamic tool hints before prompt fallback", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-structured-tools"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-structured-tools"),
+          role: "user",
+          text: "@Browser mention should be ignored by structured hint",
+          attachments: [],
+          enabledT3DynamicToolNamespaces: ["computer"],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      enabledT3DynamicToolNamespaces: ["computer"],
     });
   });
 

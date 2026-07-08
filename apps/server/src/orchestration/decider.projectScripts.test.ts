@@ -165,6 +165,7 @@ describe("decider project scripts", () => {
             role: "user",
             text: "hello",
             attachments: [],
+            enabledT3DynamicToolNamespaces: ["browser"],
           },
           modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [
             { id: "reasoningEffort", value: "high" },
@@ -191,6 +192,7 @@ describe("decider project scripts", () => {
     expect(turnStartEvent.payload).toMatchObject({
       threadId: ThreadId.make("thread-1"),
       messageId: asMessageId("message-user-1"),
+      enabledT3DynamicToolNamespaces: ["browser"],
       modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [
         { id: "reasoningEffort", value: "high" },
         { id: "fastMode", value: true },

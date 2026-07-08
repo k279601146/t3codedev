@@ -2,6 +2,7 @@ import {
   getComposerPluginMentionCaseInsensitive,
   isLikelyDesktopAppMention,
 } from "./composerPluginMentions";
+import type { T3DynamicToolNamespace } from "@t3tools/contracts";
 
 const LAUNCH_MENTION_REGEX = /(^|\s)@([^\s@]+)(?=\s|$)/g;
 const PLUGIN_LAUNCH_CONTEXT_START = "<plugin_launch_context>";
@@ -11,6 +12,38 @@ const TRAILING_PLUGIN_LAUNCH_CONTEXT_PATTERN =
 
 function uniqueValues(values: Iterable<string>): string[] {
   return [...new Set(values)];
+}
+
+function uniqueToolNamespaces(values: Iterable<T3DynamicToolNamespace>): T3DynamicToolNamespace[] {
+  const selected = new Set(values);
+  return (["browser", "chrome", "computer"] as const).filter((namespace) =>
+    selected.has(namespace),
+  );
+}
+
+export function resolveComposerPluginLaunchToolNamespaces(
+  prompt: string,
+): T3DynamicToolNamespace[] {
+  const namespaces: T3DynamicToolNamespace[] = [];
+
+  for (const match of prompt.matchAll(LAUNCH_MENTION_REGEX)) {
+    const mention = match[2] ?? "";
+    if (!mention) continue;
+    const plugin = getComposerPluginMentionCaseInsensitive(mention);
+    if (plugin?.id === "Browser") {
+      namespaces.push("browser");
+      continue;
+    }
+    if (plugin?.id === "Chrome") {
+      namespaces.push("chrome");
+      continue;
+    }
+    if (plugin?.id === "Computer" || isLikelyDesktopAppMention(mention)) {
+      namespaces.push("computer");
+    }
+  }
+
+  return uniqueToolNamespaces(namespaces);
 }
 
 export function buildComposerPluginLaunchContext(prompt: string): string | null {
@@ -38,7 +71,9 @@ export function buildComposerPluginLaunchContext(prompt: string): string | null 
 
   const lines = [PLUGIN_LAUNCH_CONTEXT_START];
   if (plugins.includes("Browser")) {
-    lines.push("- @Browser: use the Bahew in-app browser tools for web navigation and page checks.");
+    lines.push(
+      "- @Browser: use the Bahew in-app browser tools for web navigation and page checks.",
+    );
   }
   if (plugins.includes("Computer")) {
     lines.push(
