@@ -466,9 +466,12 @@ function buildT3DynamicToolsForNamespaces(input: {
   readonly enableAll: boolean;
   readonly namespaces?: ReadonlyArray<T3DynamicToolNamespace>;
 }): T3DynamicTools {
-  const namespaces = input.enableAll
-    ? (["browser", "chrome", "computer"] as const)
-    : normalizeT3DynamicToolNamespaces(input.namespaces);
+  const namespaces =
+    input.namespaces !== undefined
+      ? normalizeT3DynamicToolNamespaces(input.namespaces)
+      : input.enableAll
+        ? (["browser", "chrome", "computer"] as const)
+        : [];
   return namespaces.flatMap((namespace) => {
     switch (namespace) {
       case "browser":

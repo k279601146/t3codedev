@@ -574,7 +574,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
   );
 
   it.effect(
-    "imports non-image attachments into the thread workspace without inlining content",
+    "references non-image attachments from the attachment store without inlining content",
     () =>
       Effect.gen(function* () {
         const adapter = yield* CodexAdapter;
@@ -610,23 +610,16 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         assert.ok(runtimeInput);
         assert.ok(runtimeInput.input?.includes("# Files mentioned by the user:"));
         assert.ok(runtimeInput.input?.includes("## 崩溃 日志.log:"));
-        assert.ok(runtimeInput.input?.includes("files-mentioned-by-the-user"));
+        assert.ok(runtimeInput.input?.includes(attachmentPath));
         assert.ok(
           runtimeInput.input?.includes("## My request for Codex:\nAnalyze the attached log"),
         );
         assert.ok(!runtimeInput.input?.includes("Imported file path:"));
+        assert.ok(!runtimeInput.input?.includes("files-mentioned-by-the-user"));
         assert.ok(!runtimeInput.input?.includes(".t3code/imports"));
         assert.ok(!runtimeInput.input?.includes(largeLogContent));
         assert.equal(runtimeInput.attachments, undefined);
-
-        const importedPath = path.join(
-          config.conversationWorkspaceDir,
-          "thread-large-log",
-          "files-mentioned-by-the-user",
-          attachment.id,
-          "log",
-        );
-        assert.equal(fs.readFileSync(importedPath, "utf-8"), largeLogContent);
+        assert.equal(fs.readFileSync(attachmentPath, "utf-8"), largeLogContent);
       }),
   );
 
@@ -662,6 +655,51 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         const result = yield* Effect.exit(
           adapter.sendTurn({
             threadId: asThreadId("thread-attachment-symlink"),
+            input: "Analyze",
+            attachments: [attachment],
+          }),
+        );
+        assert.equal(result._tag, "Failure");
+      } finally {
+        fs.rmSync(externalDir, { recursive: true, force: true });
+      }
+    }),
+  );
+
+  it.effect("rejects image attachments that resolve outside the attachments directory", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const config = yield* ServerConfig;
+      const threadId = asThreadId("thread-image-symlink");
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-external-image-"));
+      try {
+        const externalPath = path.join(externalDir, "secret.png");
+        fs.writeFileSync(externalPath, Buffer.from([1, 2, 3]));
+
+        const attachment = {
+          type: "image" as const,
+          id: "thread-image-symlink-11111111-1111-4111-8111-111111111114",
+          name: "linked.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+        };
+        const attachmentPath = path.join(config.attachmentsDir, attachmentRelativePath(attachment));
+        fs.mkdirSync(path.dirname(attachmentPath), { recursive: true });
+        try {
+          fs.symlinkSync(externalPath, attachmentPath);
+        } catch {
+          return;
+        }
+
+        const result = yield* Effect.exit(
+          adapter.sendTurn({
+            threadId,
             input: "Analyze",
             attachments: [attachment],
           }),

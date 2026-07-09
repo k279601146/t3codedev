@@ -252,6 +252,40 @@ it.effect("decodes thread.turn.start defaults for provider and runtime mode", ()
   }),
 );
 
+it.effect("decodes thread.turn.start with persisted file attachment metadata", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: "thread.turn.start",
+      commandId: "cmd-turn-file-attachment",
+      threadId: "thread-1",
+      message: {
+        messageId: "msg-file-attachment",
+        role: "user",
+        text: "",
+        attachments: [
+          {
+            type: "file",
+            id: "thread-1-11111111-1111-4111-8111-111111111111",
+            name: "app.log",
+            mimeType: "text/plain",
+            sizeBytes: 1024,
+          },
+        ],
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(parsed.message.attachments, [
+      {
+        type: "file",
+        id: "thread-1-11111111-1111-4111-8111-111111111111",
+        name: "app.log",
+        mimeType: "text/plain",
+        sizeBytes: 1024,
+      },
+    ]);
+  }),
+);
+
 it.effect("decodes thread.turn.start dynamic tool namespace hints", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadTurnStartCommand({

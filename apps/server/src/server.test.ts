@@ -1994,6 +1994,60 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("persists uploaded attachments into the attachment store", () =>
+    Effect.gen(function* () {
+      const bootstrapToken = "test-desktop-bootstrap-token-upload-attachment";
+      const config = yield* buildAppUnderTest({
+        config: { desktopBootstrapToken: bootstrapToken },
+      });
+      const content = "log-line-1\nlog-line-2";
+      const cookie = yield* getAuthenticatedSessionCookieHeader(bootstrapToken);
+      const response = yield* HttpClient.post(
+        "/attachments?threadId=thread-upload&" +
+          "type=file&name=app.log&mimeType=text%2Fplain&sizeBytes=21",
+        {
+          headers: {
+            cookie,
+          },
+          body: HttpBody.text(content, "text/plain"),
+        },
+      );
+      const responseText = yield* response.text;
+      if (response.status !== 201) {
+        assert.fail(`Expected 201, received ${response.status}: ${responseText}`);
+      }
+      const payload = JSON.parse(responseText) as {
+        readonly attachment: {
+          readonly type: "file";
+          readonly id: string;
+          readonly name: string;
+          readonly mimeType: string;
+          readonly sizeBytes: number;
+        };
+      };
+      assert.equal(payload.attachment.name, "app.log");
+      assert.equal(payload.attachment.mimeType, "text/plain");
+      assert.equal(payload.attachment.sizeBytes, Buffer.byteLength(content));
+      assert.match(payload.attachment.id, /^thread-upload-/);
+
+      const persistedPath = resolveAttachmentRelativePath({
+        attachmentsDir: config.attachmentsDir,
+        relativePath: `thread-upload/${payload.attachment.id}/app.log`,
+      });
+      assert.isNotNull(persistedPath, "Uploaded attachment path should be resolvable");
+      const fileSystem = yield* FileSystem.FileSystem;
+      assert.equal(yield* fileSystem.readFileString(persistedPath), content);
+
+      const readResponse = yield* HttpClient.get(`/attachments/${payload.attachment.id}`, {
+        headers: {
+          cookie,
+        },
+      });
+      assert.equal(readResponse.status, 200);
+      assert.equal(yield* readResponse.text, content);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("serves attachment files for URL-encoded paths", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

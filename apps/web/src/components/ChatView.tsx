@@ -202,7 +202,6 @@ import {
   PullRequestDialogState,
   cloneComposerImageForRetry,
   deriveLockedProvider,
-  readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
   resolveThreadErrorDisplay,
   resolveSendEnvMode,
@@ -222,6 +221,7 @@ import {
   appendComposerPluginLaunchContext,
   resolveComposerPluginLaunchToolNamespaces,
 } from "../composerPluginLaunch";
+import { uploadChatAttachment } from "../attachmentUpload";
 import {
   promptUsesChromePlugin,
   useBrowserExternalPluginState,
@@ -512,6 +512,22 @@ interface PendingSteerMessage {
   attachments: ChatAttachment[];
   goalObjective: string | null;
   createdAt: string;
+}
+
+function persistComposerAttachment(input: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly attachment: ComposerImageAttachment;
+}): Promise<ChatAttachment> {
+  return uploadChatAttachment({
+    environmentId: input.environmentId,
+    threadId: input.threadId,
+    file: input.attachment.file,
+    type: input.attachment.type,
+    name: input.attachment.name,
+    mimeType: input.attachment.mimeType,
+    sizeBytes: input.attachment.sizeBytes,
+  });
 }
 
 interface EditedMessageResubmissionState {
@@ -3530,13 +3546,13 @@ export default function ChatView(props: ChatViewProps) {
     let turnSteerSucceeded = false;
     await (async () => {
       const turnAttachments = await Promise.all(
-        pending.images.map(async (attachment) => ({
-          type: attachment.type,
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-          sizeBytes: attachment.sizeBytes,
-          dataUrl: await readFileAsDataUrl(attachment.file),
-        })),
+        pending.images.map((attachment) =>
+          persistComposerAttachment({
+            environmentId,
+            threadId: pending.threadId,
+            attachment,
+          }),
+        ),
       );
       if (pending.goalObjective) {
         await api.orchestration.dispatchCommand({
@@ -4014,13 +4030,13 @@ export default function ChatView(props: ChatViewProps) {
     sendInFlightRef.current = true;
     beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
     const turnAttachmentsPromise = Promise.all(
-      composerImagesSnapshot.map(async (attachment) => ({
-        type: attachment.type,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
-        sizeBytes: attachment.sizeBytes,
-        dataUrl: await readFileAsDataUrl(attachment.file),
-      })),
+      composerImagesSnapshot.map((attachment) =>
+        persistComposerAttachment({
+          environmentId,
+          threadId: threadIdForSend,
+          attachment,
+        }),
+      ),
     );
     // Scroll to the current end *before* adding the optimistic message so
     // the transcript remains pinned when the new item commits.

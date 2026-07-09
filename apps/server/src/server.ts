@@ -4,6 +4,7 @@ import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 
 import { ServerConfig } from "./config.ts";
 import {
+  attachmentUploadRouteLayer,
   attachmentsRouteLayer,
   desktopApmEventsRouteLayer,
   otlpTracesProxyRouteLayer,
@@ -400,6 +401,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   authPairingCredentialRouteLayer,
   authSessionRouteLayer,
   authWebSocketTokenRouteLayer,
+  attachmentUploadRouteLayer,
   attachmentsRouteLayer,
   desktopApmEventsRouteLayer,
   orchestrationDispatchRouteLayer,

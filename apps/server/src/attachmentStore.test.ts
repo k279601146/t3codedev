@@ -6,10 +6,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  attachmentRelativePath,
   createAttachmentId,
   parseThreadSegmentFromAttachmentId,
+  resolveAttachmentPath,
   resolveAttachmentPathById,
-  resolveThreadAttachmentImport,
   sanitizeAttachmentDisplayName,
   sanitizeAttachmentImportFileName,
 } from "./attachmentStore.ts";
@@ -91,30 +92,38 @@ describe("attachmentStore", () => {
     expect(sanitizeAttachmentDisplayName("")).toBe("attachment");
   });
 
-  it("resolves imported attachment paths inside the thread workspace", () => {
-    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-attachment-import-"));
+  it("resolves uploaded attachment paths inside the attachment store", () => {
+    const attachmentsDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-attachment-store-"));
     try {
-      const resolved = resolveThreadAttachmentImport({
-        conversationWorkspaceDir: baseDir,
-        threadId: "thread-1",
-        attachment: {
-          type: "file",
-          id: "thread-1-11111111-1111-4111-8111-111111111111",
-          name: "../unsafe app.log",
-          mimeType: "text/plain",
-          sizeBytes: 12,
-        },
-      });
+      const attachment = {
+        type: "file" as const,
+        id: "thread-1-11111111-1111-4111-8111-111111111111",
+        name: "../unsafe app.log",
+        mimeType: "text/plain",
+        sizeBytes: 12,
+      };
+      const resolved = resolveAttachmentPath({ attachmentsDir, attachment });
 
       expect(resolved).not.toBeNull();
-      expect(resolved?.workspaceRoot).toBe(path.resolve(path.join(baseDir, "thread-1")));
-      expect(resolved?.relativePath).toBe(
-        "files-mentioned-by-the-user/thread-1-11111111-1111-4111-8111-111111111111/unsafe_app.log",
+      expect(attachmentRelativePath(attachment)).toBe(
+        "thread-1/thread-1-11111111-1111-4111-8111-111111111111/unsafe_app.log",
       );
-      expect(resolved?.path.startsWith(`${resolved.workspaceRoot}${path.sep}`)).toBe(true);
-      expect(resolved?.path.includes(`${path.sep}.t3code${path.sep}`)).toBe(false);
+      expect(resolved).toBe(
+        path.join(
+          attachmentsDir,
+          "thread-1",
+          "thread-1-11111111-1111-4111-8111-111111111111",
+          "unsafe_app.log",
+        ),
+      );
+
+      fs.mkdirSync(path.dirname(resolved!), { recursive: true });
+      fs.writeFileSync(resolved!, "content");
+      expect(resolveAttachmentPathById({ attachmentsDir, attachmentId: attachment.id })).toBe(
+        resolved,
+      );
     } finally {
-      fs.rmSync(baseDir, { recursive: true, force: true });
+      fs.rmSync(attachmentsDir, { recursive: true, force: true });
     }
   });
 });

@@ -583,12 +583,17 @@ const make = Effect.gen(function* () {
       projects: project ? [project] : [],
     });
 
-    const requestedT3DynamicToolNamespaces =
-      options?.enableT3DynamicTools === true
+    const hasStructuredT3DynamicToolNamespaces =
+      options?.enabledT3DynamicToolNamespaces !== undefined;
+    const shouldEnableAllT3DynamicTools =
+      !hasStructuredT3DynamicToolNamespaces && options?.enableT3DynamicTools === true;
+    const requestedT3DynamicToolNamespaces = hasStructuredT3DynamicToolNamespaces
+      ? normalizeT3DynamicToolNamespaces(options?.enabledT3DynamicToolNamespaces)
+      : shouldEnableAllT3DynamicTools
         ? T3_DYNAMIC_TOOL_NAMESPACE_ORDER
-        : normalizeT3DynamicToolNamespaces(options?.enabledT3DynamicToolNamespaces);
+        : [];
     const desiredT3DynamicToolNamespaces =
-      options?.enableT3DynamicTools === true
+      shouldEnableAllT3DynamicTools
         ? T3_DYNAMIC_TOOL_NAMESPACE_ORDER
         : mergeT3DynamicToolNamespaces(
             t3DynamicToolNamespacesByThread.get(threadId) ?? [],
@@ -607,7 +612,7 @@ const make = Effect.gen(function* () {
           ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
           modelSelection: desiredModelSelection,
           ...(options?.personality !== undefined ? { personality: options.personality } : {}),
-          ...(options?.enableT3DynamicTools === true ? { enableT3DynamicTools: true } : {}),
+          ...(shouldEnableAllT3DynamicTools ? { enableT3DynamicTools: true } : {}),
           ...(desiredT3DynamicToolNamespaces.length > 0
             ? { enabledT3DynamicToolNamespaces: desiredT3DynamicToolNamespaces }
             : {}),
@@ -736,6 +741,7 @@ const make = Effect.gen(function* () {
     readonly modelSelection?: ModelSelection;
     readonly personality?: ProviderPersonality | null;
     readonly interactionMode?: "default" | "plan";
+    readonly enabledT3DynamicToolNamespaces?: ReadonlyArray<T3DynamicToolNamespace>;
     readonly createdAt: string;
   }) {
     const thread = yield* resolveThread(input.threadId);

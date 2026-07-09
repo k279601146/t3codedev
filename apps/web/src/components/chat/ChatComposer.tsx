@@ -2410,6 +2410,9 @@ export const ChatComposer = memo(
           const stagedAttachmentById = new Map<string, PersistedComposerImageAttachment>();
           await Promise.all(
             composerImages.map(async (image) => {
+              if (image.type !== "image") {
+                return;
+              }
               try {
                 const dataUrl = await readFileAsDataUrl(image.file);
                 stagedAttachmentById.set(image.id, {

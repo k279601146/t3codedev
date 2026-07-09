@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import fs, { existsSync } from "node:fs";
 import path from "node:path";
 
 import type { ChatAttachment } from "@t3tools/contracts";
@@ -15,7 +15,6 @@ const ATTACHMENT_FILENAME_EXTENSIONS = [...SAFE_IMAGE_FILE_EXTENSIONS, ".bin"];
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const ATTACHMENT_IMPORTS_DIR = "files-mentioned-by-the-user";
 const ATTACHMENT_IMPORT_FILENAME_MAX_CHARS = 160;
 const ATTACHMENT_ID_PATTERN = new RegExp(
   `^(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN})-(${ATTACHMENT_ID_UUID_PATTERN})$`,
@@ -58,6 +57,11 @@ export function parseThreadSegmentFromAttachmentId(attachmentId: string): string
 }
 
 export function attachmentRelativePath(attachment: ChatAttachment): string {
+  const threadSegment = parseThreadSegmentFromAttachmentId(attachment.id);
+  if (threadSegment) {
+    return `${threadSegment}/${attachment.id}/${attachmentStorageFileName(attachment)}`;
+  }
+
   switch (attachment.type) {
     case "image": {
       const extension = inferImageExtension({
@@ -71,6 +75,19 @@ export function attachmentRelativePath(attachment: ChatAttachment): string {
   }
 }
 
+function attachmentStorageFileName(attachment: ChatAttachment): string {
+  const safeName = sanitizeAttachmentImportFileName(attachment.name);
+  if (attachment.type === "file") {
+    return safeName;
+  }
+
+  const extension = inferImageExtension({
+    mimeType: attachment.mimeType,
+    fileName: attachment.name,
+  });
+  return path.extname(safeName) ? safeName : `${safeName}${extension}`;
+}
+
 export function resolveAttachmentPath(input: {
   readonly attachmentsDir: string;
   readonly attachment: ChatAttachment;
@@ -79,14 +96,6 @@ export function resolveAttachmentPath(input: {
     attachmentsDir: input.attachmentsDir,
     relativePath: attachmentRelativePath(input.attachment),
   });
-}
-
-function isPathInsideRoot(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === "" ||
-    (relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative))
-  );
 }
 
 export function sanitizeAttachmentImportFileName(name: string | undefined): string {
@@ -120,40 +129,6 @@ export function sanitizeAttachmentDisplayName(name: string | undefined): string 
   return sanitized || "attachment";
 }
 
-export function resolveThreadAttachmentImport(input: {
-  readonly conversationWorkspaceDir: string;
-  readonly threadId: string;
-  readonly attachment: ChatAttachment;
-}): {
-  readonly workspaceRoot: string;
-  readonly path: string;
-  readonly relativePath: string;
-} | null {
-  const workspaceRoot = path.resolve(path.join(input.conversationWorkspaceDir, input.threadId));
-  const conversationRoot = path.resolve(input.conversationWorkspaceDir);
-  if (!isPathInsideRoot(conversationRoot, workspaceRoot)) {
-    return null;
-  }
-
-  const relativePath = path
-    .join(
-      ATTACHMENT_IMPORTS_DIR,
-      input.attachment.id,
-      sanitizeAttachmentImportFileName(input.attachment.name),
-    )
-    .replace(/\\/g, "/");
-  const importPath = path.resolve(path.join(workspaceRoot, relativePath));
-  if (!isPathInsideRoot(workspaceRoot, importPath)) {
-    return null;
-  }
-
-  return {
-    workspaceRoot,
-    path: importPath,
-    relativePath,
-  };
-}
-
 export function resolveAttachmentPathById(input: {
   readonly attachmentsDir: string;
   readonly attachmentId: string;
@@ -170,6 +145,25 @@ export function resolveAttachmentPathById(input: {
     if (maybePath && existsSync(maybePath)) {
       return maybePath;
     }
+  }
+
+  const threadSegment = parseThreadSegmentFromAttachmentId(normalizedId);
+  if (!threadSegment) {
+    return null;
+  }
+  const attachmentDir = resolveAttachmentRelativePath({
+    attachmentsDir: input.attachmentsDir,
+    relativePath: `${threadSegment}/${normalizedId}`,
+  });
+  if (!attachmentDir || !existsSync(attachmentDir)) {
+    return null;
+  }
+  try {
+    const entries = fs.readdirSync(attachmentDir, { withFileTypes: true });
+    const fileEntry = entries.find((entry) => entry.isFile());
+    return fileEntry ? path.join(attachmentDir, fileEntry.name) : null;
+  } catch {
+    return null;
   }
   return null;
 }

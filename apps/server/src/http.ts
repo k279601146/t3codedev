@@ -1,4 +1,9 @@
 import Mime from "@effect/platform-node/Mime";
+import type { ChatAttachment } from "@t3tools/contracts";
+import {
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+} from "@t3tools/contracts";
 import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -6,7 +11,11 @@ import * as FileSystem from "effect/FileSystem";
 import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Stream from "effect/Stream";
 import { cast } from "effect/Function";
+import { randomUUID } from "node:crypto";
+import * as fsPromises from "node:fs/promises";
+import NodePath from "node:path";
 import {
   HttpBody,
   HttpClient,
@@ -23,7 +32,12 @@ import {
   normalizeAttachmentRelativePath,
   resolveAttachmentRelativePath,
 } from "./attachmentPaths.ts";
-import { resolveAttachmentPathById } from "./attachmentStore.ts";
+import {
+  createAttachmentId,
+  resolveAttachmentPath,
+  resolveAttachmentPathById,
+  sanitizeAttachmentDisplayName,
+} from "./attachmentStore.ts";
 import { resolveStaticDir, ServerConfig } from "./config.ts";
 import { BrowserTraceCollector } from "./observability/Services/BrowserTraceCollector.ts";
 import {
@@ -50,6 +64,11 @@ const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const PROMETHEUS_METRICS_PATH = "/api/observability/metrics";
 const DESKTOP_APM_EVENTS_PATH = "/ide/api/telemetry";
 const ENGINE_PROTOCOL_VERSION = "app-server-v1";
+const ATTACHMENT_UPLOAD_THREAD_ID_PARAM = "threadId";
+const ATTACHMENT_UPLOAD_NAME_PARAM = "name";
+const ATTACHMENT_UPLOAD_TYPE_PARAM = "type";
+const ATTACHMENT_UPLOAD_MIME_TYPE_PARAM = "mimeType";
+const ATTACHMENT_UPLOAD_SIZE_BYTES_PARAM = "sizeBytes";
 
 export const browserApiCorsLayer = HttpRouter.middleware(
   HttpMiddleware.cors({
@@ -215,6 +234,166 @@ export const desktopApmEventsRouteLayer = HttpRouter.add(
     );
 
     return HttpServerResponse.empty({ status: 204 });
+  }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
+);
+
+function parseNonEmptyParam(url: URL, key: string): string | null {
+  const value = url.searchParams.get(key)?.trim();
+  return value && value.length > 0 ? value : null;
+}
+
+function parseDeclaredSizeBytes(url: URL): number | null {
+  const raw = parseNonEmptyParam(url, ATTACHMENT_UPLOAD_SIZE_BYTES_PARAM);
+  if (!raw) {
+    return null;
+  }
+  const value = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function isPathInsideRoot(root: string, candidate: string): boolean {
+  const relative = NodePath.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative.length > 0 && !relative.startsWith("..") && !NodePath.isAbsolute(relative))
+  );
+}
+
+const writeRequestStreamToAttachmentFile = (input: {
+  readonly request: HttpServerRequest.HttpServerRequest;
+  readonly targetPath: string;
+  readonly attachmentsDir: string;
+  readonly maxBytes: number;
+}) =>
+  Effect.tryPromise({
+    try: async () => {
+      const targetDir = NodePath.dirname(input.targetPath);
+      await fsPromises.mkdir(targetDir, { recursive: true });
+      const [realAttachmentsDir, realTargetDir] = await Promise.all([
+        fsPromises.realpath(input.attachmentsDir),
+        fsPromises.realpath(targetDir),
+      ]);
+      if (!isPathInsideRoot(realAttachmentsDir, realTargetDir)) {
+        throw new Error("Attachment target directory resolves outside the attachments directory.");
+      }
+      const tempPath = NodePath.join(targetDir, `.t3-upload-${randomUUID()}.tmp`);
+      const fileHandle = await fsPromises.open(tempPath, "wx");
+      let written = 0;
+      try {
+        await Effect.runPromise(
+          Stream.runForEach(input.request.stream, (chunk) =>
+            Effect.tryPromise({
+              try: async () => {
+                written += chunk.byteLength;
+                if (written > input.maxBytes) {
+                  throw new Error("Attachment exceeds the maximum allowed size.");
+                }
+                await fileHandle.write(chunk);
+              },
+              catch: (cause) => cause,
+            }),
+          ),
+        );
+        await fileHandle.close();
+        if (written === 0) {
+          throw new Error("Attachment is empty.");
+        }
+        await fsPromises.rename(tempPath, input.targetPath);
+        return written;
+      } catch (cause) {
+        await fileHandle.close().catch(() => undefined);
+        await fsPromises.rm(tempPath, { force: true }).catch(() => undefined);
+        throw cause;
+      }
+    },
+    catch: (cause) => cause,
+  });
+
+export const attachmentUploadRouteLayer = HttpRouter.add(
+  "POST",
+  ATTACHMENTS_ROUTE_PREFIX,
+  Effect.gen(function* () {
+    yield* requireAuthenticatedRequest;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = HttpServerRequest.toURL(request);
+    if (Option.isNone(url)) {
+      return HttpServerResponse.text("Bad Request", { status: 400 });
+    }
+
+    const threadId = parseNonEmptyParam(url.value, ATTACHMENT_UPLOAD_THREAD_ID_PARAM);
+    const rawName = parseNonEmptyParam(url.value, ATTACHMENT_UPLOAD_NAME_PARAM);
+    const attachmentType = parseNonEmptyParam(url.value, ATTACHMENT_UPLOAD_TYPE_PARAM);
+    const mimeType =
+      parseNonEmptyParam(url.value, ATTACHMENT_UPLOAD_MIME_TYPE_PARAM) ??
+      request.headers["content-type"]?.trim() ??
+      "application/octet-stream";
+    const declaredSizeBytes = parseDeclaredSizeBytes(url.value);
+    if (!threadId || !rawName || (attachmentType !== "file" && attachmentType !== "image")) {
+      return HttpServerResponse.text("Invalid attachment metadata", { status: 400 });
+    }
+    if (attachmentType === "image" && !mimeType.toLowerCase().startsWith("image/")) {
+      return HttpServerResponse.text("Invalid image attachment MIME type", { status: 400 });
+    }
+
+    const maxBytes =
+      attachmentType === "file"
+        ? PROVIDER_SEND_TURN_MAX_FILE_BYTES
+        : PROVIDER_SEND_TURN_MAX_IMAGE_BYTES;
+    if (
+      declaredSizeBytes !== null &&
+      (declaredSizeBytes <= 0 || declaredSizeBytes > maxBytes)
+    ) {
+      return HttpServerResponse.text("Attachment is empty or too large", { status: 413 });
+    }
+
+    const attachmentId = createAttachmentId(threadId);
+    if (!attachmentId) {
+      return HttpServerResponse.text("Invalid thread id", { status: 400 });
+    }
+
+    const attachment = {
+      type: attachmentType,
+      id: attachmentId,
+      name: sanitizeAttachmentDisplayName(rawName),
+      mimeType: mimeType.toLowerCase(),
+      sizeBytes: declaredSizeBytes ?? 0,
+    } satisfies ChatAttachment;
+    const targetPath = resolveAttachmentPath({
+      attachmentsDir: (yield* ServerConfig).attachmentsDir,
+      attachment,
+    });
+    if (!targetPath) {
+      return HttpServerResponse.text("Invalid attachment path", { status: 400 });
+    }
+
+    const config = yield* ServerConfig;
+    const writtenBytes = yield* writeRequestStreamToAttachmentFile({
+      request,
+      targetPath,
+      attachmentsDir: config.attachmentsDir,
+      maxBytes,
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.succeed(
+          HttpServerResponse.text(cause instanceof Error ? cause.message : "Upload failed", {
+            status: 400,
+          }),
+        ),
+      ),
+    );
+    if (typeof writtenBytes !== "number") {
+      return writtenBytes;
+    }
+
+    return HttpServerResponse.jsonUnsafe(
+      {
+        attachment: {
+          ...attachment,
+          sizeBytes: writtenBytes,
+        } satisfies ChatAttachment,
+      },
+      { status: 201 },
+    );
   }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
 );
 

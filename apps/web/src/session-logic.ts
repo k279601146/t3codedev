@@ -1499,7 +1499,7 @@ function truncateInlinePreview(value: string, maxLength = 84): string {
   if (value.length <= maxLength) {
     return value;
   }
-  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
 function normalizePreviewForComparison(value: string | null | undefined): string | null {

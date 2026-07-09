@@ -36,8 +36,6 @@ import {
   type RemoteControlPairingSession,
   type RemoteControlStatus,
 } from "@t3tools/contracts";
-import { randomUUID } from "node:crypto";
-import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import fsPromises from "node:fs/promises";
 import * as Data from "effect/Data";
@@ -88,7 +86,6 @@ import * as BrowserExternalToolServiceLayer from "./BrowserExternalToolService.t
 import * as ComputerToolServiceLayer from "./ComputerToolService.ts";
 import {
   resolveAttachmentPath,
-  resolveThreadAttachmentImport,
   sanitizeAttachmentDisplayName,
 } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -285,6 +282,32 @@ function isPathInsideRoot(root: string, candidate: string): boolean {
     relative === "" ||
     (relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative))
   );
+}
+
+function ensureAttachmentSourceInsideStore(
+  attachmentPath: string,
+  attachmentsDir: string,
+): Effect.Effect<void, ProviderAdapterRequestError> {
+  return Effect.tryPromise({
+    try: async () => {
+      const [realAttachmentsDir, realAttachmentPath] = await Promise.all([
+        fsPromises.realpath(attachmentsDir),
+        fsPromises.realpath(attachmentPath),
+      ]);
+      if (!isPathInsideRoot(realAttachmentsDir, realAttachmentPath)) {
+        throw new Error("Attachment source resolves outside the attachments directory.");
+      }
+    },
+    catch: (cause) =>
+      new ProviderAdapterRequestError({
+        provider: PROVIDER,
+        method: "turn/start",
+        detail: `Failed to resolve attachment file: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }.`,
+        cause,
+      }),
+  });
 }
 
 function shouldCleanupWindowsSandboxArtifacts(event: ProviderEvent): boolean {
@@ -2395,10 +2418,19 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ...(jsonRpcLogPath !== undefined ? { jsonRpcLogPath } : {}),
           };
           if (isCodexDesktopAlignmentDebugEnabled()) {
+            const effectiveT3DynamicToolNamespaces =
+              input.enabledT3DynamicToolNamespaces !== undefined
+                ? input.enabledT3DynamicToolNamespaces
+                : input.enableT3DynamicTools === true
+                  ? (["browser", "chrome", "computer"] as const)
+                  : [];
             yield* Effect.logDebug("codex desktop alignment session input prepared", {
               threadId: input.threadId,
               enableT3DynamicTools: input.enableT3DynamicTools === true,
+              structuredT3DynamicToolNamespacesProvided:
+                input.enabledT3DynamicToolNamespaces !== undefined,
               enabledT3DynamicToolNamespaces: input.enabledT3DynamicToolNamespaces ?? [],
+              effectiveT3DynamicToolNamespaces,
             });
           }
           const sessionScope = yield* Scope.make("sequential");
@@ -2520,55 +2552,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
   };
 
-  const copyAttachmentIntoThreadWorkspace = Effect.fn("copyAttachmentIntoThreadWorkspace")(
-    function* (
-      attachmentPath: string,
-      importPath: string,
-      workspaceRoot: string,
-      attachmentsDir: string,
-    ) {
-      yield* Effect.tryPromise({
-        try: async () => {
-          const importDir = path.dirname(importPath);
-          await fsPromises.mkdir(importDir, { recursive: true });
-          const [realWorkspaceRoot, realImportDir, realAttachmentsDir, realAttachmentPath] =
-            await Promise.all([
-              fsPromises.realpath(workspaceRoot),
-              fsPromises.realpath(importDir),
-              fsPromises.realpath(attachmentsDir),
-              fsPromises.realpath(attachmentPath),
-            ]);
-          if (!isPathInsideRoot(realWorkspaceRoot, realImportDir)) {
-            throw new Error("Attachment import directory resolves outside the thread workspace.");
-          }
-          if (!isPathInsideRoot(realAttachmentsDir, realAttachmentPath)) {
-            throw new Error("Attachment source resolves outside the attachments directory.");
-          }
-
-          const tempPath = path.join(importDir, `.t3-attachment-${randomUUID()}.tmp`);
-          try {
-            await fsPromises.copyFile(realAttachmentPath, tempPath, fsConstants.COPYFILE_EXCL);
-            await fsPromises.rename(tempPath, importPath);
-          } catch (cause) {
-            await fsPromises.rm(tempPath, { force: true });
-            throw cause;
-          }
-        },
-        catch: (cause) =>
-          new ProviderAdapterRequestError({
-            provider: PROVIDER,
-            method: "turn/start",
-            detail: `Failed to import attachment file: ${
-              cause instanceof Error ? cause.message : String(cause)
-            }.`,
-            cause,
-          }),
-      });
-    },
-  );
-
   const resolveAttachment = Effect.fn("resolveAttachment")(function* (
-    input: Pick<ProviderSendTurnInput | ProviderSteerTurnInput, "threadId">,
+    _input: Pick<ProviderSendTurnInput | ProviderSteerTurnInput, "threadId">,
     attachment: NonNullable<ProviderSendTurnInput["attachments"]>[number],
   ) {
     const attachmentPath = resolveAttachmentPath({
@@ -2582,35 +2567,17 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         detail: `Invalid attachment id '${attachment.id}'.`,
       });
     }
+    yield* ensureAttachmentSourceInsideStore(attachmentPath, serverConfig.attachmentsDir);
     if (isImageMimeType(attachment.mimeType)) {
       return {
         type: "localImage" as const,
         path: attachmentPath,
       };
     } else {
-      const imported = resolveThreadAttachmentImport({
-        conversationWorkspaceDir: serverConfig.conversationWorkspaceDir,
-        threadId: input.threadId,
-        attachment,
-      });
-      if (!imported) {
-        return yield* new ProviderAdapterRequestError({
-          provider: PROVIDER,
-          method: "turn/start",
-          detail: `Failed to resolve safe import path for attachment '${attachment.id}'.`,
-        });
-      }
-      yield* copyAttachmentIntoThreadWorkspace(
-        attachmentPath,
-        imported.path,
-        imported.workspaceRoot,
-        serverConfig.attachmentsDir,
-      );
       return {
         type: "file" as const,
         name: sanitizeAttachmentDisplayName(attachment.name),
-        path: imported.path,
-        relativePath: imported.relativePath,
+        path: attachmentPath,
       };
     }
   });
@@ -2656,9 +2623,15 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     }
 
     if (isCodexDesktopAlignmentDebugEnabled()) {
+      const inputItemTypes = [
+        ...(finalPrompt ? ["text"] : []),
+        ...imageAttachments.map((attachment) => attachment.type),
+      ];
       yield* Effect.logDebug("codex desktop alignment turn input prepared", {
         threadId: input.threadId,
+        inputItemTypes,
         textInputChars: finalPrompt.length,
+        fileAttachmentCount: fileAttachments.length,
         fileAttachments,
         imageAttachmentCount: imageAttachments.length,
       });
