@@ -68,6 +68,97 @@ function formatCommercialGatewayHttpError(status: number, body: string): string 
   return detail.length > 0 ? `${statusPrefix}: ${detail}` : `${statusPrefix}.`;
 }
 
+function extractGatewayMessageContent(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const choices = (payload as { readonly choices?: unknown }).choices;
+  if (!Array.isArray(choices)) {
+    return undefined;
+  }
+
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") {
+      continue;
+    }
+
+    const message = (choice as { readonly message?: unknown }).message;
+    if (message && typeof message === "object") {
+      const content = (message as { readonly content?: unknown }).content;
+      if (typeof content === "string") {
+        return content;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function appendGatewayStreamContent(payload: unknown, chunks: Array<string>): void {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const choices = (payload as { readonly choices?: unknown }).choices;
+  if (!Array.isArray(choices)) {
+    return;
+  }
+
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") {
+      continue;
+    }
+
+    const delta = (choice as { readonly delta?: unknown }).delta;
+    if (delta && typeof delta === "object") {
+      const content = (delta as { readonly content?: unknown }).content;
+      if (typeof content === "string") {
+        chunks.push(content);
+        continue;
+      }
+    }
+
+    const content = extractGatewayMessageContent({ choices: [choice] });
+    if (typeof content === "string") {
+      chunks.push(content);
+    }
+  }
+}
+
+function parseCommercialGatewaySseContent(body: string): string | undefined {
+  const chunks: Array<string> = [];
+  const events = body.split(/\r?\n\r?\n/u);
+
+  for (const event of events) {
+    const dataLines = event
+      .split(/\r?\n/u)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trimStart());
+    if (dataLines.length === 0) {
+      continue;
+    }
+
+    const data = dataLines.join("\n").trim();
+    if (data.length === 0 || data === "[DONE]") {
+      continue;
+    }
+
+    appendGatewayStreamContent(JSON.parse(data), chunks);
+  }
+
+  return chunks.length > 0 ? chunks.join("") : undefined;
+}
+
+function parseCommercialGatewayContent(body: string): string | undefined {
+  const trimmed = body.trimStart();
+  if (trimmed.startsWith("data:")) {
+    return parseCommercialGatewaySseContent(body);
+  }
+
+  return extractGatewayMessageContent(JSON.parse(body));
+}
+
 /**
  * Build a Codex text-generation closure bound to a specific `CodexSettings`
  * payload. See `makeCodexAdapter` for the overall per-instance rationale.
@@ -349,11 +440,13 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
                 fetch(url, {
                   method: "POST",
                   headers: {
+                    Accept: "application/json",
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${ideJwt}`,
                   },
                   body: JSON.stringify({
                     model: modelSelection.model,
+                    stream: false,
                     messages: [{ role: "user", content: input.prompt }],
                     ...(input.structuredOutput
                       ? {
@@ -390,8 +483,18 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               } satisfies GatewayResult;
             }
 
-            const payload = yield* Effect.tryPromise({
-              try: () => response.json() as Promise<any>,
+            const body = yield* Effect.tryPromise({
+              try: () => response.text(),
+              catch: (cause) =>
+                new TextGenerationError({
+                  operation,
+                  detail: "Failed to read commercial gateway response.",
+                  cause,
+                }),
+            });
+
+            const content = yield* Effect.try({
+              try: () => parseCommercialGatewayContent(body),
               catch: (cause) =>
                 new TextGenerationError({
                   operation,
@@ -399,8 +502,6 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
                   cause,
                 }),
             });
-
-            const content = payload.choices?.[0]?.message?.content;
             if (typeof content !== "string") {
               return yield* new TextGenerationError({
                 operation,

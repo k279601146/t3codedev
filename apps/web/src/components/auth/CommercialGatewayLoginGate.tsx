@@ -192,13 +192,15 @@ export function CommercialGatewayLoginGate({
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
-            className="h-11 px-6 text-[14px] font-medium sm:w-auto"
+            className="group h-11 min-w-[168px] justify-between gap-3 rounded-xl border-transparent bg-foreground px-4 pl-5 text-[14px] font-semibold text-background shadow-[0_16px_34px_-22px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:bg-foreground/90 hover:shadow-[0_20px_38px_-24px_rgba(0,0,0,0.9)] focus-visible:ring-2 focus-visible:ring-foreground/25 disabled:translate-y-0 disabled:shadow-none dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:ring-white/25 sm:w-auto"
             disabled={!canBrowserSignIn}
             onClick={handleBrowserSignIn}
             size="lg"
           >
             <span>{isBrowserSignIn ? t("auth.cancelLogin") : t("auth.continueWithAccount")}</span>
-            {isBrowserSignIn ? <XIcon className="size-4" /> : <ArrowRightIcon className="size-4" />}
+            <span className="flex size-6 items-center justify-center rounded-full bg-background/15 text-background transition-transform group-hover:translate-x-0.5 dark:bg-zinc-950/10 dark:text-zinc-950">
+              {isBrowserSignIn ? <XIcon className="size-3.5" /> : <ArrowRightIcon className="size-3.5" />}
+            </span>
           </Button>
 
           {registerWebAuthBaseUrl ? (

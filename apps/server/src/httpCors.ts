@@ -54,4 +54,5 @@ export function isBrowserApiCorsAllowedOrigin(origin: string): boolean {
 export const browserApiCorsHeaders = {
   "access-control-allow-methods": browserApiCorsAllowedMethods.join(", "),
   "access-control-allow-headers": browserApiCorsAllowedHeaders.join(", "),
+  "access-control-allow-credentials": "true",
 } as const;

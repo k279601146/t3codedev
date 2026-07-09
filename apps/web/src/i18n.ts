@@ -397,17 +397,17 @@ const TRANSLATIONS = {
   },
   "zh-CN": {
     "auth.welcome": "欢迎使用 {appName}",
-    "auth.planIncluded": "已包含所有 IDE 套餐",
-    "auth.continueWithAccount": "使用账号继续",
+    "auth.planIncluded": "覆盖日常、办公与编程场景",
+    "auth.continueWithAccount": "登录后开始使用",
     "auth.cancelLogin": "取消登录",
     "auth.otherLogin": "使用其他登录方式",
     "auth.productTagline": "AI 编程工作台",
-    "auth.ideAssistant": "IDE 助手",
-    "auth.heroTitle": "让助手读懂仓库，陪你完成每一次修改。",
+    "auth.ideAssistant": "AI 助手",
+    "auth.heroTitle": "处理日常通用任务、办公任务和编程工作。",
     "auth.heroDescription":
-      "登录后即可使用本地引擎、模型网关、Diff、终端和理解项目上下文的对话能力。",
+      "登录后即可使用 AI 对话、本地引擎、模型网关、Diff、终端和理解上下文的任务处理能力。",
     "auth.signInDescription":
-      "一款具备自主执行力的 AI Agent，理解项目架构，自主编写代码并生成交付可用的文件成果。",
+      "从资料整理、文案撰写、表格处理到代码修改与项目理解，都可以在同一个工作台中完成。",
     "auth.featureLocalRuntime": "本地运行时与终端编排",
     "auth.featureGitAware": "理解 Git、Diff 与 checkpoint",
     "auth.featurePrivateToken": "网关令牌加密保存在此设备",

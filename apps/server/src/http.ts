@@ -75,6 +75,7 @@ export const browserApiCorsLayer = HttpRouter.middleware(
     allowedOrigins: isBrowserApiCorsAllowedOrigin,
     allowedMethods: [...browserApiCorsAllowedMethods],
     allowedHeaders: [...browserApiCorsAllowedHeaders],
+    credentials: true,
     maxAge: 600,
   }),
   { global: true },

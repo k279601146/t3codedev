@@ -1145,6 +1145,7 @@ const splitHeaderTokens = (value: string | null) =>
 
 const assertBrowserApiCorsHeaders = (headers: Headers, origin: string) => {
   assert.equal(headers.get("access-control-allow-origin"), origin);
+  assert.equal(headers.get("access-control-allow-credentials"), "true");
   assert.equal(headers.get("vary"), "Origin");
   assert.deepEqual(splitHeaderTokens(headers.get("access-control-allow-methods")), [
     "GET",
@@ -1991,6 +1992,29 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
       assert.equal(response.status, 200);
       assert.equal(yield* response.text, "attachment-ok");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("responds to attachment upload preflight requests with credentialed CORS", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const url = yield* getHttpServerUrl(
+        "/attachments?threadId=thread-upload&type=file&name=app.log&mimeType=text%2Fplain&sizeBytes=21",
+      );
+      const response = yield* Effect.promise(() =>
+        fetch(url, {
+          method: "OPTIONS",
+          headers: {
+            origin: "http://127.0.0.1:5733",
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 204);
+      assertBrowserApiCorsHeaders(response.headers, "http://127.0.0.1:5733");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
