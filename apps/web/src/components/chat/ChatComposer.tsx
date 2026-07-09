@@ -21,7 +21,9 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
 } from "@t3tools/contracts";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import {
@@ -197,9 +199,19 @@ import {
   useT3ClientModelSelectorEnabled,
 } from "../../hooks/useCommercialPublicRuntimeConfig";
 
-const ATTACHMENT_SIZE_LIMIT_LABEL = `${Math.round(
-  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024),
-)}MB`;
+const formatAttachmentSizeLimitLabel = (bytes: number): string =>
+  `${Math.round(bytes / (1024 * 1024))}MB`;
+const IMAGE_ATTACHMENT_SIZE_LIMIT_LABEL = formatAttachmentSizeLimitLabel(
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+);
+const FILE_ATTACHMENT_SIZE_LIMIT_LABEL = formatAttachmentSizeLimitLabel(
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+);
+const PASTED_TEXT_ATTACHMENT_CHAR_THRESHOLD = Math.floor(
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS * 0.75,
+);
+const PASTED_TEXT_ATTACHMENT_NAME = "已粘贴的文本.txt";
+const PASTED_TEXT_ATTACHMENT_MIME_TYPE = "text/plain";
 
 const PERSONALITY_SLASH_OPTIONS: ReadonlyArray<{
   readonly value: ProviderPersonality;
@@ -3102,16 +3114,22 @@ export const ChatComposer = memo(
       let nextAttachmentCount = composerImagesRef.current.length;
       let error: string | null = null;
       for (const file of files) {
-        if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-          error = `'${file.name}' exceeds the ${ATTACHMENT_SIZE_LIMIT_LABEL} attachment limit.`;
+        const guessedMime = file.type || guessMimeType(file.name);
+        const isImage = guessedMime.startsWith("image/");
+        const maxBytes = isImage
+          ? PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+          : PROVIDER_SEND_TURN_MAX_FILE_BYTES;
+        const limitLabel = isImage
+          ? IMAGE_ATTACHMENT_SIZE_LIMIT_LABEL
+          : FILE_ATTACHMENT_SIZE_LIMIT_LABEL;
+        if (file.size > maxBytes) {
+          error = `'${file.name}' exceeds the ${limitLabel} attachment limit.`;
           continue;
         }
         if (nextAttachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
           error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message.`;
           break;
         }
-        const guessedMime = file.type || guessMimeType(file.name);
-        const isImage = guessedMime.startsWith("image/");
         nextAttachments.push({
           type: isImage ? "image" : "file",
           id: randomUUID(),
@@ -3185,9 +3203,27 @@ export const ChatComposer = memo(
     // ------------------------------------------------------------------
     const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
       const files = Array.from(event.clipboardData.files);
-      if (files.length === 0) return;
+      if (files.length > 0) {
+        event.preventDefault();
+        addComposerAttachments(files);
+        return;
+      }
+
+      const pastedText = event.clipboardData.getData("text/plain");
+      if (
+        !activeThreadId ||
+        pastedText.trim().length === 0 ||
+        pastedText.length < PASTED_TEXT_ATTACHMENT_CHAR_THRESHOLD
+      ) {
+        return;
+      }
+
       event.preventDefault();
-      addComposerAttachments(files);
+      addComposerAttachments([
+        new File([pastedText], PASTED_TEXT_ATTACHMENT_NAME, {
+          type: PASTED_TEXT_ATTACHMENT_MIME_TYPE,
+        }),
+      ]);
     };
 
     const onComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
