@@ -1422,13 +1422,13 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   }, [assistantMessageId, ctx]);
 
   return (
-    <div className="pt-1 pb-1.5">
+    <div className="flex items-center gap-2 pt-0.5 pb-2">
       <button
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
         aria-expanded={!isCollapsed}
-        className="chat-text chat-text-summary group/turn-summary inline-flex items-center gap-1 rounded-md px-0 py-0.5 transition-colors"
+        className="chat-text chat-text-summary group/turn-summary inline-flex shrink-0 items-center gap-1 rounded-md px-0 py-0.5 transition-colors"
         data-turn-summary-toggle="true"
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
         data-scroll-anchor-ignore
@@ -1441,6 +1441,7 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
           )}
         />
       </button>
+      <span className="h-px min-w-0 flex-1 bg-border/75" aria-hidden="true" />
     </div>
   );
 }

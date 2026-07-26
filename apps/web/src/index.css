@@ -534,8 +534,8 @@ body {
     "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "T3 PingFang SC", Helvetica, Arial,
     sans-serif;
   --t3-chat-font-size: 14px;
-  --t3-chat-line-height: 1.64;
-  --t3-chat-block-spacing: 10px;
+  --t3-chat-line-height: 1.58;
+  --t3-chat-block-spacing: 8px;
   --t3-chat-text-color: #111827;
   --t3-chat-list-marker-color: #111827;
   --t3-chat-inline-code-bg: color-mix(in srgb, var(--foreground) 5.5%, var(--background));
@@ -663,10 +663,10 @@ body {
 }
 
 .chat-text-summary {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.68;
-  color: color-mix(in srgb, var(--foreground) 68%, transparent);
+  line-height: 1.54;
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
 }
 
 .chat-text-summary:hover {
@@ -1553,7 +1553,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown h2,
 .chat-markdown h3,
 .chat-markdown h4 {
-  margin: 0.68rem 0 0.36rem;
+  margin: 0.56rem 0 0.26rem;
   color: inherit;
   font-size: inherit;
   font-weight: 600;
@@ -1589,17 +1589,17 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ul {
-  padding-left: 1.12rem;
+  padding-left: 1.28rem;
   list-style-type: disc;
 }
 
 .chat-markdown ol {
-  padding-left: 1.32rem;
+  padding-left: 1.48rem;
   list-style-type: decimal;
 }
 
 .chat-markdown li {
-  padding-left: 0.08rem;
+  padding-left: 0.12rem;
   color: inherit;
 }
 
@@ -1609,7 +1609,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ul ul {
-  margin-top: 0.24rem;
+  margin-top: 0.18rem;
   list-style-type: circle;
 }
 
@@ -1618,7 +1618,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ol ol {
-  margin-top: 0.24rem;
+  margin-top: 0.18rem;
   list-style-type: lower-alpha;
 }
 
@@ -1627,12 +1627,12 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown li + li {
-  margin-top: 10px;
+  margin-top: 7px;
 }
 
 .chat-markdown > ul > li + li,
 .chat-markdown > ol > li + li {
-  margin-top: 10px;
+  margin-top: 7px;
 }
 
 .chat-markdown li > p {
@@ -1641,8 +1641,8 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown li > ul,
 .chat-markdown li > ol {
-  margin-top: 0.24rem;
-  margin-bottom: 0.16rem;
+  margin-top: 0.18rem;
+  margin-bottom: 0.12rem;
 }
 
 .chat-markdown li > p:last-child {
@@ -1651,12 +1651,12 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown strong {
   color: inherit;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .chat-markdown b {
   color: inherit;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .skill-detail-markdown .chat-markdown {
