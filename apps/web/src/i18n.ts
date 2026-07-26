@@ -28,6 +28,16 @@ const TRANSLATIONS = {
     "auth.connecting": "Connecting",
     "auth.connect": "Connect",
     "auth.failed": "Sign-in failed. Please try again.",
+    "auth.errorTimedOut":
+      "Login timed out. Click Continue again, then finish sign-in in your browser.",
+    "auth.errorCancelled": "Login was canceled. Click Continue when you are ready to try again.",
+    "auth.errorBrowserOpenFailed":
+      "Could not open your browser. Check your default browser settings and try again.",
+    "auth.errorAuthorizationFailed":
+      "Browser authorization was not completed. Please try signing in again.",
+    "auth.errorTokenExchangeFailed": "Could not connect your account. Please try again later.",
+    "auth.errorSecureStorageUnavailable":
+      "This device cannot securely save your login. Enable system credential storage and try again.",
     "sidebar.search": "Search",
     "sidebar.projects": "Projects",
     "sidebar.noProjects": "No projects yet",
@@ -185,7 +195,8 @@ const TRANSLATIONS = {
     "settings.gatewayConnected": "Connected",
     "settings.gatewayNotConnected": "Not connected",
     "settings.gatewayConnectedDescription": "Your account token is encrypted on this device.",
-    "settings.gatewayNotConnectedDescription": "Connect with dev2 browser authorization to use AI capabilities.",
+    "settings.gatewayNotConnectedDescription":
+      "Connect with dev2 browser authorization to use AI capabilities.",
     "settings.unavailable": "Unavailable",
     "settings.signOut": "Sign Out",
     "settings.connect": "Connect",
@@ -417,6 +428,13 @@ const TRANSLATIONS = {
     "auth.connecting": "正在连接",
     "auth.connect": "连接",
     "auth.failed": "登录失败，请稍后重试。",
+    "auth.errorTimedOut": "登录已超时。请重新点击“登录后开始使用”，并在打开的浏览器里完成登录。",
+    "auth.errorCancelled": "已取消登录。准备好后可以再次点击登录。",
+    "auth.errorBrowserOpenFailed": "无法打开浏览器，请检查默认浏览器设置后重试。",
+    "auth.errorAuthorizationFailed": "浏览器授权没有完成，请重新登录。",
+    "auth.errorTokenExchangeFailed": "账号连接失败，请稍后重试。",
+    "auth.errorSecureStorageUnavailable":
+      "当前设备无法安全保存登录状态，请启用系统凭据存储后重试。",
     "sidebar.search": "搜索",
     "sidebar.projects": "项目",
     "sidebar.noProjects": "暂无项目",

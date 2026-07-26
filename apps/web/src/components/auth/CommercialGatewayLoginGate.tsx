@@ -3,14 +3,8 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineWebAuthBaseUrl,
 } from "@t3tools/shared/commercialEngine";
-import {
-  ArrowRightIcon,
-  CheckIcon,
-  Code2Icon,
-  LoaderIcon,
-  XIcon,
-} from "lucide-react";
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRightIcon, CheckIcon, Code2Icon, LoaderIcon, XIcon } from "lucide-react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
 import {
@@ -27,8 +21,20 @@ type CommercialAuthGateState =
   | { status: "signed-in"; authState: DesktopCommercialAuthState }
   | { status: "requires-sign-in"; authState: DesktopCommercialAuthState; errorMessage?: string };
 
+export interface CommercialAuthErrorMessages {
+  readonly failed: string;
+  readonly timedOut: string;
+  readonly cancelled: string;
+  readonly browserOpenFailed: string;
+  readonly authorizationFailed: string;
+  readonly tokenExchangeFailed: string;
+  readonly secureStorageUnavailable: string;
+}
+
 export function useDesktopCommercialAuthGate(enabled: boolean): CommercialAuthGateState {
+  const { t } = useI18n();
   const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+  const errorMessages = useMemo(() => makeCommercialAuthErrorMessages(t), [t]);
   const [state, setState] = useState<CommercialAuthGateState>(() =>
     enabled && bridge?.getCommercialAuthState && bridge.signInCommercialAuthWithBrowser
       ? { status: "loading" }
@@ -72,14 +78,14 @@ export function useDesktopCommercialAuthGate(enabled: boolean): CommercialAuthGa
             tokenExpiresAt: null,
             userLabel: null,
           },
-          errorMessage: errorMessageFromUnknown(error),
+          errorMessage: formatCommercialAuthErrorMessage(error, errorMessages),
         });
       });
 
     return () => {
       disposed = true;
     };
-  }, [bridge, canUseCommercialAuth, enabled]);
+  }, [bridge, canUseCommercialAuth, enabled, errorMessages]);
 
   useEffect(() => {
     if (!enabled || !canUseCommercialAuth) {
@@ -116,6 +122,7 @@ export function CommercialGatewayLoginGate({
 }) {
   const { t } = useI18n();
   const bridge = typeof window === "undefined" ? undefined : window.desktopBridge;
+  const errorMessages = useMemo(() => makeCommercialAuthErrorMessages(t), [t]);
   const [isBrowserSignIn, setIsBrowserSignIn] = useState(false);
   const [currentErrorMessage, setCurrentErrorMessage] = useState(errorMessage ?? "");
   const browserSignInRequestIdRef = useRef<string | null>(null);
@@ -154,7 +161,7 @@ export function CommercialGatewayLoginGate({
       })
       .catch((error: unknown) => {
         if (browserSignInRequestIdRef.current !== requestId) return;
-        setCurrentErrorMessage(errorMessageFromUnknown(error));
+        setCurrentErrorMessage(formatCommercialAuthErrorMessage(error, errorMessages));
       })
       .finally(() => {
         if (browserSignInRequestIdRef.current === requestId) {
@@ -162,7 +169,7 @@ export function CommercialGatewayLoginGate({
           setIsBrowserSignIn(false);
         }
       });
-  }, [bridge, gatewayBaseUrl, isBrowserSignIn, onAuthenticated, webAuthBaseUrl]);
+  }, [bridge, errorMessages, gatewayBaseUrl, isBrowserSignIn, onAuthenticated, webAuthBaseUrl]);
 
   return (
     <main className="drag-region relative flex min-h-screen items-center overflow-hidden bg-background px-8 py-16 sm:px-14 lg:justify-center lg:gap-24 lg:px-20">
@@ -199,7 +206,11 @@ export function CommercialGatewayLoginGate({
           >
             <span>{isBrowserSignIn ? t("auth.cancelLogin") : t("auth.continueWithAccount")}</span>
             <span className="flex size-6 items-center justify-center rounded-full bg-background/15 text-background transition-transform group-hover:translate-x-0.5 dark:bg-zinc-950/10 dark:text-zinc-950">
-              {isBrowserSignIn ? <XIcon className="size-3.5" /> : <ArrowRightIcon className="size-3.5" />}
+              {isBrowserSignIn ? (
+                <XIcon className="size-3.5" />
+              ) : (
+                <ArrowRightIcon className="size-3.5" />
+              )}
             </span>
           </Button>
 
@@ -294,7 +305,15 @@ function StepRow({ text, done, active }: { text: string; done?: boolean; active?
       >
         {done && <CheckIcon className="size-[8px]" strokeWidth={3} />}
       </span>
-      <span className={done ? "text-zinc-600 line-through decoration-zinc-700" : active ? "text-zinc-300" : "text-zinc-600"}>
+      <span
+        className={
+          done
+            ? "text-zinc-600 line-through decoration-zinc-700"
+            : active
+              ? "text-zinc-300"
+              : "text-zinc-600"
+        }
+      >
         {text}
       </span>
     </div>
@@ -313,14 +332,124 @@ export function CommercialGatewayLoginPending() {
   );
 }
 
-function errorMessageFromUnknown(error: unknown): string {
+function makeCommercialAuthErrorMessages(
+  t: ReturnType<typeof useI18n>["t"],
+): CommercialAuthErrorMessages {
+  return {
+    failed: t("auth.failed"),
+    timedOut: t("auth.errorTimedOut"),
+    cancelled: t("auth.errorCancelled"),
+    browserOpenFailed: t("auth.errorBrowserOpenFailed"),
+    authorizationFailed: t("auth.errorAuthorizationFailed"),
+    tokenExchangeFailed: t("auth.errorTokenExchangeFailed"),
+    secureStorageUnavailable: t("auth.errorSecureStorageUnavailable"),
+  };
+}
+
+export function formatCommercialAuthErrorMessage(
+  error: unknown,
+  messages: CommercialAuthErrorMessages,
+): string {
+  const rawMessage = extractCommercialAuthErrorMessage(error);
+  if (!rawMessage) {
+    return messages.failed;
+  }
+
+  const message = stripCommercialAuthTechnicalPrefix(rawMessage);
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("timed out waiting for browser sign-in")) {
+    return messages.timedOut;
+  }
+  if (
+    normalized.includes("browser sign-in cancelled") ||
+    normalized.includes("browser sign-in canceled")
+  ) {
+    return messages.cancelled;
+  }
+  if (
+    normalized.includes("could not open the browser") ||
+    normalized.includes("could not open your browser")
+  ) {
+    return messages.browserOpenFailed;
+  }
+  if (
+    normalized.includes("browser sign-in did not return an authorization code") ||
+    normalized.includes("missing authorization code") ||
+    normalized.includes("gateway authorization failed")
+  ) {
+    return messages.authorizationFailed;
+  }
+  if (
+    normalized.includes("failed to exchange authorization code for an ide token") ||
+    normalized.includes("gateway token exchange failed") ||
+    normalized.includes("gateway response did not include an ide access token")
+  ) {
+    return messages.tokenExchangeFailed;
+  }
+  if (
+    normalized.includes("safe storage") ||
+    normalized.includes("safestorage") ||
+    normalized.includes("secure storage") ||
+    normalized.includes("encryption is unavailable")
+  ) {
+    return messages.secureStorageUnavailable;
+  }
+
+  return isCommercialAuthTechnicalMessage(message) ? messages.failed : message;
+}
+
+function extractCommercialAuthErrorMessage(error: unknown): string | null {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
   if (typeof error === "string" && error.trim().length > 0) {
     return error.trim();
   }
-  return "Sign-in failed. Please try again.";
+  return null;
+}
+
+function stripCommercialAuthTechnicalPrefix(message: string): string {
+  let next = message.trim();
+  for (let index = 0; index < 4; index += 1) {
+    const previous = next;
+    next = next
+      .replace(/^Error invoking remote method '[^']+':\s*/u, "")
+      .replace(/^DesktopCommercialAuth(?:PKCE|Exchange|Write|SecretDecode)Error:\s*/u, "")
+      .replace(/^ElectronSafeStorage(?:Availability|Encrypt|Decrypt)Error:\s*/u, "")
+      .trim();
+    if (next === previous) {
+      break;
+    }
+  }
+  return next;
+}
+
+function isCommercialAuthTechnicalMessage(message: string): boolean {
+  if (message.length > 180 || message.includes("\n")) {
+    return true;
+  }
+
+  const normalized = message.toLowerCase();
+  return [
+    "error invoking remote method",
+    "desktop:",
+    "desktopcommercialauth",
+    "electron safestorage",
+    "econnrefused",
+    "enotfound",
+    "etimedout",
+    "enoent",
+    "http://",
+    "https://",
+    "127.0.0.1",
+    "localhost:",
+    "oauth",
+    "pkce",
+    "unexpected token",
+    "schema",
+    "json",
+  ].some((needle) => normalized.includes(needle));
 }
 
 function resolveRegisterUrl(webAuthBaseUrl: string): string {
