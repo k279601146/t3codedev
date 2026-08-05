@@ -53,7 +53,11 @@ import { buildWindowsSandboxSnapshot } from "../windowsSandbox.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
-const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 5_000;
+const COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS = 20_000;
+const CODEX_PROVIDER_STATUS_TIMEOUT_MS = Math.max(
+  AUTH_PROBE_TIMEOUT_MS,
+  COMMERCIAL_MODEL_CATALOG_TIMEOUT_MS + 5_000,
+);
 const COMMERCIAL_ACCOUNT_BALANCE_TIMEOUT_MS = 5_000;
 const COMMERCIAL_CODEX_MODEL_CAPABILITIES = createModelCapabilities({
   optionDescriptors: [
@@ -1004,7 +1008,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     environment,
   }).pipe(
     Effect.scoped,
-    Effect.timeoutOption(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
+    Effect.timeoutOption(Duration.millis(CODEX_PROVIDER_STATUS_TIMEOUT_MS)),
     Effect.result,
   );
 

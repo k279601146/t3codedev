@@ -272,6 +272,30 @@ describe("DesktopEngineUpdater", () => {
     );
   });
 
+  it.effect("treats the dev2 no engine update response as a normal skip", () => {
+    const manifestUrl = "https://www.bahew.com/api/v1/client-updates/engine";
+
+    return withUpdater(
+      withFetch(
+        (async (url) => {
+          if (String(url) === manifestUrl) {
+            return Response.json({ detail: "No engine update" }, { status: 404 });
+          }
+
+          return new Response("not found", { status: 404 });
+        }) as typeof fetch,
+        Effect.gen(function* () {
+          const updater = yield* DesktopEngineUpdater.DesktopEngineUpdater;
+
+          yield* updater.checkAndUpdate;
+
+          assert.equal(yield* updater.getCurrentVersion, "bundled");
+        }),
+      ),
+      { MYIDE_ENGINE_MANIFEST_URL: manifestUrl },
+    );
+  });
+
   it.effect("rejects engine updates with an incompatible protocol version", () => {
     const manifestUrl = "https://updates.example.test/engine-manifest.json";
     const key = `${process.platform}-${process.arch}`;

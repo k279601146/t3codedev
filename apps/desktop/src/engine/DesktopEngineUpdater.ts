@@ -216,12 +216,38 @@ function assertTrustedDownloadUrl(rawUrl: string, isDevelopment: boolean): void 
   }
 }
 
+function isNoEngineUpdateBody(body: string): boolean {
+  const trimmed = body.trim();
+  if (!trimmed) return false;
+
+  try {
+    const payload = JSON.parse(trimmed) as unknown;
+    if (typeof payload === "object" && payload !== null && "detail" in payload) {
+      return (payload as { readonly detail?: unknown }).detail === "No engine update";
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
 async function fetchJson(
   url: string,
   timeoutMs: number,
   headers?: Readonly<Record<string, string>>,
-): Promise<unknown> {
-  const response = await resilientFetch(url, { timeoutMs, headers });
+): Promise<unknown | null> {
+  const response = await resilientFetch(
+    url,
+    headers === undefined ? { timeoutMs } : { timeoutMs, headers },
+  );
+  if (response.status === 404) {
+    const body = await response.text();
+    if (isNoEngineUpdateBody(body)) {
+      return null;
+    }
+    throw new Error(body.trim().length > 0 ? `HTTP 404: ${body.trim()}` : "HTTP 404");
+  }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
@@ -430,6 +456,10 @@ export const layer = Layer.effect(
           }),
         catch: (cause) => new DesktopEngineUpdateError({ reason: "manifest fetch failed", cause }),
       });
+      if (rawManifest === null) {
+        yield* logEngineUpdaterInfo("engine update manifest reports no update");
+        return;
+      }
       const manifest = yield* decodeEngineManifest(normalizeManifestPayload(rawManifest)).pipe(
         Effect.mapError(
           (cause) =>

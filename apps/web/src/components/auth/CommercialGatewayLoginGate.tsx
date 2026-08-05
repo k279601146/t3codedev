@@ -3,7 +3,7 @@ import {
   resolveCommercialEngineGatewayBaseUrl,
   resolveCommercialEngineWebAuthBaseUrl,
 } from "@t3tools/shared/commercialEngine";
-import { ArrowRightIcon, CheckIcon, Code2Icon, LoaderIcon, XIcon } from "lucide-react";
+import { ArrowRightIcon, Code2Icon, LoaderIcon, XIcon } from "lucide-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
@@ -172,50 +172,37 @@ export function CommercialGatewayLoginGate({
   }, [bridge, errorMessages, gatewayBaseUrl, isBrowserSignIn, onAuthenticated, webAuthBaseUrl]);
 
   return (
-    <main className="drag-region relative flex min-h-screen items-center overflow-hidden bg-background px-8 py-16 sm:px-14 lg:justify-center lg:gap-24 lg:px-20">
-      <div className="relative z-10 w-full max-w-[480px]">
-        <div className="flex items-center gap-2.5">
-          <Code2Icon className="size-[18px] text-foreground/70" />
-          <span className="text-[13px] font-medium text-foreground/70">{APP_BASE_NAME}</span>
-        </div>
+    <main className="drag-region relative min-h-screen overflow-hidden bg-background text-foreground">
+      <header className="absolute left-7 top-7 flex items-center gap-2 sm:left-10 sm:top-9">
+        <span className="flex size-7 items-center justify-center rounded-[7px] border border-border/70 bg-card text-foreground shadow-sm/5">
+          <Code2Icon className="size-[15px]" />
+        </span>
+        <span className="text-[12px] font-medium text-foreground/78">{APP_BASE_NAME}</span>
+      </header>
 
-        <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-          {t("auth.ideAssistant")}
+      <section className="mx-auto flex min-h-screen w-full max-w-[460px] flex-col justify-center px-7 py-24 sm:px-10">
+        <p className="text-center text-[12px] font-medium text-muted-foreground">
+          {t("auth.productTagline")}
         </p>
-        <h1 className="mt-3 text-[40px] font-semibold leading-[1.15] tracking-tight text-foreground sm:text-[46px]">
+        <h1 className="mt-4 text-center text-balance text-[36px] font-medium leading-[1.14] text-foreground">
           {t("auth.heroTitle")}
         </h1>
-        <p className="mt-4 max-w-[420px] text-[15px] leading-[1.7] text-muted-foreground">
+        <p className="mx-auto mt-4 max-w-[360px] text-center text-pretty text-[14px] leading-6 text-muted-foreground">
           {t("auth.heroDescription")}
         </p>
-        <p className="mt-2 max-w-[420px] text-[15px] leading-[1.7] text-muted-foreground">
-          {t("auth.signInDescription")}
-        </p>
 
-        <div className="mt-9 flex items-center gap-2 border-t border-border/70 pt-5 text-[13px] text-muted-foreground">
-          <CheckIcon className="size-[14px] shrink-0 text-info" />
-          <span>{t("auth.planIncluded")}</span>
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="mx-auto mt-10 w-full max-w-[300px]">
           <Button
-            className="group h-11 min-w-[168px] justify-between gap-3 rounded-xl border-transparent bg-foreground px-4 pl-5 text-[14px] font-semibold text-background shadow-[0_16px_34px_-22px_rgba(0,0,0,0.95)] transition-all hover:-translate-y-px hover:bg-foreground/90 hover:shadow-[0_20px_38px_-24px_rgba(0,0,0,0.9)] focus-visible:ring-2 focus-visible:ring-foreground/25 disabled:translate-y-0 disabled:shadow-none dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:ring-white/25 sm:w-auto"
+            className="h-[46px] w-full justify-center gap-2 rounded-[8px] border-primary bg-primary px-4 text-[14px] font-medium text-primary-foreground shadow-md shadow-primary/15 transition-[background-color,box-shadow,transform] duration-150 ease-out hover:bg-primary/90 active:scale-[0.985] disabled:scale-100 disabled:shadow-none sm:h-[46px]"
             disabled={!canBrowserSignIn}
             onClick={handleBrowserSignIn}
-            size="lg"
           >
             <span>{isBrowserSignIn ? t("auth.cancelLogin") : t("auth.continueWithAccount")}</span>
-            <span className="flex size-6 items-center justify-center rounded-full bg-background/15 text-background transition-transform group-hover:translate-x-0.5 dark:bg-zinc-950/10 dark:text-zinc-950">
-              {isBrowserSignIn ? (
-                <XIcon className="size-3.5" />
-              ) : (
-                <ArrowRightIcon className="size-3.5" />
-              )}
-            </span>
+            {isBrowserSignIn ? <XIcon className="size-4" /> : <ArrowRightIcon className="size-4" />}
           </Button>
 
           {registerWebAuthBaseUrl ? (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="mt-4 text-center text-[12px] text-muted-foreground">
               {t("auth.noAccount")}{" "}
               <button
                 className="cursor-pointer font-medium text-foreground underline-offset-4 hover:underline"
@@ -230,93 +217,19 @@ export function CommercialGatewayLoginGate({
               </button>
             </p>
           ) : null}
-        </div>
 
-        {currentErrorMessage ? (
-          <p className="mt-4 max-w-[420px] border-l-2 border-red-400 pl-3 text-[13px] leading-5 text-red-600 dark:border-red-500/50 dark:text-red-300">
-            {currentErrorMessage}
+          {currentErrorMessage ? (
+            <p className="mt-5 rounded-[8px] border border-red-500/20 bg-red-500/[0.04] px-3 py-2.5 text-[12px] leading-5 text-red-600 dark:text-red-300">
+              {currentErrorMessage}
+            </p>
+          ) : null}
+
+          <p className="mt-7 text-center text-[12px] leading-5 text-muted-foreground/75">
+            {t("auth.signInDescription")}
           </p>
-        ) : null}
-      </div>
-
-      {/* live preview panel — embedded card, not a fake OS window */}
-      <div className="relative z-10 hidden w-[360px] shrink-0 lg:block">
-        <span className="absolute -top-7 left-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          实时预览
-        </span>
-        <div className="overflow-hidden rounded-[14px] border border-border/60 bg-[#101113] shadow-[0_30px_70px_-25px_rgba(0,0,0,0.45)]">
-          <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3">
-            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
-              <span className="size-[6px] rounded-full bg-emerald-400" />
-              运行中
-            </span>
-            <span className="truncate text-[11.5px] text-zinc-500">为结算页接入优惠券校验逻辑</span>
-          </div>
-
-          <div className="flex">
-            <div className="w-[100px] shrink-0 border-r border-white/[0.06] px-3 py-3.5">
-              <p className="truncate text-[11px] font-medium text-zinc-400">app</p>
-              <div className="mt-2.5 space-y-[7px] text-[11px] text-zinc-600">
-                <p className="text-zinc-500">▾ src</p>
-                <p className="pl-3 text-zinc-600">▾ routes</p>
-                <p className="pl-5 text-zinc-300">checkout.tsx</p>
-                <p className="pl-3 text-zinc-600">lib/</p>
-              </div>
-            </div>
-
-            <div className="flex flex-1 flex-col px-4 py-3.5">
-              <div className="space-y-[6px]">
-                <StepRow done text="读取 src/routes/checkout.tsx" />
-                <StepRow done text="新增 validateCoupon 校验函数" />
-                <StepRow active text="运行测试 — pnpm test checkout" />
-              </div>
-
-              <div className="mt-3.5 overflow-hidden rounded-[8px] border border-white/[0.06] bg-black/30">
-                <div className="border-b border-white/[0.06] px-3 py-[7px] font-mono text-[10.5px] text-zinc-500">
-                  src/routes/checkout.tsx
-                </div>
-                <div className="px-3 py-2.5 font-mono text-[11px] leading-[1.85]">
-                  <p className="text-zinc-600">12&nbsp;&nbsp;const total = getCartTotal(items);</p>
-                  <p className="bg-emerald-500/[0.08] text-emerald-400">
-                    13&nbsp;&nbsp;+ const coupon = validateCoupon(code, total);
-                  </p>
-                  <p className="text-zinc-600">14&nbsp;&nbsp;return total - coupon.discount;</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-white/[0.06] px-4 py-2.5 font-mono text-[10.5px] text-zinc-600">
-            main · 3 files changed
-          </div>
         </div>
-      </div>
+      </section>
     </main>
-  );
-}
-
-function StepRow({ text, done, active }: { text: string; done?: boolean; active?: boolean }) {
-  return (
-    <div className="flex items-center gap-2 text-[11px]">
-      <span
-        className={`flex size-[13px] shrink-0 items-center justify-center rounded-full ${
-          done ? "bg-emerald-500/15 text-emerald-400" : "border border-white/10 text-transparent"
-        }`}
-      >
-        {done && <CheckIcon className="size-[8px]" strokeWidth={3} />}
-      </span>
-      <span
-        className={
-          done
-            ? "text-zinc-600 line-through decoration-zinc-700"
-            : active
-              ? "text-zinc-300"
-              : "text-zinc-600"
-        }
-      >
-        {text}
-      </span>
-    </div>
   );
 }
 
