@@ -635,9 +635,7 @@ export function deriveTurnProcessCollapseState(
     }
 
     if (row.kind === "message" && row.message.role === "assistant") {
-      if (currentSpan.hasProcessRow) {
-        currentSpan.memberRowIds.push(row.id);
-      }
+      currentSpan.memberRowIds.push(row.id);
       addMessageRowTiming(currentSpan, row);
     }
 

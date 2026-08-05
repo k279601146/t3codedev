@@ -419,7 +419,7 @@ describe("deriveTurnProcessCollapseState", () => {
     expect(state.summaryAssistantMessageIds.size).toBe(1);
   });
 
-  it("does not attach later work to a previous assistant update before a result exists", () => {
+  it("folds a previous assistant update into the later process before a result exists", () => {
     const state = deriveTurnProcessCollapseState([
       {
         kind: "message",
@@ -478,7 +478,7 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
-    expect(state.ownerAssistantMessageIdByRowId.has("row-intro")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-work");
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-work");
     expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-work");
     expect(state.summaryButtonHostByRowId.has("row-intro")).toBe(false);
@@ -699,7 +699,7 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
-    expect(state.ownerAssistantMessageIdByRowId.has("row-intro")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.has("row-image")).toBe(false);
     expect(state.summaryButtonHostByRowId.get("row-image")).toBe("row-image");

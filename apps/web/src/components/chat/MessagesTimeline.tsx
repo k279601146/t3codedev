@@ -1366,11 +1366,15 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(row.ownerId);
   const animate = ctx.manuallyToggledAssistantMessageIds.has(row.ownerId);
-  const isOwnerRow = (memberRow: TimelineRenderableRow) =>
-    memberRow.id === row.ownerId ||
-    (memberRow.kind === "message" &&
-      memberRow.message.role === "assistant" &&
-      memberRow.message.id === row.ownerId);
+  const isOwnerRow = (memberRow: TimelineRenderableRow) => {
+    if (memberRow.kind === "message" && memberRow.message.role === "assistant") {
+      return memberRow.message.id === row.ownerId;
+    }
+    if (memberRow.kind === "proposed-plan" || memberRow.kind === "image-generation") {
+      return memberRow.id === row.ownerId;
+    }
+    return false;
+  };
   const processRowsBeforeOwner: TimelineRenderableRow[] = [];
   const processRowsAfterOwner: TimelineRenderableRow[] = [];
   const ownerRows: TimelineRenderableRow[] = [];
