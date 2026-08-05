@@ -1173,6 +1173,56 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("stream disconnected before completion");
   });
 
+  it("shows image generation failure when the provider image item failed", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Image view",
+              tone: "tool",
+              itemType: "image_view",
+              status: "completed",
+              generatedImage: {
+                id: "exec-1",
+                result: "",
+                status: "failed",
+                type: "imageGeneration",
+              },
+            },
+          },
+          {
+            id: "entry-2",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:29.000Z",
+            entry: {
+              id: "work-2",
+              createdAt: "2026-03-17T19:12:29.000Z",
+              label: "Runtime warning",
+              detail:
+                'image generation failed: http 404 Not Found: Some("{\\"detail\\":\\"Not Found\\"}")',
+              tone: "info",
+              status: "completed",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("图片生成失败");
+    expect(markup).toContain("图片模型暂时不可用，请稍后重试");
+    expect(markup).toContain('data-image-tile-status="failed"');
+    expect(markup).not.toContain("image-generation-shimmer");
+    expect(markup).not.toContain("连接暂时不可用，正在继续等待图片结果");
+  });
+
   it("renders runtime error notices while ignoring reconnect runtime warnings", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const retryMessage =

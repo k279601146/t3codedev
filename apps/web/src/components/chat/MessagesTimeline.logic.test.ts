@@ -819,6 +819,63 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  it("marks an image-generation row as failed when the provider image item failed", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "image-failed-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "image-failed",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Image view",
+            tone: "tool",
+            itemType: "image_view",
+            status: "completed",
+            generatedImage: {
+              id: "exec-1",
+              result: "",
+              status: "failed",
+              type: "imageGeneration",
+            },
+          },
+        },
+        {
+          id: "runtime-warning-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "runtime-warning",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Runtime warning",
+            detail:
+              'image generation failed: http 404 Not Found: Some("{\\"detail\\":\\"Not Found\\"}")',
+            tone: "info",
+            status: "completed",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const row = rows[0];
+    expect(row?.kind).toBe("image-generation");
+    if (row?.kind !== "image-generation") return;
+    expect(row.items[0]).toEqual({
+      id: "image-failed-entry",
+      createdAt: "2026-01-01T00:00:00Z",
+      status: "failed",
+      label: "图片生成失败",
+      imagePath: null,
+      errorMessage: "图片模型暂时不可用，请稍后重试",
+    });
+  });
+
   it("drops command-summary runtime warnings after a command entry", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

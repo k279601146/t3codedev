@@ -342,8 +342,16 @@ function toImageGenerationRowItem(
   runtimeIssue: string | null,
 ): ImageGenerationRowItem {
   const imagePath = pickGeneratedImagePath(entry);
+  const imageStatus = entry.generatedImage?.status?.trim().toLowerCase();
+  const imageFailed =
+    imageStatus === "failed" ||
+    imageStatus === "error" ||
+    imageStatus === "cancelled" ||
+    imageStatus === "canceled";
   const status =
-    entry.status === "running" && !imagePath
+    imageFailed && !imagePath
+      ? "failed"
+      : entry.status === "running" && !imagePath
       ? "running"
       : entry.status === "failed" && !imagePath
         ? "failed"
@@ -361,12 +369,27 @@ function toImageGenerationRowItem(
     label,
     imagePath,
     ...(status === "failed"
-      ? { errorMessage: runtimeIssue ?? entry.detail ?? "图片生成失败" }
+      ? { errorMessage: resolveImageGenerationFailureMessage(runtimeIssue ?? entry.detail) }
       : {}),
     ...(status === "running" && runtimeIssue
       ? { connectionNotice: "连接暂时不可用，正在继续等待图片结果" }
       : {}),
   };
+}
+
+function resolveImageGenerationFailureMessage(detail: string | null | undefined): string {
+  const normalizedDetail = detail?.trim();
+  if (!normalizedDetail) {
+    return "图片生成失败，请稍后重试";
+  }
+  if (
+    /image generation failed|\/v1\/images|images\/generations|images\/edits|http 404|not found|model.*not.*found|模型.*不可用|图片模型/u.test(
+      normalizedDetail.toLowerCase(),
+    )
+  ) {
+    return "图片模型暂时不可用，请稍后重试";
+  }
+  return normalizedDetail;
 }
 
 export function resolveAssistantMessageCopyState({
