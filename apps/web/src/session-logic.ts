@@ -814,15 +814,44 @@ function collapseDerivedWorkLogEntries(
   entries: ReadonlyArray<DerivedWorkLogEntry>,
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
+  const imageEntryIndexByKey = new Map<string, number>();
   for (const entry of entries) {
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
+      const merged = mergeDerivedWorkLogEntries(previous, entry);
+      collapsed[collapsed.length - 1] = merged;
+      const imageKey = deriveImageLifecycleCollapseKey(merged);
+      if (imageKey) {
+        imageEntryIndexByKey.set(imageKey, collapsed.length - 1);
+      }
+      continue;
+    }
+    const imageKey = deriveImageLifecycleCollapseKey(entry);
+    const existingImageIndex = imageKey ? imageEntryIndexByKey.get(imageKey) : undefined;
+    if (existingImageIndex !== undefined) {
+      const existing = collapsed[existingImageIndex];
+      if (existing) {
+        collapsed[existingImageIndex] = mergeDerivedWorkLogEntries(existing, entry);
+      }
       continue;
     }
     collapsed.push(entry);
+    if (imageKey) {
+      imageEntryIndexByKey.set(imageKey, collapsed.length - 1);
+    }
   }
   return collapsed;
+}
+
+function deriveImageLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | null {
+  if (entry.itemType !== "image_view") {
+    return null;
+  }
+  const imageId = entry.generatedImage?.id?.trim();
+  if (imageId) {
+    return `image:${imageId}`;
+  }
+  return entry.collapseKey ?? null;
 }
 
 function shouldCollapseToolLifecycleEntries(

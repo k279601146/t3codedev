@@ -1128,7 +1128,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain(">Image view<");
   });
 
-  it("shows image generation failure instead of a shimmer when runtime reports an error", async () => {
+  it("keeps image generation loading and shows a connection notice when runtime reports an error", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -1165,10 +1165,12 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("图片生成失败");
-    expect(markup).toContain("stream disconnected before completion");
-    expect(markup).toContain('data-image-tile-status="failed"');
-    expect(markup).not.toContain("image-generation-shimmer");
+    expect(markup).toContain("正在生成图片");
+    expect(markup).toContain("连接暂时不可用，正在继续等待图片结果");
+    expect(markup).toContain('data-image-tile-status="running"');
+    expect(markup).toContain("image-generation-shimmer");
+    expect(markup).not.toContain("图片生成失败");
+    expect(markup).not.toContain("stream disconnected before completion");
   });
 
   it("renders runtime error notices while ignoring reconnect runtime warnings", async () => {

@@ -757,6 +757,73 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
+  it("collapses image-generation completion across runtime warnings by provider item id", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "image-start",
+        itemId: "exec-1",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        summary: "Image view started",
+        kind: "tool.started",
+        payload: {
+          itemType: "image_view",
+          itemId: "exec-1",
+          data: {
+            item: {
+              id: "exec-1",
+              result: "",
+              status: "in_progress",
+              type: "imageGeneration",
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "runtime-warning",
+        createdAt: "2026-02-23T00:01:00.000Z",
+        summary: "Runtime warning",
+        kind: "runtime.warning",
+        tone: "info",
+        payload: {
+          message: "服务暂时不可用，请稍后重试。",
+        },
+      }),
+      makeActivity({
+        id: "image-complete",
+        itemId: "exec-1",
+        createdAt: "2026-02-23T00:02:00.000Z",
+        summary: "Image view",
+        kind: "tool.completed",
+        payload: {
+          itemType: "image_view",
+          itemId: "exec-1",
+          data: {
+            item: {
+              id: "exec-1",
+              result: "a".repeat(512),
+              status: "completed",
+              type: "imageGeneration",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+
+    expect(entries.filter((entry) => entry.itemType === "image_view")).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: "image-complete",
+      itemType: "image_view",
+      status: "completed",
+      generatedImage: {
+        id: "exec-1",
+        result: "a".repeat(512),
+        status: "completed",
+      },
+    });
+  });
+
   it("omits task.started but shows task.progress and task.completed", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

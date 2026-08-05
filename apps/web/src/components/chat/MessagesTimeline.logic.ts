@@ -63,6 +63,7 @@ export interface ImageGenerationRowItem {
   label: string | null;
   imagePath: string | null;
   errorMessage?: string | undefined;
+  connectionNotice?: string | undefined;
 }
 
 export interface StableMessagesTimelineRowsState {
@@ -343,9 +344,7 @@ function toImageGenerationRowItem(
   const imagePath = pickGeneratedImagePath(entry);
   const status =
     entry.status === "running" && !imagePath
-      ? runtimeIssue
-        ? "failed"
-        : "running"
+      ? "running"
       : entry.status === "failed" && !imagePath
         ? "failed"
         : "completed";
@@ -363,6 +362,9 @@ function toImageGenerationRowItem(
     imagePath,
     ...(status === "failed"
       ? { errorMessage: runtimeIssue ?? entry.detail ?? "图片生成失败" }
+      : {}),
+    ...(status === "running" && runtimeIssue
+      ? { connectionNotice: "连接暂时不可用，正在继续等待图片结果" }
       : {}),
   };
 }

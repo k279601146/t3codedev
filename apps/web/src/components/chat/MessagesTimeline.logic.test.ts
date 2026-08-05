@@ -763,7 +763,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.kind)).toEqual(["image-generation"]);
   });
 
-  it("marks an unresolved image-generation row as failed when a later runtime issue arrives", () => {
+  it("keeps an unresolved image-generation row running when a later runtime issue arrives", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
         {
@@ -812,11 +812,10 @@ describe("deriveMessagesTimelineRows", () => {
     expect(row.items[0]).toEqual({
       id: "image-start-entry",
       createdAt: "2026-01-01T00:00:00Z",
-      status: "failed",
-      label: "图片生成失败",
+      status: "running",
+      label: "正在生成图片",
       imagePath: null,
-      errorMessage:
-        "Reconnecting... 1/5: stream disconnected before completion: stream closed before response.completed",
+      connectionNotice: "连接暂时不可用，正在继续等待图片结果",
     });
   });
 

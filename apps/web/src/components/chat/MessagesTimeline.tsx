@@ -2319,7 +2319,14 @@ const ImageGenerationTile = memo(function ImageGenerationTile({
           />
         </button>
       ) : (
-        <ImageGenerationShimmer maxWidth="100%" label={entry.item.label ?? "正在生成图片…"} />
+        <div className="space-y-2">
+          <ImageGenerationShimmer maxWidth="100%" label={entry.item.label ?? "正在生成图片…"} />
+          {entry.item.connectionNotice ? (
+            <p className="text-xs leading-5 text-muted-foreground" role="status">
+              {entry.item.connectionNotice}
+            </p>
+          ) : null}
+        </div>
       )}
     </div>
   );
