@@ -2677,13 +2677,7 @@ function resolveReconnectIssueLabel({
   if (tone === "error") {
     return `重新连接失败 ${attemptText}`;
   }
-  if (entries.some((entry) => entry.status === "running")) {
-    return `正在重新连接 ${attemptText}`;
-  }
-  if (attempt.current >= attempt.total) {
-    return `重新连接已结束 ${attemptText}`;
-  }
-  return `已尝试重新连接 ${attemptText}`;
+  return `正在重新连接 ${attemptText}`;
 }
 
 const RuntimeIssueWorkGroup = memo(function RuntimeIssueWorkGroup({

@@ -17,6 +17,7 @@ import {
   deriveToolActivityPresentation,
   type DynamicToolFamily,
 } from "@t3tools/shared/toolActivity";
+import { normalizeProviderErrorMessage } from "@t3tools/shared/providerErrors";
 
 import type {
   ChatMessage,
@@ -533,6 +534,8 @@ export function deriveWorkLogEntries(
   return deriveWorkLogEntriesFromOrdered(sortActivitiesByOrder(activities), latestTurnId);
 }
 
+const PROVIDER_RECONNECT_ATTEMPT_PATTERN = /\breconnecting(?:\.\.\.|…)?\s*\d+\s*\/\s*\d+/i;
+
 function deriveWorkLogEntriesFromOrdered(
   ordered: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
@@ -553,7 +556,9 @@ function deriveWorkLogEntriesFromOrdered(
   >();
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId !== null : true))
-    .filter((activity) => activity.kind !== "runtime.warning")
+    .filter(
+      (activity) => activity.kind !== "runtime.warning" || shouldSurfaceRuntimeWarning(activity),
+    )
     .filter(
       (activity) => activity.kind !== "tool.started" || isImageGenerationStartActivity(activity),
     )
@@ -584,6 +589,16 @@ function deriveWorkLogEntriesFromOrdered(
   return collapseDerivedWorkLogEntries(entries).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
+}
+
+function shouldSurfaceRuntimeWarning(activity: OrchestrationThreadActivity): boolean {
+  if (activity.kind !== "runtime.warning") {
+    return true;
+  }
+  const payload = asRecord(activity.payload);
+  const detail = extractRuntimeIssueDetail(activity.kind, payload);
+  const normalized = normalizeProviderErrorMessage(detail, payload);
+  return normalized?.isActionable === true && PROVIDER_RECONNECT_ATTEMPT_PATTERN.test(detail ?? "");
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -667,7 +682,8 @@ function toDerivedWorkLogEntry(
     status:
       activity.kind === "task.progress" ||
       activity.kind === "tool.updated" ||
-      activity.kind === "tool.started"
+      activity.kind === "tool.started" ||
+      (activity.kind === "runtime.warning" && shouldSurfaceRuntimeWarning(activity))
         ? "running"
         : activity.tone === "error"
           ? "failed"
@@ -1282,9 +1298,7 @@ function extractCommandFileChange(
   if (!/\|\s*(?:Set-Content|Out-File|Add-Content)\b/iu.test(command) && !shellRedirectionTarget) {
     return null;
   }
-  const path =
-    extractPowerShellWriteTarget(command) ??
-    shellRedirectionTarget;
+  const path = extractPowerShellWriteTarget(command) ?? shellRedirectionTarget;
   if (!path) {
     return null;
   }
@@ -1303,7 +1317,12 @@ function extractCommandFileChange(
   };
 }
 
-function collectFileChangeDiffs(value: unknown, target: string[], seen: Set<string>, depth: number) {
+function collectFileChangeDiffs(
+  value: unknown,
+  target: string[],
+  seen: Set<string>,
+  depth: number,
+) {
   if (depth > 4 || target.length >= 24) {
     return;
   }

@@ -1223,10 +1223,10 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("连接暂时不可用，正在继续等待图片结果");
   });
 
-  it("renders runtime error notices while ignoring reconnect runtime warnings", async () => {
+  it("renders provider reconnect warnings before the final runtime error", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const retryMessage =
-      "unexpected status 403 Forbidden: insufficient balance, url: https://www.bahew.com/v1/responses";
+      "unexpected status 503 Service Unavailable: Service temporarily unavailable, url: https://hubway.cc/v1/responses, cf-ray: a2641bc6a9144320-LAS, request id: 850578bc-b91d-4a20-bdc5-0a898dfbf1a6";
     const timelineEntries = [
       ...Array.from({ length: 5 }, (_, index) => ({
         id: `warning-entry-${index + 1}`,
@@ -1260,9 +1260,10 @@ describe("MessagesTimeline", () => {
       <MessagesTimeline {...buildProps()} timelineEntries={timelineEntries} />,
     );
 
-    expect(markup).toContain("运行时错误");
-    expect(markup).not.toContain("重新连接失败");
-    expect(markup).toContain("账户余额不足，请充值或等待额度刷新后继续使用。");
+    expect(markup).toContain("重新连接失败 5/5");
+    expect(markup).toContain(
+      "服务暂时不可用，请稍后重试。请求 ID：850578bc-b91d-4a20-bdc5-0a898dfbf1a6",
+    );
     expect(markup).not.toContain("unexpected status");
     expect(markup).not.toContain("url:");
     expect(markup).toContain('data-runtime-issue-card="true"');

@@ -417,7 +417,7 @@ body[data-performance-mode="window-dragging"] .shadow-sm {
   --success-foreground: var(--claude-success);
   --warning: var(--claude-warning);
   --warning-foreground: var(--claude-warning);
-  --sidebar: #f8f8f7;
+  --sidebar: #f6f6f6;
   --sidebar-foreground: #2f3033;
   --sidebar-border: #e9e9e7;
   --sidebar-accent: #eeeeec;
@@ -554,7 +554,7 @@ body {
   --t3-sidebar-badge-line-height: 1.25;
   --t3-sidebar-section-font-size: 12.5px;
   --t3-sidebar-section-line-height: 1.5;
-  --t3-sidebar-bg: #f8f8f7;
+  --t3-sidebar-bg: #f6f6f6;
   --t3-sidebar-row-hover: #efefee;
   --t3-sidebar-row-active: #e9e9e7;
   --t3-sidebar-text: #1f2328;
@@ -600,8 +600,8 @@ body.dark,
 }
 
 body:has([data-window-focused="true"]) {
-  --sidebar: #ffffff;
-  --t3-sidebar-bg: #ffffff;
+  --sidebar: #f6f6f6;
+  --t3-sidebar-bg: #f6f6f6;
   --t3-sidebar-row-hover: #f2f2f1;
   --t3-sidebar-row-active: #ebebe9;
 }

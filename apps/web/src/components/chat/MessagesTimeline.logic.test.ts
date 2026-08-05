@@ -1429,6 +1429,37 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows[0].groupedEntries[0]?.label).toBe("Ran command");
   });
 
+  it("renders provider reconnect runtime warnings as a visible runtime issue row", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "runtime-warning-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "runtime-warning-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Runtime warning",
+            detail:
+              "Reconnecting... 5/5: unexpected status 503 Service Unavailable: Service temporarily unavailable, url: https://hubway.cc/v1/responses, cf-ray: a2641bc6a9144320-LAS, request id: 850578bc-b91d-4a20-bdc5-0a898dfbf1a6",
+            tone: "info",
+            status: "running",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe("work");
+    if (rows[0]?.kind !== "work") return;
+    expect(rows[0].groupedEntries[0]?.label).toBe("Runtime warning");
+  });
+
   it("drops ordinary runtime warnings instead of rendering warning rows", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

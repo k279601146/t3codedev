@@ -7,6 +7,7 @@ import {
   type TurnDiffSummary,
 } from "../../types";
 import { type MessageId, type TurnId } from "@t3tools/contracts";
+import { normalizeProviderErrorMessage } from "@t3tools/shared/providerErrors";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 
@@ -98,6 +99,21 @@ function isRuntimeWarningLikeEntry(entry: Pick<WorkLogEntry, "label">): boolean 
 
 function isRuntimeWarningEntry(entry: Pick<WorkLogEntry, "label">): boolean {
   return entry.label.trim().toLowerCase() === "runtime warning";
+}
+
+const PROVIDER_RECONNECT_ATTEMPT_PATTERN = /\breconnecting(?:\.\.\.|…)?\s*\d+\s*\/\s*\d+/i;
+
+function shouldRenderRuntimeWarningEntry(
+  entry: Pick<WorkLogEntry, "label" | "detail" | "output">,
+): boolean {
+  if (!isRuntimeWarningEntry(entry)) {
+    return true;
+  }
+  const detail = (entry.detail || entry.output || "").trim();
+  if (!PROVIDER_RECONNECT_ATTEMPT_PATTERN.test(detail)) {
+    return false;
+  }
+  return normalizeProviderErrorMessage(detail)?.isActionable === true;
 }
 
 function workEntrySourceTurnId(entry: WorkLogEntry): TurnId | null {
@@ -741,7 +757,10 @@ export function deriveMessagesTimelineRows(input: {
         continue;
       }
 
-      if (isRuntimeWarningEntry(timelineEntry.entry)) {
+      if (
+        isRuntimeWarningEntry(timelineEntry.entry) &&
+        !shouldRenderRuntimeWarningEntry(timelineEntry.entry)
+      ) {
         continue;
       }
 
@@ -750,7 +769,10 @@ export function deriveMessagesTimelineRows(input: {
       while (cursor < input.timelineEntries.length) {
         const nextEntry = input.timelineEntries[cursor];
         if (!nextEntry || nextEntry.kind !== "work") break;
-        if (isRuntimeWarningEntry(nextEntry.entry)) {
+        if (
+          isRuntimeWarningEntry(nextEntry.entry) &&
+          !shouldRenderRuntimeWarningEntry(nextEntry.entry)
+        ) {
           cursor += 1;
           continue;
         }

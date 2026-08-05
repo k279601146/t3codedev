@@ -1485,6 +1485,38 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.output).toContain("5 passed, 9 warnings in 1.58s");
   });
 
+  it("keeps provider reconnect runtime warnings with actionable upstream errors", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "runtime-warning-reconnect",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        tone: "info",
+        turnId: TurnId.make("turn-1"),
+        payload: {
+          message: "Reconnecting... 5/5",
+          detail: {
+            error: {
+              additionalDetails:
+                "unexpected status 503 Service Unavailable: Service temporarily unavailable, url: https://hubway.cc/v1/responses, cf-ray: a2641bc6a9144320-LAS, request id: 850578bc-b91d-4a20-bdc5-0a898dfbf1a6",
+            },
+          },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      label: "Runtime warning",
+      detail:
+        "Reconnecting... 5/5: unexpected status 503 Service Unavailable: Service temporarily unavailable, url: https://hubway.cc/v1/responses, cf-ray: a2641bc6a9144320-LAS, request id: 850578bc-b91d-4a20-bdc5-0a898dfbf1a6",
+      tone: "info",
+      status: "running",
+    });
+  });
+
   it("drops command-summary runtime warnings that sit near a command entry even when not duplicated in output", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
