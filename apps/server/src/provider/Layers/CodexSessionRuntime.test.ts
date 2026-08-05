@@ -34,6 +34,9 @@ const commercialThreadConfigOverrides = {
     env_key: "MYIDE_IDE_JWT",
     wire_api: "responses",
     requires_openai_auth: false,
+    http_headers: {
+      "x-openai-actor-authorization": "t3code-commercial-gateway",
+    },
     supports_websockets: false,
   },
 };

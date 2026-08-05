@@ -526,6 +526,9 @@ function buildCommercialThreadConfigOverrides(
       env_key: COMMERCIAL_ENGINE_IDE_JWT_ENV,
       wire_api: COMMERCIAL_ENGINE_WIRE_API,
       requires_openai_auth: false,
+      http_headers: {
+        "x-openai-actor-authorization": "t3code-commercial-gateway",
+      },
       supports_websockets: false,
     },
   };
