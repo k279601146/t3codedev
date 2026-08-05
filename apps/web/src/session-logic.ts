@@ -78,6 +78,8 @@ export interface WorkLogEntry {
   };
   userInputSummary?: {
     status: "requested" | "resolved";
+    requestedAt: string;
+    resolvedAt?: string;
     questions: ReadonlyArray<UserInputQuestion>;
     answers?: Record<string, string | string[]>;
   };
@@ -540,8 +542,23 @@ function deriveWorkLogEntriesFromOrdered(
   ordered: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
 ): WorkLogEntry[] {
+  const requestedUserInputsByRequestId = new Map<
+    string,
+    { createdAt: string; questions: ReadonlyArray<UserInputQuestion> }
+  >();
   const resolvedUserInputRequestIds = new Set<string>();
   for (const activity of ordered) {
+    if (activity.kind === "user-input.requested") {
+      const requestId = extractActivityRequestId(activity);
+      const questions = parseUserInputQuestions(asRecord(activity.payload));
+      if (requestId && questions) {
+        requestedUserInputsByRequestId.set(requestId, {
+          createdAt: activity.createdAt,
+          questions,
+        });
+      }
+      continue;
+    }
     if (activity.kind !== "user-input.resolved") {
       continue;
     }
@@ -550,10 +567,6 @@ function deriveWorkLogEntriesFromOrdered(
       resolvedUserInputRequestIds.add(requestId);
     }
   }
-  const requestedUserInputQuestionsByRequestId = new Map<
-    string,
-    ReadonlyArray<UserInputQuestion>
-  >();
   const entries = ordered
     .filter((activity) => (latestTurnId ? activity.turnId !== null : true))
     .filter(
@@ -575,15 +588,9 @@ function deriveWorkLogEntriesFromOrdered(
     })
     .map((activity) => {
       const requestId = extractActivityRequestId(activity);
-      if (activity.kind === "user-input.requested" && requestId) {
-        const questions = parseUserInputQuestions(asRecord(activity.payload));
-        if (questions) {
-          requestedUserInputQuestionsByRequestId.set(requestId, questions);
-        }
-      }
       return toDerivedWorkLogEntry(
         activity,
-        requestId ? requestedUserInputQuestionsByRequestId.get(requestId) : undefined,
+        requestId ? requestedUserInputsByRequestId.get(requestId) : undefined,
       );
     });
   return collapseDerivedWorkLogEntries(entries).map(
@@ -626,7 +633,7 @@ function isImageGenerationStartActivity(activity: OrchestrationThreadActivity): 
 
 function toDerivedWorkLogEntry(
   activity: OrchestrationThreadActivity,
-  requestedUserInputQuestions?: ReadonlyArray<UserInputQuestion>,
+  requestedUserInput?: { createdAt: string; questions: ReadonlyArray<UserInputQuestion> },
 ): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
@@ -729,7 +736,7 @@ function toDerivedWorkLogEntry(
   const userInputSummary = deriveUserInputWorkSummary(
     activity,
     payload,
-    requestedUserInputQuestions,
+    requestedUserInput,
   );
   if (userInputSummary) {
     entry.userInputSummary = userInputSummary;
@@ -795,18 +802,18 @@ function parseUserInputAnswers(value: unknown): Record<string, string | string[]
 function deriveUserInputWorkSummary(
   activity: OrchestrationThreadActivity,
   payload: Record<string, unknown> | null,
-  requestedUserInputQuestions: ReadonlyArray<UserInputQuestion> | undefined,
+  requestedUserInput: { createdAt: string; questions: ReadonlyArray<UserInputQuestion> } | undefined,
 ): WorkLogEntry["userInputSummary"] | null {
   if (activity.kind === "user-input.requested") {
     const questions = parseUserInputQuestions(payload);
-    return questions ? { status: "requested", questions } : null;
+    return questions ? { status: "requested", requestedAt: activity.createdAt, questions } : null;
   }
   if (activity.kind !== "user-input.resolved") {
     return null;
   }
   const answers = parseUserInputAnswers(payload?.answers);
   const questions =
-    requestedUserInputQuestions ??
+    requestedUserInput?.questions ??
     (answers
       ? Object.keys(answers).map((questionId) => ({
           id: questionId,
@@ -821,6 +828,8 @@ function deriveUserInputWorkSummary(
   }
   return {
     status: "resolved",
+    requestedAt: requestedUserInput?.createdAt ?? activity.createdAt,
+    resolvedAt: activity.createdAt,
     questions,
     ...(answers ? { answers } : {}),
   };

@@ -38,6 +38,8 @@ const commercialThreadConfigOverrides = {
       "x-openai-actor-authorization": "t3code-commercial-gateway",
     },
     supports_websockets: false,
+    request_max_retries: 0,
+    stream_max_retries: 5,
   },
 };
 

@@ -319,7 +319,7 @@ describe("deriveTurnProcessCollapseState", () => {
     expect(state.ownerAssistantMessageIdByRowId.has("row-plan")).toBe(false);
     expect(state.ownerAssistantMessageIdByRowId.get("row-assistant")).toBe("assistant-1");
     expect(state.summaryButtonHostByRowId.get("row-assistant")).toBe("assistant-1");
-    expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("7.0s");
+    expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("7s");
   });
 
   it("keeps work started after an assistant update below that assistant update", () => {
@@ -417,6 +417,71 @@ describe("deriveTurnProcessCollapseState", () => {
     expect(state.summaryButtonHostByRowId.has("row-work-before")).toBe(false);
     expect(state.summaryButtonHostByRowId.has("row-work-after")).toBe(false);
     expect(state.summaryAssistantMessageIds.size).toBe(1);
+  });
+
+  it("does not attach later work to a previous assistant update before a result exists", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "message",
+        id: "row-user",
+        createdAt: "2026-01-01T00:00:00Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "user-1" as never,
+          role: "user",
+          text: "Create a file",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "message",
+        id: "row-intro",
+        createdAt: "2026-01-01T00:00:10Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: false,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-intro" as never,
+          role: "assistant",
+          text: "I will call apply_patch.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:10Z",
+          completedAt: "2026-01-01T00:00:10Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "row-work",
+        createdAt: "2026-01-01T00:00:11Z",
+        groupedEntries: [
+          {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:11Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "running",
+          },
+        ],
+      },
+    ]);
+
+    expect(state.ownerAssistantMessageIdByRowId.has("row-intro")).toBe(false);
+    expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-work");
+    expect(state.summaryButtonHostByRowId.get("row-work")).toBe("row-work");
+    expect(state.summaryButtonHostByRowId.has("row-intro")).toBe(false);
   });
 
   it("uses one processed toggle for interleaved assistant updates and work", () => {
@@ -558,7 +623,7 @@ describe("deriveTurnProcessCollapseState", () => {
     expect(state.summaryButtonHostByRowId.has("row-fetch")).toBe(false);
     expect(state.summaryButtonHostByRowId.has("row-process")).toBe(false);
     expect(state.summaryButtonHostByRowId.get("row-final")).toBe("assistant-final");
-    expect(state.elapsedByAssistantMessageId.get("assistant-final")).toBe("1m");
+    expect(state.elapsedByAssistantMessageId.get("assistant-final")).toBe("60s");
   });
 
   it("keeps generated images visible while collapsing the preceding process", () => {
@@ -634,11 +699,122 @@ describe("deriveTurnProcessCollapseState", () => {
       },
     ]);
 
-    expect(state.ownerAssistantMessageIdByRowId.get("row-intro")).toBe("row-image");
+    expect(state.ownerAssistantMessageIdByRowId.has("row-intro")).toBe(false);
     expect(state.ownerAssistantMessageIdByRowId.get("row-work")).toBe("row-image");
     expect(state.ownerAssistantMessageIdByRowId.has("row-image")).toBe(false);
     expect(state.summaryButtonHostByRowId.get("row-image")).toBe("row-image");
-    expect(state.elapsedByAssistantMessageId.get("row-image")).toBe("9.0s");
+    expect(state.elapsedByAssistantMessageId.get("row-image")).toBe("9s");
+  });
+
+  it("subtracts resolved user-input wait time from process elapsed seconds", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "work",
+        id: "row-work",
+        createdAt: "2026-01-01T00:00:00Z",
+        groupedEntries: [
+          {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "completed",
+          },
+          {
+            id: "ask-user-1",
+            createdAt: "2026-01-01T00:00:08Z",
+            label: "已询问 1 个问题",
+            tone: "info",
+            status: "completed",
+            userInputSummary: {
+              status: "resolved",
+              requestedAt: "2026-01-01T00:00:02Z",
+              resolvedAt: "2026-01-01T00:00:08Z",
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Continue?",
+                  options: [{ label: "yes", description: "Continue" }],
+                },
+              ],
+              answers: { choice: "yes" },
+            },
+          },
+        ],
+      },
+      {
+        kind: "message",
+        id: "row-assistant",
+        createdAt: "2026-01-01T00:00:10Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: true,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: true,
+        assistantCopyStreaming: false,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-1" as never,
+          role: "assistant",
+          text: "Done",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:10Z",
+          completedAt: "2026-01-01T00:00:10Z",
+          streaming: false,
+        },
+      },
+    ]);
+
+    expect(state.elapsedByAssistantMessageId.get("assistant-1")).toBe("4s");
+    expect(state.processSuspendedDurationMsByAssistantMessageId.get("assistant-1")).toBe(6_000);
+    expect(state.terminalProcessAssistantMessageIds.has("assistant-1")).toBe(true);
+  });
+
+  it("keeps the latest unfinished process non-terminal", () => {
+    const state = deriveTurnProcessCollapseState([
+      {
+        kind: "work",
+        id: "row-work",
+        createdAt: "2026-01-01T00:00:00Z",
+        groupedEntries: [
+          {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Ran command",
+            tone: "tool",
+            status: "running",
+          },
+        ],
+      },
+      {
+        kind: "message",
+        id: "row-assistant",
+        createdAt: "2026-01-01T00:00:02Z",
+        durationStart: "2026-01-01T00:00:00Z",
+        showAssistantMeta: false,
+        showCompletionDivider: false,
+        completionSummary: null,
+        showAssistantCopyButton: false,
+        assistantCopyStreaming: true,
+        showUrlPreviewCard: false,
+        message: {
+          id: "assistant-1" as never,
+          role: "assistant",
+          text: "Still working",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:02Z",
+          streaming: true,
+        },
+      },
+    ]);
+
+    expect(state.summaryAssistantMessageIds.has("assistant-1")).toBe(true);
+    expect(state.processStartedAtByAssistantMessageId.get("assistant-1")).toBe(
+      "2026-01-01T00:00:00Z",
+    );
+    expect(state.terminalProcessAssistantMessageIds.has("assistant-1")).toBe(false);
+    expect(state.elapsedByAssistantMessageId.has("assistant-1")).toBe(false);
   });
 });
 

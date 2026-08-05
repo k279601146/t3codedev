@@ -79,6 +79,7 @@ import {
   computeStableMaterializedTimelineRows,
   deriveMessagesTimelineRows,
   deriveTurnProcessCollapseState,
+  formatProcessElapsedDuration,
   fileChangeVerbLabel,
   isCommandWorkEntry,
   normalizeCompactToolLabel,
@@ -158,6 +159,10 @@ interface TimelineRowSharedState {
   summaryAssistantMessageIds: ReadonlySet<string>;
   /** 每个成果 owner 对应的人类可读耗时。 */
   elapsedByAssistantMessageId: ReadonlyMap<string, string>;
+  processStartedAtByAssistantMessageId: ReadonlyMap<string, string>;
+  processSuspendedDurationMsByAssistantMessageId: ReadonlyMap<string, number>;
+  processOpenSuspensionStartedAtByAssistantMessageId: ReadonlyMap<string, string>;
+  terminalProcessAssistantMessageIds: ReadonlySet<string>;
   completedGoalDurationByAssistantMessageId: ReadonlyMap<string, string>;
   manuallyToggledAssistantMessageIds: ReadonlySet<string>;
   /** 过程成员行 → 成果 owner；出现在这里的行会跟随“已处理”开关收展。 */
@@ -257,7 +262,7 @@ type TimelineWorkGroupSummaryRow = {
   kind: "work-group-summary";
   id: string;
   createdAt: string;
-  groupedEntries: TimelineWorkEntry[];
+  groupedEntries: ReadonlyArray<TimelineWorkEntry>;
   turnDiffSummary?: TurnDiffSummary | undefined;
   isExpanded: boolean;
 };
@@ -276,7 +281,7 @@ type TimelineSearchWorkGroupDetailsRow = {
   id: string;
   createdAt: string;
   groupId: string;
-  groupedEntries: TimelineWorkEntry[];
+  groupedEntries: ReadonlyArray<TimelineWorkEntry>;
 };
 
 type TimelineAssistantChangedFilesRow = {
@@ -547,8 +552,18 @@ export const MessagesTimeline = memo(
     ownerAssistantMessageIdByRowId,
     summaryAssistantMessageIds,
     elapsedByAssistantMessageId,
+    processStartedAtByAssistantMessageId,
+    processSuspendedDurationMsByAssistantMessageId,
+    processOpenSuspensionStartedAtByAssistantMessageId,
+    terminalProcessAssistantMessageIds,
     summaryButtonHostByRowId,
-  } = useMemo(() => deriveTurnProcessCollapseState(effectiveStableRows), [effectiveStableRows]);
+  } = useMemo(
+    () =>
+      deriveTurnProcessCollapseState(effectiveStableRows, {
+        latestProcessIsTerminal: !isWorking && !activeTurnInProgress,
+      }),
+    [activeTurnInProgress, effectiveStableRows, isWorking],
+  );
 
   /** Default collapse policy: every turn-summary owner is collapsed by
    *  default (mirrors the screenshot — only the "已处理 X ›" button is
@@ -602,15 +617,15 @@ export const MessagesTimeline = memo(
     for (const id of summaryAssistantMessageIds) {
       if (expandedAssistantMessageIds.has(id)) continue;
       if (id === activeAssistantMessageId) continue;
-      if (!elapsedByAssistantMessageId.has(id)) continue;
+      if (!terminalProcessAssistantMessageIds.has(id)) continue;
       next.add(id);
     }
     return next;
   }, [
     activeAssistantMessageId,
-    elapsedByAssistantMessageId,
     expandedAssistantMessageIds,
     summaryAssistantMessageIds,
+    terminalProcessAssistantMessageIds,
   ]);
 
   const materializedRows = useMemo<TimelineRow[]>(() => {
@@ -1098,6 +1113,10 @@ export const MessagesTimeline = memo(
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
+      processStartedAtByAssistantMessageId,
+      processSuspendedDurationMsByAssistantMessageId,
+      processOpenSuspensionStartedAtByAssistantMessageId,
+      terminalProcessAssistantMessageIds,
       completedGoalDurationByAssistantMessageId,
       manuallyToggledAssistantMessageIds,
       ownerAssistantMessageIdByRowId,
@@ -1130,6 +1149,10 @@ export const MessagesTimeline = memo(
       collapsedAssistantMessageIds,
       summaryAssistantMessageIds,
       elapsedByAssistantMessageId,
+      processStartedAtByAssistantMessageId,
+      processSuspendedDurationMsByAssistantMessageId,
+      processOpenSuspensionStartedAtByAssistantMessageId,
+      terminalProcessAssistantMessageIds,
       manuallyToggledAssistantMessageIds,
       ownerAssistantMessageIdByRowId,
       summaryButtonHostByRowId,
@@ -1348,15 +1371,65 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
     (memberRow.kind === "message" &&
       memberRow.message.role === "assistant" &&
       memberRow.message.id === row.ownerId);
-  const processRows: TimelineRenderableRow[] = [];
+  const processRowsBeforeOwner: TimelineRenderableRow[] = [];
+  const processRowsAfterOwner: TimelineRenderableRow[] = [];
   const ownerRows: TimelineRenderableRow[] = [];
+  let hasSeenOwner = false;
   for (const memberRow of row.memberRows) {
     if (isOwnerRow(memberRow)) {
       ownerRows.push(memberRow);
+      hasSeenOwner = true;
       continue;
     }
-    processRows.push(memberRow);
+    if (hasSeenOwner) {
+      processRowsAfterOwner.push(memberRow);
+    } else {
+      processRowsBeforeOwner.push(memberRow);
+    }
   }
+  const ownerIsVisibleResult = ownerRows.some(
+    (ownerRow) =>
+      (ownerRow.kind === "message" && ownerRow.message.role === "assistant") ||
+      ownerRow.kind === "proposed-plan" ||
+      ownerRow.kind === "image-generation",
+  );
+  const ownerIsStreaming = ownerRows.some(
+    (ownerRow) =>
+      ownerRow.kind === "message" &&
+      ownerRow.message.role === "assistant" &&
+      ownerRow.message.streaming === true,
+  );
+  const renderProcessRows = (rows: ReadonlyArray<TimelineRenderableRow>) =>
+    rows.length > 0 ? (
+      <CollapsibleMember collapsed={isCollapsed} animate={animate}>
+        {rows.map((memberRow) => (
+          <TimelineRowBody key={memberRow.id} row={memberRow} />
+        ))}
+      </CollapsibleMember>
+    ) : null;
+
+  if (
+    ownerIsVisibleResult &&
+    !ownerIsStreaming &&
+    processRowsBeforeOwner.length === 0 &&
+    processRowsAfterOwner.length > 0
+  ) {
+    return (
+      <div
+        className="[overflow-anchor:none]"
+        data-turn-process-span="true"
+        data-turn-process-owner-id={row.ownerId}
+      >
+        {ownerRows.map((ownerRow) => (
+          <TimelineRowBody key={ownerRow.id} row={ownerRow} />
+        ))}
+        <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
+        {renderProcessRows(processRowsAfterOwner)}
+        {row.changedFilesRow ? <TimelineRowBody row={row.changedFilesRow} /> : null}
+      </div>
+    );
+  }
+
   return (
     <div
       className="[overflow-anchor:none]"
@@ -1364,16 +1437,12 @@ function TurnProcessSpanTimelineRow({ row }: { row: TimelineTurnProcessSpanRow }
       data-turn-process-owner-id={row.ownerId}
     >
       <TurnSummaryToggleHeader assistantMessageId={row.ownerId} />
-      {processRows.length > 0 ? (
-        <CollapsibleMember collapsed={isCollapsed} animate={animate}>
-          {processRows.map((memberRow) => (
-            <TimelineRowBody key={memberRow.id} row={memberRow} />
-          ))}
-        </CollapsibleMember>
-      ) : null}
+      {renderProcessRows(processRowsBeforeOwner)}
+      {ownerIsStreaming ? renderProcessRows(processRowsAfterOwner) : null}
       {ownerRows.map((ownerRow) => (
         <TimelineRowBody key={ownerRow.id} row={ownerRow} />
       ))}
+      {ownerIsStreaming ? null : renderProcessRows(processRowsAfterOwner)}
       {row.changedFilesRow ? <TimelineRowBody row={row.changedFilesRow} /> : null}
     </div>
   );
@@ -1408,6 +1477,12 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
   const ctx = use(TimelineRowCtx);
   const isCollapsed = ctx.collapsedAssistantMessageIds.has(assistantMessageId);
   const elapsed = ctx.elapsedByAssistantMessageId.get(assistantMessageId) ?? null;
+  const isTerminal = ctx.terminalProcessAssistantMessageIds.has(assistantMessageId);
+  const startedAt = ctx.processStartedAtByAssistantMessageId.get(assistantMessageId) ?? null;
+  const suspendedDurationMs =
+    ctx.processSuspendedDurationMsByAssistantMessageId.get(assistantMessageId) ?? 0;
+  const openSuspensionStartedAt =
+    ctx.processOpenSuspensionStartedAtByAssistantMessageId.get(assistantMessageId) ?? null;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const handleToggle = useCallback(() => {
     const button = buttonRef.current;
@@ -1433,7 +1508,23 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
         data-turn-summary-collapsed={isCollapsed ? "true" : "false"}
         data-scroll-anchor-ignore
       >
-        <span className="min-w-0 truncate">{elapsed ? `已处理 ${elapsed}` : "已处理"}</span>
+        <span className="min-w-0 truncate">
+          {isTerminal ? (
+            elapsed ? (
+              `已处理 ${elapsed}`
+            ) : (
+              "已处理"
+            )
+          ) : startedAt ? (
+            <LiveProcessSummaryLabel
+              startedAt={startedAt}
+              suspendedDurationMs={suspendedDurationMs}
+              openSuspensionStartedAt={openSuspensionStartedAt}
+            />
+          ) : (
+            "正在处理"
+          )}
+        </span>
         <ChevronDownIcon
           className={cn(
             "size-3.5 shrink-0 -rotate-90 text-muted-foreground/58 transition-transform duration-200 group-hover/turn-summary:text-muted-foreground/80",
@@ -1444,6 +1535,56 @@ function TurnSummaryToggleHeader({ assistantMessageId }: { assistantMessageId: s
       <span className="h-px min-w-0 flex-1 bg-border/75" aria-hidden="true" />
     </div>
   );
+}
+
+function LiveProcessSummaryLabel({
+  startedAt,
+  suspendedDurationMs,
+  openSuspensionStartedAt,
+}: {
+  startedAt: string;
+  suspendedDurationMs: number;
+  openSuspensionStartedAt: string | null;
+}) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const initialText = formatLiveProcessSummaryLabelNow({
+    startedAt,
+    suspendedDurationMs,
+    openSuspensionStartedAt,
+  });
+
+  useEffect(() => {
+    const updateText = () => {
+      if (textRef.current) {
+        textRef.current.textContent = formatLiveProcessSummaryLabelNow({
+          startedAt,
+          suspendedDurationMs,
+          openSuspensionStartedAt,
+        });
+      }
+    };
+    updateText();
+    const id = setInterval(updateText, 1000);
+    return () => clearInterval(id);
+  }, [openSuspensionStartedAt, startedAt, suspendedDurationMs]);
+
+  return <span ref={textRef}>{initialText}</span>;
+}
+
+function formatLiveProcessSummaryLabelNow(input: {
+  startedAt: string;
+  suspendedDurationMs: number;
+  openSuspensionStartedAt: string | null;
+}): string {
+  const nowMs = Date.now();
+  const openSuspendedMs = input.openSuspensionStartedAt
+    ? Math.max(0, nowMs - Date.parse(input.openSuspensionStartedAt))
+    : 0;
+  return `正在处理 ${formatProcessElapsedDuration(
+    Date.parse(input.startedAt),
+    nowMs,
+    input.suspendedDurationMs + openSuspendedMs,
+  )}`;
 }
 
 function CollapsibleMember({

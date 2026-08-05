@@ -145,7 +145,7 @@ function buildCommandWorkTimelineEntry(input: {
       label: "Ran command",
       tone: "tool" as const,
       command: input.command,
-      itemType: "command_execution",
+      itemType: "command_execution" as const,
       status: input.status ?? "completed",
     },
   };
@@ -816,9 +816,51 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("已处理");
+    expect(markup).toContain("已处理 12s");
     expect(markup).toContain("验证完成。");
     expect(markup).not.toContain("bun run lint");
+  });
+
+  it("shows the latest unfinished turn process as running and keeps it expanded", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const turnId = TurnId.make("turn-1");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-17T19:12:36.000Z"));
+    try {
+      const markup = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          isWorking
+          activeTurnInProgress
+          activeTurnId={turnId}
+          activeTurnStartedAt="2026-03-17T19:12:28.000Z"
+          timelineEntries={[
+            buildCommandWorkTimelineEntry({
+              id: "work-before",
+              entryId: "work-entry-before",
+              command: "bun run lint",
+              status: "running",
+              createdAt: "2026-03-17T19:12:28.000Z",
+            }),
+            buildAssistantTimelineEntry({
+              id: "assistant-1",
+              entryId: "assistant-entry",
+              text: "正在整理验证结果。",
+              turnId,
+              createdAt: "2026-03-17T19:12:30.000Z",
+              streaming: true,
+            }),
+          ]}
+        />,
+      );
+
+      expect(markup).toContain("正在处理 8s");
+      expect(markup).toContain('data-turn-summary-collapsed="false"');
+      expect(markup).toContain("bun run lint");
+      expect(markup).not.toContain("已处理 8s");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("filters invalid checkpoint file paths before rendering assistant file summaries", async () => {

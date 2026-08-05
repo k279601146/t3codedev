@@ -498,7 +498,9 @@ function buildThreadStartParams(input: {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   const dynamicTools = buildT3DynamicToolsForNamespaces({
     enableAll: input.enableT3DynamicTools === true,
-    namespaces: input.enabledT3DynamicToolNamespaces,
+    ...(input.enabledT3DynamicToolNamespaces !== undefined
+      ? { namespaces: input.enabledT3DynamicToolNamespaces }
+      : {}),
   });
   return {
     cwd: input.cwd,
@@ -530,6 +532,8 @@ function buildCommercialThreadConfigOverrides(
         "x-openai-actor-authorization": "t3code-commercial-gateway",
       },
       supports_websockets: false,
+      request_max_retries: 0,
+      stream_max_retries: 5,
     },
   };
 }

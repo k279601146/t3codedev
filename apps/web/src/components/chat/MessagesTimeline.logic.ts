@@ -1,5 +1,5 @@
 import * as Equal from "effect/Equal";
-import { formatElapsed, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
+import { type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import {
   type ChatMessage,
   type ProposedPlan,
@@ -81,8 +81,26 @@ export interface TurnProcessCollapseState {
   ownerAssistantMessageIdByRowId: Map<string, string>;
   summaryAssistantMessageIds: Set<string>;
   elapsedByAssistantMessageId: Map<string, string>;
+  processStartedAtByAssistantMessageId: Map<string, string>;
+  processSuspendedDurationMsByAssistantMessageId: Map<string, number>;
+  processOpenSuspensionStartedAtByAssistantMessageId: Map<string, string>;
+  terminalProcessAssistantMessageIds: Set<string>;
   summaryButtonHostByRowId: Map<string, string>;
 }
+
+type TurnProcessSpan = {
+  firstProcessAtMs: number | null;
+  firstProcessAtIso: string | null;
+  lastEventAtMs: number | null;
+  memberRowIds: string[];
+  hasProcessRow: boolean;
+  hasUnfinishedProcessRow: boolean;
+  suspendedDurationMs: number;
+  openSuspensionStartedAtIso: string | null;
+  lastResultRow: MessagesTimelineRow | null;
+  hostRowId: string | null;
+  openSegmentHostRowId: string | null;
+};
 
 export function isCommandWorkEntry(
   entry: Pick<WorkLogEntry, "requestKind" | "itemType" | "command">,
@@ -562,54 +580,37 @@ function resolveResultOwnerId(row: MessagesTimelineRow): string | null {
 
 export function deriveTurnProcessCollapseState(
   rows: ReadonlyArray<MessagesTimelineRow>,
+  options: { latestProcessIsTerminal?: boolean } = {},
 ): TurnProcessCollapseState {
   const owner = new Map<string, string>();
   const summaries = new Set<string>();
   const elapsedMap = new Map<string, string>();
+  const startedAtMap = new Map<string, string>();
+  const suspendedDurationMsMap = new Map<string, number>();
+  const openSuspensionStartedAtMap = new Map<string, string>();
+  const terminalProcessIds = new Set<string>();
   const hostByRowId = new Map<string, string>();
 
-  type TurnProcessSpan = {
-    firstProcessAt: string | null;
-    memberRowIds: string[];
-    hasProcessRow: boolean;
-    lastResultRow: MessagesTimelineRow | null;
-    hostRowId: string | null;
-    openSegmentHostRowId: string | null;
-  };
   const createTurnProcessSpan = (): TurnProcessSpan => ({
-    firstProcessAt: null,
+    firstProcessAtMs: null,
+    firstProcessAtIso: null,
+    lastEventAtMs: null,
     memberRowIds: [],
     hasProcessRow: false,
+    hasUnfinishedProcessRow: false,
+    suspendedDurationMs: 0,
+    openSuspensionStartedAtIso: null,
     lastResultRow: null,
     hostRowId: null,
     openSegmentHostRowId: null,
   });
 
+  const spans: TurnProcessSpan[] = [];
   const flushTurnProcessSpan = (span: TurnProcessSpan) => {
-    if (!span.hasProcessRow || !span.lastResultRow) {
+    if (!span.hasProcessRow) {
       return;
     }
-    const ownerId = resolveResultOwnerId(span.lastResultRow);
-    if (!ownerId) {
-      return;
-    }
-
-    const memberRowIds = span.memberRowIds;
-    if (memberRowIds.length === 0) {
-      return;
-    }
-
-    summaries.add(ownerId);
-    for (const rowId of memberRowIds) {
-      owner.set(rowId, ownerId);
-    }
-    hostByRowId.set(span.lastResultRow.id, ownerId);
-
-    const completedAt = resolveResultCompletedAt(span.lastResultRow);
-    if (span.firstProcessAt && completedAt) {
-      const elapsed = formatElapsed(span.firstProcessAt, completedAt);
-      if (elapsed) elapsedMap.set(ownerId, elapsed);
-    }
+    spans.push(span);
   };
 
   let currentSpan = createTurnProcessSpan();
@@ -621,9 +622,11 @@ export function deriveTurnProcessCollapseState(
     }
 
     if (row.kind === "work") {
-      if (!currentSpan.firstProcessAt) currentSpan.firstProcessAt = row.createdAt;
+      addProcessRowTiming(currentSpan, row);
       currentSpan.memberRowIds.push(row.id);
       currentSpan.hasProcessRow = true;
+      currentSpan.hasUnfinishedProcessRow =
+        currentSpan.hasUnfinishedProcessRow || hasUnfinishedWorkEntries(row.groupedEntries);
       if (!currentSpan.openSegmentHostRowId) {
         currentSpan.openSegmentHostRowId = row.id;
         currentSpan.hostRowId = row.id;
@@ -632,22 +635,181 @@ export function deriveTurnProcessCollapseState(
     }
 
     if (row.kind === "message" && row.message.role === "assistant") {
-      currentSpan.memberRowIds.push(row.id);
+      if (currentSpan.hasProcessRow) {
+        currentSpan.memberRowIds.push(row.id);
+      }
+      addMessageRowTiming(currentSpan, row);
     }
 
     if (isVisibleResultRow(row)) {
-      currentSpan.lastResultRow = row;
-      currentSpan.openSegmentHostRowId = null;
+      if (currentSpan.hasProcessRow) {
+        currentSpan.lastResultRow = row;
+        addResultRowTiming(currentSpan, row);
+        currentSpan.openSegmentHostRowId = null;
+      }
     }
   }
   flushTurnProcessSpan(currentSpan);
+
+  spans.forEach((span, index) => {
+    const ownerId = span.lastResultRow
+      ? resolveResultOwnerId(span.lastResultRow)
+      : span.hostRowId;
+    if (!ownerId || span.memberRowIds.length === 0) {
+      return;
+    }
+
+    summaries.add(ownerId);
+    for (const rowId of span.memberRowIds) {
+      owner.set(rowId, ownerId);
+    }
+    hostByRowId.set(span.lastResultRow?.id ?? span.hostRowId ?? span.memberRowIds[0]!, ownerId);
+    if (span.firstProcessAtIso) {
+      startedAtMap.set(ownerId, span.firstProcessAtIso);
+    }
+    if (span.suspendedDurationMs > 0) {
+      suspendedDurationMsMap.set(ownerId, span.suspendedDurationMs);
+    }
+    if (span.openSuspensionStartedAtIso) {
+      openSuspensionStartedAtMap.set(ownerId, span.openSuspensionStartedAtIso);
+    }
+
+    const isLatestSpan = index === spans.length - 1;
+    const resultCompletedAt = span.lastResultRow
+      ? resolveResultCompletedAt(span.lastResultRow)
+      : null;
+    const isTerminal =
+      !span.hasUnfinishedProcessRow &&
+      (resultCompletedAt !== null || !isLatestSpan || options.latestProcessIsTerminal === true);
+    if (!isTerminal) {
+      return;
+    }
+    terminalProcessIds.add(ownerId);
+    if (span.firstProcessAtMs !== null && span.lastEventAtMs !== null) {
+      elapsedMap.set(
+        ownerId,
+        formatProcessElapsedDuration(
+          span.firstProcessAtMs,
+          span.lastEventAtMs,
+          span.suspendedDurationMs,
+        ),
+      );
+    }
+  });
 
   return {
     ownerAssistantMessageIdByRowId: owner,
     summaryAssistantMessageIds: summaries,
     elapsedByAssistantMessageId: elapsedMap,
+    processStartedAtByAssistantMessageId: startedAtMap,
+    processSuspendedDurationMsByAssistantMessageId: suspendedDurationMsMap,
+    processOpenSuspensionStartedAtByAssistantMessageId: openSuspensionStartedAtMap,
+    terminalProcessAssistantMessageIds: terminalProcessIds,
     summaryButtonHostByRowId: hostByRowId,
   };
+}
+
+export function formatProcessElapsedDuration(
+  startMs: number,
+  endMs: number,
+  suspendedDurationMs: number,
+): string {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return "0s";
+  }
+  const normalizedSuspendedDurationMs = Number.isFinite(suspendedDurationMs)
+    ? Math.max(0, suspendedDurationMs)
+    : 0;
+  const elapsedMs = Math.max(0, endMs - startMs - normalizedSuspendedDurationMs);
+  return `${Math.floor(elapsedMs / 1_000)}s`;
+}
+
+function addProcessTimestamp(span: TurnProcessSpan, iso: string | null | undefined) {
+  if (!iso) {
+    return;
+  }
+  const timestampMs = Date.parse(iso);
+  if (Number.isNaN(timestampMs)) {
+    return;
+  }
+  if (span.firstProcessAtMs === null || timestampMs < span.firstProcessAtMs) {
+    span.firstProcessAtMs = timestampMs;
+    span.firstProcessAtIso = iso;
+  }
+  if (span.lastEventAtMs === null || timestampMs > span.lastEventAtMs) {
+    span.lastEventAtMs = timestampMs;
+  }
+}
+
+function addLastEventTimestamp(span: TurnProcessSpan, iso: string | null | undefined) {
+  if (!iso) {
+    return;
+  }
+  const timestampMs = Date.parse(iso);
+  if (Number.isNaN(timestampMs)) {
+    return;
+  }
+  if (span.lastEventAtMs === null || timestampMs > span.lastEventAtMs) {
+    span.lastEventAtMs = timestampMs;
+  }
+}
+
+function addProcessSuspension(span: TurnProcessSpan, entry: WorkLogEntry) {
+  const summary = entry.userInputSummary;
+  if (!summary) {
+    return;
+  }
+  addProcessTimestamp(span, summary.requestedAt);
+  if (summary.status === "resolved" && summary.resolvedAt) {
+    addProcessTimestamp(span, summary.resolvedAt);
+    const startedAt = Date.parse(summary.requestedAt);
+    const endedAt = Date.parse(summary.resolvedAt);
+    if (!Number.isNaN(startedAt) && !Number.isNaN(endedAt) && endedAt > startedAt) {
+      span.suspendedDurationMs += endedAt - startedAt;
+    }
+    return;
+  }
+  if (summary.status === "requested") {
+    span.openSuspensionStartedAtIso = summary.requestedAt;
+  }
+}
+
+function addProcessRowTiming(
+  span: TurnProcessSpan,
+  row: Extract<MessagesTimelineRow, { kind: "work" }>,
+) {
+  addProcessTimestamp(span, row.createdAt);
+  for (const entry of row.groupedEntries) {
+    addProcessTimestamp(span, entry.createdAt);
+    addProcessSuspension(span, entry);
+  }
+}
+
+function addMessageRowTiming(
+  span: TurnProcessSpan,
+  row: Extract<MessagesTimelineRow, { kind: "message" }>,
+) {
+  addLastEventTimestamp(span, row.message.createdAt || row.createdAt);
+  addLastEventTimestamp(span, row.message.completedAt);
+}
+
+function addResultRowTiming(span: TurnProcessSpan, row: MessagesTimelineRow) {
+  if (row.kind === "proposed-plan") {
+    addLastEventTimestamp(span, row.proposedPlan.createdAt);
+    addLastEventTimestamp(span, row.proposedPlan.updatedAt);
+    return;
+  }
+  if (row.kind === "image-generation") {
+    for (const item of row.items) {
+      addLastEventTimestamp(span, item.createdAt);
+    }
+  }
+}
+
+function hasUnfinishedWorkEntries(entries: ReadonlyArray<WorkLogEntry>): boolean {
+  return entries.some(
+    (entry) => entry.status === "running" || entry.userInputSummary?.status === "requested",
+  );
 }
 
 function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
