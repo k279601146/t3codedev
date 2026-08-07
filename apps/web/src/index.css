@@ -530,18 +530,21 @@ body[data-performance-mode="window-dragging"] .shadow-sm {
 
 body {
   --t3-chat-font-family:
+    "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "T3 PingFang SC", Arial, sans-serif;
+  --t3-chat-code-font-family:
+    Consolas, "SF Mono", "SFMono-Regular", "Liberation Mono", Menlo, monospace;
+  --t3-chat-font-size: 14px;
+  --t3-chat-line-height: 1.68;
+  --t3-chat-block-spacing: 13px;
+  --t3-chat-text-color: #202020;
+  --t3-chat-list-marker-color: #202020;
+  --t3-chat-inline-code-bg: #e9e9e9;
+  --t3-chat-inline-code-fg: #242424;
+  --t3-sidebar-font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
     "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "T3 PingFang SC", Helvetica, Arial,
     sans-serif;
-  --t3-chat-font-size: 14px;
-  --t3-chat-line-height: 1.58;
-  --t3-chat-block-spacing: 8px;
-  --t3-chat-text-color: #111827;
-  --t3-chat-list-marker-color: #111827;
-  --t3-chat-inline-code-bg: color-mix(in srgb, var(--foreground) 5.5%, var(--background));
-  --t3-chat-inline-code-fg: #1f2328;
-  --t3-sidebar-font-family:
-    var(--t3-chat-font-family);
   --t3-sidebar-font-size: 14px;
   --t3-sidebar-line-height: 1.5;
   --t3-sidebar-title-font-size: 13px;
@@ -584,10 +587,10 @@ body {
 
 body.dark,
 .dark body {
-  --t3-chat-text-color: color-mix(in srgb, var(--foreground) 86%, transparent);
-  --t3-chat-list-marker-color: color-mix(in srgb, var(--foreground) 88%, transparent);
-  --t3-chat-inline-code-bg: color-mix(in srgb, var(--foreground) 10%, var(--background));
-  --t3-chat-inline-code-fg: color-mix(in srgb, var(--foreground) 88%, transparent);
+  --t3-chat-text-color: color-mix(in srgb, var(--foreground) 90%, transparent);
+  --t3-chat-list-marker-color: color-mix(in srgb, var(--foreground) 90%, transparent);
+  --t3-chat-inline-code-bg: color-mix(in srgb, var(--foreground) 14%, var(--background));
+  --t3-chat-inline-code-fg: color-mix(in srgb, var(--foreground) 90%, transparent);
   --t3-sidebar-bg: #181818;
   --t3-sidebar-row-hover: #242424;
   --t3-sidebar-row-active: #2a2a2a;
@@ -639,6 +642,7 @@ body {
   font-feature-settings: normal;
   font-variation-settings: normal;
   font-synthesis-weight: none;
+  letter-spacing: 0;
 }
 
 .chat-text-body {
@@ -658,7 +662,7 @@ body {
 .chat-text-title {
   font-size: 14px;
   font-weight: 500;
-  line-height: 1.68;
+  line-height: var(--t3-chat-line-height);
   color: color-mix(in srgb, var(--foreground) 92%, transparent);
 }
 
@@ -697,14 +701,15 @@ body {
 
 .chat-text > code,
 .chat-text :not(pre) > code {
-  border-radius: 3px;
+  border: 0;
+  border-radius: 4px;
   background: var(--chat-inline-code-bg);
-  padding: 1px 4px;
+  padding: 1px 5px;
   color: var(--chat-inline-code-fg);
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 12.5px;
+  font-family: var(--t3-chat-code-font-family);
+  font-size: 12px;
   font-weight: 400;
-  line-height: 1.42;
+  line-height: 1.36;
   letter-spacing: 0;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -1589,17 +1594,17 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown ul {
-  padding-left: 1.28rem;
+  padding-left: 1.08rem;
   list-style-type: disc;
 }
 
 .chat-markdown ol {
-  padding-left: 1.48rem;
+  padding-left: 1.32rem;
   list-style-type: decimal;
 }
 
 .chat-markdown li {
-  padding-left: 0.12rem;
+  padding-left: 0.08rem;
   color: inherit;
 }
 
@@ -1627,12 +1632,12 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown li + li {
-  margin-top: 7px;
+  margin-top: 8px;
 }
 
 .chat-markdown > ul > li + li,
 .chat-markdown > ol > li + li {
-  margin-top: 7px;
+  margin-top: 8px;
 }
 
 .chat-markdown li > p {
@@ -1821,11 +1826,11 @@ label:has(> select#reasoning-effort) select {
   overflow: hidden;
   border-radius: 4px;
   background: var(--chat-markdown-inline-code-bg);
-  padding: 2px 6px;
+  padding: 1px 5px;
   color: var(--chat-markdown-inline-code-fg);
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 13px;
-  line-height: 1.45;
+  font-family: var(--t3-chat-code-font-family);
+  font-size: 12px;
+  line-height: 1.36;
   letter-spacing: 0;
   text-decoration: none;
   vertical-align: baseline;
@@ -1840,7 +1845,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown-url-host {
   flex: 0 0 auto;
   color: inherit;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .chat-markdown-url-path {
@@ -1858,12 +1863,12 @@ label:has(> select#reasoning-effort) select {
   overflow: hidden;
   border-radius: 4px;
   background: var(--chat-markdown-inline-code-bg);
-  padding: 2px 6px;
+  padding: 1px 5px;
   color: var(--chat-markdown-inline-code-fg);
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 13px;
+  font-family: var(--t3-chat-code-font-family);
+  font-size: 12px;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.36;
   letter-spacing: 0;
   text-decoration: none;
   vertical-align: baseline;
@@ -1888,14 +1893,14 @@ label:has(> select#reasoning-effort) select {
 
 .chat-markdown :not(pre) > code {
   border: 0;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--chat-markdown-inline-code-bg);
-  padding: 1px 4px;
+  padding: 1px 5px;
   color: var(--chat-markdown-inline-code-fg);
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 12.5px;
+  font-family: var(--t3-chat-code-font-family);
+  font-size: 12px;
   font-weight: 400;
-  line-height: 1.42;
+  line-height: 1.36;
   letter-spacing: 0;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -1908,12 +1913,12 @@ label:has(> select#reasoning-effort) select {
   gap: 0.18rem;
   border-radius: 4px;
   background: var(--chat-markdown-inline-code-bg);
-  padding: 2px 6px;
+  padding: 1px 5px;
   color: var(--chat-markdown-inline-code-fg);
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.45;
+  font-family: var(--t3-chat-code-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.36;
   letter-spacing: 0;
   vertical-align: baseline;
   text-decoration: none;
@@ -1958,8 +1963,8 @@ label:has(> select#reasoning-effort) select {
   max-width: 100%;
   overflow-x: auto;
   border: 0;
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  border-radius: 4px;
+  background: var(--chat-markdown-inline-code-bg);
   padding: 0.68rem 0.82rem;
   box-shadow: none;
   scrollbar-gutter: stable;
@@ -1969,9 +1974,11 @@ label:has(> select#reasoning-effort) select {
   border: none;
   background: transparent;
   padding: 0;
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 12.5px;
+  color: var(--chat-markdown-inline-code-fg);
+  font-family: var(--t3-chat-code-font-family);
+  font-size: 12px;
   line-height: 1.62;
+  letter-spacing: 0;
 }
 
 .markdown-file-link-tooltip-scroll {
@@ -2006,7 +2013,7 @@ label:has(> select#reasoning-effort) select {
   max-width: calc(100% - 4rem);
   overflow: hidden;
   color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--t3-chat-code-font-family);
   font-size: 11px;
   line-height: 1.5rem;
   text-overflow: ellipsis;
@@ -2055,7 +2062,15 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown .chat-markdown-shiki .shiki {
-  background: color-mix(in srgb, var(--foreground) 6%, var(--background)) !important;
+  background: var(--chat-markdown-inline-code-bg) !important;
+  color: var(--chat-markdown-inline-code-fg) !important;
+  font-family: var(--t3-chat-code-font-family) !important;
+}
+
+.chat-markdown .chat-markdown-shiki .shiki code,
+.chat-markdown .chat-markdown-shiki .shiki span {
+  color: var(--chat-markdown-inline-code-fg) !important;
+  font-family: var(--t3-chat-code-font-family) !important;
 }
 
 .dark .chat-markdown {

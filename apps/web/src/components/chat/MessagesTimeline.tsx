@@ -1202,7 +1202,7 @@ export const MessagesTimeline = memo(
       <TimelineRowActivityCtx.Provider value={activityState}>
         <Virtuoso<TimelineRow>
           ref={virtuosoRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-4 [overflow-anchor:none] [scrollbar-gutter:stable] [touch-action:pan-y] sm:px-6 dark:bg-background"
+          className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overscroll-y-contain bg-white px-2 [overflow-anchor:none] [scrollbar-gutter:stable] [touch-action:pan-y] dark:bg-background"
           data={rows}
           firstItemIndex={firstItemIndex}
           defaultItemHeight={TIMELINE_DEFAULT_ITEM_HEIGHT_PX}
